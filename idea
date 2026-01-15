@@ -16,5 +16,3 @@ DOM escape hatch — full flexibility when needed
 Differentiator: First-class support for visual output previews. 3D mesh viewers live in the same WebGL context—no separate canvas per node. Image previews are textures, not img elements.
 Target users: AI workflow tools, geometry/shader node editors, creative tools where preview performance matters.
 Open source (MIT). The moat is design quality and architecture, not the code.
-
-Atm, it doesn't exist. But I would like to discuss how to execute it. What do you think? Kookie flow is atm empty repo
