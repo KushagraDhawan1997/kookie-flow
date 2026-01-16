@@ -470,33 +470,36 @@ function Invalidator() {
 
 /**
  * Camera controller for pan/zoom.
- * Uses RAF-synchronized updates via useFrame.
+ * Updates orthographic camera bounds based on viewport and canvas size.
  */
 function CameraController() {
   const { camera, size } = useThree();
   const store = useFlowStoreApi();
-  const lastViewportRef = useRef({ x: 0, y: 0, zoom: 1 });
+
+  // Track last values to detect changes (for subscription optimization only)
+  const lastRef = useRef({ x: 0, y: 0, zoom: 0, width: 0, height: 0 });
 
   useLayoutEffect(() => {
     if (!(camera instanceof THREE.OrthographicCamera)) return;
 
-    // Subscribe to viewport changes
     const updateCamera = () => {
       const { viewport } = store.getState();
+      const { width, height } = size;
+      const { x, y, zoom } = viewport;
 
-      // Skip if viewport hasn't changed
+      // Skip only if BOTH viewport AND size haven't changed
+      const last = lastRef.current;
       if (
-        viewport.x === lastViewportRef.current.x &&
-        viewport.y === lastViewportRef.current.y &&
-        viewport.zoom === lastViewportRef.current.zoom
+        x === last.x &&
+        y === last.y &&
+        zoom === last.zoom &&
+        width === last.width &&
+        height === last.height
       ) {
         return;
       }
 
-      lastViewportRef.current = { ...viewport };
-
-      const { width, height } = size;
-      const { x, y, zoom } = viewport;
+      lastRef.current = { x, y, zoom, width, height };
 
       camera.left = -x / zoom;
       camera.right = (width - x) / zoom;
@@ -506,7 +509,10 @@ function CameraController() {
       camera.updateProjectionMatrix();
     };
 
+    // Run immediately (handles initial load + resize)
     updateCamera();
+
+    // Subscribe to viewport changes
     return store.subscribe(updateCamera);
   }, [camera, size, store]);
 

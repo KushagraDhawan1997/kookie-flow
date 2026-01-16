@@ -1,4 +1,4 @@
-import { memo, useRef, useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useRef, useCallback, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useFlowStoreApi } from './context';
 import type { Node, NodeTypeDefinition } from '../types';
 import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
@@ -65,10 +65,10 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
   // Track nodes for re-rendering when they change
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
-  // Track last viewport to skip unnecessary updates
-  const lastViewportRef = useRef({ x: 0, y: 0, zoom: 0 });
+  // Track container size for resize detection
+  const lastSizeRef = useRef({ width: 0, height: 0 });
 
-  // Update function - runs in RAF
+  // Update function - positions all labels
   const updateLabels = useCallback(() => {
     rafIdRef.current = 0;
 
@@ -77,13 +77,6 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
 
     const { viewport, nodes: currentNodes } = store.getState();
     const labels = labelsRef.current;
-
-    // Skip if viewport hasn't changed (major perf win)
-    const vp = lastViewportRef.current;
-    if (vp.x === viewport.x && vp.y === viewport.y && vp.zoom === viewport.zoom && vp.zoom !== 0) {
-      return;
-    }
-    lastViewportRef.current = { x: viewport.x, y: viewport.y, zoom: viewport.zoom };
 
     // LOD: Hide entire container if zoomed out too far
     if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
@@ -100,6 +93,9 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     const containerRect = container.parentElement?.getBoundingClientRect();
     const viewWidth = containerRect?.width ?? window.innerWidth;
     const viewHeight = containerRect?.height ?? window.innerHeight;
+
+    // Track size for resize detection
+    lastSizeRef.current = { width: viewWidth, height: viewHeight };
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -156,12 +152,15 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
   // Schedule update with RAF throttling
   const scheduleUpdate = useCallback(() => {
     if (rafIdRef.current === 0) {
-      rafIdRef.current = requestAnimationFrame(updateLabels);
+      rafIdRef.current = requestAnimationFrame(() => updateLabels());
     }
   }, [updateLabels]);
 
-  // Subscribe to store changes
-  useEffect(() => {
+  // Setup subscriptions, resize observer, and initial update
+  useLayoutEffect(() => {
+    // Run initial update synchronously (refs are set after commit)
+    updateLabels();
+
     // Subscribe to nodes changes - triggers React re-render to add/remove label elements
     const unsubNodes = store.subscribe(
       (state) => state.nodes,
@@ -180,35 +179,35 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       scheduleUpdate
     );
 
+    // Resize observer for container size changes
+    const parent = containerRef.current?.parentElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver(() => {
+        // Run synchronously on resize for immediate feedback
+        updateLabels();
+      });
+      resizeObserver.observe(parent);
+    }
+
     return () => {
       unsubNodes();
       unsubViewport();
+      resizeObserver?.disconnect();
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-  }, [store, scheduleUpdate, nodes.length]);
+  }, [store, updateLabels, scheduleUpdate, nodes.length, nodes]);
 
-  // Initial update - use useLayoutEffect + double RAF to ensure refs are mounted
-  useLayoutEffect(() => {
-    // First RAF: React has committed, refs are being set
-    // Second RAF: refs are definitely set
-    const rafId = requestAnimationFrame(() => {
-      requestAnimationFrame(updateLabels);
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [updateLabels, nodes]); // Re-run when nodes change
-
-  // Ref callback for label elements - triggers update when ref is set
+  // Ref callback for label elements
   const setLabelRef = useCallback((nodeId: string) => (el: HTMLDivElement | null) => {
     if (el) {
       labelsRef.current.set(nodeId, el);
-      // Trigger update when a new ref is added (fixes initial sync)
-      scheduleUpdate();
     } else {
       labelsRef.current.delete(nodeId);
     }
-  }, [scheduleUpdate]);
+  }, []);
 
   return (
     <div ref={containerRef}>
@@ -234,6 +233,8 @@ const crispLabelStyle: CSSProperties = {
   position: 'absolute',
   left: 0,
   top: 0,
+  // Start hidden - updateLabels will show after positioning
+  visibility: 'hidden',
   color: '#ffffff',
   fontWeight: 500,
   fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -267,11 +268,11 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
 
     // LOD: Hide if zoomed out too far
     if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
-      el.style.visibility = 'hidden';
+      el.style.opacity = '0';
       return;
     }
 
-    el.style.visibility = 'visible';
+    el.style.opacity = '1';
     // Use matrix3d for GPU acceleration on Safari
     el.style.transform = `matrix3d(${viewport.zoom},0,0,0,0,${viewport.zoom},0,0,0,0,1,0,${viewport.x},${viewport.y},0,1)`;
   }, [store]);
@@ -282,7 +283,12 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     }
   }, [updateTransform]);
 
-  useEffect(() => {
+  // Setup subscriptions and resize observer
+  useLayoutEffect(() => {
+    // Run initial update synchronously
+    updateTransform();
+
+    // Subscribe to store changes
     const unsubNodes = store.subscribe(
       (state) => state.nodes,
       (newNodes) => {
@@ -296,20 +302,24 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
       scheduleUpdate
     );
 
+    // Resize observer on parent container
+    const parent = containerRef.current?.parentElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver(() => {
+        // Run synchronously on resize for immediate feedback
+        updateTransform();
+      });
+      resizeObserver.observe(parent);
+    }
+
     return () => {
       unsubNodes();
       unsubViewport();
+      resizeObserver?.disconnect();
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [store, scheduleUpdate, nodes.length]);
-
-  // Initial update with double RAF
-  useLayoutEffect(() => {
-    const rafId = requestAnimationFrame(() => {
-      requestAnimationFrame(updateTransform);
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [updateTransform]);
+  }, [store, updateTransform, scheduleUpdate, nodes.length]);
 
   return (
     <div ref={containerRef} style={scaledContainerStyle}>
@@ -334,8 +344,11 @@ const scaledContainerStyle: CSSProperties = {
   position: 'absolute',
   top: 0,
   left: 0,
+  // Start with opacity 0 - updateTransform will show after positioning
+  // Using opacity instead of visibility because visibility: hidden can cause layout issues
+  opacity: 0,
   transformOrigin: '0 0',
-  willChange: 'transform',
+  willChange: 'transform, opacity',
   backfaceVisibility: 'hidden',
   WebkitBackfaceVisibility: 'hidden',
 };

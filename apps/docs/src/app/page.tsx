@@ -49,7 +49,7 @@ function generateEdges(nodeCount: number): Edge[] {
 }
 
 export default function Home() {
-  const nodeCount = 1000;
+  const nodeCount = 500;
 
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
@@ -87,6 +87,7 @@ export default function Home() {
         onConnect={onConnect}
         showGrid
         showStats
+        scaleTextWithZoom
       />
     </main>
   );
