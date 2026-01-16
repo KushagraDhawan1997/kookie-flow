@@ -22,6 +22,7 @@ export function SelectionBox() {
         uFillColor: { value: new THREE.Color('#6366f1') },
         uBorderColor: { value: new THREE.Color('#818cf8') },
         uSize: { value: new THREE.Vector2(1, 1) },
+        uZoom: { value: 1.0 },
         uTime: { value: 0 },
       },
       vertexShader: /* glsl */ `
@@ -41,6 +42,7 @@ export function SelectionBox() {
         uniform vec3 uFillColor;
         uniform vec3 uBorderColor;
         uniform vec2 uSize;
+        uniform float uZoom;
         uniform float uTime;
 
         varying vec2 vUv;
@@ -49,8 +51,9 @@ export function SelectionBox() {
         void main() {
           vec2 pixelPos = vUv * vSize;
 
-          // Border width in pixels
-          float borderWidth = 1.5;
+          // Border width and dash size in screen pixels (zoom-independent)
+          float borderWidth = 1.5 / uZoom;
+          float dashSize = 6.0 / uZoom;
 
           // Distance from edge
           float distFromLeft = pixelPos.x;
@@ -75,10 +78,9 @@ export function SelectionBox() {
             perimeterPos = 2.0 * vSize.x + vSize.y + (vSize.y - pixelPos.y);
           }
 
-          // Animated dash pattern
-          float dashSize = 8.0;
-          float dashPhase = mod(perimeterPos + uTime * 30.0, dashSize * 2.0);
-          bool inDash = dashPhase < dashSize;
+          // Animated dash pattern (screen-space consistent)
+          float dashPhase = mod(perimeterPos * uZoom + uTime * 30.0, dashSize * uZoom * 2.0);
+          bool inDash = dashPhase < dashSize * uZoom;
 
           if (inBorder && inDash) {
             gl_FragColor = vec4(uBorderColor, 1.0);
@@ -94,12 +96,20 @@ export function SelectionBox() {
     });
   }, []);
 
-  // Subscribe to selection box changes
+  // Subscribe to selection box and viewport changes
   useEffect(() => {
-    return store.subscribe(
+    const unsubBox = store.subscribe(
       (state) => state.selectionBox,
       () => { dirtyRef.current = true; }
     );
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => { dirtyRef.current = true; }
+    );
+    return () => {
+      unsubBox();
+      unsubViewport();
+    };
   }, [store]);
 
   // Update mesh each frame
@@ -107,7 +117,7 @@ export function SelectionBox() {
     const mesh = meshRef.current;
     if (!mesh) return;
 
-    const { selectionBox } = store.getState();
+    const { selectionBox, viewport } = store.getState();
 
     if (!selectionBox) {
       mesh.visible = false;
@@ -130,6 +140,7 @@ export function SelectionBox() {
 
     // Update shader uniforms
     (material.uniforms.uSize.value as THREE.Vector2).set(width, height);
+    material.uniforms.uZoom.value = viewport.zoom;
     material.uniforms.uTime.value = clock.elapsedTime;
 
     dirtyRef.current = false;

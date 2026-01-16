@@ -268,6 +268,25 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
             end: worldPos,
           });
         }
+        return;
+      }
+
+      // Update hover state (only when not dragging or box selecting)
+      if (!pointerDownPos.current) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const { nodes, viewport, hoveredNodeId } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+        const hoveredNode = getNodeAtPosition(worldPos, nodes);
+        const newHoveredId = hoveredNode?.id ?? null;
+
+        // Only update if changed to avoid unnecessary re-renders
+        if (newHoveredId !== hoveredNodeId) {
+          store.getState().setHoveredNodeId(newHoveredId);
+        }
       }
     },
     [isPanning, isBoxSelecting, store, updateViewport]
@@ -495,7 +514,10 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
+      onPointerLeave={(e) => {
+        handlePointerUp(e);
+        store.getState().setHoveredNodeId(null);
+      }}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}

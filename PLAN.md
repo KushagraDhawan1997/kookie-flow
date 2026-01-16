@@ -477,6 +477,23 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Visual feedback (border color change)
 - [x] Selection state in store
 
+### Phase 3.5: Performance Foundations 🚧 IN PROGRESS
+**Goal:** Ensure O(log n) or better for all hot paths before adding more features
+
+**Critical (blocks scale):**
+- [ ] Quadtree spatial index for hit testing (hover, click, box select)
+- [ ] Selection as `Set<string>` - avoid creating new node arrays on select
+- [ ] Numeric ID interning for O(1) comparisons in render loops
+
+**Important (improves responsiveness):**
+- [ ] Partial GPU buffer updates (only changed indices)
+- [ ] Separate dirty flags for hover vs selection vs position changes
+
+**Benchmarks to hit:**
+- 10,000 nodes: <1ms hit testing
+- 10,000 nodes: <16ms full render cycle
+- Selection change: zero array allocations
+
 ### Phase 4: Node Dragging
 **Goal:** Move nodes around
 
@@ -529,17 +546,18 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] Video/animation previews
 - [ ] Preview caching
 
-### Phase 9: Performance & Polish
+### Phase 9: Polish & Production
 **Goal:** Production ready
 
-- [ ] Spatial indexing (quadtree) for hit testing
-- [ ] Virtual DOM pooling for labels
-- [ ] GPU-based hit testing (color picking)
+- [ ] GPU-based hit testing (color picking) - alternative to quadtree if needed
+- [ ] Virtual DOM pooling for labels (if DOM becomes bottleneck)
 - [ ] Memory management (dispose textures)
-- [ ] Performance profiling
+- [ ] Performance profiling & benchmarks
 - [ ] Accessibility (keyboard navigation, ARIA)
 - [ ] Documentation site
 - [ ] Examples gallery
+
+> **Note:** Core performance work (quadtree, selection optimization) moved to Phase 3.5
 
 ---
 
@@ -658,10 +676,10 @@ packages/kookie-flow/
 - [x] Hit testing utilities (screenToWorld, getNodeAtPosition, getNodesInBox)
 
 ### Next Immediate Tasks
-1. Implement node dragging
-2. Add connection line while dragging from socket
-3. Build minimap component
-4. Add edge selection
+1. **Phase 3.5:** Implement Quadtree for spatial indexing
+2. **Phase 3.5:** Refactor selection to use Set<string>
+3. **Phase 3.5:** Add numeric ID interning
+4. **Phase 4:** Implement node dragging (after performance foundations)
 
 ---
 

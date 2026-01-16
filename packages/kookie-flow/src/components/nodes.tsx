@@ -41,23 +41,28 @@ export function Nodes() {
     return new THREE.ShaderMaterial({
       uniforms: {
         uBackgroundColor: { value: new THREE.Color(NODE_COLORS.background) },
+        uHoveredColor: { value: new THREE.Color(NODE_COLORS.backgroundHovered) },
         uSelectedColor: { value: new THREE.Color(NODE_COLORS.backgroundSelected) },
         uBorderColor: { value: new THREE.Color(NODE_COLORS.border) },
+        uHoveredBorderColor: { value: new THREE.Color(NODE_COLORS.borderHovered) },
         uSelectedBorderColor: { value: new THREE.Color(NODE_COLORS.borderSelected) },
         uCornerRadius: { value: 8.0 },
         uBorderWidth: { value: 2.0 },
       },
       vertexShader: /* glsl */ `
         attribute float aSelected;
+        attribute float aHovered;
         attribute vec2 aSize;
 
         varying vec2 vUv;
         varying float vSelected;
+        varying float vHovered;
         varying vec2 vSize;
 
         void main() {
           vUv = uv;
           vSelected = aSelected;
+          vHovered = aHovered;
           vSize = aSize;
 
           vec3 pos = position;
@@ -71,14 +76,17 @@ export function Nodes() {
         precision highp float;
 
         uniform vec3 uBackgroundColor;
+        uniform vec3 uHoveredColor;
         uniform vec3 uSelectedColor;
         uniform vec3 uBorderColor;
+        uniform vec3 uHoveredBorderColor;
         uniform vec3 uSelectedBorderColor;
         uniform float uCornerRadius;
         uniform float uBorderWidth;
 
         varying vec2 vUv;
         varying float vSelected;
+        varying float vHovered;
         varying vec2 vSize;
 
         float roundedBoxSDF(vec2 p, vec2 b, float r) {
@@ -95,8 +103,18 @@ export function Nodes() {
           // Early discard for pixels outside the rounded rect
           if (d > 1.0) discard;
 
-          vec3 bgColor = mix(uBackgroundColor, uSelectedColor, vSelected);
-          vec3 borderColor = mix(uBorderColor, uSelectedBorderColor, vSelected);
+          // Background: selected > hovered > default
+          vec3 bgColor = mix(
+            mix(uBackgroundColor, uHoveredColor, vHovered),
+            uSelectedColor,
+            vSelected
+          );
+          // Border: selected > hovered > default
+          vec3 borderColor = mix(
+            mix(uBorderColor, uHoveredBorderColor, vHovered),
+            uSelectedBorderColor,
+            vSelected
+          );
 
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
@@ -119,8 +137,10 @@ export function Nodes() {
   // Buffers created with current capacity - recreated when capacity changes
   const buffers = useMemo(() => ({
     selected: new Float32Array(capacity),
+    hovered: new Float32Array(capacity),
     sizes: new Float32Array(capacity * 2),
     selectedAttr: null as THREE.InstancedBufferAttribute | null,
+    hoveredAttr: null as THREE.InstancedBufferAttribute | null,
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
   }), [capacity]);
 
@@ -133,10 +153,13 @@ export function Nodes() {
     // Create attributes with DynamicDrawUsage for frequent updates
     buffers.selectedAttr = new THREE.InstancedBufferAttribute(buffers.selected, 1);
     buffers.selectedAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.hoveredAttr = new THREE.InstancedBufferAttribute(buffers.hovered, 1);
+    buffers.hoveredAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.sizes, 2);
     buffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('aSelected', buffers.selectedAttr);
+    mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
     mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
@@ -160,10 +183,15 @@ export function Nodes() {
       (state) => state.viewport,
       () => { dirtyRef.current = true; }
     );
+    const unsubHovered = store.subscribe(
+      (state) => state.hoveredNodeId,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubNodes();
       unsubViewport();
+      unsubHovered();
     };
   }, [store, capacity]);
 
@@ -173,7 +201,7 @@ export function Nodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport } = store.getState();
+    const { nodes, viewport, hoveredNodeId } = store.getState();
     if (nodes.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -222,6 +250,7 @@ export function Nodes() {
 
       // Update attributes
       buffers.selected[visibleCount] = node.selected ? 1.0 : 0.0;
+      buffers.hovered[visibleCount] = node.id === hoveredNodeId ? 1.0 : 0.0;
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;
 
@@ -232,8 +261,9 @@ export function Nodes() {
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
-    if (buffers.selectedAttr && buffers.sizeAttr) {
+    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr) {
       buffers.selectedAttr.needsUpdate = true;
+      buffers.hoveredAttr.needsUpdate = true;
       buffers.sizeAttr.needsUpdate = true;
     }
 

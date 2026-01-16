@@ -20,9 +20,11 @@ export const DEFAULT_SNAP_GRID: [number, number] = [20, 20];
 /** Node colors */
 export const NODE_COLORS = {
   background: '#1e1e1e',
+  backgroundHovered: '#262626',
   backgroundSelected: '#2d2d2d',
   header: '#3d3d3d',
   border: '#4d4d4d',
+  borderHovered: '#5d5d5d',
   borderSelected: '#6366f1',
 } as const;
 
