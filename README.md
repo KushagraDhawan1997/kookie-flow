@@ -66,11 +66,48 @@ function App() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        showGrid
       />
     </div>
   );
 }
 ```
+
+## Features
+
+### Camera Controls
+- **Wheel zoom** — Zoom towards cursor position
+- **Middle-click drag** — Pan the canvas
+- **Space + drag** — Alternative pan method
+- **Pinch-to-zoom** — Touch gesture support
+- **Two-finger pan** — Touch gesture support
+
+### Performance Optimizations
+- **Instanced rendering** — All nodes in a single draw call
+- **Frustum culling** — Only render visible nodes/edges
+- **Pre-allocated GPU buffers** — Zero GC pressure during pan/zoom
+- **Dirty flags** — Skip unnecessary updates
+- **Safari optimizations** — MSAA disabled, simplified shaders
+
+### DOM Layer
+- **Text labels** — Crisp text that stays readable at any zoom
+- **LOD (Level of Detail)** — Labels hide when zoomed out
+- **GPU-accelerated transforms** — translate3d/matrix3d for smooth panning
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `nodes` | `Node[]` | `[]` | Array of node objects |
+| `edges` | `Edge[]` | `[]` | Array of edge objects |
+| `onNodesChange` | `function` | - | Callback when nodes change |
+| `onEdgesChange` | `function` | - | Callback when edges change |
+| `onConnect` | `function` | - | Callback when connection is made |
+| `showGrid` | `boolean` | `true` | Show background grid |
+| `showStats` | `boolean` | `false` | Show FPS stats |
+| `minZoom` | `number` | `0.1` | Minimum zoom level |
+| `maxZoom` | `number` | `4` | Maximum zoom level |
+| `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (true) or keep crisp (false) |
 
 ## Performance Comparison
 
@@ -83,12 +120,15 @@ function App() {
 ## Roadmap
 
 - [x] Project setup
-- [ ] Core WebGL renderer (nodes, edges, grid)
-- [ ] Pan/zoom camera controls
+- [x] Core WebGL renderer (nodes, edges, grid)
+- [x] Pan/zoom camera controls
+- [x] Touch gesture support
+- [x] DOM text labels with LOD
+- [x] Safari performance optimizations
+- [x] Viewport frustum culling
 - [ ] Node selection (single, multi, box)
 - [ ] Node dragging
 - [ ] Edge connection UX
-- [ ] DOM text labels
 - [ ] Hybrid node portals
 - [ ] Socket system (typed connections)
 - [ ] Minimap
@@ -107,9 +147,6 @@ pnpm dev
 
 # Build
 pnpm build
-
-# Run docs site
-pnpm docs
 ```
 
 ## License
