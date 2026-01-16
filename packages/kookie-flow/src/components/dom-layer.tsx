@@ -1,4 +1,11 @@
-import { memo, useRef, useCallback, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useRef,
+  useCallback,
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { useFlowStoreApi } from './context';
 import type { Node, NodeTypeDefinition } from '../types';
 import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
@@ -11,8 +18,8 @@ export interface DOMLayerProps {
 }
 
 // LOD thresholds - match node visibility behavior
-const MIN_ZOOM_FOR_LABELS = 0.1;  // Match minZoom default
-const MIN_LABEL_SCREEN_SIZE = 8;  // Much smaller threshold so labels stay visible
+const MIN_ZOOM_FOR_LABELS = 0.1; // Match minZoom default
+const MIN_LABEL_SCREEN_SIZE = 8; // Much smaller threshold so labels stay visible
 
 // Static styles - defined outside component
 const containerStyle: CSSProperties = {
@@ -161,23 +168,14 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     // Run initial update synchronously (refs are set after commit)
     updateLabels();
 
-    // Subscribe to nodes changes - triggers React re-render to add/remove label elements
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      (newNodes) => {
-        // Only re-render if node count changed (add/remove)
-        if (newNodes.length !== nodes.length) {
-          setNodes(newNodes);
-        }
-        scheduleUpdate();
+    // Subscribe to store changes - RAF throttling handles frequency
+    const unsub = store.subscribe((state) => {
+      // Re-render if node count changed (add/remove elements)
+      if (state.nodes.length !== nodes.length) {
+        setNodes(state.nodes);
       }
-    );
-
-    // Subscribe to viewport changes
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      scheduleUpdate
-    );
+      scheduleUpdate();
+    });
 
     // Resize observer for container size changes
     const parent = containerRef.current?.parentElement;
@@ -191,8 +189,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     }
 
     return () => {
-      unsubNodes();
-      unsubViewport();
+      unsub();
       resizeObserver?.disconnect();
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
@@ -201,13 +198,16 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
   }, [store, updateLabels, scheduleUpdate, nodes.length, nodes]);
 
   // Ref callback for label elements
-  const setLabelRef = useCallback((nodeId: string) => (el: HTMLDivElement | null) => {
-    if (el) {
-      labelsRef.current.set(nodeId, el);
-    } else {
-      labelsRef.current.delete(nodeId);
-    }
-  }, []);
+  const setLabelRef = useCallback(
+    (nodeId: string) => (el: HTMLDivElement | null) => {
+      if (el) {
+        labelsRef.current.set(nodeId, el);
+      } else {
+        labelsRef.current.delete(nodeId);
+      }
+    },
+    []
+  );
 
   return (
     <div ref={containerRef}>
@@ -216,11 +216,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
         const label = nodeType?.label ?? node.data.label ?? node.type;
 
         return (
-          <div
-            key={node.id}
-            ref={setLabelRef(node.id)}
-            style={crispLabelStyle}
-          >
+          <div key={node.id} ref={setLabelRef(node.id)} style={crispLabelStyle}>
             {label}
           </div>
         );
@@ -249,22 +245,24 @@ const crispLabelStyle: CSSProperties = {
 
 /**
  * Container that scales with viewport using CSS transform.
- * Uses translate3d matrix for GPU acceleration.
+ * Uses ref-based updates for positions (no React re-renders during drag).
  */
 function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
   const store = useFlowStoreApi();
   const containerRef = useRef<HTMLDivElement>(null);
+  const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
 
-  // Track nodes for re-rendering
+  // Track nodes for element creation/removal only
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
+  // Update container transform and label positions via refs
   const updateTransform = useCallback(() => {
     rafIdRef.current = 0;
     const el = containerRef.current;
     if (!el) return;
 
-    const { viewport } = store.getState();
+    const { viewport, nodes: currentNodes } = store.getState();
 
     // LOD: Hide if zoomed out too far
     if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
@@ -275,6 +273,17 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     el.style.opacity = '1';
     // Use matrix3d for GPU acceleration on Safari
     el.style.transform = `matrix3d(${viewport.zoom},0,0,0,0,${viewport.zoom},0,0,0,0,1,0,${viewport.x},${viewport.y},0,1)`;
+
+    // Update label positions via refs (no React re-render)
+    const nodeMap = new Map<string, Node>();
+    currentNodes.forEach((n) => nodeMap.set(n.id, n));
+
+    labelsRef.current.forEach((labelEl, nodeId) => {
+      const node = nodeMap.get(nodeId);
+      if (node) {
+        labelEl.style.transform = `translate3d(${node.position.x + 12}px, ${node.position.y + 8}px, 0)`;
+      }
+    });
   }, [store]);
 
   const scheduleUpdate = useCallback(() => {
@@ -289,18 +298,13 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     updateTransform();
 
     // Subscribe to store changes
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      (newNodes) => {
-        if (newNodes.length !== nodes.length) {
-          setNodes(newNodes);
-        }
+    const unsub = store.subscribe((state) => {
+      // Only re-render React when node count changes (add/remove elements)
+      if (state.nodes.length !== nodes.length) {
+        setNodes(state.nodes);
       }
-    );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      scheduleUpdate
-    );
+      scheduleUpdate();
+    });
 
     // Resize observer on parent container
     const parent = containerRef.current?.parentElement;
@@ -314,12 +318,23 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     }
 
     return () => {
-      unsubNodes();
-      unsubViewport();
+      unsub();
       resizeObserver?.disconnect();
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
   }, [store, updateTransform, scheduleUpdate, nodes.length]);
+
+  // Ref callback for label elements
+  const setLabelRef = useCallback(
+    (nodeId: string) => (el: HTMLDivElement | null) => {
+      if (el) {
+        labelsRef.current.set(nodeId, el);
+      } else {
+        labelsRef.current.delete(nodeId);
+      }
+    },
+    []
+  );
 
   return (
     <div ref={containerRef} style={scaledContainerStyle}>
@@ -328,12 +343,9 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
         const label = nodeType?.label ?? node.data.label ?? node.type;
 
         return (
-          <NodeLabelScaled
-            key={node.id}
-            x={node.position.x}
-            y={node.position.y}
-            label={label}
-          />
+          <div key={node.id} ref={setLabelRef(node.id)} style={scaledLabelStyle}>
+            {label}
+          </div>
         );
       })}
     </div>
@@ -345,7 +357,6 @@ const scaledContainerStyle: CSSProperties = {
   top: 0,
   left: 0,
   // Start with opacity 0 - updateTransform will show after positioning
-  // Using opacity instead of visibility because visibility: hidden can cause layout issues
   opacity: 0,
   transformOrigin: '0 0',
   willChange: 'transform, opacity',
@@ -353,31 +364,18 @@ const scaledContainerStyle: CSSProperties = {
   WebkitBackfaceVisibility: 'hidden',
 };
 
-interface NodeLabelScaledProps {
-  x: number;
-  y: number;
-  label: string;
-}
-
-/**
- * Individual label for scaled mode.
- * Uses translate3d for position.
- */
-const NodeLabelScaled = memo(function NodeLabelScaled({ x, y, label }: NodeLabelScaledProps) {
-  const style: CSSProperties = {
-    position: 'absolute',
-    // Use translate3d instead of left/top for GPU acceleration
-    transform: `translate3d(${x + 12}px, ${y + 8}px, 0)`,
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 500,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    whiteSpace: 'nowrap',
-    pointerEvents: 'auto',
-    userSelect: 'none',
-    backfaceVisibility: 'hidden',
-    WebkitBackfaceVisibility: 'hidden',
-  };
-
-  return <div style={style}>{label}</div>;
-});
+const scaledLabelStyle: CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  color: '#ffffff',
+  fontSize: 12,
+  fontWeight: 500,
+  fontFamily: 'system-ui, -apple-system, sans-serif',
+  whiteSpace: 'nowrap',
+  pointerEvents: 'auto',
+  userSelect: 'none',
+  willChange: 'transform',
+  backfaceVisibility: 'hidden',
+  WebkitBackfaceVisibility: 'hidden',
+};

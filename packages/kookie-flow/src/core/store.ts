@@ -10,7 +10,7 @@ import type {
   XYPosition,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
-import { Quadtree } from './spatial';
+import { Quadtree, getNodeBounds } from './spatial';
 
 export interface FlowState {
   /** Nodes in the graph */
@@ -61,6 +61,9 @@ export interface FlowState {
   pan: (delta: XYPosition) => void;
   zoom: (delta: number, center?: XYPosition) => void;
   fitView: (padding?: number) => void;
+
+  /** Efficient batch position update for dragging */
+  updateNodePositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
 }
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
@@ -312,6 +315,25 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
           },
         });
+      },
+
+      // Efficient batch position update for dragging
+      // Updates positions and quadtree incrementally without full rebuild
+      updateNodePositions: (updates) => {
+        const { nodes, nodeMap, quadtree } = get();
+        const nextNodes = [...nodes];
+
+        for (const { id, position } of updates) {
+          const index = nextNodes.findIndex((n) => n.id === id);
+          if (index !== -1) {
+            const node = { ...nextNodes[index], position };
+            nextNodes[index] = node;
+            nodeMap.set(id, node);
+            quadtree.update(id, getNodeBounds(node));
+          }
+        }
+
+        set({ nodes: nextNodes });
       },
     }))
   );

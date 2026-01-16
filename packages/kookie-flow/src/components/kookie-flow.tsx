@@ -67,6 +67,8 @@ export function KookieFlow({
         style={containerStyle}
         minZoom={minZoom}
         maxZoom={maxZoom}
+        snapToGrid={snapToGrid}
+        snapGrid={snapGrid}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
       >
@@ -94,6 +96,8 @@ interface InputHandlerProps {
   style?: CSSProperties;
   minZoom: number;
   maxZoom: number;
+  snapToGrid: boolean;
+  snapGrid: [number, number];
   onNodeClick?: (node: Node) => void;
   onPaneClick?: () => void;
 }
@@ -101,7 +105,7 @@ interface InputHandlerProps {
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
-function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClick, onPaneClick }: InputHandlerProps) {
+function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, onNodeClick, onPaneClick }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
@@ -109,11 +113,19 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const lastPointerPos = useRef<{ x: number; y: number } | null>(null);
 
   // Track pointer down position to detect clicks vs drags
   const pointerDownPos = useRef<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
   const hasDragged = useRef(false);
+
+  // Track drag state for node dragging
+  const dragState = useRef<{
+    nodeIds: string[];
+    startPositions: Map<string, { x: number; y: number }>;
+    startWorldPos: { x: number; y: number };
+  } | null>(null);
 
   // Update viewport immediately for responsive input (no RAF batching)
   // Rendering components handle their own batching via dirty flags
@@ -226,8 +238,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
         return;
       }
 
-      // Check for drag threshold to start box selection
-      if (pointerDownPos.current && !isBoxSelecting) {
+      // Check for drag threshold to start box selection or node dragging
+      if (pointerDownPos.current && !isBoxSelecting && !isDragging) {
         const dx = e.clientX - pointerDownPos.current.screenX;
         const dy = e.clientY - pointerDownPos.current.screenY;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -235,16 +247,42 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
         if (distance > DRAG_THRESHOLD) {
           hasDragged.current = true;
 
-          // Check if we're clicking on empty space (start box selection)
+          // Check if we're clicking on a node or empty space
           // Use quadtree for O(log n) hit testing
-          const { quadtree, nodeMap } = store.getState();
+          const { quadtree, nodeMap, selectedNodeIds } = store.getState();
           const candidateIds = quadtree.queryPoint(
             pointerDownPos.current.x,
             pointerDownPos.current.y
           );
           const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
 
-          if (!clickedNode) {
+          if (clickedNode) {
+            // Start node dragging
+            let dragNodeIds: string[];
+
+            if (selectedNodeIds.has(clickedNode.id)) {
+              // Drag all selected nodes
+              dragNodeIds = [...selectedNodeIds];
+            } else {
+              // Select and drag just this node
+              store.getState().selectNode(clickedNode.id);
+              dragNodeIds = [clickedNode.id];
+            }
+
+            // Store initial positions
+            const startPositions = new Map<string, { x: number; y: number }>();
+            for (const id of dragNodeIds) {
+              const node = nodeMap.get(id);
+              if (node) startPositions.set(id, { x: node.position.x, y: node.position.y });
+            }
+
+            dragState.current = {
+              nodeIds: dragNodeIds,
+              startPositions,
+              startWorldPos: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+            };
+            setIsDragging(true);
+          } else {
             // Start box selection
             setIsBoxSelecting(true);
             store.getState().setSelectionBox({
@@ -253,6 +291,39 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
             });
           }
         }
+      }
+
+      // Update node dragging
+      if (isDragging && dragState.current) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const { viewport } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        // Calculate delta from drag start
+        let deltaX = worldPos.x - dragState.current.startWorldPos.x;
+        let deltaY = worldPos.y - dragState.current.startWorldPos.y;
+
+        // Apply snap to grid if enabled
+        if (snapToGrid) {
+          deltaX = Math.round(deltaX / snapGrid[0]) * snapGrid[0];
+          deltaY = Math.round(deltaY / snapGrid[1]) * snapGrid[1];
+        }
+
+        // Update all dragged node positions
+        const updates = dragState.current.nodeIds.map((id) => {
+          const startPos = dragState.current!.startPositions.get(id)!;
+          return {
+            id,
+            position: { x: startPos.x + deltaX, y: startPos.y + deltaY },
+          };
+        });
+
+        store.getState().updateNodePositions(updates);
+        return;
       }
 
       // Update box selection
@@ -294,7 +365,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
         }
       }
     },
-    [isPanning, isBoxSelecting, store, updateViewport]
+    [isPanning, isBoxSelecting, isDragging, snapToGrid, snapGrid, store, updateViewport]
   );
 
   // Handle pointer up
@@ -305,6 +376,15 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
         setIsPanning(false);
         lastPointerPos.current = null;
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        return;
+      }
+
+      // End node dragging
+      if (isDragging) {
+        setIsDragging(false);
+        dragState.current = null;
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        pointerDownPos.current = null;
         return;
       }
 
@@ -363,7 +443,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
 
       pointerDownPos.current = null;
     },
-    [isPanning, isBoxSelecting, store, onNodeClick, onPaneClick]
+    [isPanning, isDragging, isBoxSelecting, store, onNodeClick, onPaneClick]
   );
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
@@ -519,7 +599,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
       className={className}
       style={{
         ...style,
-        cursor: isPanning ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : 'default',
+        cursor: isPanning || isDragging ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
