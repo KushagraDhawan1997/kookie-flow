@@ -6,6 +6,64 @@ This document is the source of truth for building Kookie Flow. It is written for
 
 ---
 
+## ⚠️ PERFORMANCE IS EVERYTHING ⚠️
+
+**This is the #1 priority. Nothing else matters if performance suffers.**
+
+Before writing ANY code, ask yourself:
+1. Does this trigger React re-renders during pan/zoom/drag? **UNACCEPTABLE.**
+2. Does this allocate memory in hot paths (event handlers, render loops)? **UNACCEPTABLE.**
+3. Is this O(n) when it could be O(log n) or O(1)? **UNACCEPTABLE.**
+
+### Rules (never violate these):
+
+| Rule | Why |
+|------|-----|
+| **Zero React re-renders during interactions** | Use refs for all position/transform updates. React state only for element creation/removal. |
+| **RAF-throttled DOM updates** | Never update DOM synchronously in event handlers. Schedule via `requestAnimationFrame`. |
+| **Pre-allocated buffers** | GPU buffers sized once at init. No allocations during render. |
+| **Dirty flags over subscriptions** | Don't re-render on every state change. Track what changed, update only that. |
+| **Spatial indexing for hit testing** | Quadtree for O(log n). Never iterate all nodes in event handlers. |
+| **Ref-based position updates** | `element.style.transform` via refs, not React props. |
+
+### Performance Architecture Pattern
+
+```typescript
+// ✅ CORRECT: Ref-based updates, RAF throttling
+const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+const rafIdRef = useRef<number>(0);
+
+const updatePositions = useCallback(() => {
+  rafIdRef.current = 0;
+  const { nodes } = store.getState();
+  labelsRef.current.forEach((el, id) => {
+    const node = nodes.find(n => n.id === id);
+    if (node) el.style.transform = `translate3d(${node.x}px, ${node.y}px, 0)`;
+  });
+}, [store]);
+
+// Subscribe triggers RAF, not direct update
+store.subscribe(() => {
+  if (rafIdRef.current === 0) {
+    rafIdRef.current = requestAnimationFrame(updatePositions);
+  }
+});
+
+// React state ONLY for element count changes
+if (state.nodes.length !== nodes.length) setNodes(state.nodes);
+```
+
+```typescript
+// ❌ WRONG: React props for positions = re-renders every frame
+{nodes.map(node => (
+  <Label key={node.id} x={node.position.x} y={node.position.y} />  // NEVER DO THIS
+))}
+```
+
+**If you're unsure whether something impacts performance, it probably does. Ask first.**
+
+---
+
 ## Table of Contents
 
 1. [Problem Statement](#problem-statement)
@@ -495,14 +553,20 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - 10,000 nodes: <16ms full render cycle
 - Selection change: zero array allocations ✓
 
-### Phase 4: Node Dragging
+### Phase 4: Node Dragging ✅ COMPLETE
 **Goal:** Move nodes around
 
-- [ ] Drag selected nodes
-- [ ] Multi-node drag (maintain relative positions)
-- [ ] Snap to grid (optional)
-- [ ] Drag boundaries (optional)
+- [x] Drag selected nodes
+- [x] Multi-node drag (maintain relative positions)
+- [x] Snap to grid (optional)
+- [ ] Drag boundaries (optional, deferred)
 - [ ] Undo/redo support (optional, phase 6)
+
+**Implementation notes:**
+- `updateNodePositions()` in store for efficient batch updates during drag
+- Quadtree updated incrementally (not full rebuild) on position change
+- DOM labels use ref-based position updates (zero React re-renders during drag)
+- Both `CrispLabelsContainer` and `ScaledContainer` follow identical performant architecture
 
 ### Phase 5: Edge Connections
 **Goal:** Connect nodes via sockets
@@ -679,11 +743,15 @@ packages/kookie-flow/
 - [x] Selection using `Set<string>` for O(1) operations
 - [x] Node map for O(1) lookup by ID
 - [x] Fixed edge buffer capacity bug (attributes not attached on resize)
+- [x] Node dragging (single and multi-node)
+- [x] Snap-to-grid support
+- [x] Efficient batch position updates with incremental quadtree updates
+- [x] Ref-based DOM label updates (zero React re-renders during drag)
 
 ### Next Immediate Tasks
-1. **Phase 4:** Implement node dragging
-2. **Phase 4:** Multi-node drag with relative positions
-3. **Phase 4:** Optional snap-to-grid
+1. **Phase 5:** Render sockets (instanced circles)
+2. **Phase 5:** Socket hit detection
+3. **Phase 5:** Connection line while dragging
 
 ---
 
