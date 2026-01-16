@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowStoreApi } from './context';
-import type { Node, NodeTypeDefinition } from '../types';
+import type { NodeTypeDefinition } from '../types';
 import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
 
 export interface DOMLayerProps {
@@ -82,7 +82,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodes: currentNodes } = store.getState();
+    const { viewport, nodeMap } = store.getState();
     const labels = labelsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -91,10 +91,6 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       return;
     }
     container.style.visibility = 'visible';
-
-    // Build node map for O(1) lookup
-    const nodeMap = new Map<string, Node>();
-    currentNodes.forEach((n) => nodeMap.set(n.id, n));
 
     // Calculate viewport bounds for culling
     const containerRect = container.parentElement?.getBoundingClientRect();
@@ -262,7 +258,7 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     const el = containerRef.current;
     if (!el) return;
 
-    const { viewport, nodes: currentNodes } = store.getState();
+    const { viewport, nodeMap } = store.getState();
 
     // LOD: Hide if zoomed out too far
     if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
@@ -275,9 +271,7 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     el.style.transform = `matrix3d(${viewport.zoom},0,0,0,0,${viewport.zoom},0,0,0,0,1,0,${viewport.x},${viewport.y},0,1)`;
 
     // Update label positions via refs (no React re-render)
-    const nodeMap = new Map<string, Node>();
-    currentNodes.forEach((n) => nodeMap.set(n.id, n));
-
+    // Uses store's nodeMap for O(1) lookup per label
     labelsRef.current.forEach((labelEl, nodeId) => {
       const node = nodeMap.get(nodeId);
       if (node) {

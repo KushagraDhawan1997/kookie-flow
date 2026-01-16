@@ -319,13 +319,21 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Efficient batch position update for dragging
       // Updates positions and quadtree incrementally without full rebuild
+      // O(n+k) where n=nodes, k=updates (builds index map once, then O(1) per update)
       updateNodePositions: (updates) => {
         const { nodes, nodeMap, quadtree } = get();
         const nextNodes = [...nodes];
 
+        // Build id->index map once: O(n)
+        const idToIndex = new Map<string, number>();
+        for (let i = 0; i < nodes.length; i++) {
+          idToIndex.set(nodes[i].id, i);
+        }
+
+        // Update each node: O(k)
         for (const { id, position } of updates) {
-          const index = nextNodes.findIndex((n) => n.id === id);
-          if (index !== -1) {
+          const index = idToIndex.get(id);
+          if (index !== undefined) {
             const node = { ...nextNodes[index], position };
             nextNodes[index] = node;
             nodeMap.set(id, node);
