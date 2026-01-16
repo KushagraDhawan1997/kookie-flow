@@ -477,22 +477,23 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Visual feedback (border color change)
 - [x] Selection state in store
 
-### Phase 3.5: Performance Foundations 🚧 IN PROGRESS
+### Phase 3.5: Performance Foundations ✅ COMPLETE
 **Goal:** Ensure O(log n) or better for all hot paths before adding more features
 
 **Critical (blocks scale):**
-- [ ] Quadtree spatial index for hit testing (hover, click, box select)
-- [ ] Selection as `Set<string>` - avoid creating new node arrays on select
-- [ ] Numeric ID interning for O(1) comparisons in render loops
+- [x] Quadtree spatial index for hit testing (hover, click, box select)
+- [x] Selection as `Set<string>` - avoid creating new node arrays on select
+- [x] Node map for O(1) lookup by ID
+- [ ] Numeric ID interning for O(1) comparisons in render loops (deferred)
 
 **Important (improves responsiveness):**
-- [ ] Partial GPU buffer updates (only changed indices)
-- [ ] Separate dirty flags for hover vs selection vs position changes
+- [ ] Partial GPU buffer updates (only changed indices) (deferred)
+- [ ] Separate dirty flags for hover vs selection vs position changes (deferred)
 
 **Benchmarks to hit:**
-- 10,000 nodes: <1ms hit testing
+- 10,000 nodes: <1ms hit testing ✓
 - 10,000 nodes: <16ms full render cycle
-- Selection change: zero array allocations
+- Selection change: zero array allocations ✓
 
 ### Phase 4: Node Dragging
 **Goal:** Move nodes around
@@ -674,12 +675,15 @@ packages/kookie-flow/
 - [x] Keyboard shortcuts (Ctrl+A select all, Escape deselect)
 - [x] `<SelectionBox>` component with animated dashed border
 - [x] Hit testing utilities (screenToWorld, getNodeAtPosition, getNodesInBox)
+- [x] Quadtree spatial index for O(log n) hit testing
+- [x] Selection using `Set<string>` for O(1) operations
+- [x] Node map for O(1) lookup by ID
+- [x] Fixed edge buffer capacity bug (attributes not attached on resize)
 
 ### Next Immediate Tasks
-1. **Phase 3.5:** Implement Quadtree for spatial indexing
-2. **Phase 3.5:** Refactor selection to use Set<string>
-3. **Phase 3.5:** Add numeric ID interning
-4. **Phase 4:** Implement node dragging (after performance foundations)
+1. **Phase 4:** Implement node dragging
+2. **Phase 4:** Multi-node drag with relative positions
+3. **Phase 4:** Optional snap-to-grid
 
 ---
 
