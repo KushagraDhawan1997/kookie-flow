@@ -10,6 +10,7 @@ import type {
   XYPosition,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
+import { Quadtree } from './spatial';
 
 export interface FlowState {
   /** Nodes in the graph */
@@ -25,6 +26,16 @@ export interface FlowState {
   /** Box selection in progress */
   selectionBox: { start: XYPosition; end: XYPosition } | null;
 
+  /** Selection state - O(1) lookup */
+  selectedNodeIds: Set<string>;
+  selectedEdgeIds: Set<string>;
+
+  /** Node map for O(1) lookup by ID */
+  nodeMap: Map<string, Node>;
+
+  /** Quadtree for O(log n) spatial queries */
+  quadtree: Quadtree;
+
   /** Internal actions */
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
@@ -38,11 +49,13 @@ export interface FlowState {
   applyNodeChanges: (changes: NodeChange[]) => void;
   applyEdgeChanges: (changes: EdgeChange[]) => void;
 
-  /** Selection */
+  /** Selection - O(1) operations */
   selectNode: (id: string, additive?: boolean) => void;
   selectNodes: (ids: string[]) => void;
   selectAll: () => void;
   deselectAll: () => void;
+  isNodeSelected: (id: string) => boolean;
+  isEdgeSelected: (id: string) => boolean;
 
   /** Viewport controls */
   pan: (delta: XYPosition) => void;
@@ -52,20 +65,50 @@ export interface FlowState {
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
 
-export const createFlowStore = (initialState?: Partial<FlowState>) =>
-  create<FlowState>()(
+// Helper to rebuild derived state from nodes
+function rebuildDerivedState(nodes: Node[]) {
+  const nodeMap = new Map<string, Node>();
+  const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
+
+  for (const node of nodes) {
+    nodeMap.set(node.id, node);
+  }
+
+  quadtree.rebuild(nodes);
+
+  return { nodeMap, quadtree };
+}
+
+export const createFlowStore = (initialState?: Partial<FlowState>) => {
+  // Initialize derived state from initial nodes
+  const initialNodes = initialState?.nodes ?? [];
+  const { nodeMap, quadtree } = rebuildDerivedState(initialNodes);
+
+  return create<FlowState>()(
     subscribeWithSelector((set, get) => ({
       // Initial state
-      nodes: [],
+      nodes: initialNodes,
       edges: [],
       viewport: DEFAULT_VIEWPORT,
       connectionStart: null,
       hoveredNodeId: null,
       selectionBox: null,
+
+      // Selection state
+      selectedNodeIds: new Set<string>(),
+      selectedEdgeIds: new Set<string>(),
+
+      // Derived state for O(1) lookups
+      nodeMap,
+      quadtree,
+
       ...initialState,
 
-      // Setters
-      setNodes: (nodes) => set({ nodes }),
+      // Setters - rebuild derived state when nodes change
+      setNodes: (nodes) => {
+        const { nodeMap, quadtree } = rebuildDerivedState(nodes);
+        set({ nodes, nodeMap, quadtree });
+      },
       setEdges: (edges) => set({ edges }),
       setViewport: (viewport) => set({ viewport }),
       setHoveredNodeId: (hoveredNodeId) => set({ hoveredNodeId }),
@@ -153,41 +196,42 @@ export const createFlowStore = (initialState?: Partial<FlowState>) =>
         set({ edges: nextEdges });
       },
 
-      // Selection
+      // Selection - O(1) operations using Sets
       selectNode: (id, additive = false) => {
-        const { nodes } = get();
-        set({
-          nodes: nodes.map((n) => ({
-            ...n,
-            selected: n.id === id ? true : additive ? n.selected : false,
-          })),
-        });
+        const { selectedNodeIds } = get();
+        if (additive) {
+          // Add to existing selection
+          const newSet = new Set(selectedNodeIds);
+          newSet.add(id);
+          set({ selectedNodeIds: newSet });
+        } else {
+          // Replace selection
+          set({ selectedNodeIds: new Set([id]) });
+        }
       },
 
       selectNodes: (ids) => {
-        const { nodes } = get();
-        const idSet = new Set(ids);
-        set({
-          nodes: nodes.map((n) => ({
-            ...n,
-            selected: idSet.has(n.id),
-          })),
-        });
+        set({ selectedNodeIds: new Set(ids) });
       },
 
       selectAll: () => {
         const { nodes } = get();
-        set({
-          nodes: nodes.map((n) => ({ ...n, selected: true })),
-        });
+        set({ selectedNodeIds: new Set(nodes.map((n) => n.id)) });
       },
 
       deselectAll: () => {
-        const { nodes, edges } = get();
         set({
-          nodes: nodes.map((n) => ({ ...n, selected: false })),
-          edges: edges.map((e) => ({ ...e, selected: false })),
+          selectedNodeIds: new Set<string>(),
+          selectedEdgeIds: new Set<string>(),
         });
+      },
+
+      isNodeSelected: (id) => {
+        return get().selectedNodeIds.has(id);
+      },
+
+      isEdgeSelected: (id) => {
+        return get().selectedEdgeIds.has(id);
       },
 
       // Viewport
@@ -271,3 +315,4 @@ export const createFlowStore = (initialState?: Partial<FlowState>) =>
       },
     }))
   );
+};

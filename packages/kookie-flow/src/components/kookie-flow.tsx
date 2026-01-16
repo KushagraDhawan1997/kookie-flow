@@ -17,7 +17,8 @@ import { Edges } from './edges';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
 import { GRID_COLORS, DEFAULT_VIEWPORT } from '../core/constants';
-import { screenToWorld, getNodeAtPosition, getNodesInBox } from '../utils/geometry';
+import { screenToWorld } from '../utils/geometry';
+import { boundsFromCorners } from '../core/spatial';
 import type { KookieFlowProps, Node } from '../types';
 import * as THREE from 'three';
 
@@ -235,11 +236,13 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
           hasDragged.current = true;
 
           // Check if we're clicking on empty space (start box selection)
-          const { nodes, viewport } = store.getState();
-          const clickedNode = getNodeAtPosition(
-            { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
-            nodes
+          // Use quadtree for O(log n) hit testing
+          const { quadtree, nodeMap } = store.getState();
+          const candidateIds = quadtree.queryPoint(
+            pointerDownPos.current.x,
+            pointerDownPos.current.y
           );
+          const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
 
           if (!clickedNode) {
             // Start box selection
@@ -278,10 +281,12 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { nodes, viewport, hoveredNodeId } = store.getState();
+        const { viewport, hoveredNodeId, quadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
-        const hoveredNode = getNodeAtPosition(worldPos, nodes);
-        const newHoveredId = hoveredNode?.id ?? null;
+
+        // Use quadtree for O(log n) hit testing
+        const candidateIds = quadtree.queryPoint(worldPos.x, worldPos.y);
+        const newHoveredId = candidateIds.length > 0 ? candidateIds[0] : null;
 
         // Only update if changed to avoid unnecessary re-renders
         if (newHoveredId !== hoveredNodeId) {
@@ -305,17 +310,21 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
 
       // End box selection
       if (isBoxSelecting) {
-        const { selectionBox, nodes } = store.getState();
+        const { selectionBox, quadtree, selectedNodeIds } = store.getState();
         if (selectionBox) {
-          // Find all nodes in the selection box
-          const selectedNodes = getNodesInBox(selectionBox.start, selectionBox.end, nodes);
-          const selectedIds = selectedNodes.map((n) => n.id);
+          // Use quadtree for O(log n) range query
+          const bounds = boundsFromCorners(
+            selectionBox.start.x,
+            selectionBox.start.y,
+            selectionBox.end.x,
+            selectionBox.end.y
+          );
+          const selectedIds = quadtree.queryRange(bounds);
 
           // Select the nodes (additive with Ctrl/Cmd key)
           if (e.ctrlKey || e.metaKey) {
-            // Add to existing selection
-            const currentlySelected = nodes.filter((n) => n.selected).map((n) => n.id);
-            const newSelection = [...new Set([...currentlySelected, ...selectedIds])];
+            // Add to existing selection - use Set for O(1) merge
+            const newSelection = [...new Set([...selectedNodeIds, ...selectedIds])];
             store.getState().selectNodes(newSelection);
           } else {
             store.getState().selectNodes(selectedIds);
@@ -330,11 +339,13 @@ function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClic
 
       // Handle click (no drag occurred)
       if (pointerDownPos.current && !hasDragged.current && e.button === 0) {
-        const { nodes, viewport } = store.getState();
-        const clickedNode = getNodeAtPosition(
-          { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
-          nodes
+        // Use quadtree for O(log n) hit testing
+        const { quadtree, nodeMap } = store.getState();
+        const candidateIds = quadtree.queryPoint(
+          pointerDownPos.current.x,
+          pointerDownPos.current.y
         );
+        const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
 
         if (clickedNode) {
           // Click on node: select it

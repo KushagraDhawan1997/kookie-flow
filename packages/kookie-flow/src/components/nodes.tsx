@@ -187,11 +187,16 @@ export function Nodes() {
       (state) => state.hoveredNodeId,
       () => { dirtyRef.current = true; }
     );
+    const unsubSelection = store.subscribe(
+      (state) => state.selectedNodeIds,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubNodes();
       unsubViewport();
       unsubHovered();
+      unsubSelection();
     };
   }, [store, capacity]);
 
@@ -201,7 +206,7 @@ export function Nodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId } = store.getState();
+    const { nodes, viewport, hoveredNodeId, selectedNodeIds } = store.getState();
     if (nodes.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -248,8 +253,8 @@ export function Nodes() {
       );
       mesh.setMatrixAt(visibleCount, tempMatrix);
 
-      // Update attributes
-      buffers.selected[visibleCount] = node.selected ? 1.0 : 0.0;
+      // Update attributes - query selection Set for O(1) lookup
+      buffers.selected[visibleCount] = selectedNodeIds.has(node.id) ? 1.0 : 0.0;
       buffers.hovered[visibleCount] = node.id === hoveredNodeId ? 1.0 : 0.0;
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;

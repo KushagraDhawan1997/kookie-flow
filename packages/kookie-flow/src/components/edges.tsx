@@ -48,10 +48,10 @@ export function Edges() {
   const defaultColor = useMemo(() => new THREE.Color(EDGE_COLORS.default), []);
   const selectedColor = useMemo(() => new THREE.Color(EDGE_COLORS.selected), []);
 
-  // Ensure buffer capacity
-  const ensureCapacity = (needed: number) => {
+  // Ensure buffer capacity - returns true if buffers were resized
+  const ensureCapacity = (needed: number, line: THREE.LineSegments): boolean => {
     const buffers = buffersRef.current;
-    if (needed <= buffers.capacity) return;
+    if (needed <= buffers.capacity) return false;
 
     const newCapacity = Math.ceil(needed * BUFFER_GROWTH_FACTOR);
 
@@ -69,11 +69,16 @@ export function Edges() {
     buffers.colors = newColors;
     buffers.capacity = newCapacity;
 
-    // Recreate attributes with new buffers
+    // Recreate attributes with new buffers AND attach to geometry
     buffers.positionAttr = new THREE.BufferAttribute(newPositions, 3);
     buffers.positionAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.colorAttr = new THREE.BufferAttribute(newColors, 3);
     buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
+
+    line.geometry.setAttribute('position', buffers.positionAttr);
+    line.geometry.setAttribute('color', buffers.colorAttr);
+
+    return true;
   };
 
   // Initialize and subscribe
@@ -110,6 +115,10 @@ export function Edges() {
       (state) => state.viewport,
       () => { dirtyRef.current = true; }
     );
+    const unsubSelection = store.subscribe(
+      (state) => state.selectedEdgeIds,
+      () => { dirtyRef.current = true; }
+    );
 
     // Initialize node map
     const { nodes } = store.getState();
@@ -119,6 +128,7 @@ export function Edges() {
       unsubNodes();
       unsubEdges();
       unsubViewport();
+      unsubSelection();
     };
   }, [store]);
 
@@ -126,7 +136,7 @@ export function Edges() {
   useFrame(({ size }) => {
     if (!lineRef.current || !dirtyRef.current) return;
 
-    const { edges, viewport } = store.getState();
+    const { edges, viewport, selectedEdgeIds } = store.getState();
     const nodeMap = nodeMapRef.current;
     const buffers = buffersRef.current;
     const line = lineRef.current;
@@ -137,8 +147,8 @@ export function Edges() {
       return;
     }
 
-    // Ensure capacity
-    ensureCapacity(edges.length);
+    // Ensure capacity (pass line to attach new attributes if resized)
+    ensureCapacity(edges.length, line);
 
     // Viewport bounds for culling
     const invZoom = 1 / viewport.zoom;
@@ -183,17 +193,17 @@ export function Edges() {
         continue; // Skip - not visible
       }
 
-      // Write position data
+      // Write position data (z=1 to render above grid which is at z=0)
       const posOffset = visibleCount * 6;
       buffers.positions[posOffset] = sourceX;
       buffers.positions[posOffset + 1] = -sourceY; // Flip Y
-      buffers.positions[posOffset + 2] = 0;
+      buffers.positions[posOffset + 2] = 1; // Above grid
       buffers.positions[posOffset + 3] = targetX;
       buffers.positions[posOffset + 4] = -targetY; // Flip Y
-      buffers.positions[posOffset + 5] = 0;
+      buffers.positions[posOffset + 5] = 1; // Above grid
 
-      // Write color data
-      const color = edge.selected ? selectedColor : defaultColor;
+      // Write color data - query selection Set for O(1) lookup
+      const color = selectedEdgeIds.has(edge.id) ? selectedColor : defaultColor;
       buffers.colors[posOffset] = color.r;
       buffers.colors[posOffset + 1] = color.g;
       buffers.colors[posOffset + 2] = color.b;
