@@ -641,23 +641,22 @@ packages/kookie-flow/
 - [x] `<Grid>` shader (SDF grid lines)
 - [x] `<Nodes>` instanced mesh (SDF rounded rectangles)
 - [x] `<Edges>` line segment renderer
-- [x] `<DOMLayer>` text positioning
+- [x] `<DOMLayer>` text positioning with LOD
 - [x] `useGraph` hook for external state
 - [x] Demo app structure (apps/docs)
 - [x] README with usage examples
-
-### Needs Testing
-- [ ] Node shader (verify SDF renders correctly)
-- [ ] Edge rendering (verify lines connect correctly)
-- [ ] Instance attribute updates
-- [ ] DOM layer camera synchronization
+- [x] Camera pan/zoom controls (wheel zoom, middle-click pan, space+drag)
+- [x] Touch gesture support (pinch-to-zoom, two-finger pan)
+- [x] Safari performance optimizations
+- [x] Viewport frustum culling for nodes/edges
+- [x] Pre-allocated GPU buffers with dirty flags
+- [x] DOM layer synchronization with viewport
 
 ### Next Immediate Tasks
-1. Run `pnpm install` and `pnpm dev`
-2. Debug shader issues (likely coordinate transforms)
-3. Verify instanced rendering works
-4. Implement camera pan/zoom controls
-5. Add basic click-to-select
+1. Add basic click-to-select for nodes
+2. Implement node dragging
+3. Add connection line while dragging from socket
+4. Build minimap component
 
 ---
 
@@ -684,8 +683,14 @@ packages/kookie-flow/
 ### Performance Considerations
 - Always use `useMemo` for geometry/material creation
 - Instance attributes should use `Float32Array`, not regular arrays
-- Batch store updates when possible
-- DOM layer should skip render when zoom < threshold
+- Pre-allocate GPU buffers and reuse them (avoid GC pressure)
+- Use dirty flags to skip unnecessary updates
+- Implement viewport frustum culling to only render visible elements
+- Use `translate3d` / `matrix3d` for DOM transforms (GPU acceleration)
+- Disable MSAA on Safari (`antialias: false`)
+- DOM layer should skip render when zoom < threshold (LOD)
+- Avoid RAF batching on input handlers (causes latency)
+- Use `frameloop="always"` with dirty flags instead of `frameloop="demand"`
 
 ---
 
