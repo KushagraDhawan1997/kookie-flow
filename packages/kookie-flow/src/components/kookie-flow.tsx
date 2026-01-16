@@ -49,6 +49,7 @@ export function KookieFlow({
   scaleTextWithZoom = false,
   snapToGrid = false,
   snapGrid = [20, 20],
+  defaultEdgeType = 'bezier',
   className,
   children,
 }: KookieFlowProps) {
@@ -72,7 +73,7 @@ export function KookieFlow({
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
       >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} />
+        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom}>{children}</DOMLayer>
         <FlowSync
           nodes={nodes}
@@ -624,9 +625,10 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 interface FlowCanvasProps {
   showGrid: boolean;
   showStats: boolean;
+  defaultEdgeType: import('../types').EdgeType;
 }
 
-function FlowCanvas({ showGrid, showStats }: FlowCanvasProps) {
+function FlowCanvas({ showGrid, showStats, defaultEdgeType }: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
   const glConfig = useMemo(() => ({
     // Disable MSAA on Safari - it's expensive and often causes issues
@@ -666,7 +668,7 @@ function FlowCanvas({ showGrid, showStats }: FlowCanvasProps) {
       <Invalidator />
       <CameraController />
       {showGrid && <Grid />}
-      <Edges />
+      <Edges defaultEdgeType={defaultEdgeType} />
       <Nodes />
       <SelectionBox />
     </Canvas>

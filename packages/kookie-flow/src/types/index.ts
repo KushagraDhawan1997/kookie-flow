@@ -17,6 +17,9 @@ export interface Viewport {
   zoom: number;
 }
 
+/** Edge rendering type */
+export type EdgeType = 'straight' | 'bezier' | 'step' | 'smoothstep';
+
 /** Socket type definition */
 export interface SocketType {
   color: string;
@@ -59,6 +62,8 @@ export interface Edge {
   target: string;
   sourceSocket?: string;
   targetSocket?: string;
+  /** Edge rendering type (overrides defaultEdgeType) */
+  type?: EdgeType;
   selected?: boolean;
   animated?: boolean;
 }
@@ -153,6 +158,8 @@ export interface KookieFlowProps {
   snapToGrid?: boolean;
   /** Grid snap size */
   snapGrid?: [number, number];
+  /** Default edge rendering type. Default: 'bezier' */
+  defaultEdgeType?: EdgeType;
   /** Additional class name */
   className?: string;
   /** Children (for overlays) */

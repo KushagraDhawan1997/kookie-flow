@@ -19,6 +19,7 @@ export type {
   XYPosition,
   Dimensions,
   Viewport,
+  EdgeType,
   SocketType,
   Socket,
   NodeData,

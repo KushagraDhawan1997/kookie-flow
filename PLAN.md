@@ -568,6 +568,46 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - DOM labels use ref-based position updates (zero React re-renders during drag)
 - Both `CrispLabelsContainer` and `ScaledContainer` follow identical performant architecture
 
+### Phase 4.5: Edge Curves ✅ COMPLETE
+**Goal:** Render edges as curves with full shader control for effects
+
+**Edge Types:**
+- `straight` - direct line (fastest)
+- `bezier` - smooth S-curve (React Flow default)
+- `step` - orthogonal right-angle path
+- `smoothstep` - bezier with constrained curvature
+
+**Implementation (mesh-based for effects):**
+- [x] Triangle strip (ribbon) geometry following bezier path
+- [x] Custom `ShaderMaterial` for full effect control
+- [x] Configurable line width via uniform
+- [x] Anti-aliasing via SDF in fragment shader
+- [x] Pre-allocated buffers with dirty flags
+- [x] Single draw call (all edges batched into one mesh)
+- [x] `EdgeType` added to types
+- [x] `defaultEdgeType` prop on `<KookieFlow>`
+- [x] Per-edge `type` override support
+
+**Why mesh-based over LineSegments:**
+- `GL_LINES` = 1px, no AA, no custom shaders
+- Mesh ribbons = any width, AA, full shader control
+- Enables: glow, animated flow, gradients, dashes, arrows, pulses
+
+**Performance notes:**
+- 64 segments × 6 vertices per segment = 384 vertices per edge
+- 10,000 edges = 3.84M vertices (~46MB) - still fine for GPU
+- Single draw call maintained
+- Dirty flag skips recalculation when edges unchanged
+- Adaptive bezier control points for natural curves (no forced S-curves)
+
+**Future effects (enabled by this architecture):**
+- Animated flow: UV scrolling in fragment shader
+- Glow: SDF distance + blur
+- Gradients: vertex colors or UV-based
+- Dashed lines: `fract()` on UV
+- Arrows: SDF or texture at endpoints
+- Pulse/highlight: uniform animation
+
 ### Phase 5: Edge Connections
 **Goal:** Connect nodes via sockets
 
@@ -594,7 +634,6 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 **Goal:** Feature parity with React Flow
 
 - [ ] Minimap
-- [ ] Bezier edges (curved)
 - [ ] Edge labels
 - [ ] Edge markers (arrows)
 - [ ] Node grouping/frames
@@ -747,6 +786,10 @@ packages/kookie-flow/
 - [x] Snap-to-grid support
 - [x] Efficient batch position updates with incremental quadtree updates
 - [x] Ref-based DOM label updates (zero React re-renders during drag)
+- [x] Edge curve types (bezier, step, smoothstep) via tessellation
+- [x] `defaultEdgeType` prop and per-edge type override
+- [x] Mesh-based edges with custom ShaderMaterial (enables future effects)
+- [x] Adaptive bezier control points (no forced S-curves for close nodes)
 
 ### Next Immediate Tasks
 1. **Phase 5:** Render sockets (instanced circles)
