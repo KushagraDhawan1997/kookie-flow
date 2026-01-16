@@ -223,9 +223,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) =>
         }
       },
 
-      fitView: (padding = 50) => {
+      fitView: (padding = 50, canvasWidth?: number, canvasHeight?: number) => {
         const { nodes } = get();
         if (nodes.length === 0) return;
+
+        // Use provided dimensions or fallback to window size
+        const containerWidth = canvasWidth ?? window.innerWidth;
+        const containerHeight = canvasHeight ?? window.innerHeight;
 
         // Calculate bounds
         let minX = Infinity,
@@ -246,16 +250,21 @@ export const createFlowStore = (initialState?: Partial<FlowState>) =>
         maxX += padding;
         maxY += padding;
 
-        // Calculate zoom to fit
-        // This is simplified - in real implementation would need canvas dimensions
-        const width = maxX - minX;
-        const height = maxY - minY;
-        const zoom = Math.min(1, Math.min(800 / width, 600 / height));
+        // Calculate zoom to fit content in container
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        const zoom = Math.min(1, Math.min(containerWidth / contentWidth, containerHeight / contentHeight));
+
+        // Center the content
+        const scaledWidth = contentWidth * zoom;
+        const scaledHeight = contentHeight * zoom;
+        const offsetX = (containerWidth - scaledWidth) / 2 - minX * zoom;
+        const offsetY = (containerHeight - scaledHeight) / 2 - minY * zoom;
 
         set({
           viewport: {
-            x: -minX * zoom,
-            y: -minY * zoom,
+            x: offsetX,
+            y: offsetY,
             zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
           },
         });

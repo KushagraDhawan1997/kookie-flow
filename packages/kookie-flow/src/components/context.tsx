@@ -10,7 +10,7 @@ export interface FlowProviderProps {
 }
 
 export function FlowProvider({ children, initialState }: FlowProviderProps) {
-  const storeRef = useRef<FlowStore>();
+  const storeRef = useRef<FlowStore | undefined>(undefined);
 
   if (!storeRef.current) {
     storeRef.current = createFlowStore(initialState);

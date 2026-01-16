@@ -1,9 +1,9 @@
 // Components
-export { KookieFlow } from './components/KookieFlow';
+export { KookieFlow } from './components/kookie-flow';
 export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/context';
 
 // Hooks
-export { useGraph } from './hooks/useGraph';
+export { useGraph } from './hooks/use-graph';
 
 // Types
 export type {

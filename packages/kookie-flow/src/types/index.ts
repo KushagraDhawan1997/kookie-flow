@@ -141,6 +141,10 @@ export interface KookieFlowProps {
   showGrid?: boolean;
   /** Show minimap */
   showMinimap?: boolean;
+  /** Show performance stats (FPS counter) */
+  showStats?: boolean;
+  /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false */
+  scaleTextWithZoom?: boolean;
   /** Enable snap to grid */
   snapToGrid?: boolean;
   /** Grid snap size */
