@@ -1,0 +1,21 @@
+{
+  "name": "Kookie Flow",
+  "short_name": "KookieFlow",
+  "description": "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,20 +1,104 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { JsonLd } from '@/components/json-ld';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'Kookie Flow',
+const siteConfig = {
+  name: 'Kookie Flow',
   description:
     "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
+  url: 'https://kookie-flow.vercel.app',
+  author: {
+    name: 'Kushagra Dhawan',
+    url: 'https://github.com/KushagraDhawan1997',
+  },
+  github: 'https://github.com/KushagraDhawan1997/kookie-flow',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export const metadata: Metadata = {
+  metadataBase: new URL(siteConfig.url),
+  title: {
+    default: siteConfig.name,
+    template: `%s | ${siteConfig.name}`,
+  },
+  description: siteConfig.description,
+  keywords: [
+    'node graph',
+    'webgl',
+    'react',
+    'three.js',
+    'react-three-fiber',
+    'node editor',
+    'workflow',
+    'diagram',
+    'canvas',
+    'performance',
+    'gpu',
+  ],
+  authors: [{ name: siteConfig.author.name, url: siteConfig.author.url }],
+  creator: siteConfig.author.name,
+  publisher: siteConfig.author.name,
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: siteConfig.url,
+    title: siteConfig.name,
+    description: siteConfig.description,
+    siteName: siteConfig.name,
+    images: [
+      {
+        url: '/opengraph-image.png',
+        width: 1200,
+        height: 630,
+        alt: siteConfig.name,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: siteConfig.name,
+    description: siteConfig.description,
+    images: ['/opengraph-image.png'],
+    creator: '@kushagradh',
+  },
+  alternates: {
+    canonical: siteConfig.url,
+  },
+  category: 'technology',
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
+  width: 'device-width',
+  initialScale: 1,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="48x48" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/site.webmanifest" />
+      </head>
+      <body>
+        <JsonLd />
+        {children}
+      </body>
     </html>
   );
 }
