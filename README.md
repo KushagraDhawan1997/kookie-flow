@@ -82,9 +82,22 @@ function App() {
 - **Pinch-to-zoom** — Touch gesture support
 - **Two-finger pan** — Touch gesture support
 
+### Selection & Interaction
+- **Click to select** — Single node selection
+- **Ctrl+click** — Add to selection
+- **Box select** — Drag on empty space to select multiple nodes
+- **Keyboard shortcuts** — Ctrl+A select all, Escape deselect
+- **Node dragging** — Move selected nodes with snap-to-grid support
+
+### Edge Rendering
+- **Curve types** — Straight, bezier, step, smoothstep
+- **Mesh-based rendering** — Custom shaders for future effects (glow, animation)
+- **Per-edge type override** — Mix edge types in the same graph
+
 ### Performance Optimizations
 - **Instanced rendering** — All nodes in a single draw call
 - **Frustum culling** — Only render visible nodes/edges
+- **Quadtree spatial indexing** — O(log n) hit testing for 10,000+ nodes
 - **Pre-allocated GPU buffers** — Zero GC pressure during pan/zoom
 - **Dirty flags** — Skip unnecessary updates
 - **Safari optimizations** — MSAA disabled, simplified shaders
@@ -93,6 +106,7 @@ function App() {
 - **Text labels** — Crisp text that stays readable at any zoom
 - **LOD (Level of Detail)** — Labels hide when zoomed out
 - **GPU-accelerated transforms** — translate3d/matrix3d for smooth panning
+- **Ref-based updates** — Zero React re-renders during drag
 
 ## Props
 
@@ -108,6 +122,9 @@ function App() {
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
 | `maxZoom` | `number` | `4` | Maximum zoom level |
 | `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (true) or keep crisp (false) |
+| `defaultEdgeType` | `'straight' \| 'bezier' \| 'step' \| 'smoothstep'` | `'bezier'` | Default edge curve type |
+| `snapToGrid` | `boolean` | `false` | Snap nodes to grid when dragging |
+| `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 
 ## Performance Comparison
 
@@ -126,13 +143,14 @@ function App() {
 - [x] DOM text labels with LOD
 - [x] Safari performance optimizations
 - [x] Viewport frustum culling
-- [ ] Node selection (single, multi, box)
-- [ ] Node dragging
+- [x] Node selection (single, multi, box)
+- [x] Node dragging with snap-to-grid
+- [x] Quadtree spatial indexing (O(log n) hit testing)
+- [x] Edge curve types (bezier, step, smoothstep)
+- [ ] Socket system (typed connections)
 - [ ] Edge connection UX
 - [ ] Hybrid node portals
-- [ ] Socket system (typed connections)
 - [ ] Minimap
-- [ ] Bezier edges
 - [ ] Image texture previews
 - [ ] 3D mesh previews
 
