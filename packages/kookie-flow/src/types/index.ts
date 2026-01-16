@@ -131,6 +131,10 @@ export interface KookieFlowProps {
   onEdgesChange?: (changes: EdgeChange[]) => void;
   /** Callback when a connection is made */
   onConnect?: (connection: Connection) => void;
+  /** Callback when a node is clicked */
+  onNodeClick?: (node: Node) => void;
+  /** Callback when empty space is clicked */
+  onPaneClick?: () => void;
   /** Initial viewport */
   defaultViewport?: Viewport;
   /** Minimum zoom level */

@@ -5,6 +5,15 @@ export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/contex
 // Hooks
 export { useGraph } from './hooks/use-graph';
 
+// Utilities
+export {
+  screenToWorld,
+  worldToScreen,
+  isPointInNode,
+  getNodeAtPosition,
+  getNodesInBox,
+} from './utils/geometry';
+
 // Types
 export type {
   XYPosition,
