@@ -15,8 +15,10 @@ import { Grid } from './grid';
 import { Nodes } from './nodes';
 import { Edges } from './edges';
 import { DOMLayer } from './dom-layer';
+import { SelectionBox } from './selection-box';
 import { GRID_COLORS, DEFAULT_VIEWPORT } from '../core/constants';
-import type { KookieFlowProps } from '../types';
+import { screenToWorld, getNodeAtPosition, getNodesInBox } from '../utils/geometry';
+import type { KookieFlowProps, Node } from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
@@ -35,6 +37,8 @@ export function KookieFlow({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  onNodeClick,
+  onPaneClick,
   defaultViewport = DEFAULT_VIEWPORT,
   minZoom = 0.1,
   maxZoom = 4,
@@ -57,7 +61,14 @@ export function KookieFlow({
 
   return (
     <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
-      <InputHandler className={className} style={containerStyle} minZoom={minZoom} maxZoom={maxZoom}>
+      <InputHandler
+        className={className}
+        style={containerStyle}
+        minZoom={minZoom}
+        maxZoom={maxZoom}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+      >
         <FlowCanvas showGrid={showGrid} showStats={showStats} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom}>{children}</DOMLayer>
         <FlowSync
@@ -72,8 +83,9 @@ export function KookieFlow({
 }
 
 /**
- * Input handler for pan/zoom controls.
- * Handles: wheel zoom, middle-click pan, space+drag pan, touch gestures.
+ * Input handler for pan/zoom controls and selection.
+ * Handles: wheel zoom, middle-click pan, space+drag pan, touch gestures,
+ * click-to-select, box selection, keyboard shortcuts.
  */
 interface InputHandlerProps {
   children: React.ReactNode;
@@ -81,16 +93,26 @@ interface InputHandlerProps {
   style?: CSSProperties;
   minZoom: number;
   maxZoom: number;
+  onNodeClick?: (node: Node) => void;
+  onPaneClick?: () => void;
 }
 
-function InputHandler({ children, className, style, minZoom, maxZoom }: InputHandlerProps) {
+// Minimum distance (in pixels) to consider a pointer move as a drag
+const DRAG_THRESHOLD = 5;
+
+function InputHandler({ children, className, style, minZoom, maxZoom, onNodeClick, onPaneClick }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
+  const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const lastPointerPos = useRef<{ x: number; y: number } | null>(null);
+
+  // Track pointer down position to detect clicks vs drags
+  const pointerDownPos = useRef<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+  const hasDragged = useRef(false);
 
   // Update viewport immediately for responsive input (no RAF batching)
   // Rendering components handle their own batching via dirty flags
@@ -155,54 +177,188 @@ function InputHandler({ children, className, style, minZoom, maxZoom }: InputHan
   // Handle pointer down
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // Middle-click or space+left-click: start panning
       if (e.button === 1 || (e.button === 0 && isSpaceDown)) {
         e.preventDefault();
         setIsPanning(true);
         lastPointerPos.current = { x: e.clientX, y: e.clientY };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // Left-click: potentially start selection or box selection
+      if (e.button === 0) {
+        const { viewport } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        // Store the pointer down position
+        pointerDownPos.current = { x: worldPos.x, y: worldPos.y, screenX: e.clientX, screenY: e.clientY };
+        hasDragged.current = false;
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown]
+    [isSpaceDown, store]
   );
 
   // Handle pointer move
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent) => {
-      if (!isPanning || !lastPointerPos.current) return;
+      // Handle panning
+      if (isPanning && lastPointerPos.current) {
+        const deltaX = e.clientX - lastPointerPos.current.x;
+        const deltaY = e.clientY - lastPointerPos.current.y;
 
-      const deltaX = e.clientX - lastPointerPos.current.x;
-      const deltaY = e.clientY - lastPointerPos.current.y;
+        lastPointerPos.current = { x: e.clientX, y: e.clientY };
 
-      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+        const { viewport } = store.getState();
+        updateViewport({
+          x: viewport.x + deltaX,
+          y: viewport.y + deltaY,
+          zoom: viewport.zoom,
+        });
+        return;
+      }
 
-      const { viewport } = store.getState();
-      updateViewport({
-        x: viewport.x + deltaX,
-        y: viewport.y + deltaY,
-        zoom: viewport.zoom,
-      });
+      // Check for drag threshold to start box selection
+      if (pointerDownPos.current && !isBoxSelecting) {
+        const dx = e.clientX - pointerDownPos.current.screenX;
+        const dy = e.clientY - pointerDownPos.current.screenY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > DRAG_THRESHOLD) {
+          hasDragged.current = true;
+
+          // Check if we're clicking on empty space (start box selection)
+          const { nodes, viewport } = store.getState();
+          const clickedNode = getNodeAtPosition(
+            { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+            nodes
+          );
+
+          if (!clickedNode) {
+            // Start box selection
+            setIsBoxSelecting(true);
+            store.getState().setSelectionBox({
+              start: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+              end: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+            });
+          }
+        }
+      }
+
+      // Update box selection
+      if (isBoxSelecting) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const { viewport, selectionBox } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        if (selectionBox) {
+          store.getState().setSelectionBox({
+            start: selectionBox.start,
+            end: worldPos,
+          });
+        }
+      }
     },
-    [isPanning, store, updateViewport]
+    [isPanning, isBoxSelecting, store, updateViewport]
   );
 
   // Handle pointer up
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent) => {
+      // End panning
       if (isPanning) {
         setIsPanning(false);
         lastPointerPos.current = null;
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        return;
       }
+
+      // End box selection
+      if (isBoxSelecting) {
+        const { selectionBox, nodes } = store.getState();
+        if (selectionBox) {
+          // Find all nodes in the selection box
+          const selectedNodes = getNodesInBox(selectionBox.start, selectionBox.end, nodes);
+          const selectedIds = selectedNodes.map((n) => n.id);
+
+          // Select the nodes (additive with Ctrl/Cmd key)
+          if (e.ctrlKey || e.metaKey) {
+            // Add to existing selection
+            const currentlySelected = nodes.filter((n) => n.selected).map((n) => n.id);
+            const newSelection = [...new Set([...currentlySelected, ...selectedIds])];
+            store.getState().selectNodes(newSelection);
+          } else {
+            store.getState().selectNodes(selectedIds);
+          }
+        }
+        store.getState().setSelectionBox(null);
+        setIsBoxSelecting(false);
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        pointerDownPos.current = null;
+        return;
+      }
+
+      // Handle click (no drag occurred)
+      if (pointerDownPos.current && !hasDragged.current && e.button === 0) {
+        const { nodes, viewport } = store.getState();
+        const clickedNode = getNodeAtPosition(
+          { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+          nodes
+        );
+
+        if (clickedNode) {
+          // Click on node: select it
+          const additive = e.ctrlKey || e.metaKey;
+          store.getState().selectNode(clickedNode.id, additive);
+          onNodeClick?.(clickedNode);
+        } else {
+          // Click on empty space: deselect all
+          store.getState().deselectAll();
+          onPaneClick?.();
+        }
+
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+
+      pointerDownPos.current = null;
     },
-    [isPanning]
+    [isPanning, isBoxSelecting, store, onNodeClick, onPaneClick]
   );
 
-  // Handle keyboard events for space key
+  // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Space: enable pan mode
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
         setIsSpaceDown(true);
+      }
+
+      // Ctrl+A or Cmd+A: select all nodes
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
+        e.preventDefault();
+        store.getState().selectAll();
+      }
+
+      // Escape: deselect all or cancel box selection
+      if (e.code === 'Escape') {
+        if (isBoxSelecting) {
+          store.getState().setSelectionBox(null);
+          setIsBoxSelecting(false);
+        } else {
+          store.getState().deselectAll();
+        }
       }
     };
 
@@ -223,7 +379,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom }: InputHan
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPanning]);
+  }, [isPanning, isBoxSelecting, store]);
 
   // Prevent context menu on middle click
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -333,7 +489,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom }: InputHan
       className={className}
       style={{
         ...style,
-        cursor: isPanning ? 'grabbing' : isSpaceDown ? 'grab' : 'default',
+        cursor: isPanning ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -399,6 +555,7 @@ function FlowCanvas({ showGrid, showStats }: FlowCanvasProps) {
       {showGrid && <Grid />}
       <Edges />
       <Nodes />
+      <SelectionBox />
     </Canvas>
   );
 }

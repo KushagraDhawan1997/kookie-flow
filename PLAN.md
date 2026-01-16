@@ -465,17 +465,17 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] Zoom limits (min/max)
 - [ ] Smooth animated transitions (optional)
 
-### Phase 3: Selection
+### Phase 3: Selection ✅ COMPLETE
 **Goal:** Select nodes and edges
 
-- [ ] Click to select single node
-- [ ] Ctrl+click to add to selection
-- [ ] Box select (drag on empty space)
-- [ ] Select all (Ctrl+A)
-- [ ] Deselect (Escape or click empty)
-- [ ] Edge selection
-- [ ] Visual feedback (border color change)
-- [ ] Selection state in store
+- [x] Click to select single node
+- [x] Ctrl+click to add to selection
+- [x] Box select (drag on empty space)
+- [x] Select all (Ctrl+A)
+- [x] Deselect (Escape or click empty)
+- [ ] Edge selection (deferred to Phase 5)
+- [x] Visual feedback (border color change)
+- [x] Selection state in store
 
 ### Phase 4: Node Dragging
 **Goal:** Move nodes around
@@ -651,12 +651,17 @@ packages/kookie-flow/
 - [x] Viewport frustum culling for nodes/edges
 - [x] Pre-allocated GPU buffers with dirty flags
 - [x] DOM layer synchronization with viewport
+- [x] Click-to-select nodes with Ctrl+click for additive selection
+- [x] Box selection (drag on empty space)
+- [x] Keyboard shortcuts (Ctrl+A select all, Escape deselect)
+- [x] `<SelectionBox>` component with animated dashed border
+- [x] Hit testing utilities (screenToWorld, getNodeAtPosition, getNodesInBox)
 
 ### Next Immediate Tasks
-1. Add basic click-to-select for nodes
-2. Implement node dragging
-3. Add connection line while dragging from socket
-4. Build minimap component
+1. Implement node dragging
+2. Add connection line while dragging from socket
+3. Build minimap component
+4. Add edge selection
 
 ---
 
