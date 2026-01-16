@@ -236,7 +236,9 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
     const viewRight = (size.width - viewport.x) * invZoom;
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
-    const cullPadding = 300;
+    // Padding must scale with zoom to represent consistent screen-space buffer
+    // Also account for Bezier curve bulge (curves can extend beyond endpoint bounds)
+    const cullPadding = 500 / viewport.zoom;
 
     // Half-width for ribbon (scaled by zoom for consistent screen-space width)
     const halfWidth = (EDGE_WIDTH / 2) / viewport.zoom;
