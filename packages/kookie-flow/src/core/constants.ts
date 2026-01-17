@@ -64,3 +64,7 @@ export const EDGE_COLORS = {
   connecting: '#888888',
   invalid: '#ff4444',
 } as const;
+
+/** Auto-scroll settings */
+export const AUTO_SCROLL_EDGE_THRESHOLD = 50; // pixels from edge to trigger
+export const AUTO_SCROLL_MAX_SPEED = 15; // screen pixels per frame at max proximity

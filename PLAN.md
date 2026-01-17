@@ -559,6 +559,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Drag selected nodes
 - [x] Multi-node drag (maintain relative positions)
 - [x] Snap to grid (optional)
+- [x] Auto-scroll when dragging near viewport edges
 - [ ] Drag boundaries (optional, deferred)
 - [ ] Undo/redo support (optional, phase 6)
 
@@ -567,6 +568,10 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Quadtree updated incrementally (not full rebuild) on position change
 - DOM labels use ref-based position updates (zero React re-renders during drag)
 - Both `CrispLabelsContainer` and `ScaledContainer` follow identical performant architecture
+- Auto-scroll: RAF-based loop triggers when pointer within 50px of viewport edge
+- Auto-scroll speed proportional to edge proximity (faster = closer to edge)
+- Container rect cached at drag start to avoid layout queries in RAF loop
+- Object reuse for lastScreenPos to avoid allocations in pointer move handler
 
 ### Phase 4.5: Edge Curves ✅ COMPLETE
 **Goal:** Render edges as curves with full shader control for effects
@@ -666,7 +671,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 ```
 
 **Deferred:**
-- [ ] Auto-scroll when dragging near viewport edges (Phase 7+)
+- [x] Auto-scroll when dragging near viewport edges
 
 ### Phase 6: Plugin System & Interactivity
 **Goal:** Batteries-included editing via opt-in plugins
@@ -976,6 +981,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `onEdgeClick` callback
 - [x] Delete selected edges (Delete/Backspace key)
 - [x] Cached socket lookup in ConnectionLine for O(1) hot path
+- [x] Auto-scroll when dragging nodes near viewport edges (RAF-based, proportional speed)
 
 ### Next Immediate Tasks
 

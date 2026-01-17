@@ -18,7 +18,7 @@ import { Sockets } from './sockets';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
-import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES } from '../core/constants';
+import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
@@ -155,13 +155,88 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     nodeIds: string[];
     startPositions: Map<string, { x: number; y: number }>;
     startWorldPos: { x: number; y: number };
+    containerRect: { width: number; height: number }; // Cached to avoid layout queries in RAF
   } | null>(null);
+
+  // Auto-scroll state for dragging near viewport edges
+  const autoScrollRef = useRef<{
+    rafId: number;
+    lastScreenPos: { x: number; y: number } | null;
+    active: boolean;
+  }>({ rafId: 0, lastScreenPos: null, active: false });
 
   // Update viewport immediately for responsive input (no RAF batching)
   // Rendering components handle their own batching via dirty flags
   const updateViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => {
     store.getState().setViewport(viewport);
   }, [store]);
+
+  // Auto-scroll when dragging near viewport edges
+  const runAutoScroll = useCallback(() => {
+    autoScrollRef.current.rafId = 0;
+
+    // Exit if not dragging or no position tracked
+    if (!isDragging || !dragState.current || !autoScrollRef.current.lastScreenPos) {
+      autoScrollRef.current.active = false;
+      return;
+    }
+
+    const { x: screenX, y: screenY } = autoScrollRef.current.lastScreenPos;
+    const { width, height } = dragState.current.containerRect;
+
+    // Calculate proximity to each edge (0 = not near, 1 = at edge)
+    const leftProximity = Math.max(0, 1 - screenX / AUTO_SCROLL_EDGE_THRESHOLD);
+    const rightProximity = Math.max(0, 1 - (width - screenX) / AUTO_SCROLL_EDGE_THRESHOLD);
+    const topProximity = Math.max(0, 1 - screenY / AUTO_SCROLL_EDGE_THRESHOLD);
+    const bottomProximity = Math.max(0, 1 - (height - screenY) / AUTO_SCROLL_EDGE_THRESHOLD);
+
+    // No edge proximity = stop scrolling
+    if (leftProximity === 0 && rightProximity === 0 && topProximity === 0 && bottomProximity === 0) {
+      autoScrollRef.current.active = false;
+      return;
+    }
+
+    // Calculate scroll direction and magnitude (proportional to proximity)
+    const scrollX = (rightProximity - leftProximity) * AUTO_SCROLL_MAX_SPEED;
+    const scrollY = (bottomProximity - topProximity) * AUTO_SCROLL_MAX_SPEED;
+
+    const { viewport } = store.getState();
+
+    // 1. Pan viewport (opposite direction - scrolling right means panning left)
+    store.getState().setViewport({
+      x: viewport.x - scrollX,
+      y: viewport.y - scrollY,
+      zoom: viewport.zoom,
+    });
+
+    // 2. Update node positions based on new viewport
+    // No compensation needed: viewport pan increases cursor's worldPos,
+    // which increases delta, which moves the node with the viewport
+    const currentWorldPos = screenToWorld(
+      { x: screenX, y: screenY },
+      store.getState().viewport
+    );
+    let deltaX = currentWorldPos.x - dragState.current.startWorldPos.x;
+    let deltaY = currentWorldPos.y - dragState.current.startWorldPos.y;
+
+    if (snapToGrid) {
+      deltaX = Math.round(deltaX / snapGrid[0]) * snapGrid[0];
+      deltaY = Math.round(deltaY / snapGrid[1]) * snapGrid[1];
+    }
+
+    const updates = dragState.current.nodeIds.map((id) => {
+      const startPos = dragState.current!.startPositions.get(id)!;
+      return {
+        id,
+        position: { x: startPos.x + deltaX, y: startPos.y + deltaY },
+      };
+    });
+    store.getState().updateNodePositions(updates);
+
+    // Schedule next frame
+    autoScrollRef.current.active = true;
+    autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+  }, [isDragging, snapToGrid, snapGrid, store]);
 
   // Touch gesture state
   const touchState = useRef<{
@@ -359,10 +434,13 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
               if (node) startPositions.set(id, { x: node.position.x, y: node.position.y });
             }
 
+            // Cache container rect once to avoid layout queries in RAF loop
+            const rect = containerRef.current?.getBoundingClientRect();
             dragState.current = {
               nodeIds: dragNodeIds,
               startPositions,
               startWorldPos: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+              containerRect: { width: rect?.width ?? 0, height: rect?.height ?? 0 },
             };
             setIsDragging(true);
           } else {
@@ -406,6 +484,18 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         });
 
         store.getState().updateNodePositions(updates);
+
+        // Track screen position and trigger auto-scroll if near edges
+        // Reuse object to avoid allocation in hot path
+        if (autoScrollRef.current.lastScreenPos) {
+          autoScrollRef.current.lastScreenPos.x = screenX;
+          autoScrollRef.current.lastScreenPos.y = screenY;
+        } else {
+          autoScrollRef.current.lastScreenPos = { x: screenX, y: screenY };
+        }
+        if (!autoScrollRef.current.active && autoScrollRef.current.rafId === 0) {
+          autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+        }
         return;
       }
 
@@ -464,7 +554,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
       }
     },
-    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport]
+    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll]
   );
 
   // Handle pointer up
@@ -527,6 +617,14 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
       // End node dragging
       if (isDragging) {
+        // Cancel auto-scroll
+        if (autoScrollRef.current.rafId) {
+          cancelAnimationFrame(autoScrollRef.current.rafId);
+          autoScrollRef.current.rafId = 0;
+        }
+        autoScrollRef.current.active = false;
+        autoScrollRef.current.lastScreenPos = null;
+
         setIsDragging(false);
         dragState.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
@@ -601,6 +699,15 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     },
     [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect]
   );
+
+  // Cleanup auto-scroll RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (autoScrollRef.current.rafId) {
+        cancelAnimationFrame(autoScrollRef.current.rafId);
+      }
+    };
+  }, []);
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
