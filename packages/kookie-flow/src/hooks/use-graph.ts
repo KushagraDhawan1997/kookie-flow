@@ -123,6 +123,7 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
       target: connection.target,
       sourceSocket: connection.sourceSocket ?? undefined,
       targetSocket: connection.targetSocket ?? undefined,
+      invalid: connection.invalid,
     };
 
     setEdges((eds) => [...eds, newEdge]);

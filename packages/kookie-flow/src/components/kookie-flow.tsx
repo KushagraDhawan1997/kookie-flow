@@ -19,10 +19,10 @@ import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
 import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES } from '../core/constants';
-import { screenToWorld, getSocketAtPosition } from '../utils/geometry';
-import { isSocketCompatible } from '../utils/connections';
+import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
+import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
-import type { KookieFlowProps, Node, SocketType, Connection } from '../types';
+import type { KookieFlowProps, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType } from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
@@ -42,7 +42,9 @@ export function KookieFlow({
   onEdgesChange,
   onConnect,
   onNodeClick,
+  onEdgeClick,
   onPaneClick,
+  edgesSelectable = true,
   defaultViewport = DEFAULT_VIEWPORT,
   minZoom = 0.1,
   maxZoom = 4,
@@ -53,6 +55,8 @@ export function KookieFlow({
   snapToGrid = false,
   snapGrid = [20, 20],
   defaultEdgeType = 'bezier',
+  connectionMode = 'loose',
+  isValidConnection,
   className,
   children,
 }: KookieFlowProps) {
@@ -76,15 +80,23 @@ export function KookieFlow({
         snapToGrid={snapToGrid}
         snapGrid={snapGrid}
         socketTypes={resolvedSocketTypes}
+        connectionMode={connectionMode}
+        isValidConnection={isValidConnection}
+        defaultEdgeType={defaultEdgeType}
+        edgesSelectable={edgesSelectable}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         onConnect={onConnect}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
       >
         <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom}>{children}</DOMLayer>
         <FlowSync
           nodes={nodes}
           edges={edges}
+          socketTypes={resolvedSocketTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
         />
@@ -107,15 +119,22 @@ interface InputHandlerProps {
   snapToGrid: boolean;
   snapGrid: [number, number];
   socketTypes: Record<string, SocketType>;
+  connectionMode: ConnectionMode;
+  isValidConnection?: IsValidConnectionFn;
+  defaultEdgeType: EdgeType;
+  edgesSelectable: boolean;
   onNodeClick?: (node: Node) => void;
+  onEdgeClick?: (edge: Edge) => void;
   onPaneClick?: () => void;
   onConnect?: (connection: Connection) => void;
+  onNodesChange?: KookieFlowProps['onNodesChange'];
+  onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
-function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, onNodeClick, onPaneClick, onConnect }: InputHandlerProps) {
+function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
@@ -273,11 +292,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, nodes } = store.getState();
+        const { viewport, nodes, nodeMap, connectionDraft } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
-
-        // Update connection draft position
-        store.getState().updateConnectionDraft(worldPos);
 
         // Check for socket hover during connection
         const hoveredSocket = getSocketAtPosition(
@@ -287,6 +303,21 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           { width: rect.width, height: rect.height }
         );
         store.getState().setHoveredSocketId(hoveredSocket);
+
+        // Check type compatibility for visual feedback (always show, regardless of mode)
+        // Use nodeMap for O(1) lookups in hot path
+        let isTypeCompatible = true;
+        if (hoveredSocket && connectionDraft) {
+          isTypeCompatible = isSocketCompatible(
+            connectionDraft.source,
+            hoveredSocket,
+            nodeMap,
+            socketTypes
+          );
+        }
+
+        // Update connection draft position and validity (for visual feedback)
+        store.getState().updateConnectionDraft(worldPos, isTypeCompatible);
         return;
       }
 
@@ -433,7 +464,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
       }
     },
-    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, store, updateViewport]
+    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport]
   );
 
   // Handle pointer up
@@ -441,18 +472,29 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     (e: ReactPointerEvent) => {
       // End connection draft
       if (isConnecting) {
-        const { connectionDraft, hoveredSocketId, nodes } = store.getState();
+        const { connectionDraft, hoveredSocketId, nodeMap } = store.getState();
 
         if (connectionDraft && hoveredSocketId) {
-          // Check if connection is valid
-          const isValid = isSocketCompatible(
+          // Check if connection is valid (use nodeMap for O(1))
+          const isValid = validateConnection(
             connectionDraft.source,
             hoveredSocketId,
-            nodes,
-            socketTypes
+            nodeMap,
+            socketTypes,
+            connectionMode,
+            isValidConnection
           );
 
           if (isValid) {
+            // Check type compatibility separately for invalid flag
+            // In loose mode, connection is allowed but marked invalid if types don't match
+            const isTypeCompatible = isSocketCompatible(
+              connectionDraft.source,
+              hoveredSocketId,
+              nodeMap,
+              socketTypes
+            );
+
             // Determine source and target based on input/output
             const isSourceInput = connectionDraft.source.isInput;
             const connection: Connection = {
@@ -460,6 +502,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
               sourceSocket: isSourceInput ? hoveredSocketId.socketId : connectionDraft.source.socketId,
               target: isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId,
               targetSocket: isSourceInput ? connectionDraft.source.socketId : hoveredSocketId.socketId,
+              invalid: !isTypeCompatible,
             };
 
             // Call onConnect callback
@@ -523,11 +566,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       // Handle click (no drag occurred)
       if (pointerDownPos.current && !hasDragged.current && e.button === 0) {
         // Use quadtree for O(log n) hit testing
-        const { quadtree, nodeMap } = store.getState();
-        const candidateIds = quadtree.queryPoint(
-          pointerDownPos.current.x,
-          pointerDownPos.current.y
-        );
+        const { quadtree, nodeMap, edges, viewport } = store.getState();
+        const clickPos = { x: pointerDownPos.current.x, y: pointerDownPos.current.y };
+        const candidateIds = quadtree.queryPoint(clickPos.x, clickPos.y);
         const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
 
         if (clickedNode) {
@@ -535,6 +576,18 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           const additive = e.ctrlKey || e.metaKey;
           store.getState().selectNode(clickedNode.id, additive);
           onNodeClick?.(clickedNode);
+        } else if (edgesSelectable) {
+          // Check for edge click
+          const clickedEdge = getEdgeAtPosition(clickPos, edges, nodeMap, defaultEdgeType, viewport);
+          if (clickedEdge) {
+            const additive = e.ctrlKey || e.metaKey;
+            store.getState().selectEdge(clickedEdge.id, additive);
+            onEdgeClick?.(clickedEdge);
+          } else {
+            // Click on empty space: deselect all
+            store.getState().deselectAll();
+            onPaneClick?.();
+          }
         } else {
           // Click on empty space: deselect all
           store.getState().deselectAll();
@@ -546,7 +599,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
       pointerDownPos.current = null;
     },
-    [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, store, onNodeClick, onPaneClick, onConnect]
+    [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect]
   );
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
@@ -576,6 +629,44 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           store.getState().deselectAll();
         }
       }
+
+      // Delete/Backspace: delete selected nodes and edges
+      if (e.code === 'Delete' || e.code === 'Backspace') {
+        const { selectedNodeIds, selectedEdgeIds, edges } = store.getState();
+
+        // Collect all edges to delete: selected edges + edges connected to deleted nodes
+        const edgeIdsToDelete = new Set(selectedEdgeIds);
+        if (selectedNodeIds.size > 0) {
+          for (const edge of edges) {
+            if (selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)) {
+              edgeIdsToDelete.add(edge.id);
+            }
+          }
+        }
+
+        // Delete edges (selected + dangling)
+        if (edgeIdsToDelete.size > 0) {
+          const edgeChanges = Array.from(edgeIdsToDelete).map(id => ({
+            type: 'remove' as const,
+            id,
+          }));
+          onEdgesChange?.(edgeChanges);
+          store.getState().applyEdgeChanges(edgeChanges);
+        }
+
+        // Delete selected nodes
+        if (selectedNodeIds.size > 0) {
+          const nodeChanges = Array.from(selectedNodeIds).map(id => ({
+            type: 'remove' as const,
+            id,
+          }));
+          onNodesChange?.(nodeChanges);
+          store.getState().applyNodeChanges(nodeChanges);
+        }
+
+        // Clear selection
+        store.getState().deselectAll();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -595,7 +686,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPanning, isBoxSelecting, isConnecting, store]);
+  }, [isPanning, isBoxSelecting, isConnecting, store, onNodesChange, onEdgesChange]);
 
   // Prevent context menu on middle click
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -775,7 +866,7 @@ function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes }: FlowC
       <Invalidator />
       <CameraController />
       {showGrid && <Grid />}
-      <Edges defaultEdgeType={defaultEdgeType} />
+      <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Nodes />
       <SelectionBox />
@@ -790,20 +881,56 @@ function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes }: FlowC
 interface FlowSyncProps {
   nodes: KookieFlowProps['nodes'];
   edges: KookieFlowProps['edges'];
+  socketTypes: Record<string, SocketType>;
   onNodesChange?: KookieFlowProps['onNodesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
-function FlowSync({ nodes, edges, onNodesChange, onEdgesChange }: FlowSyncProps) {
+function FlowSync({ nodes, edges, socketTypes, onNodesChange, onEdgesChange }: FlowSyncProps) {
   const store = useFlowStoreApi();
 
   useEffect(() => {
     store.getState().setNodes(nodes);
   }, [nodes, store]);
 
+  // Compute invalid flag for edges that don't have it (e.g., loaded from external source)
+  // This runs once when edges change, not every frame
+  // Only creates new edge objects when actually needed to avoid triggering subscriptions
   useEffect(() => {
-    store.getState().setEdges(edges);
-  }, [edges, store]);
+    const { nodeMap } = store.getState();
+
+    // First pass: check if any edge needs invalid flag computed
+    let needsComputation = false;
+    for (const edge of edges) {
+      if (edge.invalid === undefined && edge.sourceSocket && edge.targetSocket) {
+        needsComputation = true;
+        break;
+      }
+    }
+
+    if (needsComputation) {
+      // Second pass: only create new objects for edges that need computation
+      const processedEdges: typeof edges = [];
+      for (const edge of edges) {
+        if (edge.invalid !== undefined || !edge.sourceSocket || !edge.targetSocket) {
+          // Keep original object reference
+          processedEdges.push(edge);
+        } else {
+          // Compute type compatibility and create new object
+          const isValid = isSocketCompatible(
+            { nodeId: edge.source, socketId: edge.sourceSocket, isInput: false },
+            { nodeId: edge.target, socketId: edge.targetSocket, isInput: true },
+            nodeMap,
+            socketTypes
+          );
+          processedEdges.push({ ...edge, invalid: !isValid });
+        }
+      }
+      store.getState().setEdges(processedEdges);
+    } else {
+      store.getState().setEdges(edges);
+    }
+  }, [edges, socketTypes, store]);
 
   useEffect(() => {
     if (!onNodesChange) return;

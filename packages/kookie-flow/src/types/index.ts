@@ -73,6 +73,8 @@ export interface Edge {
   type?: EdgeType;
   selected?: boolean;
   animated?: boolean;
+  /** Whether the edge connects incompatible socket types (in loose mode) */
+  invalid?: boolean;
 }
 
 /** Connection in progress */
@@ -81,7 +83,26 @@ export interface Connection {
   sourceSocket: string | null;
   target: string | null;
   targetSocket: string | null;
+  /** Whether the connection has incompatible socket types (in loose mode) */
+  invalid?: boolean;
 }
+
+/** Connection mode for validation */
+export type ConnectionMode = 'strict' | 'loose';
+
+/** Connection validation params passed to isValidConnection callback */
+export interface ConnectionValidationParams {
+  source: SocketHandle;
+  target: SocketHandle;
+  sourceSocketType: string;
+  targetSocketType: string;
+}
+
+/** Connection validation function */
+export type IsValidConnectionFn = (
+  params: ConnectionValidationParams,
+  socketTypes: Record<string, SocketType>
+) => boolean;
 
 /** Node change event */
 export type NodeChange =
@@ -145,8 +166,16 @@ export interface KookieFlowProps {
   onConnect?: (connection: Connection) => void;
   /** Callback when a node is clicked */
   onNodeClick?: (node: Node) => void;
+  /** Callback when an edge is clicked */
+  onEdgeClick?: (edge: Edge) => void;
   /** Callback when empty space is clicked */
   onPaneClick?: () => void;
+  /** Whether edges can be selected by clicking. Default: true */
+  edgesSelectable?: boolean;
+  /** Connection validation mode. 'strict' enforces socket type compatibility. Default: 'loose' */
+  connectionMode?: ConnectionMode;
+  /** Custom connection validation function. Overrides connectionMode when provided. */
+  isValidConnection?: IsValidConnectionFn;
   /** Initial viewport */
   defaultViewport?: Viewport;
   /** Minimum zoom level */

@@ -62,4 +62,5 @@ export const EDGE_COLORS = {
   default: '#666666',
   selected: '#6366f1',
   connecting: '#888888',
+  invalid: '#ff4444',
 } as const;

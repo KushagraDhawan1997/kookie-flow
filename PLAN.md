@@ -617,10 +617,6 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Socket fill state (hollow = no connection, filled = connected)
 - [x] Edges connect to actual socket positions (not node centers)
 - [x] Socket type colors (uses socketTypes config)
-- [ ] Valid/invalid connection feedback (deferred)
-- [ ] Socket type validation (deferred - compatibility logic exists but not enforced)
-- [ ] Auto-scroll when near edges (deferred)
-- [ ] Delete edge (click + delete key) (deferred to Phase 6)
 
 **Implementation notes:**
 - `Sockets.tsx`: InstancedMesh with SDF circles, hollow/filled state via uniform
@@ -630,16 +626,119 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Fixed-size dash pattern (16px cycle) regardless of curve length
 - Zero allocations in useFrame (single-pass geometry + length calculation)
 
-### Phase 6: Full Interactivity
-**Goal:** Complete editing UX
+### Phase 5.5: Connection Validation & Edge Selection ✅ COMPLETE
+**Goal:** Complete connection UX with validation feedback and edge interactivity
 
-- [ ] Delete nodes (delete key)
-- [ ] Copy/paste nodes (Ctrl+C/V)
-- [ ] Duplicate (Ctrl+D)
-- [ ] Undo/redo (Ctrl+Z/Y)
-- [ ] Keyboard shortcuts
-- [ ] Context menu (right-click)
-- [ ] Touch interactions
+**Connection Validation:**
+- [x] `connectionMode` prop: `"strict"` | `"loose"` (default: `"loose"`)
+- [x] `isValidConnection` prop: custom validation function (overrides mode)
+- [x] Connection line color inherits source socket type color
+- [x] Invalid connection feedback: line turns red, target socket shows red highlight
+- [x] Enforce socket type compatibility when `connectionMode="strict"`
+
+**Edge Selection & Interaction:**
+- [x] Edge hit testing (point-to-bezier distance check)
+- [x] Click to select edge (single selection pool with nodes)
+- [x] Ctrl+click to add edge to selection
+- [x] Selected edge visual: selection highlight color (indigo)
+- [x] `edgesSelectable` prop (default: `true`)
+- [x] `onEdgeClick` callback
+- [x] Delete selected edges (Delete key, shared with nodes)
+
+**Implementation notes:**
+- `validateConnection()` in `connections.ts`: mode-based validation with custom override
+- `areTypesCompatible()`: socket type compatibility checking with explicit compatibleWith support
+- `getEdgeAtPosition()` in `geometry.ts`: bezier/step/straight distance calculation with viewport-scaled tolerance
+- Edge colors from source socket type, selection uses indigo highlight
+- `ConnectionLine.tsx`: cached socket lookup for O(1) in hot path
+
+**API:**
+```typescript
+<KookieFlow
+  // Connection validation
+  connectionMode="strict"  // "strict" | "loose"
+  isValidConnection={(connection, socketTypes) => boolean}  // custom override
+
+  // Edge interaction
+  edgesSelectable={true}
+  onEdgeClick={(edge: Edge, event: MouseEvent) => void}
+/>
+```
+
+**Deferred:**
+- [ ] Auto-scroll when dragging near viewport edges (Phase 7+)
+
+### Phase 6: Plugin System & Interactivity
+**Goal:** Batteries-included editing via opt-in plugins
+
+**Architecture Principle:** Core handles all performance-critical operations (hit testing, state updates, rendering). Plugins orchestrate these primitives into user-facing features. Users import only what they need.
+
+**Core additions (in main package):**
+- [ ] `onContextMenu` callback (fires on right-click and long-press with hit test result)
+- [ ] `onNodesDelete` / `onEdgesDelete` callbacks (fired before deletion, return `false` to prevent)
+- [ ] Touch long-press detection (triggers `onContextMenu`)
+- [ ] Serialization utilities: `serializeNodes()`, `deserializeNodes()`
+
+**Plugins (`@kushagradhawan/kookie-flow/plugins`):**
+
+| Plugin | Handles Internally | Exposes to User |
+|--------|-------------------|-----------------|
+| `useClipboard` | Serialization, ID regeneration, edge cloning, position offset | `copy()`, `paste(position?)`, `cut()` |
+| `useHistory` | Snapshot diffing, memory limits, action batching (drag-end, not per-frame) | `undo()`, `redo()`, `canUndo`, `canRedo` |
+| `useKeyboardShortcuts` | Event listeners, modifier detection (`mod` = Cmd/Ctrl), focus management | Config object for key bindings |
+| `useContextMenu` | Right-click + long-press listening, hit testing, state | `contextMenu` state object, `closeMenu()` |
+
+**Example usage:**
+```typescript
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+import { useClipboard, useHistory, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+
+function Editor() {
+  const { copy, paste, cut } = useClipboard();
+  const { undo, redo, canUndo, canRedo } = useHistory({ maxStack: 50 });
+  const { contextMenu, closeMenu } = useContextMenu();
+
+  useKeyboardShortcuts({
+    'mod+c': copy,
+    'mod+v': paste,
+    'mod+x': cut,
+    'mod+z': undo,
+    'mod+shift+z': redo,
+    'mod+d': duplicate,
+    'delete': deleteSelected,
+    'escape': clearSelection,
+    'mod+a': selectAll,
+  });
+
+  return (
+    <>
+      <KookieFlow nodes={nodes} edges={edges} ... />
+
+      {/* User brings their own context menu UI (Kookie UI, Radix, etc.) */}
+      {contextMenu && (
+        <MyContextMenu target={contextMenu.target} position={contextMenu.position} onClose={closeMenu} />
+      )}
+    </>
+  );
+}
+```
+
+**Why plugins over baked-in:**
+- Tree-shakeable: users only bundle what they import
+- Performance control: all hot paths stay in core
+- Flexibility: users can write custom plugins using same primitives
+- No UI opinions: context menu plugin provides state, user provides UI component
+
+**Tasks:**
+- [ ] Core: `onContextMenu` callback with hit testing
+- [ ] Core: `onNodesDelete` / `onEdgesDelete` callbacks
+- [ ] Core: Touch long-press → context menu
+- [ ] Core: Serialization utilities
+- [ ] Plugin: `useContextMenu` hook
+- [ ] Plugin: `useClipboard` hook
+- [ ] Plugin: `useHistory` hook
+- [ ] Plugin: `useKeyboardShortcuts` hook
+- [ ] Docs: Example integration with Kookie UI context menu
 
 ### Phase 7: Advanced Features
 **Goal:** Feature parity with React Flow
@@ -713,6 +812,32 @@ WebGL text options:
 - Matches user mental model from DOM
 - Camera offset negates position for Three.js (Y-up)
 
+### Why Plugins over Baked-In Features
+
+**Goal:** Batteries-included experience with full performance control.
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Everything baked-in** | Zero setup, consistent UX | Opinionated, larger bundle, hard to customize |
+| **Everything user-land** | Maximum flexibility | Boilerplate, inconsistent implementations |
+| **Plugin architecture** | Opt-in features, tree-shakeable, customizable | Slightly more setup |
+
+**Decision:** Plugin architecture. Core handles all performance-critical operations (rendering, hit testing, state). Plugins orchestrate these primitives into user-facing features.
+
+**Key principles:**
+1. **Performance stays in core** - Plugins never touch hot paths directly. They call optimized store methods.
+2. **No UI opinions** - Plugins like `useContextMenu` provide state, not components. Users bring their own UI (Kookie UI, Radix, custom).
+3. **Tree-shakeable** - Don't import `useHistory`? It's not in your bundle.
+4. **Same primitives** - Users can write custom plugins using the same APIs we use.
+
+**Example: Why `useClipboard` is a plugin, not core:**
+- Clipboard format is app-specific (what fields to include?)
+- ID generation varies (UUIDs? Sequential? Database IDs?)
+- Paste position logic varies (mouse position? Viewport center? Offset from original?)
+- Some apps need connected edges copied, others don't
+
+The plugin provides sensible defaults while exposing options. Users who need different behavior can write their own plugin using `store.getSelectedNodes()`, `store.addNodes()`, etc.
+
 ---
 
 ## File Structure
@@ -720,7 +845,7 @@ WebGL text options:
 ```
 packages/kookie-flow/
 ├── src/
-│   ├── index.ts                    # Public exports
+│   ├── index.ts                    # Public exports (core only)
 │   │
 │   ├── components/
 │   │   ├── KookieFlow.tsx          # Main component
@@ -738,15 +863,22 @@ packages/kookie-flow/
 │   ├── core/
 │   │   ├── store.ts                # Zustand store
 │   │   ├── constants.ts            # Colors, defaults
-│   │   ├── spatial.ts              # Quadtree for hit testing [TODO]
+│   │   ├── spatial.ts              # Quadtree for hit testing
+│   │   ├── serialization.ts        # Node/edge serialization utilities
 │   │   └── index.ts
 │   │
 │   ├── hooks/
 │   │   ├── useGraph.ts             # External state management
 │   │   ├── useViewport.ts          # Viewport controls [TODO]
 │   │   ├── useSelection.ts         # Selection management [TODO]
-│   │   ├── useKeyboard.ts          # Keyboard shortcuts [TODO]
 │   │   └── index.ts
+│   │
+│   ├── plugins/
+│   │   ├── index.ts                # All plugins export
+│   │   ├── useContextMenu.ts       # Right-click / long-press menu state
+│   │   ├── useClipboard.ts         # Copy / paste / cut
+│   │   ├── useHistory.ts           # Undo / redo
+│   │   └── useKeyboardShortcuts.ts # Configurable key bindings
 │   │
 │   ├── types/
 │   │   └── index.ts                # All TypeScript types
@@ -759,6 +891,31 @@ packages/kookie-flow/
 ├── package.json
 ├── tsconfig.json
 └── tsup.config.ts
+```
+
+### Package Exports
+
+```json
+// package.json exports field
+{
+  "exports": {
+    ".": "./dist/index.js",
+    "./plugins": "./dist/plugins/index.js",
+    "./plugins/*": "./dist/plugins/*.js"
+  }
+}
+```
+
+Users can import:
+```typescript
+// Core
+import { KookieFlow, useFlowStore } from '@kushagradhawan/kookie-flow';
+
+// All plugins
+import { useClipboard, useHistory } from '@kushagradhawan/kookie-flow/plugins';
+
+// Individual plugin (smallest bundle)
+import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ```
 
 ---
@@ -807,11 +964,29 @@ packages/kookie-flow/
 - [x] Edges connect to actual socket positions
 - [x] Socket fill state based on connection status
 - [x] Pre-allocated buffers in ConnectionLine (zero GC in hot paths)
+- [x] `connectionMode` prop ("strict" | "loose") for type validation
+- [x] `isValidConnection` callback for custom validation
+- [x] Connection line color inherits source socket type
+- [x] Invalid connection feedback (red line, red socket highlight)
+- [x] Edge hit testing (point-to-bezier distance with viewport scaling)
+- [x] Edge click-to-select (unified selection pool with nodes)
+- [x] Ctrl+click additive edge selection
+- [x] Selected edge visual (indigo highlight)
+- [x] `edgesSelectable` prop (default: true)
+- [x] `onEdgeClick` callback
+- [x] Delete selected edges (Delete/Backspace key)
+- [x] Cached socket lookup in ConnectionLine for O(1) hot path
 
 ### Next Immediate Tasks
-1. **Phase 6:** Delete nodes (delete key)
-2. **Phase 6:** Delete edges (click + delete key)
-3. **Phase 6:** Copy/paste nodes (Ctrl+C/V)
+
+**Phase 6: Plugin System**
+1. Core: `onContextMenu` callback with hit testing (right-click + long-press)
+2. Core: `onNodesDelete` / `onEdgesDelete` callbacks
+3. Core: Serialization utilities (`serializeNodes`, `deserializeNodes`)
+4. Plugin: `useContextMenu` hook
+5. Plugin: `useClipboard` hook
+6. Plugin: `useKeyboardShortcuts` hook
+7. Docs: Example integration with Kookie UI context menu
 
 ---
 
@@ -849,4 +1024,4 @@ packages/kookie-flow/
 
 ---
 
-*Last updated: January 2025*
+*Last updated: January 2026*

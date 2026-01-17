@@ -14,9 +14,11 @@ export {
   getNodesInBox,
   getSocketPosition,
   getSocketAtPosition,
+  getEdgeAtPosition,
+  type SocketIndexMap,
 } from './utils/geometry';
 
-export { isSocketCompatible } from './utils/connections';
+export { isSocketCompatible, validateConnection, areTypesCompatible } from './utils/connections';
 
 // Types
 export type {
@@ -31,6 +33,9 @@ export type {
   Node,
   Edge,
   Connection,
+  ConnectionMode,
+  ConnectionValidationParams,
+  IsValidConnectionFn,
   NodeChange,
   EdgeChange,
   NodeTypeDefinition,

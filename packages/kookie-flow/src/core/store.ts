@@ -27,7 +27,12 @@ export interface FlowState {
   /** Currently hovered socket */
   hoveredSocketId: SocketHandle | null;
   /** Connection draft while dragging from a socket */
-  connectionDraft: { source: SocketHandle; mouseWorld: XYPosition } | null;
+  connectionDraft: {
+    source: SocketHandle;
+    mouseWorld: XYPosition;
+    /** Whether the currently hovered target is valid */
+    isValid: boolean;
+  } | null;
   /** Box selection in progress */
   selectionBox: { start: XYPosition; end: XYPosition } | null;
 
@@ -53,7 +58,7 @@ export interface FlowState {
 
   /** Connection draft actions */
   startConnectionDraft: (source: SocketHandle, mouseWorld: XYPosition) => void;
-  updateConnectionDraft: (mouseWorld: XYPosition) => void;
+  updateConnectionDraft: (mouseWorld: XYPosition, isValid?: boolean) => void;
   cancelConnectionDraft: () => void;
 
   /** Apply changes */
@@ -63,6 +68,8 @@ export interface FlowState {
   /** Selection - O(1) operations */
   selectNode: (id: string, additive?: boolean) => void;
   selectNodes: (ids: string[]) => void;
+  selectEdge: (id: string, additive?: boolean) => void;
+  selectEdges: (ids: string[]) => void;
   selectAll: () => void;
   deselectAll: () => void;
   isNodeSelected: (id: string) => boolean;
@@ -136,14 +143,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Connection draft actions
       startConnectionDraft: (source, mouseWorld) => {
         set({
-          connectionDraft: { source, mouseWorld },
+          connectionDraft: { source, mouseWorld, isValid: true },
         });
       },
-      updateConnectionDraft: (mouseWorld) => {
+      updateConnectionDraft: (mouseWorld, isValid) => {
         const { connectionDraft } = get();
         if (connectionDraft) {
           set({
-            connectionDraft: { ...connectionDraft, mouseWorld },
+            connectionDraft: {
+              ...connectionDraft,
+              mouseWorld,
+              isValid: isValid ?? connectionDraft.isValid,
+            },
           });
         }
       },
@@ -197,7 +208,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        set({ nodes: nextNodes });
+        // Rebuild derived state (nodeMap, quadtree) to stay in sync
+        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
+        set({ nodes: nextNodes, nodeMap, quadtree });
       },
 
       applyEdgeChanges: (changes) => {
@@ -239,13 +252,36 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           newSet.add(id);
           set({ selectedNodeIds: newSet });
         } else {
-          // Replace selection
-          set({ selectedNodeIds: new Set([id]) });
+          // Replace selection (clear edges too for unified selection)
+          set({
+            selectedNodeIds: new Set([id]),
+            selectedEdgeIds: new Set<string>(),
+          });
         }
       },
 
       selectNodes: (ids) => {
         set({ selectedNodeIds: new Set(ids) });
+      },
+
+      selectEdge: (id, additive = false) => {
+        const { selectedEdgeIds, selectedNodeIds } = get();
+        if (additive) {
+          // Add to existing selection
+          const newSet = new Set(selectedEdgeIds);
+          newSet.add(id);
+          set({ selectedEdgeIds: newSet });
+        } else {
+          // Replace selection (clear nodes too for unified selection)
+          set({
+            selectedEdgeIds: new Set([id]),
+            selectedNodeIds: new Set<string>(),
+          });
+        }
+      },
+
+      selectEdges: (ids) => {
+        set({ selectedEdgeIds: new Set(ids) });
       },
 
       selectAll: () => {

@@ -83,6 +83,14 @@ export function ConnectionLine({
   // Pre-allocated curve points (avoid GC during drag)
   const pointsRef = useRef<Float32Array>(new Float32Array((SEGMENTS + 1) * 2));
 
+  // Cache socket lookup for O(1) access in hot path
+  // Key: "nodeId:socketId:input|output" -> { index, socket }
+  const socketCacheRef = useRef<{
+    key: string;
+    index: number;
+    socket: { id: string; type: string; position?: number };
+  } | null>(null);
+
   // Shader material
   const material = useMemo(
     () =>
@@ -137,6 +145,7 @@ export function ConnectionLine({
     if (!connectionDraft) {
       mesh.visible = false;
       mesh.geometry.setDrawRange(0, 0);
+      socketCacheRef.current = null; // Clear cache when draft ends
       return;
     }
 
@@ -158,15 +167,27 @@ export function ConnectionLine({
       return;
     }
 
-    const socketIndex = sourceSockets.findIndex(
-      (s) => s.id === connectionDraft.source.socketId
-    );
-    if (socketIndex === -1) {
-      mesh.visible = false;
-      return;
-    }
+    // O(1) socket lookup via cache (only compute once per connection draft)
+    const cacheKey = `${connectionDraft.source.nodeId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+    let socketIndex: number;
+    let socket: { id: string; type: string; position?: number };
 
-    const socket = sourceSockets[socketIndex];
+    if (socketCacheRef.current?.key === cacheKey) {
+      // Cache hit - O(1)
+      socketIndex = socketCacheRef.current.index;
+      socket = socketCacheRef.current.socket;
+    } else {
+      // Cache miss - O(n) but only once per connection draft
+      socketIndex = sourceSockets.findIndex(
+        (s) => s.id === connectionDraft.source.socketId
+      );
+      if (socketIndex === -1) {
+        mesh.visible = false;
+        return;
+      }
+      socket = sourceSockets[socketIndex];
+      socketCacheRef.current = { key: cacheKey, index: socketIndex, socket };
+    }
     const yOffset =
       socket.position !== undefined
         ? socket.position * sourceHeight
@@ -312,9 +333,14 @@ export function ConnectionLine({
     mesh.geometry.setDrawRange(0, vertexIndex);
     mesh.visible = true;
 
-    // Update color based on source socket type
-    const typeConfig = socketTypes[socket.type];
-    if (typeConfig) {
+    // Update color based on validity and source socket type
+    if (!connectionDraft.isValid) {
+      // Invalid connection: show red
+      (material.uniforms.uColor.value as THREE.Color).set('#ff4444');
+    } else {
+      // Valid connection: use source socket type color
+      // Fallback chain: socket type → 'any' type → default gray
+      const typeConfig = socketTypes[socket.type] ?? socketTypes.any ?? { color: '#808080', name: 'Any' };
       (material.uniforms.uColor.value as THREE.Color).set(typeConfig.color);
     }
   });

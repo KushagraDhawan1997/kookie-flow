@@ -9,7 +9,8 @@ import {
   SOCKET_MARGIN_TOP,
   SOCKET_SPACING,
 } from '../core/constants';
-import type { Node, EdgeType } from '../types';
+import type { Node, EdgeType, SocketType } from '../types';
+import { DEFAULT_SOCKET_TYPES } from '../core/constants';
 
 // Buffer sizing
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -20,12 +21,16 @@ const SEGMENTS_PER_EDGE = 64;
 // Each segment = 1 quad = 2 triangles = 6 vertices
 const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6;
 
+// Max points per edge (bezier has SEGMENTS+1, step has 4, straight has 2)
+const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
+
 // Edge visual settings
 const EDGE_WIDTH = 2.5; // pixels in world space
 const AA_SMOOTHNESS = 3.0; // anti-aliasing edge softness (higher = softer edges)
 
 interface EdgesProps {
   defaultEdgeType?: EdgeType;
+  socketTypes?: Record<string, SocketType>;
 }
 
 // Vertex shader - passes position and UV to fragment
@@ -73,7 +78,7 @@ const fragmentShader = /* glsl */ `
  * - Single draw call (all edges batched)
  * - Dirty flag to skip unnecessary updates
  */
-export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
+export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET_TYPES }: EdgesProps) {
   const store = useFlowStoreApi();
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -87,6 +92,8 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
     uvAttr: THREE.BufferAttribute | null;
     colorAttr: THREE.BufferAttribute | null;
     lastVertexCount: number;
+    // Pre-allocated points buffer for curve tessellation (avoids GC in hot path)
+    points: Float32Array;
   }>({
     capacity: INITIAL_EDGE_CAPACITY,
     positions: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 3),
@@ -96,10 +103,15 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
     uvAttr: null,
     colorAttr: null,
     lastVertexCount: 0,
+    points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
   // Node map for O(1) lookups
   const nodeMapRef = useRef<Map<string, Node>>(new Map());
+
+  // Socket index map for O(1) lookups: "${nodeId}:${socketId}:input|output" -> { index, socket }
+  // Rebuilt when nodes change, not per frame
+  const socketIndexMapRef = useRef<Map<string, { index: number; socket: { id: string; type: string; position?: number } }>>(new Map());
 
   // Dirty flag
   const dirtyRef = useRef(true);
@@ -107,6 +119,9 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
   // Pre-computed colors
   const defaultColor = useMemo(() => new THREE.Color(EDGE_COLORS.default), []);
   const selectedColor = useMemo(() => new THREE.Color(EDGE_COLORS.selected), []);
+  const invalidColor = useMemo(() => new THREE.Color(EDGE_COLORS.invalid), []);
+  // Temp color for socket type lookups (avoids GC in hot path)
+  const tempColor = useMemo(() => new THREE.Color(), []);
 
   // Shader material
   const material = useMemo(() => {
@@ -188,7 +203,23 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
       (state) => state.nodes,
       (nodes) => {
         nodeMapRef.current.clear();
-        nodes.forEach((n) => nodeMapRef.current.set(n.id, n));
+        socketIndexMapRef.current.clear();
+        for (const n of nodes) {
+          nodeMapRef.current.set(n.id, n);
+          // Build socket index map for O(1) lookups
+          if (n.inputs) {
+            for (let i = 0; i < n.inputs.length; i++) {
+              const s = n.inputs[i];
+              socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
+            }
+          }
+          if (n.outputs) {
+            for (let i = 0; i < n.outputs.length; i++) {
+              const s = n.outputs[i];
+              socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
+            }
+          }
+        }
         dirtyRef.current = true;
       }
     );
@@ -205,9 +236,23 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
       () => { dirtyRef.current = true; }
     );
 
-    // Initialize node map
+    // Initialize node map and socket index map
     const { nodes } = store.getState();
-    nodes.forEach((n) => nodeMapRef.current.set(n.id, n));
+    for (const n of nodes) {
+      nodeMapRef.current.set(n.id, n);
+      if (n.inputs) {
+        for (let i = 0; i < n.inputs.length; i++) {
+          const s = n.inputs[i];
+          socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
+        }
+      }
+      if (n.outputs) {
+        for (let i = 0; i < n.outputs.length; i++) {
+          const s = n.outputs[i];
+          socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
+        }
+      }
+    }
 
     return () => {
       unsubNodes();
@@ -224,6 +269,7 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
 
     const { edges, viewport, selectedEdgeIds } = store.getState();
     const nodeMap = nodeMapRef.current;
+    const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
     const mesh = meshRef.current;
 
@@ -262,27 +308,25 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
       const sourceHeight = sourceNode.height ?? DEFAULT_NODE_HEIGHT;
       const targetHeight = targetNode.height ?? DEFAULT_NODE_HEIGHT;
 
-      // Calculate source socket position
+      // Calculate source socket position - O(1) lookup via socketIndexMap
       let sourceYOffset = sourceHeight / 2; // fallback to center
-      if (edge.sourceSocket && sourceNode.outputs) {
-        const socketIndex = sourceNode.outputs.findIndex(s => s.id === edge.sourceSocket);
-        if (socketIndex !== -1) {
-          const socket = sourceNode.outputs[socketIndex];
-          sourceYOffset = socket.position !== undefined
-            ? socket.position * sourceHeight
-            : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+      if (edge.sourceSocket) {
+        const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+        if (socketInfo) {
+          sourceYOffset = socketInfo.socket.position !== undefined
+            ? socketInfo.socket.position * sourceHeight
+            : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
         }
       }
 
-      // Calculate target socket position
+      // Calculate target socket position - O(1) lookup via socketIndexMap
       let targetYOffset = targetHeight / 2; // fallback to center
-      if (edge.targetSocket && targetNode.inputs) {
-        const socketIndex = targetNode.inputs.findIndex(s => s.id === edge.targetSocket);
-        if (socketIndex !== -1) {
-          const socket = targetNode.inputs[socketIndex];
-          targetYOffset = socket.position !== undefined
-            ? socket.position * targetHeight
-            : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+      if (edge.targetSocket) {
+        const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
+        if (socketInfo) {
+          targetYOffset = socketInfo.socket.position !== undefined
+            ? socketInfo.socket.position * targetHeight
+            : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
         }
       }
 
@@ -309,8 +353,42 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
 
       // Get edge type and color
       const edgeType = edge.type ?? defaultEdgeType;
-      const color = selectedEdgeIds.has(edge.id) ? selectedColor : defaultColor;
-      const cr = color.r, cg = color.g, cb = color.b;
+
+      // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
+      // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
+      let cr: number, cg: number, cb: number;
+      if (selectedEdgeIds.has(edge.id)) {
+        cr = selectedColor.r;
+        cg = selectedColor.g;
+        cb = selectedColor.b;
+      } else if (edge.invalid) {
+        // Invalid connection (incompatible types in loose mode)
+        cr = invalidColor.r;
+        cg = invalidColor.g;
+        cb = invalidColor.b;
+      } else {
+        // Get source socket type color - O(1) via socketIndexMap
+        let foundColor = false;
+        if (edge.sourceSocket) {
+          const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+          if (socketInfo) {
+            const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
+            if (typeConfig) {
+              tempColor.set(typeConfig.color);
+              foundColor = true;
+            }
+          }
+        }
+        if (!foundColor) {
+          cr = defaultColor.r;
+          cg = defaultColor.g;
+          cb = defaultColor.b;
+        } else {
+          cr = tempColor.r;
+          cg = tempColor.g;
+          cb = tempColor.b;
+        }
+      }
 
       // Calculate bezier control points
       const dx = x1 - x0;
@@ -343,19 +421,23 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
         cx2 = x1 - offset; cy2 = y1;
       }
 
-      // Generate curve points
-      const points: { x: number; y: number }[] = [];
+      // Generate curve points into pre-allocated buffer (avoids GC)
+      // points buffer stores [x0, y0, x1, y1, ...] as flat array
+      const points = buffers.points;
+      let pointsCount = 0;
 
       if (edgeType === 'step') {
         // Step: horizontal → vertical → horizontal
         const midX = x0 + dx / 2;
-        points.push({ x: x0, y: y0 });
-        points.push({ x: midX, y: y0 });
-        points.push({ x: midX, y: y1 });
-        points.push({ x: x1, y: y1 });
+        points[0] = x0; points[1] = y0;
+        points[2] = midX; points[3] = y0;
+        points[4] = midX; points[5] = y1;
+        points[6] = x1; points[7] = y1;
+        pointsCount = 4;
       } else if (edgeType === 'straight') {
-        points.push({ x: x0, y: y0 });
-        points.push({ x: x1, y: y1 });
+        points[0] = x0; points[1] = y0;
+        points[2] = x1; points[3] = y1;
+        pointsCount = 2;
       } else {
         // Bezier/smoothstep - sample the curve
         for (let s = 0; s <= SEGMENTS_PER_EDGE; s++) {
@@ -366,20 +448,23 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
           const t2 = t * t;
           const t3 = t2 * t;
 
-          const px = mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x1;
-          const py = mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y1;
-          points.push({ x: px, y: py });
+          const idx = s * 2;
+          points[idx] = mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x1;
+          points[idx + 1] = mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y1;
         }
+        pointsCount = SEGMENTS_PER_EDGE + 1;
       }
 
       // Generate ribbon geometry from points
-      for (let p = 0; p < points.length - 1; p++) {
-        const p0 = points[p];
-        const p1 = points[p + 1];
+      for (let p = 0; p < pointsCount - 1; p++) {
+        const p0x = points[p * 2];
+        const p0y = points[p * 2 + 1];
+        const p1x = points[(p + 1) * 2];
+        const p1y = points[(p + 1) * 2 + 1];
 
         // Direction vector
-        const dirX = p1.x - p0.x;
-        const dirY = p1.y - p0.y;
+        const dirX = p1x - p0x;
+        const dirY = p1y - p0y;
         const len = Math.sqrt(dirX * dirX + dirY * dirY);
 
         if (len < 0.001) continue; // Skip degenerate segments
@@ -389,18 +474,18 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
         const normY = dirX / len;
 
         // Four corners of the quad
-        const p0_top_x = p0.x + normX * halfWidth;
-        const p0_top_y = p0.y + normY * halfWidth;
-        const p0_bot_x = p0.x - normX * halfWidth;
-        const p0_bot_y = p0.y - normY * halfWidth;
-        const p1_top_x = p1.x + normX * halfWidth;
-        const p1_top_y = p1.y + normY * halfWidth;
-        const p1_bot_x = p1.x - normX * halfWidth;
-        const p1_bot_y = p1.y - normY * halfWidth;
+        const p0_top_x = p0x + normX * halfWidth;
+        const p0_top_y = p0y + normY * halfWidth;
+        const p0_bot_x = p0x - normX * halfWidth;
+        const p0_bot_y = p0y - normY * halfWidth;
+        const p1_top_x = p1x + normX * halfWidth;
+        const p1_top_y = p1y + normY * halfWidth;
+        const p1_bot_x = p1x - normX * halfWidth;
+        const p1_bot_y = p1y - normY * halfWidth;
 
         // UV coordinates (u = progress, v = -1 to 1 across width)
-        const u0 = p / (points.length - 1);
-        const u1 = (p + 1) / (points.length - 1);
+        const u0 = p / (pointsCount - 1);
+        const u1 = (p + 1) / (pointsCount - 1);
 
         // Z position (above grid)
         const z = 1;

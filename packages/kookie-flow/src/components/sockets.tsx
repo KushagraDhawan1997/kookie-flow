@@ -10,7 +10,7 @@ import {
   SOCKET_SPACING,
   SOCKET_MARGIN_TOP,
 } from '../core/constants';
-import { isSocketCompatible } from '../utils/connections';
+import { areTypesCompatible } from '../utils/connections';
 import type { SocketType } from '../types';
 
 const tempMatrix = new THREE.Matrix4();
@@ -32,6 +32,19 @@ export function Sockets({
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
 
+  // Cached connected sockets Set (rebuilt only when edges change, not every frame)
+  const connectedSocketsRef = useRef<Set<string>>(new Set());
+
+  // Deferred capacity update (avoids React re-render inside useFrame)
+  const pendingCapacityRef = useRef<number | null>(null);
+  const capacityRafIdRef = useRef<number | null>(null);
+
+  // Cache for source socket type lookup (avoids O(n) find per frame during connection draft)
+  const sourceSocketCacheRef = useRef<{
+    key: string;
+    type: string;
+  } | null>(null);
+
   // Circle geometry
   const geometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
@@ -44,11 +57,13 @@ export function Sockets({
           attribute float aHovered;
           attribute float aConnected;
           attribute float aValidTarget;
+          attribute float aInvalidHover;
 
           varying vec3 vColor;
           varying float vHovered;
           varying float vConnected;
           varying float vValidTarget;
+          varying float vInvalidHover;
           varying vec2 vUv;
 
           void main() {
@@ -56,6 +71,7 @@ export function Sockets({
             vHovered = aHovered;
             vConnected = aConnected;
             vValidTarget = aValidTarget;
+            vInvalidHover = aInvalidHover;
             vUv = uv;
 
             // Scale up when hovered
@@ -71,6 +87,7 @@ export function Sockets({
           varying float vHovered;
           varying float vConnected;
           varying float vValidTarget;
+          varying float vInvalidHover;
           varying vec2 vUv;
 
           void main() {
@@ -82,10 +99,15 @@ export function Sockets({
             float aa = fwidth(dist) * 1.5;
             float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
 
-            // Color: use socket type color, brighten if hovered/valid target
-            vec3 color = vColor;
-            color = mix(color, color * 1.4, vHovered);
-            color = mix(color, vec3(0.3, 0.9, 0.4), vValidTarget * 0.6);
+            // Base color: socket type color or RED if invalid
+            // Invalid takes priority over everything else
+            vec3 invalidRed = vec3(1.0, 0.27, 0.27); // matches #ff4444
+            vec3 color = mix(vColor, invalidRed, vInvalidHover);
+
+            // Only apply hover/valid brightening if NOT invalid
+            float notInvalid = 1.0 - vInvalidHover;
+            color = mix(color, color * 1.4, vHovered * notInvalid);
+            color = mix(color, vec3(0.3, 0.9, 0.4), vValidTarget * 0.6 * notInvalid);
 
             // Inner hollow for disconnected sockets (thinner ring = more visible hollow)
             float innerRadius = 0.65;
@@ -112,13 +134,25 @@ export function Sockets({
       hovered: new Float32Array(capacity),
       connected: new Float32Array(capacity),
       validTarget: new Float32Array(capacity),
+      invalidHover: new Float32Array(capacity),
       colorAttr: null as THREE.InstancedBufferAttribute | null,
       hoveredAttr: null as THREE.InstancedBufferAttribute | null,
       connectedAttr: null as THREE.InstancedBufferAttribute | null,
       validTargetAttr: null as THREE.InstancedBufferAttribute | null,
+      invalidHoverAttr: null as THREE.InstancedBufferAttribute | null,
     }),
     [capacity]
   );
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (capacityRafIdRef.current !== null) {
+        cancelAnimationFrame(capacityRafIdRef.current);
+        capacityRafIdRef.current = null;
+      }
+    };
+  }, []);
 
   // Initialize attributes
   useEffect(() => {
@@ -139,11 +173,17 @@ export function Sockets({
       1
     );
     buffers.validTargetAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.invalidHoverAttr = new THREE.InstancedBufferAttribute(
+      buffers.invalidHover,
+      1
+    );
+    buffers.invalidHoverAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('aColor', buffers.colorAttr);
     mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
     mesh.geometry.setAttribute('aConnected', buffers.connectedAttr);
     mesh.geometry.setAttribute('aValidTarget', buffers.validTargetAttr);
+    mesh.geometry.setAttribute('aInvalidHover', buffers.invalidHoverAttr);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     initializedRef.current = true;
@@ -178,10 +218,32 @@ export function Sockets({
     );
     const unsubEdges = store.subscribe(
       (state) => state.edges,
-      () => {
+      (edges) => {
+        // Rebuild connected sockets Set when edges change (not every frame)
+        const connectedSockets = connectedSocketsRef.current;
+        connectedSockets.clear();
+        for (const edge of edges) {
+          if (edge.sourceSocket) {
+            connectedSockets.add(`${edge.source}:${edge.sourceSocket}:output`);
+          }
+          if (edge.targetSocket) {
+            connectedSockets.add(`${edge.target}:${edge.targetSocket}:input`);
+          }
+        }
         dirtyRef.current = true;
       }
     );
+
+    // Initialize connected sockets from current edges
+    const { edges: initialEdges } = store.getState();
+    for (const edge of initialEdges) {
+      if (edge.sourceSocket) {
+        connectedSocketsRef.current.add(`${edge.source}:${edge.sourceSocket}:output`);
+      }
+      if (edge.targetSocket) {
+        connectedSocketsRef.current.add(`${edge.target}:${edge.targetSocket}:input`);
+      }
+    }
 
     return () => {
       unsubNodes();
@@ -197,18 +259,38 @@ export function Sockets({
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredSocketId, connectionDraft, edges } =
+    const { nodes, nodeMap, viewport, hoveredSocketId, connectionDraft } =
       store.getState();
 
-    // Build connected sockets set for O(1) lookup
-    const connectedSockets = new Set<string>();
-    for (const edge of edges) {
-      if (edge.sourceSocket) {
-        connectedSockets.add(`${edge.source}:${edge.sourceSocket}:output`);
+    // Use cached connected sockets Set (rebuilt only when edges change)
+    const connectedSockets = connectedSocketsRef.current;
+
+    // Get source socket type with caching (O(1) after first lookup per connection draft)
+    let sourceSocketType: string | null = null;
+    if (connectionDraft) {
+      const cacheKey = `${connectionDraft.source.nodeId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+      if (sourceSocketCacheRef.current?.key === cacheKey) {
+        // Cache hit - O(1)
+        sourceSocketType = sourceSocketCacheRef.current.type;
+      } else {
+        // Cache miss - O(n) but only once per connection draft
+        const sourceNode = nodeMap.get(connectionDraft.source.nodeId);
+        if (sourceNode) {
+          const sourceSockets = connectionDraft.source.isInput
+            ? sourceNode.inputs
+            : sourceNode.outputs;
+          const sourceSocket = sourceSockets?.find(
+            (s) => s.id === connectionDraft.source.socketId
+          );
+          sourceSocketType = sourceSocket?.type ?? null;
+          if (sourceSocketType) {
+            sourceSocketCacheRef.current = { key: cacheKey, type: sourceSocketType };
+          }
+        }
       }
-      if (edge.targetSocket) {
-        connectedSockets.add(`${edge.target}:${edge.targetSocket}:input`);
-      }
+    } else {
+      // Clear cache when no connection draft
+      sourceSocketCacheRef.current = null;
     }
 
     // Viewport culling bounds
@@ -277,18 +359,25 @@ export function Sockets({
             : 0.0;
 
           // Valid target (during connection draft from an output)
+          // Fast path: use cached sourceSocketType and areTypesCompatible
           let isValidTarget = 0.0;
-          if (connectionDraft && !connectionDraft.source.isInput) {
-            isValidTarget = isSocketCompatible(
-              connectionDraft.source,
-              { nodeId: node.id, socketId: socket.id, isInput: true },
-              nodes,
+          if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
+            // Must connect output to input (not same node)
+            const isStructurallyValid = connectionDraft.source.nodeId !== node.id;
+            const isTypeCompatible = areTypesCompatible(
+              sourceSocketType,
+              socket.type,
               socketTypes
-            )
-              ? 1.0
-              : 0.0;
+            );
+            isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
           }
           buffers.validTarget[visibleCount] = isValidTarget;
+
+          // Invalid hover: this socket is hovered AND is NOT a valid target
+          // Reuses the isValidTarget computation (no extra isSocketCompatible call)
+          const isInvalidHover =
+            isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
+          buffers.invalidHover[visibleCount] = isInvalidHover;
 
           visibleCount++;
         }
@@ -332,27 +421,48 @@ export function Sockets({
             : 0.0;
 
           // Valid target (during connection draft from an input)
+          // Fast path: use cached sourceSocketType and areTypesCompatible
           let isValidTarget = 0.0;
-          if (connectionDraft && connectionDraft.source.isInput) {
-            isValidTarget = isSocketCompatible(
-              connectionDraft.source,
-              { nodeId: node.id, socketId: socket.id, isInput: false },
-              nodes,
+          if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
+            // Must connect input to output (not same node)
+            const isStructurallyValid = connectionDraft.source.nodeId !== node.id;
+            const isTypeCompatible = areTypesCompatible(
+              sourceSocketType,
+              socket.type,
               socketTypes
-            )
-              ? 1.0
-              : 0.0;
+            );
+            isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
           }
           buffers.validTarget[visibleCount] = isValidTarget;
+
+          // Invalid hover: this socket is hovered AND is NOT a valid target
+          // Reuses the isValidTarget computation (no extra isSocketCompatible call)
+          const isInvalidHover =
+            isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
+          buffers.invalidHover[visibleCount] = isInvalidHover;
 
           visibleCount++;
         }
       }
     }
 
-    // Check capacity
+    // Check capacity - defer state update to avoid React re-render inside useFrame
+    // Schedule RAF only when needed (not a continuous loop)
     if (visibleCount >= capacity) {
-      setCapacity(Math.ceil(visibleCount * BUFFER_GROWTH_FACTOR));
+      const newCapacity = Math.ceil(visibleCount * BUFFER_GROWTH_FACTOR);
+      if (pendingCapacityRef.current === null || newCapacity > pendingCapacityRef.current) {
+        pendingCapacityRef.current = newCapacity;
+        // Schedule RAF to apply the capacity update (if not already scheduled)
+        if (capacityRafIdRef.current === null) {
+          capacityRafIdRef.current = requestAnimationFrame(() => {
+            capacityRafIdRef.current = null;
+            if (pendingCapacityRef.current !== null) {
+              setCapacity(pendingCapacityRef.current);
+              pendingCapacityRef.current = null;
+            }
+          });
+        }
+      }
     }
 
     // Update GPU buffers
@@ -361,6 +471,7 @@ export function Sockets({
     if (buffers.hoveredAttr) buffers.hoveredAttr.needsUpdate = true;
     if (buffers.connectedAttr) buffers.connectedAttr.needsUpdate = true;
     if (buffers.validTargetAttr) buffers.validTargetAttr.needsUpdate = true;
+    if (buffers.invalidHoverAttr) buffers.invalidHoverAttr.needsUpdate = true;
 
     mesh.count = visibleCount;
     dirtyRef.current = false;
