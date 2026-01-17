@@ -8,6 +8,7 @@ import type {
   EdgeChange,
   Connection,
   XYPosition,
+  SocketHandle,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
 import { Quadtree, getNodeBounds } from './spatial';
@@ -19,10 +20,14 @@ export interface FlowState {
   edges: Edge[];
   /** Current viewport */
   viewport: Viewport;
-  /** Currently connecting from */
+  /** Currently connecting from (legacy) */
   connectionStart: { nodeId: string; socketId: string } | null;
   /** Currently hovered node */
   hoveredNodeId: string | null;
+  /** Currently hovered socket */
+  hoveredSocketId: SocketHandle | null;
+  /** Connection draft while dragging from a socket */
+  connectionDraft: { source: SocketHandle; mouseWorld: XYPosition } | null;
   /** Box selection in progress */
   selectionBox: { start: XYPosition; end: XYPosition } | null;
 
@@ -41,9 +46,15 @@ export interface FlowState {
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
   setHoveredNodeId: (id: string | null) => void;
+  setHoveredSocketId: (socket: SocketHandle | null) => void;
   startConnection: (nodeId: string, socketId: string) => void;
   endConnection: () => void;
   setSelectionBox: (box: { start: XYPosition; end: XYPosition } | null) => void;
+
+  /** Connection draft actions */
+  startConnectionDraft: (source: SocketHandle, mouseWorld: XYPosition) => void;
+  updateConnectionDraft: (mouseWorld: XYPosition) => void;
+  cancelConnectionDraft: () => void;
 
   /** Apply changes */
   applyNodeChanges: (changes: NodeChange[]) => void;
@@ -85,16 +96,19 @@ function rebuildDerivedState(nodes: Node[]) {
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial nodes
   const initialNodes = initialState?.nodes ?? [];
+  const initialEdges = initialState?.edges ?? [];
   const { nodeMap, quadtree } = rebuildDerivedState(initialNodes);
 
   return create<FlowState>()(
     subscribeWithSelector((set, get) => ({
-      // Initial state
+      // Initial state - use extracted values to ensure they're set correctly
       nodes: initialNodes,
-      edges: [],
-      viewport: DEFAULT_VIEWPORT,
+      edges: initialEdges,
+      viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
       connectionStart: null,
       hoveredNodeId: null,
+      hoveredSocketId: null,
+      connectionDraft: null,
       selectionBox: null,
 
       // Selection state
@@ -105,8 +119,6 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       nodeMap,
       quadtree,
 
-      ...initialState,
-
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
         const { nodeMap, quadtree } = rebuildDerivedState(nodes);
@@ -115,10 +127,29 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setEdges: (edges) => set({ edges }),
       setViewport: (viewport) => set({ viewport }),
       setHoveredNodeId: (hoveredNodeId) => set({ hoveredNodeId }),
+      setHoveredSocketId: (hoveredSocketId) => set({ hoveredSocketId }),
       startConnection: (nodeId, socketId) =>
         set({ connectionStart: { nodeId, socketId } }),
       endConnection: () => set({ connectionStart: null }),
       setSelectionBox: (selectionBox) => set({ selectionBox }),
+
+      // Connection draft actions
+      startConnectionDraft: (source, mouseWorld) => {
+        set({
+          connectionDraft: { source, mouseWorld },
+        });
+      },
+      updateConnectionDraft: (mouseWorld) => {
+        const { connectionDraft } = get();
+        if (connectionDraft) {
+          set({
+            connectionDraft: { ...connectionDraft, mouseWorld },
+          });
+        }
+      },
+      cancelConnectionDraft: () => {
+        set({ connectionDraft: null, hoveredSocketId: null });
+      },
 
       // Apply changes
       applyNodeChanges: (changes) => {

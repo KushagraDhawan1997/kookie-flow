@@ -12,7 +12,11 @@ export {
   isPointInNode,
   getNodeAtPosition,
   getNodesInBox,
+  getSocketPosition,
+  getSocketAtPosition,
 } from './utils/geometry';
+
+export { isSocketCompatible } from './utils/connections';
 
 // Types
 export type {
@@ -22,6 +26,7 @@ export type {
   EdgeType,
   SocketType,
   Socket,
+  SocketHandle,
   NodeData,
   Node,
   Edge,
@@ -39,6 +44,9 @@ export {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_VIEWPORT,
   DEFAULT_SOCKET_TYPES,
+  SOCKET_RADIUS,
+  SOCKET_SPACING,
+  SOCKET_MARGIN_TOP,
   NODE_COLORS,
   GRID_COLORS,
   EDGE_COLORS,

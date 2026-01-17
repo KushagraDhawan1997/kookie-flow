@@ -2,7 +2,13 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { EDGE_COLORS, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
+import {
+  EDGE_COLORS,
+  DEFAULT_NODE_WIDTH,
+  DEFAULT_NODE_HEIGHT,
+  SOCKET_MARGIN_TOP,
+  SOCKET_SPACING,
+} from '../core/constants';
 import type { Node, EdgeType } from '../types';
 
 // Buffer sizing
@@ -256,11 +262,35 @@ export function Edges({ defaultEdgeType = 'bezier' }: EdgesProps) {
       const sourceHeight = sourceNode.height ?? DEFAULT_NODE_HEIGHT;
       const targetHeight = targetNode.height ?? DEFAULT_NODE_HEIGHT;
 
-      // Edge endpoints
+      // Calculate source socket position
+      let sourceYOffset = sourceHeight / 2; // fallback to center
+      if (edge.sourceSocket && sourceNode.outputs) {
+        const socketIndex = sourceNode.outputs.findIndex(s => s.id === edge.sourceSocket);
+        if (socketIndex !== -1) {
+          const socket = sourceNode.outputs[socketIndex];
+          sourceYOffset = socket.position !== undefined
+            ? socket.position * sourceHeight
+            : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+        }
+      }
+
+      // Calculate target socket position
+      let targetYOffset = targetHeight / 2; // fallback to center
+      if (edge.targetSocket && targetNode.inputs) {
+        const socketIndex = targetNode.inputs.findIndex(s => s.id === edge.targetSocket);
+        if (socketIndex !== -1) {
+          const socket = targetNode.inputs[socketIndex];
+          targetYOffset = socket.position !== undefined
+            ? socket.position * targetHeight
+            : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+        }
+      }
+
+      // Edge endpoints at actual socket positions
       const x0 = sourceNode.position.x + sourceWidth;
-      const y0 = sourceNode.position.y + sourceHeight / 2;
+      const y0 = sourceNode.position.y + sourceYOffset;
       const x1 = targetNode.position.x;
-      const y1 = targetNode.position.y + targetHeight / 2;
+      const y1 = targetNode.position.y + targetYOffset;
 
       // Frustum culling
       const edgeMinX = Math.min(x0, x1);

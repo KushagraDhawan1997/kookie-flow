@@ -35,6 +35,13 @@ export interface Socket {
   position?: number;
 }
 
+/** Socket handle for identifying a specific socket on a node */
+export interface SocketHandle {
+  nodeId: string;
+  socketId: string;
+  isInput: boolean;
+}
+
 /** Base node data */
 export interface NodeData {
   label?: string;

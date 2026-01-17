@@ -17,6 +17,12 @@ export const MAX_ZOOM = 4;
 export const DEFAULT_GRID_SIZE = 20;
 export const DEFAULT_SNAP_GRID: [number, number] = [20, 20];
 
+/** Socket visual settings */
+export const SOCKET_RADIUS = 6;
+export const SOCKET_SPACING = 24;
+export const SOCKET_MARGIN_TOP = 30;
+export const SOCKET_HIT_TOLERANCE = 4;
+
 /** Node colors */
 export const NODE_COLORS = {
   background: '#1e1e1e',

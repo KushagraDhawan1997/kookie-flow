@@ -1,5 +1,12 @@
-import type { Node, XYPosition, Viewport } from '../types';
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
+import type { Node, XYPosition, Viewport, SocketHandle } from '../types';
+import {
+  DEFAULT_NODE_WIDTH,
+  DEFAULT_NODE_HEIGHT,
+  SOCKET_RADIUS,
+  SOCKET_SPACING,
+  SOCKET_MARGIN_TOP,
+  SOCKET_HIT_TOLERANCE,
+} from '../core/constants';
 
 /**
  * Convert screen coordinates to world coordinates.
@@ -108,4 +115,104 @@ export function getNodesInBox(
     };
     return boxesIntersect(selectionBox, nodeBox);
   });
+}
+
+/**
+ * Calculate world position of a socket on a node.
+ * Inputs are on the left edge, outputs on the right edge.
+ */
+export function getSocketPosition(
+  node: Node,
+  socketId: string,
+  isInput: boolean
+): XYPosition | null {
+  const sockets = isInput ? node.inputs : node.outputs;
+  if (!sockets) return null;
+
+  const index = sockets.findIndex((s) => s.id === socketId);
+  if (index === -1) return null;
+
+  const width = node.width ?? DEFAULT_NODE_WIDTH;
+  const height = node.height ?? DEFAULT_NODE_HEIGHT;
+
+  // Use socket.position if defined (0-1 range), otherwise calculate from index
+  const socket = sockets[index];
+  const yOffset =
+    socket.position !== undefined
+      ? socket.position * height
+      : SOCKET_MARGIN_TOP + index * SOCKET_SPACING;
+
+  return {
+    x: isInput ? node.position.x : node.position.x + width,
+    y: node.position.y + yOffset,
+  };
+}
+
+/**
+ * Find socket at a world position.
+ * Uses brute force with viewport culling - performant for typical socket counts.
+ */
+export function getSocketAtPosition(
+  worldPos: XYPosition,
+  nodes: Node[],
+  viewport: Viewport,
+  canvasSize: { width: number; height: number }
+): SocketHandle | null {
+  const hitRadius = SOCKET_RADIUS + SOCKET_HIT_TOLERANCE;
+  const hitRadiusSq = hitRadius * hitRadius;
+
+  // Viewport bounds for culling
+  const invZoom = 1 / viewport.zoom;
+  const viewLeft = -viewport.x * invZoom;
+  const viewRight = (canvasSize.width - viewport.x) * invZoom;
+  const viewTop = -viewport.y * invZoom;
+  const viewBottom = (canvasSize.height - viewport.y) * invZoom;
+  const padding = 50;
+
+  // Iterate in reverse for z-ordering (topmost node first)
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    const width = node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+
+    // Skip nodes outside viewport
+    if (
+      node.position.x + width < viewLeft - padding ||
+      node.position.x > viewRight + padding ||
+      node.position.y + height < viewTop - padding ||
+      node.position.y > viewBottom + padding
+    ) {
+      continue;
+    }
+
+    // Check input sockets
+    if (node.inputs) {
+      for (const socket of node.inputs) {
+        const pos = getSocketPosition(node, socket.id, true);
+        if (!pos) continue;
+
+        const dx = worldPos.x - pos.x;
+        const dy = worldPos.y - pos.y;
+        if (dx * dx + dy * dy < hitRadiusSq) {
+          return { nodeId: node.id, socketId: socket.id, isInput: true };
+        }
+      }
+    }
+
+    // Check output sockets
+    if (node.outputs) {
+      for (const socket of node.outputs) {
+        const pos = getSocketPosition(node, socket.id, false);
+        if (!pos) continue;
+
+        const dx = worldPos.x - pos.x;
+        const dy = worldPos.y - pos.y;
+        if (dx * dx + dy * dy < hitRadiusSq) {
+          return { nodeId: node.id, socketId: socket.id, isInput: false };
+        }
+      }
+    }
+  }
+
+  return null;
 }

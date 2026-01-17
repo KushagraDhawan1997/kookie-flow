@@ -14,12 +14,15 @@ import { FlowProvider, useFlowStoreApi } from './context';
 import { Grid } from './grid';
 import { Nodes } from './nodes';
 import { Edges } from './edges';
+import { Sockets } from './sockets';
+import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
-import { GRID_COLORS, DEFAULT_VIEWPORT } from '../core/constants';
-import { screenToWorld } from '../utils/geometry';
+import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES } from '../core/constants';
+import { screenToWorld, getSocketAtPosition } from '../utils/geometry';
+import { isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
-import type { KookieFlowProps, Node } from '../types';
+import type { KookieFlowProps, Node, SocketType, Connection } from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
@@ -61,6 +64,8 @@ export function KookieFlow({
     backgroundColor: GRID_COLORS.background,
   };
 
+  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
+
   return (
     <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
       <InputHandler
@@ -70,10 +75,12 @@ export function KookieFlow({
         maxZoom={maxZoom}
         snapToGrid={snapToGrid}
         snapGrid={snapGrid}
+        socketTypes={resolvedSocketTypes}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
+        onConnect={onConnect}
       >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} />
+        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom}>{children}</DOMLayer>
         <FlowSync
           nodes={nodes}
@@ -99,14 +106,16 @@ interface InputHandlerProps {
   maxZoom: number;
   snapToGrid: boolean;
   snapGrid: [number, number];
+  socketTypes: Record<string, SocketType>;
   onNodeClick?: (node: Node) => void;
   onPaneClick?: () => void;
+  onConnect?: (connection: Connection) => void;
 }
 
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
-function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, onNodeClick, onPaneClick }: InputHandlerProps) {
+function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, onNodeClick, onPaneClick, onConnect }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
@@ -115,6 +124,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const lastPointerPos = useRef<{ x: number; y: number } | null>(null);
 
   // Track pointer down position to detect clicks vs drags
@@ -202,19 +212,36 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         e.preventDefault();
         setIsPanning(true);
         lastPointerPos.current = { x: e.clientX, y: e.clientY };
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        containerRef.current?.setPointerCapture(e.pointerId);
         return;
       }
 
-      // Left-click: potentially start selection or box selection
+      // Left-click: potentially start selection, box selection, or connection
       if (e.button === 0) {
-        const { viewport } = store.getState();
+        const { viewport, nodes } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        // Check for socket click first
+        const socket = getSocketAtPosition(
+          worldPos,
+          nodes,
+          viewport,
+          { width: rect.width, height: rect.height }
+        );
+
+        if (socket) {
+          // Start connection draft with current mouse position
+          store.getState().startConnectionDraft(socket, worldPos);
+          setIsConnecting(true);
+          // Capture pointer to the container, not e.target, to ensure we receive move events
+          containerRef.current?.setPointerCapture(e.pointerId);
+          return;
+        }
 
         // Store the pointer down position
         pointerDownPos.current = { x: worldPos.x, y: worldPos.y, screenX: e.clientX, screenY: e.clientY };
         hasDragged.current = false;
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
     [isSpaceDown, store]
@@ -236,6 +263,30 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           y: viewport.y + deltaY,
           zoom: viewport.zoom,
         });
+        return;
+      }
+
+      // Handle connection draft
+      if (isConnecting) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const { viewport, nodes } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        // Update connection draft position
+        store.getState().updateConnectionDraft(worldPos);
+
+        // Check for socket hover during connection
+        const hoveredSocket = getSocketAtPosition(
+          worldPos,
+          nodes,
+          viewport,
+          { width: rect.width, height: rect.height }
+        );
+        store.getState().setHoveredSocketId(hoveredSocket);
         return;
       }
 
@@ -353,10 +404,26 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, hoveredNodeId, quadtree } = store.getState();
+        const { viewport, hoveredNodeId, hoveredSocketId, nodes, quadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        // Use quadtree for O(log n) hit testing
+        // Check socket hover first
+        const newHoveredSocket = getSocketAtPosition(
+          worldPos,
+          nodes,
+          viewport,
+          { width: rect.width, height: rect.height }
+        );
+
+        // Update socket hover if changed
+        if (
+          newHoveredSocket?.nodeId !== hoveredSocketId?.nodeId ||
+          newHoveredSocket?.socketId !== hoveredSocketId?.socketId
+        ) {
+          store.getState().setHoveredSocketId(newHoveredSocket);
+        }
+
+        // Use quadtree for O(log n) hit testing for nodes
         const candidateIds = quadtree.queryPoint(worldPos.x, worldPos.y);
         const newHoveredId = candidateIds.length > 0 ? candidateIds[0] : null;
 
@@ -366,17 +433,52 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
       }
     },
-    [isPanning, isBoxSelecting, isDragging, snapToGrid, snapGrid, store, updateViewport]
+    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, store, updateViewport]
   );
 
   // Handle pointer up
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent) => {
+      // End connection draft
+      if (isConnecting) {
+        const { connectionDraft, hoveredSocketId, nodes } = store.getState();
+
+        if (connectionDraft && hoveredSocketId) {
+          // Check if connection is valid
+          const isValid = isSocketCompatible(
+            connectionDraft.source,
+            hoveredSocketId,
+            nodes,
+            socketTypes
+          );
+
+          if (isValid) {
+            // Determine source and target based on input/output
+            const isSourceInput = connectionDraft.source.isInput;
+            const connection: Connection = {
+              source: isSourceInput ? hoveredSocketId.nodeId : connectionDraft.source.nodeId,
+              sourceSocket: isSourceInput ? hoveredSocketId.socketId : connectionDraft.source.socketId,
+              target: isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId,
+              targetSocket: isSourceInput ? connectionDraft.source.socketId : hoveredSocketId.socketId,
+            };
+
+            // Call onConnect callback
+            onConnect?.(connection);
+          }
+        }
+
+        // Cancel the draft
+        store.getState().cancelConnectionDraft();
+        setIsConnecting(false);
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
       // End panning
       if (isPanning) {
         setIsPanning(false);
         lastPointerPos.current = null;
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        containerRef.current?.releasePointerCapture(e.pointerId);
         return;
       }
 
@@ -384,7 +486,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       if (isDragging) {
         setIsDragging(false);
         dragState.current = null;
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
         return;
       }
@@ -413,7 +515,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
         store.getState().setSelectionBox(null);
         setIsBoxSelecting(false);
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
         return;
       }
@@ -439,12 +541,12 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           onPaneClick?.();
         }
 
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        containerRef.current?.releasePointerCapture(e.pointerId);
       }
 
       pointerDownPos.current = null;
     },
-    [isPanning, isDragging, isBoxSelecting, store, onNodeClick, onPaneClick]
+    [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, store, onNodeClick, onPaneClick, onConnect]
   );
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
@@ -462,9 +564,12 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         store.getState().selectAll();
       }
 
-      // Escape: deselect all or cancel box selection
+      // Escape: cancel connection, box selection, or deselect all
       if (e.code === 'Escape') {
-        if (isBoxSelecting) {
+        if (isConnecting) {
+          store.getState().cancelConnectionDraft();
+          setIsConnecting(false);
+        } else if (isBoxSelecting) {
           store.getState().setSelectionBox(null);
           setIsBoxSelecting(false);
         } else {
@@ -490,7 +595,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPanning, isBoxSelecting, store]);
+  }, [isPanning, isBoxSelecting, isConnecting, store]);
 
   // Prevent context menu on middle click
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -600,7 +705,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       className={className}
       style={{
         ...style,
-        cursor: isPanning || isDragging ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : 'default',
+        cursor: isPanning || isDragging ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : isConnecting ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -609,6 +714,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       onPointerLeave={(e) => {
         handlePointerUp(e);
         store.getState().setHoveredNodeId(null);
+        store.getState().setHoveredSocketId(null);
       }}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
@@ -626,9 +732,10 @@ interface FlowCanvasProps {
   showGrid: boolean;
   showStats: boolean;
   defaultEdgeType: import('../types').EdgeType;
+  socketTypes: Record<string, SocketType>;
 }
 
-function FlowCanvas({ showGrid, showStats, defaultEdgeType }: FlowCanvasProps) {
+function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes }: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
   const glConfig = useMemo(() => ({
     // Disable MSAA on Safari - it's expensive and often causes issues
@@ -669,8 +776,10 @@ function FlowCanvas({ showGrid, showStats, defaultEdgeType }: FlowCanvasProps) {
       <CameraController />
       {showGrid && <Grid />}
       <Edges defaultEdgeType={defaultEdgeType} />
+      <Sockets socketTypes={socketTypes} />
       <Nodes />
       <SelectionBox />
+      <ConnectionLine socketTypes={socketTypes} />
     </Canvas>
   );
 }

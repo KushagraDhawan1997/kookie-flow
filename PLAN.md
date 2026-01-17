@@ -608,16 +608,27 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Arrows: SDF or texture at endpoints
 - Pulse/highlight: uniform animation
 
-### Phase 5: Edge Connections
+### Phase 5: Edge Connections ✅ COMPLETE
 **Goal:** Connect nodes via sockets
 
-- [ ] Render sockets (instanced circles)
-- [ ] Socket hit detection
-- [ ] Connection line while dragging
-- [ ] Valid/invalid connection feedback
-- [ ] Socket type validation
-- [ ] Auto-scroll when near edges
-- [ ] Delete edge (click + delete key)
+- [x] Render sockets (instanced circles)
+- [x] Socket hit detection
+- [x] Connection line while dragging (dashed bezier with fixed-size dashes)
+- [x] Socket fill state (hollow = no connection, filled = connected)
+- [x] Edges connect to actual socket positions (not node centers)
+- [x] Socket type colors (uses socketTypes config)
+- [ ] Valid/invalid connection feedback (deferred)
+- [ ] Socket type validation (deferred - compatibility logic exists but not enforced)
+- [ ] Auto-scroll when near edges (deferred)
+- [ ] Delete edge (click + delete key) (deferred to Phase 6)
+
+**Implementation notes:**
+- `Sockets.tsx`: InstancedMesh with SDF circles, hollow/filled state via uniform
+- `ConnectionLine.tsx`: WebGL dashed bezier, pre-allocated Float32Array buffers
+- `connections.ts`: Socket compatibility utilities
+- `geometry.ts`: Socket hit detection, position calculations
+- Fixed-size dash pattern (16px cycle) regardless of curve length
+- Zero allocations in useFrame (single-pass geometry + length calculation)
 
 ### Phase 6: Full Interactivity
 **Goal:** Complete editing UX
@@ -716,10 +727,10 @@ packages/kookie-flow/
 │   │   ├── context.tsx             # FlowProvider, hooks
 │   │   ├── Grid.tsx                # Infinite grid shader
 │   │   ├── Nodes.tsx               # Instanced node renderer
-│   │   ├── Sockets.tsx             # Instanced socket renderer [TODO]
+│   │   ├── Sockets.tsx             # Instanced socket renderer
 │   │   ├── Edges.tsx               # Edge line renderer
-│   │   ├── SelectionBox.tsx        # Box select overlay [TODO]
-│   │   ├── ConnectionLine.tsx      # Temp edge while connecting [TODO]
+│   │   ├── SelectionBox.tsx        # Box select overlay
+│   │   ├── ConnectionLine.tsx      # Temp dashed edge while connecting
 │   │   ├── DOMLayer.tsx            # Text/widget overlay
 │   │   ├── Minimap.tsx             # Overview panel [TODO]
 │   │   └── index.ts
@@ -741,8 +752,8 @@ packages/kookie-flow/
 │   │   └── index.ts                # All TypeScript types
 │   │
 │   └── utils/
-│       ├── geometry.ts             # Position/bounds math [TODO]
-│       ├── connections.ts          # Connection validation [TODO]
+│       ├── geometry.ts             # Position/bounds math, socket hit detection
+│       ├── connections.ts          # Connection validation, socket compatibility
 │       └── index.ts
 │
 ├── package.json
@@ -790,11 +801,17 @@ packages/kookie-flow/
 - [x] `defaultEdgeType` prop and per-edge type override
 - [x] Mesh-based edges with custom ShaderMaterial (enables future effects)
 - [x] Adaptive bezier control points (no forced S-curves for close nodes)
+- [x] Socket rendering (InstancedMesh with SDF circles, hollow/filled states)
+- [x] Socket hit detection for connection initiation
+- [x] Connection line while dragging (dashed bezier, WebGL)
+- [x] Edges connect to actual socket positions
+- [x] Socket fill state based on connection status
+- [x] Pre-allocated buffers in ConnectionLine (zero GC in hot paths)
 
 ### Next Immediate Tasks
-1. **Phase 5:** Render sockets (instanced circles)
-2. **Phase 5:** Socket hit detection
-3. **Phase 5:** Connection line while dragging
+1. **Phase 6:** Delete nodes (delete key)
+2. **Phase 6:** Delete edges (click + delete key)
+3. **Phase 6:** Copy/paste nodes (Ctrl+C/V)
 
 ---
 

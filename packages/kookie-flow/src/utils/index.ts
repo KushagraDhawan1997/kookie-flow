@@ -5,4 +5,8 @@ export {
   getNodeAtPosition,
   boxesIntersect,
   getNodesInBox,
+  getSocketPosition,
+  getSocketAtPosition,
 } from './geometry';
+
+export { isSocketCompatible } from './connections';
