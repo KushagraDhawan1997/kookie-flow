@@ -673,53 +673,87 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 **Deferred:**
 - [x] Auto-scroll when dragging near viewport edges
 
-### Phase 6: Plugin System & Interactivity
-**Goal:** Batteries-included editing via opt-in plugins
+### Phase 6: Core Operations & Event Plugins
+**Goal:** Optimized core operations for clipboard/history patterns + event-handling plugins
 
-**Architecture Principle:** Core handles all performance-critical operations (hit testing, state updates, rendering). Plugins orchestrate these primitives into user-facing features. Users import only what they need.
+**Architecture Principle:** Core handles all performance-critical operations (cloning, batch updates, ID generation). Plugins are thin wrappers for event handling. Users who need custom behavior call the same optimized core methods.
 
-**Core additions (in main package):**
-- [ ] `onContextMenu` callback (fires on right-click and long-press with hit test result)
-- [ ] `onNodesDelete` / `onEdgesDelete` callbacks (fired before deletion, return `false` to prevent)
-- [ ] Touch long-press detection (triggers `onContextMenu`)
-- [ ] Serialization utilities: `serializeNodes()`, `deserializeNodes()`
+**Why this design:**
+- `node.data` is user-defined and can contain anything (functions, images, backend refs)
+- Serialization, history snapshots, and data transformation are inherently app-specific
+- We can optimize the *structural* operations (cloning, ID remapping, batch insert)
+- We cannot optimize the *data* operations (what to copy, how to serialize)
+- Internal clipboard (same tab) works without serialization - just hold references
+
+**Core additions (in store):**
+
+```typescript
+// Optimized cloning - pre-allocated ID pool, single-pass, edge refs remapped
+store.cloneElements(nodes, edges, {
+  offset?: { x: number, y: number },
+  transformData?: (data: T) => T,     // optional: user transforms their data
+  generateId?: () => string,           // optional: custom ID generation
+}): { nodes: Node[], edges: Edge[], idMap: Map<string, string> }
+
+// Batch insert - single state update, single quadtree update
+store.addElements({ nodes, edges }): void
+
+// Batch delete with callback
+store.deleteElements({ nodeIds, edgeIds }): void
+store.deleteSelected(): void
+
+// Internal clipboard (no serialization, holds references)
+store.copySelectedToInternal(): void
+store.pasteFromInternal(options?: {
+  offset?: { x, y },
+  transformData?: (data: T) => T,
+}): void
+store.cutSelectedToInternal(): void
+
+// Serialization (for user's custom browser clipboard / persistence)
+store.toObject(): { nodes, edges, viewport }
+store.getSelectedNodes(): Node[]
+store.getConnectedEdges(nodeIds: string[]): Edge[]
+```
 
 **Plugins (`@kushagradhawan/kookie-flow/plugins`):**
 
-| Plugin | Handles Internally | Exposes to User |
-|--------|-------------------|-----------------|
-| `useClipboard` | Serialization, ID regeneration, edge cloning, position offset | `copy()`, `paste(position?)`, `cut()` |
-| `useHistory` | Snapshot diffing, memory limits, action batching (drag-end, not per-frame) | `undo()`, `redo()`, `canUndo`, `canRedo` |
+| Plugin | What it does | Exposes |
+|--------|--------------|---------|
+| `useClipboard` | Thin wrapper for internal clipboard | `copy()`, `paste()`, `cut()` |
 | `useKeyboardShortcuts` | Event listeners, modifier detection (`mod` = Cmd/Ctrl), focus management | Config object for key bindings |
-| `useContextMenu` | Right-click + long-press listening, hit testing, state | `contextMenu` state object, `closeMenu()` |
+| `useContextMenu` | Right-click + long-press listening, hit testing | `{ contextMenu, closeMenu }` |
+
+**NOT included as plugins:**
+| Feature | Why not |
+|---------|---------|
+| `useHistory` | No universal solution - full snapshots don't scale, action-based requires knowing user's data shape. Document patterns instead. |
+| Browser clipboard | Requires serialization of user's data. Provide `toObject()` + document patterns. |
 
 **Example usage:**
+
 ```typescript
-import { KookieFlow } from '@kushagradhawan/kookie-flow';
-import { useClipboard, useHistory, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+import { KookieFlow, useFlowStore } from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
 
 function Editor() {
+  const store = useFlowStore();
   const { copy, paste, cut } = useClipboard();
-  const { undo, redo, canUndo, canRedo } = useHistory({ maxStack: 50 });
   const { contextMenu, closeMenu } = useContextMenu();
 
   useKeyboardShortcuts({
     'mod+c': copy,
     'mod+v': paste,
     'mod+x': cut,
-    'mod+z': undo,
-    'mod+shift+z': redo,
-    'mod+d': duplicate,
-    'delete': deleteSelected,
-    'escape': clearSelection,
-    'mod+a': selectAll,
+    'mod+a': () => store.selectAll(),
+    'delete': () => store.deleteSelected(),
+    'escape': () => store.clearSelection(),
   });
 
   return (
     <>
       <KookieFlow nodes={nodes} edges={edges} ... />
 
-      {/* User brings their own context menu UI (Kookie UI, Radix, etc.) */}
       {contextMenu && (
         <MyContextMenu target={contextMenu.target} position={contextMenu.position} onClose={closeMenu} />
       )}
@@ -728,22 +762,93 @@ function Editor() {
 }
 ```
 
-**Why plugins over baked-in:**
-- Tree-shakeable: users only bundle what they import
-- Performance control: all hot paths stay in core
-- Flexibility: users can write custom plugins using same primitives
-- No UI opinions: context menu plugin provides state, user provides UI component
+**Custom paste with data transformation:**
+
+```typescript
+const paste = () => {
+  store.pasteFromInternal({
+    offset: { x: 100, y: 100 },
+    transformData: (data) => ({
+      ...data,
+      status: 'idle',      // reset transient state
+      backendId: null,     // clear backend reference
+    }),
+  });
+};
+```
+
+**Custom browser clipboard (user implements):**
+
+```typescript
+const copyToBrowser = async () => {
+  const nodes = store.getSelectedNodes();
+  const edges = store.getConnectedEdges(nodes.map(n => n.id));
+
+  // User decides what to serialize
+  const payload = {
+    nodes: nodes.map(n => ({
+      ...n,
+      data: { prompt: n.data.prompt },  // only serializable fields
+    })),
+    edges,
+  };
+
+  await navigator.clipboard.writeText(JSON.stringify(payload));
+};
+
+const pasteFromBrowser = async () => {
+  const text = await navigator.clipboard.readText();
+  const { nodes, edges } = JSON.parse(text);
+
+  // Use optimized core method for cloning
+  const cloned = store.cloneElements(nodes, edges, {
+    offset: { x: 50, y: 50 },
+  });
+
+  store.addElements(cloned);
+};
+```
+
+**Custom undo/redo (user implements):**
+
+```typescript
+function useSimpleHistory(maxSize = 50) {
+  const store = useFlowStore();
+  const past = useRef<Snapshot[]>([]);
+  const future = useRef<Snapshot[]>([]);
+
+  const push = () => {
+    past.current.push(store.toObject());
+    if (past.current.length > maxSize) past.current.shift();
+    future.current = [];
+  };
+
+  const undo = () => {
+    if (past.current.length === 0) return;
+    future.current.push(store.toObject());
+    const snapshot = past.current.pop()!;
+    store.setNodes(snapshot.nodes);
+    store.setEdges(snapshot.edges);
+  };
+
+  const redo = () => { /* inverse of undo */ };
+
+  return { push, undo, redo, canUndo: past.current.length > 0 };
+}
+```
 
 **Tasks:**
-- [ ] Core: `onContextMenu` callback with hit testing
-- [ ] Core: `onNodesDelete` / `onEdgesDelete` callbacks
-- [ ] Core: Touch long-press → context menu
-- [ ] Core: Serialization utilities
-- [ ] Plugin: `useContextMenu` hook
-- [ ] Plugin: `useClipboard` hook
-- [ ] Plugin: `useHistory` hook
-- [ ] Plugin: `useKeyboardShortcuts` hook
-- [ ] Docs: Example integration with Kookie UI context menu
+- [ ] Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
+- [ ] Core: `addElements()` with batch state update + batch quadtree insert
+- [ ] Core: `deleteElements()`, `deleteSelected()`
+- [ ] Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
+- [ ] Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
+- [ ] Plugin: `useClipboard` (thin wrapper)
+- [ ] Plugin: `useKeyboardShortcuts`
+- [ ] Plugin: `useContextMenu` (right-click + long-press)
+- [ ] Docs: Pattern for browser clipboard
+- [ ] Docs: Pattern for simple undo/redo
+- [ ] Docs: Pattern for efficient undo/redo (structural sharing)
 
 ### Phase 7: Advanced Features
 **Goal:** Feature parity with React Flow
@@ -817,31 +922,33 @@ WebGL text options:
 - Matches user mental model from DOM
 - Camera offset negates position for Three.js (Y-up)
 
-### Why Plugins over Baked-In Features
+### Why "Optimized Core + Thin Plugins"
 
-**Goal:** Batteries-included experience with full performance control.
+**The problem with generic plugins:**
+- `node.data` is user-defined - can contain functions, images, backend refs, anything
+- Serialization is app-specific - we can't know what fields matter
+- History/undo is app-specific - full snapshots don't scale, action-based needs data knowledge
+- No single implementation works for simple apps AND complex apps AND high-scale apps
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| **Everything baked-in** | Zero setup, consistent UX | Opinionated, larger bundle, hard to customize |
-| **Everything user-land** | Maximum flexibility | Boilerplate, inconsistent implementations |
-| **Plugin architecture** | Opt-in features, tree-shakeable, customizable | Slightly more setup |
+**Our approach:**
 
-**Decision:** Plugin architecture. Core handles all performance-critical operations (rendering, hit testing, state). Plugins orchestrate these primitives into user-facing features.
+| Layer | What it handles | Example |
+|-------|-----------------|---------|
+| **Core (store)** | Structural operations - cloning, ID remapping, batch insert, quadtree | `store.cloneElements()`, `store.addElements()` |
+| **Plugins** | Event wiring - thin wrappers that call core methods | `useClipboard()` calls `store.copySelectedToInternal()` |
+| **User code** | Data transformation - what to copy, how to serialize, backend sync | `transformData: (d) => ({ prompt: d.prompt })` |
 
 **Key principles:**
-1. **Performance stays in core** - Plugins never touch hot paths directly. They call optimized store methods.
-2. **No UI opinions** - Plugins like `useContextMenu` provide state, not components. Users bring their own UI (Kookie UI, Radix, custom).
-3. **Tree-shakeable** - Don't import `useHistory`? It's not in your bundle.
-4. **Same primitives** - Users can write custom plugins using the same APIs we use.
+1. **Optimize what we can** - Structural operations (ID generation, edge remapping, batch updates) are universal. We optimize these in core.
+2. **Don't pretend on what we can't** - Data transformation is app-specific. User provides callbacks, we call them efficiently.
+3. **Internal clipboard is free** - Same-tab copy/paste needs no serialization. We just hold references and clone on paste.
+4. **Same primitives for everyone** - Custom users call the same optimized methods our plugins use.
 
-**Example: Why `useClipboard` is a plugin, not core:**
-- Clipboard format is app-specific (what fields to include?)
-- ID generation varies (UUIDs? Sequential? Database IDs?)
-- Paste position logic varies (mouse position? Viewport center? Offset from original?)
-- Some apps need connected edges copied, others don't
-
-The plugin provides sensible defaults while exposing options. Users who need different behavior can write their own plugin using `store.getSelectedNodes()`, `store.addNodes()`, etc.
+**Why no `useHistory` plugin:**
+- Full state snapshots: 10k nodes × 50 undo steps = 500MB memory
+- Action-based undo: requires knowing all possible data mutations
+- Structural sharing: complex, app-specific (what counts as "changed"?)
+- Better to document patterns and let users implement what fits their scale/needs
 
 ---
 
@@ -881,8 +988,7 @@ packages/kookie-flow/
 │   ├── plugins/
 │   │   ├── index.ts                # All plugins export
 │   │   ├── useContextMenu.ts       # Right-click / long-press menu state
-│   │   ├── useClipboard.ts         # Copy / paste / cut
-│   │   ├── useHistory.ts           # Undo / redo
+│   │   ├── useClipboard.ts         # Thin wrapper for internal clipboard
 │   │   └── useKeyboardShortcuts.ts # Configurable key bindings
 │   │
 │   ├── types/
@@ -913,11 +1019,11 @@ packages/kookie-flow/
 
 Users can import:
 ```typescript
-// Core
+// Core - includes optimized store methods
 import { KookieFlow, useFlowStore } from '@kushagradhawan/kookie-flow';
 
 // All plugins
-import { useClipboard, useHistory } from '@kushagradhawan/kookie-flow/plugins';
+import { useClipboard, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
 
 // Individual plugin (smallest bundle)
 import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
@@ -985,14 +1091,17 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 ### Next Immediate Tasks
 
-**Phase 6: Plugin System**
-1. Core: `onContextMenu` callback with hit testing (right-click + long-press)
-2. Core: `onNodesDelete` / `onEdgesDelete` callbacks
-3. Core: Serialization utilities (`serializeNodes`, `deserializeNodes`)
-4. Plugin: `useContextMenu` hook
-5. Plugin: `useClipboard` hook
-6. Plugin: `useKeyboardShortcuts` hook
-7. Docs: Example integration with Kookie UI context menu
+**Phase 6: Core Operations & Event Plugins**
+1. Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
+2. Core: `addElements()` with batch state update + batch quadtree insert
+3. Core: `deleteElements()`, `deleteSelected()`
+4. Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
+5. Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
+6. Plugin: `useClipboard` (thin wrapper)
+7. Plugin: `useKeyboardShortcuts`
+8. Plugin: `useContextMenu` (right-click + long-press)
+9. Docs: Pattern for browser clipboard
+10. Docs: Pattern for undo/redo
 
 ---
 
