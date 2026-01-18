@@ -673,7 +673,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 **Deferred:**
 - [x] Auto-scroll when dragging near viewport edges
 
-### Phase 6: Core Operations & Event Plugins ✅ MOSTLY COMPLETE
+### Phase 6: Core Operations & Event Plugins ✅ COMPLETE
 **Goal:** Optimized core operations for clipboard/history patterns + event-handling plugins
 
 **Architecture Principle:** Core handles all performance-critical operations (cloning, batch updates, ID generation). Plugins are thin wrappers for event handling. Users who need custom behavior call the same optimized core methods.
@@ -848,9 +848,9 @@ function useSimpleHistory(maxSize = 50) {
 - [x] Plugin: `useClipboard` (thin wrapper with per-paste option override)
 - [x] Plugin: `useKeyboardShortcuts`
 - [x] Plugin: `useContextMenu` (right-click + long-press)
-- [ ] Docs: Pattern for browser clipboard
-- [ ] Docs: Pattern for simple undo/redo
-- [ ] Docs: Pattern for efficient undo/redo (structural sharing)
+- [x] Docs: Pattern for browser clipboard
+- [x] Docs: Pattern for simple undo/redo
+- [x] Docs: Pattern for efficient undo/redo (structural sharing)
 
 ### Phase 7: Advanced Features
 **Goal:** Feature parity with React Flow
@@ -1102,10 +1102,6 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `preserveExternalConnections` option for paste (reconnect cloned nodes to existing external nodes)
 
 ### Next Immediate Tasks
-
-**Phase 6: Documentation (remaining)**
-1. Docs: Pattern for browser clipboard
-2. Docs: Pattern for undo/redo
 
 **Phase 7: Advanced Features**
 1. Minimap

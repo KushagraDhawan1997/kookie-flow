@@ -7,6 +7,7 @@ import {
   Settings01Icon,
   Clipboard01Icon,
   Keyboard01Icon,
+  ArrowTurnBackwardIcon,
 } from '@hugeicons/core-free-icons';
 
 export const docsNavigation: DocsNavigationConfig = {
@@ -53,6 +54,11 @@ export const docsNavigation: DocsNavigationConfig = {
           href: '/docs/plugins/keyboard-shortcuts',
           title: 'Keyboard Shortcuts',
           icon: Keyboard01Icon,
+        },
+        {
+          href: '/docs/plugins/undo-redo',
+          title: 'Undo/Redo',
+          icon: ArrowTurnBackwardIcon,
         },
       ],
     },

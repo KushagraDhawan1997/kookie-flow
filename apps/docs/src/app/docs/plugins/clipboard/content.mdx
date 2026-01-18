@@ -1,0 +1,177 @@
+---
+title: Clipboard
+description: Copy, paste, and cut nodes with the useClipboard hook
+---
+
+The `useClipboard` hook provides copy, paste, and cut operations for selected nodes and their connected edges.
+
+## Installation
+
+Import from the plugins subpath:
+
+```tsx
+import { useClipboard } from '@kushagradhawan/kookie-flow/plugins';
+```
+
+## Basic Usage
+
+```tsx
+function ClipboardControls() {
+  const { copy, paste, cut, hasClipboardContent } = useClipboard();
+
+  return (
+    <div>
+      <button onClick={copy}>Copy</button>
+      <button onClick={() => paste()} disabled={!hasClipboardContent()}>
+        Paste
+      </button>
+      <button onClick={cut}>Cut</button>
+    </div>
+  );
+}
+```
+
+## Options
+
+### Paste Offset
+
+Control where pasted nodes appear relative to the originals:
+
+```tsx
+const { paste } = useClipboard({
+  offset: { x: 100, y: 100 }, // Default: { x: 50, y: 50 }
+});
+```
+
+### Transform Data
+
+Modify node data during paste (useful for resetting state):
+
+```tsx
+const { paste } = useClipboard({
+  transformData: (data) => ({
+    ...data,
+    status: 'idle',
+    lastRun: null,
+  }),
+});
+```
+
+### Preserve External Connections
+
+When enabled, pasted nodes reconnect to their original neighbors:
+
+```tsx
+const { paste } = useClipboard({
+  preserveExternalConnections: true,
+});
+
+// Copy Node B (connected to A and C)
+// Paste → New Node B' is connected to original A and C
+```
+
+This is useful for duplicating a node while keeping its inputs wired up.
+
+### Per-Paste Overrides
+
+Override options for a single paste operation:
+
+```tsx
+const { paste } = useClipboard();
+
+// Normal paste (isolated)
+paste();
+
+// This paste keeps external connections
+paste({ preserveExternalConnections: true, offset: { x: 0, y: 100 } });
+```
+
+## Keyboard Shortcuts
+
+Combine with `useKeyboardShortcuts` for standard shortcuts:
+
+```tsx
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+function FlowWithClipboard() {
+  const { copy, paste, cut } = useClipboard();
+
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+c': copy,
+      'mod+v': () => paste(),
+      'mod+x': cut,
+    },
+  });
+
+  return <KookieFlow {...props} />;
+}
+```
+
+## Browser Clipboard Pattern
+
+The internal clipboard holds references in memory. For cross-tab or cross-app clipboard support, use the browser's Clipboard API with `toObject()`:
+
+```tsx
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+function BrowserClipboard() {
+  const store = useFlowStoreApi();
+
+  const copyToBrowser = async () => {
+    const { getSelectedNodes, getConnectedEdges, selectedNodeIds } = store.getState();
+    const nodes = getSelectedNodes();
+    const edges = getConnectedEdges(Array.from(selectedNodeIds));
+
+    const data = JSON.stringify({ nodes, edges });
+    await navigator.clipboard.writeText(data);
+  };
+
+  const pasteFromBrowser = async () => {
+    const text = await navigator.clipboard.readText();
+
+    try {
+      const { nodes, edges } = JSON.parse(text);
+      const { cloneElements, addElements, selectNodes, selectEdges } = store.getState();
+
+      // Clone with new IDs
+      const result = cloneElements(nodes, edges, {
+        offset: { x: 50, y: 50 },
+      });
+
+      // Add to graph and select
+      addElements({ nodes: result.nodes, edges: result.edges });
+      selectNodes(result.nodes.map(n => n.id));
+      selectEdges(result.edges.map(e => e.id));
+    } catch {
+      // Not valid flow data
+    }
+  };
+
+  return (
+    <>
+      <button onClick={copyToBrowser}>Copy to System</button>
+      <button onClick={pasteFromBrowser}>Paste from System</button>
+    </>
+  );
+}
+```
+
+## API Reference
+
+### useClipboard Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `offset` | `{ x: number; y: number }` | `{ x: 50, y: 50 }` | Position offset for pasted nodes |
+| `transformData` | `(data: T) => T` | - | Transform node data on paste |
+| `preserveExternalConnections` | `boolean` | `false` | Reconnect to original neighbors |
+
+### Return Value
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `copy` | `() => void` | Copy selected nodes to clipboard |
+| `paste` | `(options?) => CloneElementsResult \| null` | Paste from clipboard |
+| `cut` | `() => void` | Copy then delete selected |
+| `hasClipboardContent` | `() => boolean` | Check if clipboard has content |

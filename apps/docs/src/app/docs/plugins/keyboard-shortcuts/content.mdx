@@ -1,0 +1,168 @@
+---
+title: Keyboard Shortcuts
+description: Add configurable keyboard shortcuts with useKeyboardShortcuts
+---
+
+The `useKeyboardShortcuts` hook registers keyboard event listeners with support for modifier keys and configurable bindings.
+
+## Installation
+
+Import from the plugins subpath:
+
+```tsx
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+```
+
+## Basic Usage
+
+```tsx
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+function FlowWithShortcuts() {
+  const store = useFlowStoreApi();
+
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+a': () => store.getState().selectAll(),
+      'delete': () => store.getState().deleteSelected(),
+      'escape': () => store.getState().deselectAll(),
+    },
+  });
+
+  return <KookieFlow {...props} />;
+}
+```
+
+## Key Syntax
+
+### Modifier Keys
+
+| Key | macOS | Windows/Linux |
+|-----|-------|---------------|
+| `mod` | Command | Control |
+| `ctrl` | Control | Control |
+| `alt` | Option | Alt |
+| `shift` | Shift | Shift |
+| `meta` | Command | Windows |
+
+### Combining Modifiers
+
+Use `+` to combine modifiers with keys:
+
+```tsx
+useKeyboardShortcuts({
+  bindings: {
+    'mod+c': handleCopy,           // Cmd+C / Ctrl+C
+    'mod+shift+z': handleRedo,     // Cmd+Shift+Z / Ctrl+Shift+Z
+    'alt+delete': handleAltDelete, // Option+Delete / Alt+Delete
+  },
+});
+```
+
+### Special Keys
+
+```tsx
+useKeyboardShortcuts({
+  bindings: {
+    'delete': handleDelete,     // Delete/Backspace
+    'backspace': handleDelete,  // Backspace
+    'escape': handleCancel,     // Escape
+    'enter': handleConfirm,     // Enter
+    'space': handleToggle,      // Space
+    'arrowup': handleUp,        // Arrow keys
+    'arrowdown': handleDown,
+    'arrowleft': handleLeft,
+    'arrowright': handleRight,
+  },
+});
+```
+
+## Complete Example
+
+```tsx
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+function FlowControls() {
+  const store = useFlowStoreApi();
+  const { copy, paste, cut } = useClipboard();
+
+  useKeyboardShortcuts({
+    bindings: {
+      // Clipboard
+      'mod+c': copy,
+      'mod+v': () => paste(),
+      'mod+x': cut,
+
+      // Selection
+      'mod+a': () => store.getState().selectAll(),
+      'escape': () => store.getState().deselectAll(),
+
+      // Delete
+      'delete': () => store.getState().deleteSelected(),
+      'backspace': () => store.getState().deleteSelected(),
+
+      // Undo/Redo (if you implement history)
+      'mod+z': handleUndo,
+      'mod+shift+z': handleRedo,
+    },
+  });
+
+  return null; // Just registers shortcuts
+}
+```
+
+## Options
+
+### Enabled
+
+Conditionally enable/disable shortcuts:
+
+```tsx
+const [shortcutsEnabled, setShortcutsEnabled] = useState(true);
+
+useKeyboardShortcuts({
+  bindings: { ... },
+  enabled: shortcutsEnabled,
+});
+```
+
+### Target Element
+
+By default, shortcuts listen on `document`. You can scope to a specific element:
+
+```tsx
+const containerRef = useRef<HTMLDivElement>(null);
+
+useKeyboardShortcuts({
+  bindings: { ... },
+  target: containerRef,
+});
+```
+
+## Preventing Conflicts
+
+### With Input Fields
+
+Shortcuts are automatically disabled when the user is typing in an input, textarea, or contenteditable element.
+
+### With Browser Shortcuts
+
+Be careful not to override essential browser shortcuts. Prefer `mod+` over `ctrl+` to get platform-appropriate behavior.
+
+## API Reference
+
+### useKeyboardShortcuts Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `bindings` | `Record<string, KeyHandler>` | Required | Map of key combos to handlers |
+| `enabled` | `boolean` | `true` | Enable/disable all shortcuts |
+| `target` | `RefObject<HTMLElement>` | `document` | Element to attach listeners |
+
+### KeyHandler
+
+```tsx
+type KeyHandler = (event: KeyboardEvent) => void;
+```

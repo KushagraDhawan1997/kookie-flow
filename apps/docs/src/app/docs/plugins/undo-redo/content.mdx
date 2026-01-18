@@ -1,0 +1,218 @@
+---
+title: Undo/Redo
+description: Implement undo and redo with history patterns
+---
+
+Kookie Flow doesn't include built-in undo/redo to keep the core lightweight. Instead, you implement history using the store's `toObject()` and batch operations. This page shows two approaches.
+
+## Simple History (Snapshots)
+
+Store full snapshots of the flow state. Simple to implement, works well for small graphs.
+
+```tsx
+import { useState, useCallback } from 'react';
+import { useFlowStoreApi, type FlowObject } from '@kushagradhawan/kookie-flow';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+function useHistory(maxHistory = 50) {
+  const store = useFlowStoreApi();
+  const [past, setPast] = useState<FlowObject[]>([]);
+  const [future, setFuture] = useState<FlowObject[]>([]);
+
+  const saveSnapshot = useCallback(() => {
+    const snapshot = store.getState().toObject();
+    setPast((p) => [...p.slice(-maxHistory + 1), snapshot]);
+    setFuture([]); // Clear redo stack on new action
+  }, [store, maxHistory]);
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+
+    const current = store.getState().toObject();
+    const previous = past[past.length - 1];
+
+    setFuture((f) => [current, ...f]);
+    setPast((p) => p.slice(0, -1));
+
+    // Restore state
+    store.getState().setNodes(previous.nodes);
+    store.getState().setEdges(previous.edges);
+  }, [store, past]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+
+    const current = store.getState().toObject();
+    const next = future[0];
+
+    setPast((p) => [...p, current]);
+    setFuture((f) => f.slice(1));
+
+    // Restore state
+    store.getState().setNodes(next.nodes);
+    store.getState().setEdges(next.edges);
+  }, [store, future]);
+
+  return {
+    saveSnapshot,
+    undo,
+    redo,
+    canUndo: past.length > 0,
+    canRedo: future.length > 0,
+  };
+}
+```
+
+### Usage
+
+```tsx
+function FlowWithHistory() {
+  const { saveSnapshot, undo, redo, canUndo, canRedo } = useHistory();
+
+  // Save before destructive actions
+  const handleDelete = () => {
+    saveSnapshot();
+    store.getState().deleteSelected();
+  };
+
+  const handlePaste = () => {
+    saveSnapshot();
+    paste();
+  };
+
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+z': undo,
+      'mod+shift+z': redo,
+    },
+  });
+
+  return (
+    <>
+      <button onClick={undo} disabled={!canUndo}>Undo</button>
+      <button onClick={redo} disabled={!canRedo}>Redo</button>
+    </>
+  );
+}
+```
+
+## Efficient History (Commands)
+
+For large graphs, storing full snapshots is expensive. Use command-based history that stores only the changes.
+
+```tsx
+interface Command {
+  execute: () => void;
+  undo: () => void;
+}
+
+function useCommandHistory() {
+  const [past, setPast] = useState<Command[]>([]);
+  const [future, setFuture] = useState<Command[]>([]);
+
+  const execute = useCallback((command: Command) => {
+    command.execute();
+    setPast((p) => [...p, command]);
+    setFuture([]);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+    const command = past[past.length - 1];
+    command.undo();
+    setPast((p) => p.slice(0, -1));
+    setFuture((f) => [command, ...f]);
+  }, [past]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+    const command = future[0];
+    command.execute();
+    setFuture((f) => f.slice(1));
+    setPast((p) => [...p, command]);
+  }, [future]);
+
+  return { execute, undo, redo };
+}
+```
+
+### Example Commands
+
+```tsx
+// Delete command
+function createDeleteCommand(store: FlowStore, nodeIds: string[], edgeIds: string[]) {
+  const deletedNodes = store.getState().nodes.filter(n => nodeIds.includes(n.id));
+  const deletedEdges = store.getState().edges.filter(e => edgeIds.includes(e.id));
+
+  return {
+    execute: () => store.getState().deleteElements({ nodeIds, edgeIds }),
+    undo: () => store.getState().addElements({ nodes: deletedNodes, edges: deletedEdges }),
+  };
+}
+
+// Move command
+function createMoveCommand(
+  store: FlowStore,
+  updates: Array<{ id: string; from: XYPosition; to: XYPosition }>
+) {
+  return {
+    execute: () => store.getState().updateNodePositions(
+      updates.map(u => ({ id: u.id, position: u.to }))
+    ),
+    undo: () => store.getState().updateNodePositions(
+      updates.map(u => ({ id: u.id, position: u.from }))
+    ),
+  };
+}
+
+// Paste command
+function createPasteCommand(store: FlowStore, result: CloneElementsResult) {
+  return {
+    execute: () => store.getState().addElements({ nodes: result.nodes, edges: result.edges }),
+    undo: () => store.getState().deleteElements({
+      nodeIds: result.nodes.map(n => n.id),
+      edgeIds: result.edges.map(e => e.id),
+    }),
+  };
+}
+```
+
+### Usage
+
+```tsx
+function FlowWithCommands() {
+  const store = useFlowStoreApi();
+  const { execute, undo, redo } = useCommandHistory();
+
+  const handleDelete = () => {
+    const { selectedNodeIds, selectedEdgeIds } = store.getState();
+    const command = createDeleteCommand(
+      store,
+      Array.from(selectedNodeIds),
+      Array.from(selectedEdgeIds)
+    );
+    execute(command);
+  };
+
+  return (
+    <button onClick={handleDelete}>Delete</button>
+  );
+}
+```
+
+## Choosing an Approach
+
+| Approach | Memory | Complexity | Best For |
+|----------|--------|------------|----------|
+| Snapshots | O(n * history) | Low | Small graphs (<100 nodes) |
+| Commands | O(changes) | Medium | Large graphs, frequent edits |
+
+## Tips
+
+1. **Debounce drag operations** - Don't save a snapshot on every mouse move. Save once when drag ends.
+
+2. **Batch related changes** - If a single user action creates multiple changes, combine them into one history entry.
+
+3. **Limit history size** - Cap the history stack to prevent memory issues.
+
+4. **Consider Immer** - For complex undo/redo with structural sharing, consider using [Immer](https://immerjs.github.io/) with patches.
