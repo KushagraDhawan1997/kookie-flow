@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { JsonLd } from '@/components/json-ld';
 import './globals.css';
+import '@kushagradhawan/kookie-ui/styles.css';
+import '@kushagradhawan/kookie-blocks/styles.css';
+import { Providers } from '@/components/providers';
 
 const siteConfig = {
   name: 'Kookie Flow',
@@ -18,7 +21,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: {
     default: siteConfig.name,
-    template: `%s | ${siteConfig.name}`,
+    template: `%s – ${siteConfig.name}`,
   },
   description: siteConfig.description,
   keywords: [
@@ -84,11 +87,12 @@ export const viewport: Viewport = {
   ],
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="48x48" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -97,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <JsonLd />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

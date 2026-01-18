@@ -1,0 +1,98 @@
+---
+title: Installation
+description: Get started with Kookie Flow in your React project
+---
+
+Kookie Flow is a WebGL-native node graph library that combines React Flow's ergonomics with GPU-rendered performance at scale.
+
+## Installation
+
+Install Kookie Flow and its peer dependencies using your preferred package manager:
+
+```bash
+pnpm add @kushagradhawan/kookie-flow @react-three/fiber @react-three/drei three
+```
+
+Or with npm:
+
+```bash
+npm install @kushagradhawan/kookie-flow @react-three/fiber @react-three/drei three
+```
+
+## Requirements
+
+- React 19 or later
+- A modern browser with WebGL2 support
+
+## Peer Dependencies
+
+Kookie Flow uses React Three Fiber for WebGL rendering. Make sure you have these peer dependencies installed:
+
+| Package | Version |
+|---------|---------|
+| `react` | ≥19.0.0 |
+| `react-dom` | ≥19.0.0 |
+| `@react-three/fiber` | ≥9.0.0 |
+| `@react-three/drei` | ≥10.0.0 |
+| `three` | ≥0.170.0 |
+
+## Basic Setup
+
+Import the component and hook to get started:
+
+```tsx
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+
+function App() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [
+      {
+        id: 'node-1',
+        type: 'default',
+        position: { x: 0, y: 0 },
+        data: { label: 'Node 1' },
+        inputs: [{ id: 'in-1', name: 'Input', type: 'any' }],
+        outputs: [{ id: 'out-1', name: 'Output', type: 'any' }],
+      },
+    ],
+    initialEdges: [],
+  });
+
+  return (
+    <div style={{ width: '100vw', height: '100vh' }}>
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        showGrid
+      />
+    </div>
+  );
+}
+```
+
+## TypeScript
+
+Kookie Flow is written in TypeScript and ships with full type definitions. Import types as needed:
+
+```tsx
+import type { Node, Edge } from '@kushagradhawan/kookie-flow';
+
+const myNode: Node = {
+  id: 'node-1',
+  type: 'default',
+  position: { x: 100, y: 100 },
+  data: { label: 'My Node' },
+  inputs: [],
+  outputs: [],
+};
+```
+
+## Next Steps
+
+- [Quick Start](/docs/quick-start) — Build your first flow
+- [Nodes](/docs/nodes) — Learn about node types and sockets
+- [Edges](/docs/edges) — Connect nodes with edges
+- [Demo](/demo) — See Kookie Flow in action

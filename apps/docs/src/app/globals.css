@@ -1,10 +1,20 @@
-@import 'tailwindcss';
+@import 'tailwindcss/preflight';
+
+/* Minimal global styles - Kookie UI handles the rest */
 
 html,
 body {
   height: 100%;
-  width: 100%;
-  overflow: hidden;
-  background: #0a0a0a;
-  color: #ffffff;
+  margin: 0;
+  padding: 0;
+}
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Code block styling overrides if needed */
+[data-rehype-pretty-code-fragment] {
+  position: relative;
 }
