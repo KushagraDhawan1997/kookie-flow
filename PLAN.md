@@ -673,7 +673,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 **Deferred:**
 - [x] Auto-scroll when dragging near viewport edges
 
-### Phase 6: Core Operations & Event Plugins
+### Phase 6: Core Operations & Event Plugins ✅ MOSTLY COMPLETE
 **Goal:** Optimized core operations for clipboard/history patterns + event-handling plugins
 
 **Architecture Principle:** Core handles all performance-critical operations (cloning, batch updates, ID generation). Plugins are thin wrappers for event handling. Users who need custom behavior call the same optimized core methods.
@@ -703,10 +703,11 @@ store.deleteElements({ nodeIds, edgeIds }): void
 store.deleteSelected(): void
 
 // Internal clipboard (no serialization, holds references)
-store.copySelectedToInternal(): void
+store.copySelectedToInternal(): void  // stores nodes + ALL connected edges
 store.pasteFromInternal(options?: {
   offset?: { x, y },
   transformData?: (data: T) => T,
+  preserveExternalConnections?: boolean,  // default: false - reconnect to existing nodes
 }): void
 store.cutSelectedToInternal(): void
 
@@ -838,14 +839,15 @@ function useSimpleHistory(maxSize = 50) {
 ```
 
 **Tasks:**
-- [ ] Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
-- [ ] Core: `addElements()` with batch state update + batch quadtree insert
-- [ ] Core: `deleteElements()`, `deleteSelected()`
-- [ ] Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
-- [ ] Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
-- [ ] Plugin: `useClipboard` (thin wrapper)
-- [ ] Plugin: `useKeyboardShortcuts`
-- [ ] Plugin: `useContextMenu` (right-click + long-press)
+- [x] Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
+- [x] Core: `addElements()` with batch state update + batch quadtree insert
+- [x] Core: `deleteElements()`, `deleteSelected()`
+- [x] Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
+- [x] Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
+- [x] Core: `preserveExternalConnections` option for paste (reconnect to existing nodes)
+- [x] Plugin: `useClipboard` (thin wrapper with per-paste option override)
+- [x] Plugin: `useKeyboardShortcuts`
+- [x] Plugin: `useContextMenu` (right-click + long-press)
 - [ ] Docs: Pattern for browser clipboard
 - [ ] Docs: Pattern for simple undo/redo
 - [ ] Docs: Pattern for efficient undo/redo (structural sharing)
@@ -1088,20 +1090,27 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Delete selected edges (Delete/Backspace key)
 - [x] Cached socket lookup in ConnectionLine for O(1) hot path
 - [x] Auto-scroll when dragging nodes near viewport edges (RAF-based, proportional speed)
+- [x] Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
+- [x] Core: `addElements()` with batch state update + batch quadtree insert
+- [x] Core: `deleteElements()`, `deleteSelected()`
+- [x] Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
+- [x] Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
+- [x] Plugin: `useClipboard` (thin wrapper for internal clipboard)
+- [x] Plugin: `useKeyboardShortcuts` (configurable key bindings with mod support)
+- [x] Plugin: `useContextMenu` (right-click + long-press handling)
+- [x] Package exports for `@kushagradhawan/kookie-flow/plugins`
+- [x] `preserveExternalConnections` option for paste (reconnect cloned nodes to existing external nodes)
 
 ### Next Immediate Tasks
 
-**Phase 6: Core Operations & Event Plugins**
-1. Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
-2. Core: `addElements()` with batch state update + batch quadtree insert
-3. Core: `deleteElements()`, `deleteSelected()`
-4. Core: `copySelectedToInternal()`, `pasteFromInternal()`, `cutSelectedToInternal()`
-5. Core: `toObject()`, `getSelectedNodes()`, `getConnectedEdges()`
-6. Plugin: `useClipboard` (thin wrapper)
-7. Plugin: `useKeyboardShortcuts`
-8. Plugin: `useContextMenu` (right-click + long-press)
-9. Docs: Pattern for browser clipboard
-10. Docs: Pattern for undo/redo
+**Phase 6: Documentation (remaining)**
+1. Docs: Pattern for browser clipboard
+2. Docs: Pattern for undo/redo
+
+**Phase 7: Advanced Features**
+1. Minimap
+2. Edge labels
+3. Edge markers (arrows)
 
 ---
 

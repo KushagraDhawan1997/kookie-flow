@@ -20,6 +20,9 @@ export {
 
 export { isSocketCompatible, validateConnection, areTypesCompatible } from './utils/connections';
 
+// Store types
+export type { FlowState, FlowStore } from './core/store';
+
 // Types
 export type {
   XYPosition,
@@ -41,6 +44,14 @@ export type {
   NodeTypeDefinition,
   NodeComponentProps,
   KookieFlowProps,
+  // Phase 6 types
+  CloneElementsOptions,
+  CloneElementsResult,
+  ElementsBatch,
+  DeleteElementsBatch,
+  FlowObject,
+  InternalClipboard,
+  PasteFromInternalOptions,
 } from './types';
 
 // Constants

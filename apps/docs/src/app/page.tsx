@@ -1,7 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
-import { KookieFlow, useGraph, type Node, type Edge } from '@kushagradhawan/kookie-flow';
+import { useMemo, useState, useEffect } from 'react';
+import {
+  KookieFlow,
+  useGraph,
+  useFlowStoreApi,
+  type Node,
+  type Edge,
+} from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
 
 // Socket type patterns for variety
 const socketPatterns = [
@@ -19,9 +26,7 @@ const socketPatterns = [
       { name: 'Image', type: 'image' },
       { name: 'Mask', type: 'mask' },
     ],
-    outputs: [
-      { name: 'Output', type: 'image' },
-    ],
+    outputs: [{ name: 'Output', type: 'image' }],
   },
   // Model loader: string path, model output
   {
@@ -103,10 +108,134 @@ function generateEdges(nodeCount: number): Edge[] {
   return edges;
 }
 
-export default function Home() {
-  // Reduced count for socket testing (can increase after verification)
-  const nodeCount = 100;
+function ClipboardDemo() {
+  const store = useFlowStoreApi();
+  const { copy, paste, cut, hasClipboardContent } = useClipboard();
+  const [clipboardSize, setClipboardSize] = useState(0);
+  const [preserveExternal, setPreserveExternal] = useState(true);
 
+  // Update clipboard size display when clipboard changes
+  useEffect(() => {
+    const unsubscribe = store.subscribe(
+      (state) => state.internalClipboard,
+      (clipboard) => {
+        setClipboardSize(clipboard?.nodes.length ?? 0);
+      }
+    );
+    return unsubscribe;
+  }, [store]);
+
+  // Set up keyboard shortcuts
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+c': () => {
+        copy();
+        const clipboard = store.getState().internalClipboard;
+        setClipboardSize(clipboard?.nodes.length ?? 0);
+      },
+      'mod+v': () => paste({ preserveExternalConnections: preserveExternal }),
+      'mod+x': () => {
+        cut();
+        setClipboardSize(0);
+      },
+      'mod+a': () => store.getState().selectAll(),
+      delete: () => store.getState().deleteSelected(),
+      escape: () => store.getState().deselectAll(),
+    },
+  });
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        zIndex: 10,
+        background: 'rgba(0,0,0,0.8)',
+        padding: '12px 16px',
+        borderRadius: 8,
+        fontSize: 12,
+        minWidth: 220,
+        pointerEvents: 'auto',
+      }}
+    >
+      <h2 style={{ fontSize: 14, marginBottom: 8 }}>Clipboard</h2>
+      <p style={{ color: clipboardSize > 0 ? '#4ade80' : '#666' }}>
+        {clipboardSize > 0 ? `${clipboardSize} nodes copied` : 'Empty'}
+      </p>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+        <button
+          onClick={copy}
+          style={{
+            padding: '4px 8px',
+            background: '#333',
+            border: '1px solid #555',
+            borderRadius: 4,
+            color: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Copy
+        </button>
+        <button
+          onClick={() => paste({ preserveExternalConnections: preserveExternal })}
+          disabled={!hasClipboardContent()}
+          style={{
+            padding: '4px 8px',
+            background: hasClipboardContent() ? '#333' : '#222',
+            border: '1px solid #555',
+            borderRadius: 4,
+            color: hasClipboardContent() ? '#fff' : '#666',
+            cursor: hasClipboardContent() ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Paste
+        </button>
+        <button
+          onClick={cut}
+          style={{
+            padding: '4px 8px',
+            background: '#333',
+            border: '1px solid #555',
+            borderRadius: 4,
+            color: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Cut
+        </button>
+      </div>
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 10,
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={preserveExternal}
+          onChange={(e) => setPreserveExternal(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <span style={{ color: preserveExternal ? '#4ade80' : '#888' }}>
+          Keep external connections
+        </span>
+      </label>
+      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>
+        {preserveExternal
+          ? 'Pasted nodes will reconnect to original neighbors'
+          : 'Pasted nodes are isolated (internal edges only)'}
+      </p>
+      <p style={{ color: '#444', fontSize: 10, marginTop: 4 }}>Shortcuts: ⌘C ⌘V ⌘X ⌘A Del Esc</p>
+    </div>
+  );
+}
+
+export default function Home() {
+  const nodeCount = 25; // Smaller for demo
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
@@ -134,7 +263,7 @@ export default function Home() {
           {nodes.length} nodes, {edges.length} edges
         </p>
         <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-          Drag from sockets to connect
+          Select nodes → copy/paste/delete
         </p>
       </div>
 
@@ -147,7 +276,9 @@ export default function Home() {
         showGrid
         showStats
         scaleTextWithZoom
-      />
+      >
+        <ClipboardDemo />
+      </KookieFlow>
     </main>
   );
 }

@@ -148,6 +148,72 @@ export interface NodeComponentProps<T extends NodeData = NodeData> {
   onChange: (data: Partial<T>) => void;
 }
 
+/** Options for cloning elements */
+export interface CloneElementsOptions<T extends NodeData = NodeData> {
+  /** Offset to apply to cloned node positions */
+  offset?: XYPosition;
+  /** Transform function for node data (for app-specific transformations) */
+  transformData?: (data: T) => T;
+  /** Custom ID generation function */
+  generateId?: () => string;
+  /**
+   * When true, edges with one endpoint outside the cloned set will preserve
+   * that external reference instead of being filtered out.
+   * Default: false
+   */
+  preserveExternalConnections?: boolean;
+}
+
+/** Result of cloning elements */
+export interface CloneElementsResult {
+  /** Cloned nodes with new IDs */
+  nodes: Node[];
+  /** Cloned edges with new IDs and remapped node references */
+  edges: Edge[];
+  /** Map from old ID to new ID */
+  idMap: Map<string, string>;
+}
+
+/** Elements batch (for add/delete operations) */
+export interface ElementsBatch {
+  nodes?: Node[];
+  edges?: Edge[];
+}
+
+/** Delete elements batch (by ID) */
+export interface DeleteElementsBatch {
+  nodeIds?: string[];
+  edgeIds?: string[];
+}
+
+/** Serialized flow state */
+export interface FlowObject {
+  nodes: Node[];
+  edges: Edge[];
+  viewport: Viewport;
+}
+
+/** Internal clipboard state */
+export interface InternalClipboard {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+/** Options for pasting from internal clipboard */
+export interface PasteFromInternalOptions<T extends NodeData = NodeData> {
+  /** Offset to apply to pasted node positions. Default: { x: 50, y: 50 } */
+  offset?: XYPosition;
+  /** Transform function for node data (for app-specific transformations) */
+  transformData?: (data: T) => T;
+  /**
+   * Preserve external connections when pasting.
+   * When true, edges connecting to non-copied nodes will be recreated,
+   * connecting the pasted nodes to the original external nodes.
+   * Default: false (only internal edges are pasted)
+   */
+  preserveExternalConnections?: boolean;
+}
+
 /** KookieFlow component props */
 export interface KookieFlowProps {
   /** Nodes in the graph */

@@ -9,9 +9,21 @@ import type {
   Connection,
   XYPosition,
   SocketHandle,
+  CloneElementsOptions,
+  CloneElementsResult,
+  ElementsBatch,
+  DeleteElementsBatch,
+  FlowObject,
+  InternalClipboard,
+  PasteFromInternalOptions,
+  NodeData,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
 import { Quadtree, getNodeBounds } from './spatial';
+
+// Pre-allocated ID pool for efficient cloning
+let idCounter = 0;
+const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
 
 export interface FlowState {
   /** Nodes in the graph */
@@ -45,6 +57,9 @@ export interface FlowState {
 
   /** Quadtree for O(log n) spatial queries */
   quadtree: Quadtree;
+
+  /** Internal clipboard (holds references, no serialization) */
+  internalClipboard: InternalClipboard | null;
 
   /** Internal actions */
   setNodes: (nodes: Node[]) => void;
@@ -82,6 +97,74 @@ export interface FlowState {
 
   /** Efficient batch position update for dragging */
   updateNodePositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
+
+  // ========================================
+  // Phase 6: Core Operations
+  // ========================================
+
+  /**
+   * Clone nodes and edges with new IDs.
+   * Single-pass operation with pre-allocated ID pool and edge remapping.
+   */
+  cloneElements: <T extends NodeData = NodeData>(
+    nodes: Node<T>[],
+    edges: Edge[],
+    options?: CloneElementsOptions<T>
+  ) => CloneElementsResult;
+
+  /**
+   * Batch add nodes and edges in a single state update.
+   * More efficient than multiple applyNodeChanges/applyEdgeChanges calls.
+   */
+  addElements: (batch: ElementsBatch) => void;
+
+  /**
+   * Delete nodes and edges by ID.
+   * Automatically removes edges connected to deleted nodes.
+   */
+  deleteElements: (batch: DeleteElementsBatch) => void;
+
+  /**
+   * Delete all currently selected nodes and edges.
+   * Convenience wrapper around deleteElements.
+   */
+  deleteSelected: () => void;
+
+  /**
+   * Copy selected nodes and connected edges to internal clipboard.
+   * No serialization - just holds references.
+   */
+  copySelectedToInternal: () => void;
+
+  /**
+   * Paste from internal clipboard.
+   * Clones the clipboard contents with new IDs.
+   */
+  pasteFromInternal: <T extends NodeData = NodeData>(
+    options?: Omit<CloneElementsOptions<T>, 'generateId'>
+  ) => CloneElementsResult | null;
+
+  /**
+   * Cut selected nodes and edges to internal clipboard.
+   * Copies then deletes.
+   */
+  cutSelectedToInternal: () => void;
+
+  /**
+   * Serialize current flow state to a plain object.
+   * For persistence or browser clipboard.
+   */
+  toObject: () => FlowObject;
+
+  /**
+   * Get currently selected nodes.
+   */
+  getSelectedNodes: () => Node[];
+
+  /**
+   * Get edges connected to the given node IDs.
+   */
+  getConnectedEdges: (nodeIds: string[]) => Edge[];
 }
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
@@ -125,6 +208,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Derived state for O(1) lookups
       nodeMap,
       quadtree,
+
+      // Internal clipboard
+      internalClipboard: null,
 
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
@@ -409,6 +495,245 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         set({ nodes: nextNodes });
+      },
+
+      // ========================================
+      // Phase 6: Core Operations Implementation
+      // ========================================
+
+      cloneElements: <T extends NodeData = NodeData>(
+        nodesToClone: Node<T>[],
+        edgesToClone: Edge[],
+        options?: CloneElementsOptions<T>
+      ): CloneElementsResult => {
+        const {
+          offset = { x: 50, y: 50 },
+          transformData,
+          generateId = defaultGenerateId,
+          preserveExternalConnections = false,
+        } = options ?? {};
+
+        // Build ID map in single pass
+        const idMap = new Map<string, string>();
+        for (const node of nodesToClone) {
+          idMap.set(node.id, generateId());
+        }
+
+        // Clone nodes with new IDs and offset positions
+        const clonedNodes: Node[] = nodesToClone.map((node) => {
+          const newId = idMap.get(node.id)!;
+          const newData = transformData ? transformData(node.data as T) : { ...node.data };
+          return {
+            ...node,
+            id: newId,
+            position: {
+              x: node.position.x + offset.x,
+              y: node.position.y + offset.y,
+            },
+            data: newData,
+            selected: false,
+          };
+        });
+
+        // Build set of cloned node IDs for fast lookup
+        const clonedNodeIdSet = new Set(nodesToClone.map((n) => n.id));
+
+        // Clone edges, remapping source/target
+        const clonedEdges: Edge[] = [];
+        for (const edge of edgesToClone) {
+          const sourceInCloned = clonedNodeIdSet.has(edge.source);
+          const targetInCloned = clonedNodeIdSet.has(edge.target);
+
+          if (sourceInCloned && targetInCloned) {
+            // Internal edge: remap both endpoints
+            const newSource = idMap.get(edge.source)!;
+            const newTarget = idMap.get(edge.target)!;
+            clonedEdges.push({
+              ...edge,
+              id: generateId(),
+              source: newSource,
+              target: newTarget,
+              selected: false,
+            });
+          } else if (preserveExternalConnections) {
+            // External edge: remap only the cloned endpoint, keep external reference
+            if (sourceInCloned) {
+              // Source is cloned, target is external
+              clonedEdges.push({
+                ...edge,
+                id: generateId(),
+                source: idMap.get(edge.source)!,
+                target: edge.target, // Keep original external target
+                selected: false,
+              });
+            } else if (targetInCloned) {
+              // Target is cloned, source is external
+              clonedEdges.push({
+                ...edge,
+                id: generateId(),
+                source: edge.source, // Keep original external source
+                target: idMap.get(edge.target)!,
+                selected: false,
+              });
+            }
+          }
+          // If not preserveExternalConnections and edge is external, skip it
+        }
+
+        return { nodes: clonedNodes, edges: clonedEdges, idMap };
+      },
+
+      addElements: (batch) => {
+        const { nodes: currentNodes, edges: currentEdges } = get();
+        const { nodes: newNodes = [], edges: newEdges = [] } = batch;
+
+        if (newNodes.length === 0 && newEdges.length === 0) return;
+
+        // Single state update with all new elements
+        const nextNodes = [...currentNodes, ...newNodes];
+        const nextEdges = [...currentEdges, ...newEdges];
+
+        // Rebuild derived state once
+        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
+        set({ nodes: nextNodes, edges: nextEdges, nodeMap, quadtree });
+      },
+
+      deleteElements: (batch) => {
+        const { nodes, edges, selectedNodeIds, selectedEdgeIds } = get();
+        const { nodeIds = [], edgeIds = [] } = batch;
+
+        if (nodeIds.length === 0 && edgeIds.length === 0) return;
+
+        // Build sets for O(1) lookup
+        const nodeIdsToDelete = new Set(nodeIds);
+        const edgeIdsToDelete = new Set(edgeIds);
+
+        // Also delete edges connected to deleted nodes
+        for (const edge of edges) {
+          if (nodeIdsToDelete.has(edge.source) || nodeIdsToDelete.has(edge.target)) {
+            edgeIdsToDelete.add(edge.id);
+          }
+        }
+
+        // Filter out deleted elements
+        const nextNodes = nodes.filter((n) => !nodeIdsToDelete.has(n.id));
+        const nextEdges = edges.filter((e) => !edgeIdsToDelete.has(e.id));
+
+        // Update selection - remove deleted items
+        const nextSelectedNodeIds = new Set(selectedNodeIds);
+        const nextSelectedEdgeIds = new Set(selectedEdgeIds);
+        for (const id of nodeIdsToDelete) {
+          nextSelectedNodeIds.delete(id);
+        }
+        for (const id of edgeIdsToDelete) {
+          nextSelectedEdgeIds.delete(id);
+        }
+
+        // Rebuild derived state
+        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          nodeMap,
+          quadtree,
+          selectedNodeIds: nextSelectedNodeIds,
+          selectedEdgeIds: nextSelectedEdgeIds,
+        });
+      },
+
+      deleteSelected: () => {
+        const { selectedNodeIds, selectedEdgeIds, deleteElements } = get();
+        deleteElements({
+          nodeIds: Array.from(selectedNodeIds),
+          edgeIds: Array.from(selectedEdgeIds),
+        });
+      },
+
+      copySelectedToInternal: () => {
+        const { getSelectedNodes, getConnectedEdges, selectedNodeIds } = get();
+        const selectedNodes = getSelectedNodes();
+
+        if (selectedNodes.length === 0) return;
+
+        // Get ALL edges connected to selected nodes (both internal and external)
+        // Filtering to internal-only or preserving external happens at paste time
+        const nodeIds = Array.from(selectedNodeIds);
+        const connectedEdges = getConnectedEdges(nodeIds);
+
+        set({
+          internalClipboard: {
+            nodes: selectedNodes,
+            edges: connectedEdges,
+          },
+        });
+      },
+
+      pasteFromInternal: <T extends NodeData = NodeData>(
+        options?: PasteFromInternalOptions<T>
+      ): CloneElementsResult | null => {
+        const { internalClipboard, cloneElements, addElements, selectNodes, selectEdges } = get();
+
+        if (!internalClipboard || internalClipboard.nodes.length === 0) {
+          return null;
+        }
+
+        const { preserveExternalConnections = false } = options ?? {};
+        const clipboardNodeIds = new Set(internalClipboard.nodes.map((n) => n.id));
+
+        // Filter edges based on preserveExternalConnections option
+        // - false (default): only edges where BOTH endpoints are in clipboard (internal edges)
+        // - true: all edges where AT LEAST ONE endpoint is in clipboard (reconnect to existing nodes)
+        const edgesToClone = preserveExternalConnections
+          ? internalClipboard.edges
+          : internalClipboard.edges.filter(
+              (e) => clipboardNodeIds.has(e.source) && clipboardNodeIds.has(e.target)
+            );
+
+        // Clone with default offset
+        const result = cloneElements(
+          internalClipboard.nodes as Node<T>[],
+          edgesToClone,
+          {
+            offset: options?.offset ?? { x: 50, y: 50 },
+            transformData: options?.transformData,
+            // For external connections, we need to preserve the original external node references
+            preserveExternalConnections,
+          }
+        );
+
+        // Add to graph
+        addElements({ nodes: result.nodes, edges: result.edges });
+
+        // Select pasted elements
+        selectNodes(result.nodes.map((n) => n.id));
+        selectEdges(result.edges.map((e) => e.id));
+
+        return result;
+      },
+
+      cutSelectedToInternal: () => {
+        const { copySelectedToInternal, deleteSelected } = get();
+        copySelectedToInternal();
+        deleteSelected();
+      },
+
+      toObject: (): FlowObject => {
+        const { nodes, edges, viewport } = get();
+        return { nodes, edges, viewport };
+      },
+
+      getSelectedNodes: (): Node[] => {
+        const { nodes, selectedNodeIds } = get();
+        if (selectedNodeIds.size === 0) return [];
+        return nodes.filter((n) => selectedNodeIds.has(n.id));
+      },
+
+      getConnectedEdges: (nodeIds: string[]): Edge[] => {
+        const { edges } = get();
+        if (nodeIds.length === 0) return [];
+
+        const nodeIdSet = new Set(nodeIds);
+        return edges.filter((e) => nodeIdSet.has(e.source) || nodeIdSet.has(e.target));
       },
     }))
   );
