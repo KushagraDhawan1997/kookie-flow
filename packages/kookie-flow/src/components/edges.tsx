@@ -336,11 +336,47 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       const x1 = targetNode.position.x;
       const y1 = targetNode.position.y + targetYOffset;
 
-      // Frustum culling
-      const edgeMinX = Math.min(x0, x1);
-      const edgeMaxX = Math.max(x0, x1);
-      const edgeMinY = Math.min(y0, y1);
-      const edgeMaxY = Math.max(y0, y1);
+      // Get edge type early - needed for control point calculation before culling
+      const edgeType = edge.type ?? defaultEdgeType;
+
+      // Calculate bezier control points BEFORE culling to get accurate bounding box
+      // Control points can extend beyond endpoints (especially when source is right of target)
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const absDx = Math.abs(dx);
+
+      let cx1: number, cy1: number, cx2: number, cy2: number;
+
+      if (edgeType === 'straight') {
+        cx1 = x0; cy1 = y0;
+        cx2 = x1; cy2 = y1;
+      } else if (edgeType === 'step') {
+        // For step edges, the midpoint extends the bounds
+        const midX = x0 + dx / 2;
+        cx1 = midX; cy1 = y0;
+        cx2 = midX; cy2 = y1;
+      } else if (edgeType === 'smoothstep') {
+        // Smoothstep: constrained curve, scales with distance
+        const offset = Math.min(absDx * 0.5, 100);
+        cx1 = x0 + offset; cy1 = y0;
+        cx2 = x1 - offset; cy2 = y1;
+      } else {
+        // Bezier: adaptive offset based on distance
+        // - For close nodes, use minimal offset for direct connection
+        // - For far nodes, use proportional offset for nice curve
+        // - Consider vertical distance too
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
+        const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
+        cx1 = x0 + offset; cy1 = y0;
+        cx2 = x1 - offset; cy2 = y1;
+      }
+
+      // Frustum culling - include control points in bounding box for accurate Bezier culling
+      const edgeMinX = Math.min(x0, x1, cx1, cx2);
+      const edgeMaxX = Math.max(x0, x1, cx1, cx2);
+      const edgeMinY = Math.min(y0, y1, cy1, cy2);
+      const edgeMaxY = Math.max(y0, y1, cy1, cy2);
 
       if (
         edgeMaxX < viewLeft - cullPadding ||
@@ -350,9 +386,6 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       ) {
         continue;
       }
-
-      // Get edge type and color
-      const edgeType = edge.type ?? defaultEdgeType;
 
       // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
       // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
@@ -388,37 +421,6 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
           cg = tempColor.g;
           cb = tempColor.b;
         }
-      }
-
-      // Calculate bezier control points
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      const absDx = Math.abs(dx);
-
-      let cx1: number, cy1: number, cx2: number, cy2: number;
-
-      if (edgeType === 'straight') {
-        cx1 = x0; cy1 = y0;
-        cx2 = x1; cy2 = y1;
-      } else if (edgeType === 'step') {
-        // For step, we'll handle it differently below
-        cx1 = x0; cy1 = y0;
-        cx2 = x1; cy2 = y1;
-      } else if (edgeType === 'smoothstep') {
-        // Smoothstep: constrained curve, scales with distance
-        const offset = Math.min(absDx * 0.5, 100);
-        cx1 = x0 + offset; cy1 = y0;
-        cx2 = x1 - offset; cy2 = y1;
-      } else {
-        // Bezier: adaptive offset based on distance
-        // - For close nodes, use minimal offset for direct connection
-        // - For far nodes, use proportional offset for nice curve
-        // - Consider vertical distance too
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
-        const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
-        cx1 = x0 + offset; cy1 = y0;
-        cx2 = x1 - offset; cy2 = y1;
       }
 
       // Generate curve points into pre-allocated buffer (avoids GC)
@@ -587,7 +589,7 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
   });
 
   return (
-    <mesh ref={meshRef} material={material}>
+    <mesh ref={meshRef} material={material} frustumCulled={false}>
       <bufferGeometry />
     </mesh>
   );
