@@ -22,6 +22,8 @@ export interface DOMLayerProps {
   scaleTextWithZoom?: boolean;
   /** Default edge type for label positioning. Default: 'bezier' */
   defaultEdgeType?: EdgeType;
+  /** Show node header labels. Default: true */
+  showNodeLabels?: boolean;
   /** Show socket labels. Default: true */
   showSocketLabels?: boolean;
   /** Show edge labels. Default: true */
@@ -57,6 +59,7 @@ export function DOMLayer({
   nodeTypes = {},
   scaleTextWithZoom = false,
   defaultEdgeType = 'bezier',
+  showNodeLabels = true,
   showSocketLabels = true,
   showEdgeLabels = true,
   children,
@@ -64,7 +67,7 @@ export function DOMLayer({
   if (scaleTextWithZoom) {
     return (
       <div style={containerStyle}>
-        <ScaledContainer nodeTypes={nodeTypes} />
+        {showNodeLabels && <ScaledContainer nodeTypes={nodeTypes} />}
         {showSocketLabels && <SocketLabelsContainer />}
         {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
         {children}
@@ -74,7 +77,7 @@ export function DOMLayer({
 
   return (
     <div style={containerStyle}>
-      <CrispLabelsContainer nodeTypes={nodeTypes} />
+      {showNodeLabels && <CrispLabelsContainer nodeTypes={nodeTypes} />}
       {showSocketLabels && <SocketLabelsContainer />}
       {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
       {children}

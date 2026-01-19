@@ -878,6 +878,118 @@ function useSimpleHistory(maxSize = 50) {
 - Visibility props use conditional rendering (zero overhead when disabled)
 - All respect edge selection state and colors
 
+### Phase 7.5: WebGL Text Rendering (MSDF)
+**Goal:** Replace DOM text with GPU-rendered instanced MSDF for 10k+ node performance
+
+**Problem:**
+- DOM labels cause 30-40fps drop at scale (1000+ nodes with socket/edge labels)
+- Each DOM element = composite layer overhead
+- troika-three-text = 1 draw call per Text instance (500+ = performance death)
+- No maintained R3F library does instanced MSDF properly
+
+**Solution: Custom Instanced MSDF Renderer**
+
+One `InstancedMesh` where each instance = one glyph quad:
+```
+"Node 1" = 6 glyph instances (N, o, d, e, space, 1)
+10,000 labels × ~8 glyphs avg = 80,000 glyph instances
+= 1 draw call
+= 60fps
+```
+
+**Build Step (MSDF Atlas Generation):**
+- [ ] Add `msdf-bmfont-xml` as dev dependency
+- [ ] Generate MSDF atlas from Inter font (or system font)
+- [ ] Output: `inter-msdf.png` (atlas texture) + `inter-msdf.json` (glyph metrics)
+- [ ] Add build script: `pnpm generate:fonts`
+- [ ] Include pre-generated atlas in package for zero-config usage
+
+**Core Component: `<TextRenderer>`**
+- [ ] Single `InstancedMesh` with MSDF shader material
+- [ ] Per-glyph instance attributes:
+  - `position` (vec3): world position of glyph quad
+  - `uvOffset` (vec4): glyph location in atlas (x, y, width, height)
+  - `scale` (float): font size multiplier
+  - `color` (vec3): text color
+- [ ] Pre-allocated buffers (max glyph capacity, dirty flags)
+- [ ] Text layout engine: character positioning, word boundaries
+- [ ] Anchor points: left, center, right alignment
+
+**MSDF Shader:**
+- [ ] Vertex shader: billboard quads from instance attributes
+- [ ] Fragment shader: MSDF sampling with `median(r, g, b)` technique
+- [ ] Anti-aliasing via `fwidth()` for screen-space smoothing
+- [ ] Color uniform with per-instance override
+- [ ] Alpha threshold for crisp edges
+
+**Integration with Existing Systems:**
+- [ ] `<NodeLabels>` → feeds entries to TextRenderer (replaces `CrispLabelsContainer`)
+- [ ] `<SocketLabels>` → feeds entries to TextRenderer (replaces `SocketLabelsContainer`)
+- [ ] `<EdgeLabels>` → feeds entries to TextRenderer (replaces `EdgeLabelsContainer`)
+- [ ] Subscribe to store for position updates (same pattern as current DOM labels)
+- [ ] Viewport culling: skip glyphs outside frustum
+- [ ] LOD: hide all text below `MIN_TEXT_ZOOM` threshold
+
+**LOD Strategy:**
+```typescript
+const MIN_TEXT_ZOOM = 0.3;      // Below this, hide ALL text
+const MIN_SOCKET_ZOOM = 0.5;    // Below this, hide socket labels
+const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
+// Node headers visible longest (most important)
+```
+
+**API:**
+```typescript
+// Internal usage (components feed text entries)
+<TextRenderer
+  entries={[
+    { id: 'node-1-header', text: 'Add', position: [x, y, 0], fontSize: 14, color: '#fff', anchor: 'left' },
+    { id: 'node-1-in-0', text: 'A', position: [sx, sy, 0], fontSize: 10, color: '#888', anchor: 'right' },
+    // ...
+  ]}
+  font={fontAtlas}     // Pre-loaded MSDF atlas + metrics
+  visible={zoom > MIN_TEXT_ZOOM}
+/>
+
+// Props on <KookieFlow> remain the same
+<KookieFlow
+  showSocketLabels={true}   // Now GPU-rendered
+  showEdgeLabels={true}     // Now GPU-rendered
+  // Node headers always shown (controlled by LOD internally)
+/>
+```
+
+**Performance Targets:**
+- 10,000 nodes with all labels: 60fps
+- Single draw call for all text
+- Zero GC pressure (pre-allocated buffers, no per-frame allocations)
+- <1ms for full text buffer rebuild
+
+**Tasks:**
+- [ ] Build: Add `msdf-bmfont-xml`, create font generation script
+- [ ] Build: Generate Inter MSDF atlas, include in package
+- [ ] Core: `TextRenderer.tsx` - instanced mesh with MSDF material
+- [ ] Core: `msdf-shader.ts` - vertex/fragment shaders
+- [ ] Core: `text-layout.ts` - character positioning from metrics
+- [ ] Core: Glyph buffer management (pre-allocated, dirty flags)
+- [ ] Integration: Replace `CrispLabelsContainer` with TextRenderer entries
+- [ ] Integration: Replace `SocketLabelsContainer` with TextRenderer entries
+- [ ] Integration: Replace `EdgeLabelsContainer` with TextRenderer entries
+- [ ] LOD: Zoom-based visibility thresholds per label type
+- [ ] Culling: Skip glyphs outside viewport bounds
+- [ ] Test: Verify 10k nodes at 60fps with all labels enabled
+
+**What Stays in DOM:**
+- Input widgets (text fields, sliders, dropdowns) — interactive, few in number
+- Custom node content (user's React components) — escape hatch
+- Tooltips (if added later)
+
+**References:**
+- [msdf-bmfont-xml](https://github.com/soimy/msdf-bmfont-xml) — Atlas generation
+- [three-msdf-text-utils](https://github.com/leochocolat/three-msdf-text-utils) — Shader reference
+- [CSS-Tricks: WebGL Text](https://css-tricks.com/techniques-for-rendering-text-with-webgl/) — MSDF technique overview
+- [Three.js Forum: 10k Labels](https://discourse.threejs.org/t/performant-approach-for-displaying-text-labels-10000/21863) — LOD strategy
+
 ### Phase 7B: Minimap
 **Goal:** Overview navigation panel
 
@@ -939,14 +1051,33 @@ function useSimpleHistory(maxSize = 50) {
 - Tiny bundle size (~1KB)
 - React Flow uses it, familiar to target users
 
-### Why DOM for Text
+### Why Instanced MSDF for Text
 
-WebGL text options:
-1. **troika-three-text:** SDF, good quality, but struggles at 500+ instances
-2. **Canvas-to-texture:** Blurry on zoom, expensive updates
-3. **Custom instanced SDF:** Best performance, massive engineering effort
+**Initial approach (Phase 7A):** DOM text overlays. With LOD and culling, aimed for ~50-100 visible labels.
 
-**Decision:** DOM for text. With LOD (hide text when zoomed out), we only render ~50-100 text elements max. DOM text is crisp, accessible, supports any font, and works with browser devtools.
+**Problem discovered:** At 1000+ nodes with socket/edge labels enabled, DOM causes 30-40fps drop even with:
+- Ref-based updates (no React re-renders)
+- RAF throttling
+- Viewport culling
+
+The composite layer overhead of hundreds of DOM elements is unavoidable.
+
+**WebGL text options evaluated:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **troika-three-text** | Easy API, SDF quality | 1 draw call per Text instance → 500+ kills perf |
+| **Thomas** | R3F-native, claims instancing | Last release June 2023, risky dependency |
+| **three-msdf-text-utils** | Good shader, maintained | No instancing (1 mesh per label) |
+| **Canvas-to-texture** | Simple | Blurry on zoom, expensive updates |
+| **Custom instanced MSDF** | 1 draw call for ALL text, full control | Engineering effort |
+
+**Decision:** Custom instanced MSDF (Phase 7.5). One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw call = 60fps.
+
+**What stays in DOM:**
+- Interactive widgets (inputs, dropdowns) — require native elements
+- Custom node content — user escape hatch
+- These are few in number and viewport-culled to ~50-100 max
 
 ### Coordinate System
 
@@ -1002,7 +1133,8 @@ packages/kookie-flow/
 │   │   ├── Edges.tsx               # Edge line renderer
 │   │   ├── SelectionBox.tsx        # Box select overlay
 │   │   ├── ConnectionLine.tsx      # Temp dashed edge while connecting
-│   │   ├── DOMLayer.tsx            # Text/widget overlay
+│   │   ├── DOMLayer.tsx            # Interactive widgets overlay (inputs only)
+│   │   ├── TextRenderer.tsx        # Instanced MSDF text (all labels)
 │   │   ├── Minimap.tsx             # Overview panel [TODO]
 │   │   └── index.ts
 │   │
@@ -1031,7 +1163,13 @@ packages/kookie-flow/
 │   └── utils/
 │       ├── geometry.ts             # Position/bounds math, socket hit detection
 │       ├── connections.ts          # Connection validation, socket compatibility
+│       ├── text-layout.ts          # MSDF glyph positioning, text measurement
+│       ├── msdf-shader.ts          # MSDF vertex/fragment shaders
 │       └── index.ts
+│
+├── fonts/
+│   ├── inter-msdf.png              # Pre-generated MSDF atlas texture
+│   └── inter-msdf.json             # Glyph metrics (position, size, advance)
 │
 ├── package.json
 ├── tsconfig.json
@@ -1142,7 +1280,16 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 ### Next Immediate Tasks
 
-**Phase 7B: Minimap**
+**Phase 7.5: WebGL Text Rendering (MSDF)** — PRIORITY
+1. Add `msdf-bmfont-xml` dev dependency, create font generation script
+2. Generate Inter MSDF atlas, include pre-generated in package
+3. Build `TextRenderer.tsx` with instanced mesh + MSDF shader
+4. Implement text layout engine (character positioning from glyph metrics)
+5. Replace DOM label containers with TextRenderer entries
+6. Add LOD thresholds per label type (headers > sockets > edges)
+7. Verify 10k nodes at 60fps with all labels enabled
+
+**Then Phase 7B: Minimap**
 1. Minimap component (renders to corner viewport region)
 2. Simplified node rectangles (solid color, no details)
 3. Viewport indicator rectangle (draggable)

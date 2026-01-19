@@ -18,11 +18,13 @@ import { Sockets } from './sockets';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
+import { TextRenderer } from './text-renderer';
 import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
+import { EMBEDDED_FONT_METRICS, EMBEDDED_FONT_ATLAS_URL } from '../core/embedded-font';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
-import type { KookieFlowProps, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType } from '../types';
+import type { KookieFlowProps, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType, TextRenderMode } from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
@@ -51,6 +53,7 @@ export function KookieFlow({
   showGrid = true,
   showMinimap = false,
   showStats = false,
+  textRenderMode = 'dom',
   scaleTextWithZoom = false,
   showSocketLabels = true,
   showEdgeLabels = true,
@@ -93,8 +96,8 @@ export function KookieFlow({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
       >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} />
-        <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels}>{children}</DOMLayer>
+        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
+        <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
         <FlowSync
           nodes={nodes}
           edges={edges}
@@ -933,9 +936,45 @@ interface FlowCanvasProps {
   showStats: boolean;
   defaultEdgeType: import('../types').EdgeType;
   socketTypes: Record<string, SocketType>;
+  textRenderMode: TextRenderMode;
+  showSocketLabels: boolean;
+  showEdgeLabels: boolean;
 }
 
-function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes }: FlowCanvasProps) {
+/**
+ * WebGL text rendering layer using MSDF.
+ * Loads the embedded font atlas and renders all text in a single draw call.
+ */
+interface WebGLTextLayerProps {
+  showSocketLabels: boolean;
+  showEdgeLabels: boolean;
+  defaultEdgeType: EdgeType;
+}
+
+function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: WebGLTextLayerProps) {
+  // Load the embedded atlas texture
+  const atlasTexture = useMemo(() => {
+    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL);
+    // CRITICAL: Disable flipY - BMFont atlas coordinates assume no Y-flip
+    texture.flipY = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    return texture;
+  }, []);
+
+  return (
+    <TextRenderer
+      fontMetrics={EMBEDDED_FONT_METRICS}
+      atlasTexture={atlasTexture}
+      showSocketLabels={showSocketLabels}
+      showEdgeLabels={showEdgeLabels}
+      defaultEdgeType={defaultEdgeType}
+    />
+  );
+}
+
+function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes, textRenderMode, showSocketLabels, showEdgeLabels }: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
   const glConfig = useMemo(() => ({
     // Disable MSAA on Safari - it's expensive and often causes issues
@@ -980,6 +1019,13 @@ function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes }: FlowC
       <Nodes />
       <SelectionBox />
       <ConnectionLine socketTypes={socketTypes} />
+      {textRenderMode === 'webgl' && (
+        <WebGLTextLayer
+          showSocketLabels={showSocketLabels}
+          showEdgeLabels={showEdgeLabels}
+          defaultEdgeType={defaultEdgeType}
+        />
+      )}
     </Canvas>
   );
 }

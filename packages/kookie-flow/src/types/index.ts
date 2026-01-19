@@ -248,6 +248,9 @@ export interface PasteFromInternalOptions<T extends NodeData = NodeData> {
   preserveExternalConnections?: boolean;
 }
 
+/** Text rendering mode */
+export type TextRenderMode = 'dom' | 'webgl';
+
 /** KookieFlow component props */
 export interface KookieFlowProps {
   /** Nodes in the graph */
@@ -288,7 +291,14 @@ export interface KookieFlowProps {
   showMinimap?: boolean;
   /** Show performance stats (FPS counter) */
   showStats?: boolean;
-  /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false */
+  /**
+   * Text rendering mode.
+   * - 'dom': Uses DOM elements (default, backwards compatible)
+   * - 'webgl': Uses instanced MSDF rendering (better performance at scale)
+   * Default: 'dom'
+   */
+  textRenderMode?: TextRenderMode;
+  /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false. Only applies to DOM mode. */
   scaleTextWithZoom?: boolean;
   /** Show socket labels next to sockets. Default: true */
   showSocketLabels?: boolean;

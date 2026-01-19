@@ -258,7 +258,7 @@ function ClipboardDemo() {
 }
 
 export default function DemoPage() {
-  const nodeCount = 1000; // Smaller for demo
+  const nodeCount = 5000; // Smaller for demo
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
@@ -298,7 +298,9 @@ export default function DemoPage() {
         onConnect={onConnect}
         showGrid
         showStats
-        scaleTextWithZoom
+        textRenderMode="webgl"
+        showSocketLabels
+        showEdgeLabels
       >
         <ClipboardDemo />
       </KookieFlow>
