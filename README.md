@@ -89,10 +89,18 @@ function App() {
 - **Keyboard shortcuts** — Ctrl+A select all, Escape deselect
 - **Node dragging** — Move selected nodes with snap-to-grid support
 
+### Socket System
+- **Typed sockets** — Input/output sockets with type-based colors
+- **Socket labels** — Labels displayed next to sockets (toggleable via `showSocketLabels`)
+- **Connection validation** — Strict or loose mode for socket type compatibility
+- **Custom validation** — `isValidConnection` callback for custom rules
+
 ### Edge Rendering
 - **Curve types** — Straight, bezier, step, smoothstep
 - **Mesh-based rendering** — Custom shaders for future effects (glow, animation)
 - **Per-edge type override** — Mix edge types in the same graph
+- **Edge labels** — Text labels positioned along edges (toggleable via `showEdgeLabels`)
+- **Edge markers** — Arrows at edge endpoints (start/end)
 
 ### Performance Optimizations
 - **Instanced rendering** — All nodes in a single draw call
@@ -108,6 +116,24 @@ function App() {
 - **GPU-accelerated transforms** — translate3d/matrix3d for smooth panning
 - **Ref-based updates** — Zero React re-renders during drag
 
+### Plugins
+- **useClipboard** — Copy, paste, cut operations with internal clipboard
+- **useKeyboardShortcuts** — Configurable key bindings with `mod` (Cmd/Ctrl) support
+- **useContextMenu** — Right-click and long-press menu handling
+
+```tsx
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+const { copy, paste, cut } = useClipboard();
+useKeyboardShortcuts({
+  bindings: {
+    'mod+c': copy,
+    'mod+v': paste,
+    'mod+x': cut,
+  },
+});
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -117,12 +143,18 @@ function App() {
 | `onNodesChange` | `function` | - | Callback when nodes change |
 | `onEdgesChange` | `function` | - | Callback when edges change |
 | `onConnect` | `function` | - | Callback when connection is made |
+| `onNodeClick` | `function` | - | Callback when node is clicked |
+| `onEdgeClick` | `function` | - | Callback when edge is clicked |
 | `showGrid` | `boolean` | `true` | Show background grid |
 | `showStats` | `boolean` | `false` | Show FPS stats |
+| `showSocketLabels` | `boolean` | `true` | Show socket labels |
+| `showEdgeLabels` | `boolean` | `true` | Show edge labels |
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
 | `maxZoom` | `number` | `4` | Maximum zoom level |
 | `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (true) or keep crisp (false) |
 | `defaultEdgeType` | `'straight' \| 'bezier' \| 'step' \| 'smoothstep'` | `'bezier'` | Default edge curve type |
+| `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Socket type validation mode |
+| `edgesSelectable` | `boolean` | `true` | Allow edge selection |
 | `snapToGrid` | `boolean` | `false` | Snap nodes to grid when dragging |
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 
@@ -147,10 +179,16 @@ function App() {
 - [x] Node dragging with snap-to-grid
 - [x] Quadtree spatial indexing (O(log n) hit testing)
 - [x] Edge curve types (bezier, step, smoothstep)
-- [ ] Socket system (typed connections)
-- [ ] Edge connection UX
-- [ ] Hybrid node portals
+- [x] Socket system (typed connections)
+- [x] Edge connection UX with validation feedback
+- [x] Edge selection and interaction
+- [x] Clipboard operations (copy/paste/cut)
+- [x] Keyboard shortcuts plugin
+- [x] Context menu plugin
+- [x] Edge labels and markers
+- [x] Socket labels with visibility toggle
 - [ ] Minimap
+- [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews
 

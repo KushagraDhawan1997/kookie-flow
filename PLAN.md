@@ -857,6 +857,9 @@ function useSimpleHistory(maxSize = 50) {
 
 - [x] Edge labels (text on edges, positioned at midpoint)
 - [x] Edge markers (arrows at endpoints)
+- [x] Socket labels (text next to sockets)
+- [x] `showSocketLabels` prop (toggle socket label visibility)
+- [x] `showEdgeLabels` prop (toggle edge label visibility)
 
 **Implementation notes:**
 - Edge labels: DOM-based in `EdgeLabelsContainer` (consistent with node labels)
@@ -868,7 +871,12 @@ function useSimpleHistory(maxSize = 50) {
   - Direction from curve tangent at endpoint
   - Configurable width/height, color inherits from edge
   - Screen-space sized (scales with zoom)
-- Both respect edge selection state and colors
+- Socket labels: DOM-based in `SocketLabelsContainer`
+  - Ref-based updates, RAF throttling, viewport culling
+  - Positioned adjacent to socket circles (left for inputs, right for outputs)
+  - Same performance patterns as node/edge labels
+- Visibility props use conditional rendering (zero overhead when disabled)
+- All respect edge selection state and colors
 
 ### Phase 7B: Minimap
 **Goal:** Overview navigation panel
@@ -1128,6 +1136,9 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Edge markers (arrow triangles in edge geometry, direction from tangent)
 - [x] `EdgeLabelConfig`, `EdgeMarker`, `EdgeMarkerType` types
 - [x] `getEdgePointAtT()`, `getEdgeEndpoints()` utilities for edge curve sampling
+- [x] Socket labels (DOM-based, positioned adjacent to socket circles)
+- [x] `showSocketLabels` prop (default: true, zero overhead when false)
+- [x] `showEdgeLabels` prop (default: true, zero overhead when false)
 
 ### Next Immediate Tasks
 
