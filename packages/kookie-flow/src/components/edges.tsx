@@ -26,7 +26,7 @@ const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6 + 6;
 const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
 
 // Edge visual settings
-const EDGE_WIDTH = 2.5; // pixels in world space
+const EDGE_WIDTH = 1.5; // pixels in world space
 const AA_SMOOTHNESS = 3.0; // anti-aliasing edge softness (higher = softer edges)
 
 // Arrow marker settings
@@ -92,7 +92,10 @@ const fragmentShader = /* glsl */ `
  * - Single draw call (all edges batched)
  * - Dirty flag to skip unnecessary updates
  */
-export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET_TYPES }: EdgesProps) {
+export function Edges({
+  defaultEdgeType = 'bezier',
+  socketTypes = DEFAULT_SOCKET_TYPES,
+}: EdgesProps) {
   const store = useFlowStoreApi();
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -125,7 +128,9 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
 
   // Socket index map for O(1) lookups: "${nodeId}:${socketId}:input|output" -> { index, socket }
   // Rebuilt when nodes change, not per frame
-  const socketIndexMapRef = useRef<Map<string, { index: number; socket: { id: string; type: string; position?: number } }>>(new Map());
+  const socketIndexMapRef = useRef<
+    Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
+  >(new Map());
 
   // Dirty flag
   const dirtyRef = useRef(true);
@@ -239,15 +244,21 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
     );
     const unsubEdges = store.subscribe(
       (state) => state.edges,
-      () => { dirtyRef.current = true; }
+      () => {
+        dirtyRef.current = true;
+      }
     );
     const unsubViewport = store.subscribe(
       (state) => state.viewport,
-      () => { dirtyRef.current = true; }
+      () => {
+        dirtyRef.current = true;
+      }
     );
     const unsubSelection = store.subscribe(
       (state) => state.selectedEdgeIds,
-      () => { dirtyRef.current = true; }
+      () => {
+        dirtyRef.current = true;
+      }
     );
 
     // Initialize node map and socket index map
@@ -307,7 +318,7 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
     const cullPadding = 500 / viewport.zoom;
 
     // Half-width for ribbon (scaled by zoom for consistent screen-space width)
-    const halfWidth = (EDGE_WIDTH / 2) / viewport.zoom;
+    const halfWidth = EDGE_WIDTH / 2 / viewport.zoom;
 
     let vertexIndex = 0;
 
@@ -327,9 +338,10 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       if (edge.sourceSocket) {
         const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
         if (socketInfo) {
-          sourceYOffset = socketInfo.socket.position !== undefined
-            ? socketInfo.socket.position * sourceHeight
-            : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+          sourceYOffset =
+            socketInfo.socket.position !== undefined
+              ? socketInfo.socket.position * sourceHeight
+              : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
         }
       }
 
@@ -338,9 +350,10 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       if (edge.targetSocket) {
         const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
         if (socketInfo) {
-          targetYOffset = socketInfo.socket.position !== undefined
-            ? socketInfo.socket.position * targetHeight
-            : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+          targetYOffset =
+            socketInfo.socket.position !== undefined
+              ? socketInfo.socket.position * targetHeight
+              : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
         }
       }
 
@@ -362,18 +375,24 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       let cx1: number, cy1: number, cx2: number, cy2: number;
 
       if (edgeType === 'straight') {
-        cx1 = x0; cy1 = y0;
-        cx2 = x1; cy2 = y1;
+        cx1 = x0;
+        cy1 = y0;
+        cx2 = x1;
+        cy2 = y1;
       } else if (edgeType === 'step') {
         // For step edges, the midpoint extends the bounds
         const midX = x0 + dx / 2;
-        cx1 = midX; cy1 = y0;
-        cx2 = midX; cy2 = y1;
+        cx1 = midX;
+        cy1 = y0;
+        cx2 = midX;
+        cy2 = y1;
       } else if (edgeType === 'smoothstep') {
         // Smoothstep: constrained curve, scales with distance
         const offset = Math.min(absDx * 0.5, 100);
-        cx1 = x0 + offset; cy1 = y0;
-        cx2 = x1 - offset; cy2 = y1;
+        cx1 = x0 + offset;
+        cy1 = y0;
+        cx2 = x1 - offset;
+        cy2 = y1;
       } else {
         // Bezier: adaptive offset based on distance
         // - For close nodes, use minimal offset for direct connection
@@ -382,8 +401,10 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
         const distance = Math.sqrt(dx * dx + dy * dy);
         const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
         const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
-        cx1 = x0 + offset; cy1 = y0;
-        cx2 = x1 - offset; cy2 = y1;
+        cx1 = x0 + offset;
+        cy1 = y0;
+        cx2 = x1 - offset;
+        cy2 = y1;
       }
 
       // Frustum culling - include control points in bounding box for accurate Bezier culling
@@ -445,14 +466,20 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       if (edgeType === 'step') {
         // Step: horizontal → vertical → horizontal
         const midX = x0 + dx / 2;
-        points[0] = x0; points[1] = y0;
-        points[2] = midX; points[3] = y0;
-        points[4] = midX; points[5] = y1;
-        points[6] = x1; points[7] = y1;
+        points[0] = x0;
+        points[1] = y0;
+        points[2] = midX;
+        points[3] = y0;
+        points[4] = midX;
+        points[5] = y1;
+        points[6] = x1;
+        points[7] = y1;
         pointsCount = 4;
       } else if (edgeType === 'straight') {
-        points[0] = x0; points[1] = y0;
-        points[2] = x1; points[3] = y1;
+        points[0] = x0;
+        points[1] = y0;
+        points[2] = x1;
+        points[3] = y1;
         pointsCount = 2;
       } else {
         // Bezier/smoothstep - sample the curve
@@ -592,9 +619,9 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
       const markerStart = normalizeMarker(edge.markerStart);
       const markerEnd = normalizeMarker(edge.markerEnd);
 
-      // Arrow dimensions scaled by zoom for consistent screen-space size
-      const arrowWidth = ((markerEnd?.width ?? ARROW_WIDTH) / 2) / viewport.zoom;
-      const arrowHeight = (markerEnd?.height ?? ARROW_HEIGHT) / viewport.zoom;
+      // Arrow dimensions in world space (scales with zoom like nodes)
+      const arrowWidth = (markerEnd?.width ?? ARROW_WIDTH) / 2;
+      const arrowHeight = markerEnd?.height ?? ARROW_HEIGHT;
 
       // Z position for arrows (slightly above edges)
       const arrowZ = 1.5;
@@ -678,8 +705,8 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
 
       // markerStart: arrow at source (pointing away from source)
       if (markerStart) {
-        const startArrowWidth = ((markerStart.width ?? ARROW_WIDTH) / 2) / viewport.zoom;
-        const startArrowHeight = (markerStart.height ?? ARROW_HEIGHT) / viewport.zoom;
+        const startArrowWidth = (markerStart.width ?? ARROW_WIDTH) / 2;
+        const startArrowHeight = markerStart.height ?? ARROW_HEIGHT;
 
         // Get first segment direction for arrow orientation
         const tipX = points[0];
