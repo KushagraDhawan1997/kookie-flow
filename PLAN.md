@@ -878,7 +878,7 @@ function useSimpleHistory(maxSize = 50) {
 - Visibility props use conditional rendering (zero overhead when disabled)
 - All respect edge selection state and colors
 
-### Phase 7.5: WebGL Text Rendering (MSDF)
+### Phase 7.5: WebGL Text Rendering (MSDF) ✅ COMPLETE
 **Goal:** Replace DOM text with GPU-rendered instanced MSDF for 10k+ node performance
 
 **Problem:**
@@ -966,18 +966,18 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - <1ms for full text buffer rebuild
 
 **Tasks:**
-- [ ] Build: Add `msdf-bmfont-xml`, create font generation script
-- [ ] Build: Generate Inter MSDF atlas, include in package
-- [ ] Core: `TextRenderer.tsx` - instanced mesh with MSDF material
-- [ ] Core: `msdf-shader.ts` - vertex/fragment shaders
-- [ ] Core: `text-layout.ts` - character positioning from metrics
-- [ ] Core: Glyph buffer management (pre-allocated, dirty flags)
-- [ ] Integration: Replace `CrispLabelsContainer` with TextRenderer entries
-- [ ] Integration: Replace `SocketLabelsContainer` with TextRenderer entries
-- [ ] Integration: Replace `EdgeLabelsContainer` with TextRenderer entries
-- [ ] LOD: Zoom-based visibility thresholds per label type
-- [ ] Culling: Skip glyphs outside viewport bounds
-- [ ] Test: Verify 10k nodes at 60fps with all labels enabled
+- [x] Build: Add `msdf-bmfont-xml`, create font generation script
+- [x] Build: Generate Inter MSDF atlas, include in package
+- [x] Core: `TextRenderer.tsx` - instanced mesh with MSDF material
+- [x] Core: `msdf-shader.ts` - vertex/fragment shaders
+- [x] Core: `text-layout.ts` - character positioning from metrics
+- [x] Core: Glyph buffer management (pre-allocated, dirty flags)
+- [x] Integration: Replace `CrispLabelsContainer` with TextRenderer entries
+- [x] Integration: Replace `SocketLabelsContainer` with TextRenderer entries
+- [x] Integration: Replace `EdgeLabelsContainer` with TextRenderer entries
+- [x] LOD: Zoom-based visibility thresholds per label type
+- [x] Culling: Skip glyphs outside viewport bounds
+- [x] Test: Verify 10k nodes at 60fps with all labels enabled
 
 **What Stays in DOM:**
 - Input widgets (text fields, sliders, dropdowns) — interactive, few in number
@@ -1277,19 +1277,16 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Socket labels (DOM-based, positioned adjacent to socket circles)
 - [x] `showSocketLabels` prop (default: true, zero overhead when false)
 - [x] `showEdgeLabels` prop (default: true, zero overhead when false)
+- [x] WebGL text rendering (MSDF) via `TextRenderer.tsx`
+- [x] MSDF shader material with instanced glyphs
+- [x] Text layout engine (`text-layout.ts`) for glyph positioning
+- [x] LOD thresholds per label type (node headers, socket labels, edge labels)
+- [x] `textRenderMode` prop ("dom" | "webgl") for render mode selection
+- [x] Socket label vertical alignment fix (centered with socket circles)
 
 ### Next Immediate Tasks
 
-**Phase 7.5: WebGL Text Rendering (MSDF)** — PRIORITY
-1. Add `msdf-bmfont-xml` dev dependency, create font generation script
-2. Generate Inter MSDF atlas, include pre-generated in package
-3. Build `TextRenderer.tsx` with instanced mesh + MSDF shader
-4. Implement text layout engine (character positioning from glyph metrics)
-5. Replace DOM label containers with TextRenderer entries
-6. Add LOD thresholds per label type (headers > sockets > edges)
-7. Verify 10k nodes at 60fps with all labels enabled
-
-**Then Phase 7B: Minimap**
+**Phase 7B: Minimap**
 1. Minimap component (renders to corner viewport region)
 2. Simplified node rectangles (solid color, no details)
 3. Viewport indicator rectangle (draggable)

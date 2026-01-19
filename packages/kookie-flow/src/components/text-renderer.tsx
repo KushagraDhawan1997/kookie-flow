@@ -270,10 +270,13 @@ export function TextRenderer({
             for (let i = 0; i < node.inputs.length; i++) {
               const socket = node.inputs[i];
               const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
+              // Offset text Y to center vertically with socket circle
+              // Text baseline + glyph metrics push text lower, so we compensate upward
+              const textY = socketY - 5;
               entries.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
-                position: [node.position.x + 12, socketY, 0.1],
+                position: [node.position.x + 12, textY, 0.1],
                 fontSize: 10,
                 color: '#999999',
                 anchor: 'left',
@@ -286,10 +289,12 @@ export function TextRenderer({
             for (let i = 0; i < node.outputs.length; i++) {
               const socket = node.outputs[i];
               const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
+              // Offset text Y to center vertically with socket circle
+              const textY = socketY - 5;
               entries.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
-                position: [node.position.x + width - 12, socketY, 0.1],
+                position: [node.position.x + width - 12, textY, 0.1],
                 fontSize: 10,
                 color: '#999999',
                 anchor: 'right',

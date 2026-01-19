@@ -303,7 +303,7 @@ function ClipboardDemo() {
 }
 
 export default function DemoPage() {
-  const nodeCount = 5000; // Smaller for demo
+  const nodeCount = 1000; // Smaller for demo
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
