@@ -87,14 +87,16 @@ function generateNodes(count: number): Node[] {
   });
 }
 
-// Generate demo edges - connect first output to first input of neighbors
+// Generate demo edges with more interlinking
 function generateEdges(nodeCount: number): Edge[] {
   const edges: Edge[] = [];
   const cols = Math.ceil(Math.sqrt(nodeCount));
 
   for (let i = 0; i < nodeCount; i++) {
+    const col = i % cols;
+
     // Connect to right neighbor
-    if ((i + 1) % cols !== 0 && i + 1 < nodeCount) {
+    if (col + 1 < cols && i + 1 < nodeCount) {
       const edge: Edge = {
         id: `edge-h-${i}`,
         source: `node-${i}`,
@@ -103,12 +105,7 @@ function generateEdges(nodeCount: number): Edge[] {
         targetSocket: `node-${i + 1}-in-0`,
       };
 
-      // Add labels to some edges (every 3rd edge)
-      if (i % 3 === 0) {
-        edge.label = `Data ${i + 1}`;
-      }
-
-      // Add arrow markers to some edges (every 2nd edge)
+      // Add arrow markers to horizontal edges
       if (i % 2 === 0) {
         edge.markerEnd = 'arrow';
       }
@@ -125,6 +122,54 @@ function generateEdges(nodeCount: number): Edge[] {
       }
 
       edges.push(edge);
+    }
+
+    // Connect to bottom neighbor
+    const bottomIdx = i + cols;
+    if (bottomIdx < nodeCount) {
+      edges.push({
+        id: `edge-v-${i}`,
+        source: `node-${i}`,
+        target: `node-${bottomIdx}`,
+        sourceSocket: `node-${i}-out-0`,
+        targetSocket: `node-${bottomIdx}-in-0`,
+      });
+    }
+
+    // Diagonal connections (every 3rd node, connect to bottom-right)
+    const diagIdx = i + cols + 1;
+    if (i % 3 === 0 && col + 1 < cols && diagIdx < nodeCount) {
+      edges.push({
+        id: `edge-d-${i}`,
+        source: `node-${i}`,
+        target: `node-${diagIdx}`,
+        sourceSocket: `node-${i}-out-0`,
+        targetSocket: `node-${diagIdx}-in-0`,
+        markerEnd: 'arrow',
+      });
+    }
+
+    // Skip connections (every 5th node, connect 2 ahead)
+    if (i % 5 === 0 && col + 2 < cols && i + 2 < nodeCount) {
+      edges.push({
+        id: `edge-skip-${i}`,
+        source: `node-${i}`,
+        target: `node-${i + 2}`,
+        sourceSocket: `node-${i}-out-0`,
+        targetSocket: `node-${i + 2}-in-0`,
+      });
+    }
+
+    // Long vertical connections (every 7th node, connect 2 rows down)
+    const longVertIdx = i + cols * 2;
+    if (i % 7 === 0 && longVertIdx < nodeCount) {
+      edges.push({
+        id: `edge-lv-${i}`,
+        source: `node-${i}`,
+        target: `node-${longVertIdx}`,
+        sourceSocket: `node-${i}-out-0`,
+        targetSocket: `node-${longVertIdx}-in-0`,
+      });
     }
   }
 
