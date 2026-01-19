@@ -344,7 +344,7 @@ export default function DemoPage() {
         showGrid
         showStats
         showMinimap
-        minimapProps={{ zoomable: true }}
+        minimapProps={{ zoomable: false }}
         textRenderMode="webgl"
         showSocketLabels
         showEdgeLabels
