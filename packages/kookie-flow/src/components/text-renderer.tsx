@@ -240,7 +240,7 @@ export function TextRenderer({
         entries.push({
           id: `node-${node.id}`,
           text: label,
-          position: [node.position.x + 12, node.position.y + 16, 0.1],
+          position: [node.position.x + 12, node.position.y + 8, 0.1],
           fontSize: 12,
           color: '#ffffff',
           anchor: 'left',

@@ -10,9 +10,21 @@ import {
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
 
-// Socket type patterns for variety
+// Socket type patterns designed to chain together
+// Each pattern's first output matches the next pattern's first input
 const socketPatterns = [
-  // Math node: float inputs, float output
+  // Pattern 0: Source/Generator - outputs float (also accepts float to close the loop)
+  {
+    inputs: [
+      { name: 'Input', type: 'float' },
+      { name: 'Seed', type: 'int' },
+    ],
+    outputs: [
+      { name: 'Value', type: 'float' },
+      { name: 'Signal', type: 'signal' },
+    ],
+  },
+  // Pattern 1: Math - float in, float out (chains from 0)
   {
     inputs: [
       { name: 'A', type: 'float' },
@@ -20,7 +32,18 @@ const socketPatterns = [
     ],
     outputs: [{ name: 'Result', type: 'float' }],
   },
-  // Image processing: image in, image + mask out
+  // Pattern 2: Converter - float in, image out (chains from 1)
+  {
+    inputs: [
+      { name: 'Value', type: 'float' },
+      { name: 'Width', type: 'int' },
+    ],
+    outputs: [
+      { name: 'Image', type: 'image' },
+      { name: 'Mask', type: 'mask' },
+    ],
+  },
+  // Pattern 3: Image processor - image in, image out (chains from 2)
   {
     inputs: [
       { name: 'Image', type: 'image' },
@@ -28,30 +51,16 @@ const socketPatterns = [
     ],
     outputs: [{ name: 'Output', type: 'image' }],
   },
-  // Model loader: string path, model output
+  // Pattern 4: Analyzer - image in, float out (chains from 3, back to 0/1)
   {
-    inputs: [{ name: 'Path', type: 'string' }],
+    inputs: [
+      { name: 'Image', type: 'image' },
+      { name: 'Region', type: 'mask' },
+    ],
     outputs: [
-      { name: 'Model', type: 'model' },
-      { name: 'CLIP', type: 'clip' },
+      { name: 'Mean', type: 'float' },
+      { name: 'Histogram', type: 'signal' },
     ],
-  },
-  // Conditioning: model + clip in, conditioning out
-  {
-    inputs: [
-      { name: 'Model', type: 'model' },
-      { name: 'CLIP', type: 'clip' },
-    ],
-    outputs: [{ name: 'Conditioning', type: 'conditioning' }],
-  },
-  // Sampler: latent + conditioning in, latent out
-  {
-    inputs: [
-      { name: 'Latent', type: 'latent' },
-      { name: 'Positive', type: 'conditioning' },
-      { name: 'Negative', type: 'conditioning' },
-    ],
-    outputs: [{ name: 'Latent', type: 'latent' }],
   },
 ];
 
@@ -87,7 +96,30 @@ function generateNodes(count: number): Node[] {
   });
 }
 
-// Generate demo edges with more interlinking
+// Find compatible socket pair between two nodes
+function findCompatibleSockets(
+  sourceIdx: number,
+  targetIdx: number
+): { sourceSocket: string; targetSocket: string } | null {
+  const sourcePattern = socketPatterns[sourceIdx % socketPatterns.length];
+  const targetPattern = socketPatterns[targetIdx % socketPatterns.length];
+
+  // Try to find matching types
+  for (let outIdx = 0; outIdx < sourcePattern.outputs.length; outIdx++) {
+    const outType = sourcePattern.outputs[outIdx].type;
+    for (let inIdx = 0; inIdx < targetPattern.inputs.length; inIdx++) {
+      if (targetPattern.inputs[inIdx].type === outType) {
+        return {
+          sourceSocket: `node-${sourceIdx}-out-${outIdx}`,
+          targetSocket: `node-${targetIdx}-in-${inIdx}`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// Generate demo edges with more interlinking (type-aware)
 function generateEdges(nodeCount: number): Edge[] {
   const edges: Edge[] = [];
   const cols = Math.ceil(Math.sqrt(nodeCount));
@@ -97,79 +129,94 @@ function generateEdges(nodeCount: number): Edge[] {
 
     // Connect to right neighbor
     if (col + 1 < cols && i + 1 < nodeCount) {
-      const edge: Edge = {
-        id: `edge-h-${i}`,
-        source: `node-${i}`,
-        target: `node-${i + 1}`,
-        sourceSocket: `node-${i}-out-0`,
-        targetSocket: `node-${i + 1}-in-0`,
-      };
-
-      // Add arrow markers to horizontal edges
-      if (i % 2 === 0) {
-        edge.markerEnd = 'arrow';
-      }
-
-      // Add styled label to first edge
-      if (i === 0) {
-        edge.label = {
-          text: 'Primary',
-          bgColor: 'rgba(99, 102, 241, 0.8)',
-          textColor: '#fff',
-          fontSize: 11,
+      const sockets = findCompatibleSockets(i, i + 1);
+      if (sockets) {
+        const edge: Edge = {
+          id: `edge-h-${i}`,
+          source: `node-${i}`,
+          target: `node-${i + 1}`,
+          sourceSocket: sockets.sourceSocket,
+          targetSocket: sockets.targetSocket,
         };
-        edge.markerEnd = { type: 'arrow', width: 16, height: 16 };
-      }
 
-      edges.push(edge);
+        // Add arrow markers to horizontal edges
+        if (i % 2 === 0) {
+          edge.markerEnd = 'arrow';
+        }
+
+        // Add styled label to first edge
+        if (i === 0) {
+          edge.label = {
+            text: 'Primary',
+            bgColor: 'rgba(99, 102, 241, 0.8)',
+            textColor: '#fff',
+            fontSize: 11,
+          };
+          edge.markerEnd = { type: 'arrow', width: 16, height: 16 };
+        }
+
+        edges.push(edge);
+      }
     }
 
     // Connect to bottom neighbor
     const bottomIdx = i + cols;
     if (bottomIdx < nodeCount) {
-      edges.push({
-        id: `edge-v-${i}`,
-        source: `node-${i}`,
-        target: `node-${bottomIdx}`,
-        sourceSocket: `node-${i}-out-0`,
-        targetSocket: `node-${bottomIdx}-in-0`,
-      });
+      const sockets = findCompatibleSockets(i, bottomIdx);
+      if (sockets) {
+        edges.push({
+          id: `edge-v-${i}`,
+          source: `node-${i}`,
+          target: `node-${bottomIdx}`,
+          sourceSocket: sockets.sourceSocket,
+          targetSocket: sockets.targetSocket,
+        });
+      }
     }
 
     // Diagonal connections (every 3rd node, connect to bottom-right)
     const diagIdx = i + cols + 1;
     if (i % 3 === 0 && col + 1 < cols && diagIdx < nodeCount) {
-      edges.push({
-        id: `edge-d-${i}`,
-        source: `node-${i}`,
-        target: `node-${diagIdx}`,
-        sourceSocket: `node-${i}-out-0`,
-        targetSocket: `node-${diagIdx}-in-0`,
-        markerEnd: 'arrow',
-      });
+      const sockets = findCompatibleSockets(i, diagIdx);
+      if (sockets) {
+        edges.push({
+          id: `edge-d-${i}`,
+          source: `node-${i}`,
+          target: `node-${diagIdx}`,
+          sourceSocket: sockets.sourceSocket,
+          targetSocket: sockets.targetSocket,
+          markerEnd: 'arrow',
+        });
+      }
     }
 
     // Skip connections (every 5th node, connect 2 ahead)
     if (i % 5 === 0 && col + 2 < cols && i + 2 < nodeCount) {
-      edges.push({
-        id: `edge-skip-${i}`,
-        source: `node-${i}`,
-        target: `node-${i + 2}`,
-        sourceSocket: `node-${i}-out-0`,
-        targetSocket: `node-${i + 2}-in-0`,
-      });
+      const sockets = findCompatibleSockets(i, i + 2);
+      if (sockets) {
+        edges.push({
+          id: `edge-skip-${i}`,
+          source: `node-${i}`,
+          target: `node-${i + 2}`,
+          sourceSocket: sockets.sourceSocket,
+          targetSocket: sockets.targetSocket,
+        });
+      }
     }
 
     // Long vertical connections (every 7th node, connect 2 rows down)
     const longVertIdx = i + cols * 2;
     if (i % 7 === 0 && longVertIdx < nodeCount) {
-      edges.push({
-        id: `edge-lv-${i}`,
-        source: `node-${i}`,
-        target: `node-${longVertIdx}`,
-        sourceSocket: `node-${i}-out-0`,
-        targetSocket: `node-${longVertIdx}-in-0`,
-      });
+      const sockets = findCompatibleSockets(i, longVertIdx);
+      if (sockets) {
+        edges.push({
+          id: `edge-lv-${i}`,
+          source: `node-${i}`,
+          target: `node-${longVertIdx}`,
+          sourceSocket: sockets.sourceSocket,
+          targetSocket: sockets.targetSocket,
+        });
+      }
     }
   }
 
@@ -303,7 +350,7 @@ function ClipboardDemo() {
 }
 
 export default function DemoPage() {
-  const nodeCount = 1000; // Smaller for demo
+  const nodeCount = 5000; // Smxpaller for demo
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
