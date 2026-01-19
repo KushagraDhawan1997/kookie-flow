@@ -251,6 +251,41 @@ export interface PasteFromInternalOptions<T extends NodeData = NodeData> {
 /** Text rendering mode */
 export type TextRenderMode = 'dom' | 'webgl';
 
+/** Minimap position */
+export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+/** Minimap component props */
+export interface MinimapProps {
+  /** Position of the minimap. Default: 'bottom-right' */
+  position?: MinimapPosition;
+  /** Width in pixels. Default: 200 */
+  width?: number;
+  /** Height in pixels. Default: 150 */
+  height?: number;
+  /** Background color. Default: 'rgba(20, 20, 20, 0.9)' */
+  backgroundColor?: string;
+  /** Node color (or function for per-node color). Default: '#666666' */
+  nodeColor?: string | ((node: Node) => string);
+  /** Selected node color. Default: '#6366f1' (indigo) */
+  selectedNodeColor?: string;
+  /** Viewport indicator fill color. Default: 'rgba(99, 102, 241, 0.3)' */
+  viewportColor?: string;
+  /** Viewport indicator border color. Default: '#6366f1' */
+  viewportBorderColor?: string;
+  /** Padding around content in minimap pixels. Default: 20 */
+  padding?: number;
+  /** Whether the minimap is interactive (click to pan, drag viewport). Default: true */
+  interactive?: boolean;
+  /**
+   * Whether the minimap zooms with the main canvas.
+   * - false (default): Shows all nodes at fixed scale, viewport indicator resizes
+   * - true: Minimap zooms with main canvas, viewport indicator stays fixed size
+   */
+  zoomable?: boolean;
+  /** Custom className for styling */
+  className?: string;
+}
+
 /** KookieFlow component props */
 export interface KookieFlowProps {
   /** Nodes in the graph */
@@ -289,6 +324,8 @@ export interface KookieFlowProps {
   showGrid?: boolean;
   /** Show minimap */
   showMinimap?: boolean;
+  /** Minimap configuration */
+  minimapProps?: MinimapProps;
   /** Show performance stats (FPS counter) */
   showStats?: boolean;
   /**

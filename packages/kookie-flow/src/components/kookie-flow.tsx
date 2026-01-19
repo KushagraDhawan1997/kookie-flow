@@ -19,6 +19,7 @@ import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
 import { TextRenderer } from './text-renderer';
+import { Minimap } from './minimap';
 import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
 import { EMBEDDED_FONT_METRICS, EMBEDDED_FONT_ATLAS_URL } from '../core/embedded-font';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
@@ -52,6 +53,7 @@ export function KookieFlow({
   maxZoom = 4,
   showGrid = true,
   showMinimap = false,
+  minimapProps,
   showStats = false,
   textRenderMode = 'dom',
   scaleTextWithZoom = false,
@@ -98,6 +100,7 @@ export function KookieFlow({
       >
         <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
+        {showMinimap && <Minimap {...minimapProps} />}
         <FlowSync
           nodes={nodes}
           edges={edges}

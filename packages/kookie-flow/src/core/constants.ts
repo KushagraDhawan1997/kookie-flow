@@ -68,3 +68,19 @@ export const EDGE_COLORS = {
 /** Auto-scroll settings */
 export const AUTO_SCROLL_EDGE_THRESHOLD = 50; // pixels from edge to trigger
 export const AUTO_SCROLL_MAX_SPEED = 15; // screen pixels per frame at max proximity
+
+/** Minimap defaults */
+export const MINIMAP_DEFAULTS = {
+  width: 200,
+  height: 150,
+  padding: 20,
+  backgroundColor: 'rgba(20, 20, 20, 0.9)',
+  nodeColor: '#666666',
+  selectedNodeColor: '#6366f1',
+  viewportColor: 'rgba(99, 102, 241, 0.3)',
+  viewportBorderColor: '#6366f1',
+  viewportBorderWidth: 2,
+  minNodeSize: 2,
+  /** Base scale for zoomable mode (minimap zoom = viewport.zoom * baseScale) */
+  zoomableBaseScale: 0.15,
+} as const;

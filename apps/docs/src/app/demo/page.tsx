@@ -343,6 +343,8 @@ export default function DemoPage() {
         onConnect={onConnect}
         showGrid
         showStats
+        showMinimap
+        minimapProps={{ zoomable: true }}
         textRenderMode="webgl"
         showSocketLabels
         showEdgeLabels

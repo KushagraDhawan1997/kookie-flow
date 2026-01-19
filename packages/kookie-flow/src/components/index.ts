@@ -8,3 +8,4 @@ export { ConnectionLine } from './connection-line';
 export { DOMLayer } from './dom-layer';
 export { SelectionBox } from './selection-box';
 export { TextRenderer, TextRendererLoader } from './text-renderer';
+export { Minimap } from './minimap';

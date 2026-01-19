@@ -119,6 +119,23 @@ function App() {
 - **LOD (Level of Detail)** — Labels hide when zoomed out (configurable thresholds)
 - **Selective updates** — Text only rebuilds when nodes/edges/viewport change, not on hover
 
+### Minimap
+- **Overview navigation** — Canvas 2D minimap showing all nodes
+- **Viewport indicator** — Draggable rectangle showing current view
+- **Click to pan** — Click anywhere to center viewport
+- **Configurable** — Position, size, colors, interactive mode
+- **Zoomable mode** — Optional mode where minimap zooms with main canvas
+
+```tsx
+<KookieFlow
+  showMinimap
+  minimapProps={{
+    position: 'bottom-right',
+    zoomable: true, // minimap zooms with main canvas
+  }}
+/>
+```
+
 ### Plugins
 - **useClipboard** — Copy, paste, cut operations with internal clipboard
 - **useKeyboardShortcuts** — Configurable key bindings with `mod` (Cmd/Ctrl) support
@@ -149,6 +166,8 @@ useKeyboardShortcuts({
 | `onNodeClick` | `function` | - | Callback when node is clicked |
 | `onEdgeClick` | `function` | - | Callback when edge is clicked |
 | `showGrid` | `boolean` | `true` | Show background grid |
+| `showMinimap` | `boolean` | `false` | Show minimap overview |
+| `minimapProps` | `MinimapProps` | - | Minimap configuration (position, size, colors, zoomable) |
 | `showStats` | `boolean` | `false` | Show FPS stats |
 | `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode (WebGL = MSDF, DOM = traditional) |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
@@ -193,7 +212,7 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Edge labels and markers
 - [x] Socket labels with visibility toggle
 - [x] WebGL text rendering (MSDF)
-- [ ] Minimap
+- [x] Minimap
 - [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews

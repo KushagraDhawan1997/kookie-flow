@@ -1,6 +1,7 @@
 // Components
 export { KookieFlow } from './components/kookie-flow';
 export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/context';
+export { Minimap } from './components/minimap';
 
 // Hooks
 export { useGraph } from './hooks/use-graph';
@@ -58,6 +59,9 @@ export type {
   FlowObject,
   InternalClipboard,
   PasteFromInternalOptions,
+  // Minimap types
+  MinimapPosition,
+  MinimapProps,
 } from './types';
 
 // Constants
@@ -72,4 +76,5 @@ export {
   NODE_COLORS,
   GRID_COLORS,
   EDGE_COLORS,
+  MINIMAP_DEFAULTS,
 } from './core/constants';

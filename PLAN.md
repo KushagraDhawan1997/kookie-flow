@@ -990,14 +990,22 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - [CSS-Tricks: WebGL Text](https://css-tricks.com/techniques-for-rendering-text-with-webgl/) — MSDF technique overview
 - [Three.js Forum: 10k Labels](https://discourse.threejs.org/t/performant-approach-for-displaying-text-labels-10000/21863) — LOD strategy
 
-### Phase 7B: Minimap
+### Phase 7B: Minimap ✅ COMPLETE
 **Goal:** Overview navigation panel
 
-- [ ] Minimap component (renders to corner viewport region)
-- [ ] Simplified node rectangles (solid color, no details)
-- [ ] Viewport indicator rectangle (draggable)
-- [ ] Click to pan, drag to move viewport
-- [ ] Configurable position (corner) and size
+- [x] Minimap component (Canvas 2D, renders to corner)
+- [x] Simplified node rectangles (solid color, selected highlight)
+- [x] Viewport indicator rectangle (draggable)
+- [x] Click to pan, drag to move viewport
+- [x] Configurable position (corner) and size
+- [x] `zoomable` prop: minimap zooms with main canvas (alternative mode)
+
+**Implementation notes:**
+- Canvas 2D for efficient rendering of 10k+ rectangles (single draw call equivalent)
+- RAF-throttled updates via store subscription
+- HiDPI support (`devicePixelRatio` scaling)
+- Two modes: standard (fixed overview) and zoomable (mirrors main viewport)
+- Interactive: click to pan, drag viewport indicator (or anywhere in zoomable mode)
 
 ### Phase 7C: Grouping & Annotations
 **Goal:** Organizational features
@@ -1283,14 +1291,20 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] LOD thresholds per label type (node headers, socket labels, edge labels)
 - [x] `textRenderMode` prop ("dom" | "webgl") for render mode selection
 - [x] Socket label vertical alignment fix (centered with socket circles)
+- [x] Minimap component (Canvas 2D, corner positioning)
+- [x] Minimap node rendering (solid rectangles, selected highlight)
+- [x] Minimap viewport indicator (draggable rectangle)
+- [x] Minimap click-to-pan and drag-to-move-viewport
+- [x] Minimap `zoomable` prop (minimap zooms with main canvas)
+- [x] Minimap configurable: position, size, colors, interactive mode
 
 ### Next Immediate Tasks
 
-**Phase 7B: Minimap**
-1. Minimap component (renders to corner viewport region)
-2. Simplified node rectangles (solid color, no details)
-3. Viewport indicator rectangle (draggable)
-4. Click to pan, drag to move viewport
+**Phase 7C: Grouping & Annotations**
+1. Node grouping/frames (parent-child relationship)
+2. Collapsed groups (hide children, show summary)
+3. Comments/sticky notes (text-only nodes)
+4. Reroute nodes (edge waypoints)
 
 ---
 
