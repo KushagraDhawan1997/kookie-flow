@@ -47,10 +47,14 @@ function normalizeMarker(marker: EdgeMarkerType | EdgeMarker | undefined): EdgeM
   return marker;
 }
 
-// Vertex shader - passes position and UV to fragment
+// Vertex shader - computes ribbon offset from center position + perpendicular
 const vertexShader = /* glsl */ `
   attribute vec2 uv2;
   attribute vec3 aColor;
+  attribute vec2 aPerpendicular;
+
+  uniform float uHalfWidth;
+  uniform float uZoom;
 
   varying vec2 vUv;
   varying vec3 vColor;
@@ -58,7 +62,15 @@ const vertexShader = /* glsl */ `
   void main() {
     vUv = uv2;
     vColor = aColor;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+    // Compute ribbon offset: center + perpendicular * width * side
+    // uv2.y is ±1 indicating which side of the ribbon
+    // For arrow vertices (perpendicular = 0,0), no offset is applied
+    float scaledWidth = uHalfWidth / uZoom;
+    vec3 offset = vec3(aPerpendicular * scaledWidth * uv2.y, 0.0);
+    vec3 finalPosition = position + offset;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPosition, 1.0);
   }
 `;
 
@@ -105,9 +117,11 @@ export function Edges({
     positions: Float32Array;
     uvs: Float32Array;
     colors: Float32Array;
+    perpendiculars: Float32Array;
     positionAttr: THREE.BufferAttribute | null;
     uvAttr: THREE.BufferAttribute | null;
     colorAttr: THREE.BufferAttribute | null;
+    perpAttr: THREE.BufferAttribute | null;
     lastVertexCount: number;
     // Pre-allocated points buffer for curve tessellation (avoids GC in hot path)
     points: Float32Array;
@@ -116,9 +130,11 @@ export function Edges({
     positions: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 3),
     uvs: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 2),
     colors: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 3),
+    perpendiculars: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 2),
     positionAttr: null,
     uvAttr: null,
     colorAttr: null,
+    perpAttr: null,
     lastVertexCount: 0,
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
@@ -149,6 +165,8 @@ export function Edges({
       fragmentShader,
       uniforms: {
         uAASmooth: { value: AA_SMOOTHNESS / 10 },
+        uHalfWidth: { value: EDGE_WIDTH / 2 },
+        uZoom: { value: 1 },
       },
       transparent: true,
       depthWrite: false,
@@ -169,6 +187,7 @@ export function Edges({
     const newPositions = new Float32Array(vertexCount * 3);
     const newUvs = new Float32Array(vertexCount * 2);
     const newColors = new Float32Array(vertexCount * 3);
+    const newPerpendiculars = new Float32Array(vertexCount * 2);
 
     // Copy existing data
     const existingVerts = buffers.lastVertexCount;
@@ -176,11 +195,13 @@ export function Edges({
       newPositions.set(buffers.positions.subarray(0, existingVerts * 3));
       newUvs.set(buffers.uvs.subarray(0, existingVerts * 2));
       newColors.set(buffers.colors.subarray(0, existingVerts * 3));
+      newPerpendiculars.set(buffers.perpendiculars.subarray(0, existingVerts * 2));
     }
 
     buffers.positions = newPositions;
     buffers.uvs = newUvs;
     buffers.colors = newColors;
+    buffers.perpendiculars = newPerpendiculars;
     buffers.capacity = newCapacity;
 
     // Recreate attributes with new buffers
@@ -190,10 +211,13 @@ export function Edges({
     buffers.uvAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.colorAttr = new THREE.BufferAttribute(newColors, 3);
     buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.perpAttr = new THREE.BufferAttribute(newPerpendiculars, 2);
+    buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('position', buffers.positionAttr);
     mesh.geometry.setAttribute('uv2', buffers.uvAttr);
     mesh.geometry.setAttribute('aColor', buffers.colorAttr);
+    mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
 
     return true;
   };
@@ -212,10 +236,13 @@ export function Edges({
     buffers.uvAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.colorAttr = new THREE.BufferAttribute(buffers.colors, 3);
     buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.perpAttr = new THREE.BufferAttribute(buffers.perpendiculars, 2);
+    buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('position', buffers.positionAttr);
     mesh.geometry.setAttribute('uv2', buffers.uvAttr);
     mesh.geometry.setAttribute('aColor', buffers.colorAttr);
+    mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
 
     // Subscribe to changes
     const unsubNodes = store.subscribe(
@@ -248,12 +275,7 @@ export function Edges({
         dirtyRef.current = true;
       }
     );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
+    // Note: viewport changes no longer trigger dirty - zoom is handled via shader uniform
     const unsubSelection = store.subscribe(
       (state) => state.selectedEdgeIds,
       () => {
@@ -282,17 +304,22 @@ export function Edges({
     return () => {
       unsubNodes();
       unsubEdges();
-      unsubViewport();
       unsubSelection();
       material.dispose();
     };
   }, [store, material]);
 
   // RAF-synchronized updates
-  useFrame(({ size }) => {
-    if (!meshRef.current || !dirtyRef.current) return;
+  useFrame(() => {
+    if (!meshRef.current) return;
 
     const { edges, viewport, selectedEdgeIds } = store.getState();
+
+    // Always update zoom uniform (cheap operation)
+    material.uniforms.uZoom.value = viewport.zoom;
+
+    // Skip geometry rebuild if not dirty
+    if (!dirtyRef.current) return;
     const nodeMap = nodeMapRef.current;
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
@@ -307,18 +334,8 @@ export function Edges({
     // Ensure capacity
     ensureCapacity(edges.length, mesh);
 
-    // Viewport bounds for culling
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
-    // Padding must scale with zoom to represent consistent screen-space buffer
-    // Also account for Bezier curve bulge (curves can extend beyond endpoint bounds)
-    const cullPadding = 500 / viewport.zoom;
-
-    // Half-width for ribbon (scaled by zoom for consistent screen-space width)
-    const halfWidth = EDGE_WIDTH / 2 / viewport.zoom;
+    // Note: CPU-side frustum culling removed - GPU handles clipping efficiently
+    // This allows zoom/pan without geometry rebuilds
 
     let vertexIndex = 0;
 
@@ -407,21 +424,6 @@ export function Edges({
         cy2 = y1;
       }
 
-      // Frustum culling - include control points in bounding box for accurate Bezier culling
-      const edgeMinX = Math.min(x0, x1, cx1, cx2);
-      const edgeMaxX = Math.max(x0, x1, cx1, cx2);
-      const edgeMinY = Math.min(y0, y1, cy1, cy2);
-      const edgeMaxY = Math.max(y0, y1, cy1, cy2);
-
-      if (
-        edgeMaxX < viewLeft - cullPadding ||
-        edgeMinX > viewRight + cullPadding ||
-        edgeMaxY < viewTop - cullPadding ||
-        edgeMinY > viewBottom + cullPadding
-      ) {
-        continue;
-      }
-
       // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
       // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
       let cr: number, cg: number, cb: number;
@@ -499,6 +501,7 @@ export function Edges({
       }
 
       // Generate ribbon geometry from points
+      // Now stores CENTER positions + perpendicular vectors; shader computes final offset
       for (let p = 0; p < pointsCount - 1; p++) {
         const p0x = points[p * 2];
         const p0y = points[p * 2 + 1];
@@ -512,19 +515,9 @@ export function Edges({
 
         if (len < 0.001) continue; // Skip degenerate segments
 
-        // Perpendicular (normal) vector
+        // Perpendicular (normal) vector - Y negated to match Three.js coordinate system
         const normX = -dirY / len;
-        const normY = dirX / len;
-
-        // Four corners of the quad
-        const p0_top_x = p0x + normX * halfWidth;
-        const p0_top_y = p0y + normY * halfWidth;
-        const p0_bot_x = p0x - normX * halfWidth;
-        const p0_bot_y = p0y - normY * halfWidth;
-        const p1_top_x = p1x + normX * halfWidth;
-        const p1_top_y = p1y + normY * halfWidth;
-        const p1_bot_x = p1x - normX * halfWidth;
-        const p1_bot_y = p1y - normY * halfWidth;
+        const normY = -dirX / len; // Negated for Y-up coordinate system
 
         // UV coordinates (u = progress, v = -1 to 1 across width)
         const u0 = p / (pointsCount - 1);
@@ -534,84 +527,108 @@ export function Edges({
         const z = 1;
 
         // Triangle 1: p0_top, p0_bot, p1_top
+        // Vertex 1: p0, top side (uv.y = 1)
         let posIdx = vertexIndex * 3;
         let uvIdx = vertexIndex * 2;
         let colIdx = vertexIndex * 3;
+        let perpIdx = vertexIndex * 2;
 
-        buffers.positions[posIdx] = p0_top_x;
-        buffers.positions[posIdx + 1] = -p0_top_y;
+        buffers.positions[posIdx] = p0x;
+        buffers.positions[posIdx + 1] = -p0y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u0;
         buffers.uvs[uvIdx + 1] = 1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
 
+        // Vertex 2: p0, bottom side (uv.y = -1)
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
-        buffers.positions[posIdx] = p0_bot_x;
-        buffers.positions[posIdx + 1] = -p0_bot_y;
+        perpIdx = vertexIndex * 2;
+        buffers.positions[posIdx] = p0x;
+        buffers.positions[posIdx + 1] = -p0y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u0;
         buffers.uvs[uvIdx + 1] = -1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
 
+        // Vertex 3: p1, top side (uv.y = 1)
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
-        buffers.positions[posIdx] = p1_top_x;
-        buffers.positions[posIdx + 1] = -p1_top_y;
+        perpIdx = vertexIndex * 2;
+        buffers.positions[posIdx] = p1x;
+        buffers.positions[posIdx + 1] = -p1y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u1;
         buffers.uvs[uvIdx + 1] = 1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
 
         // Triangle 2: p1_top, p0_bot, p1_bot
+        // Vertex 4: p1, top side (uv.y = 1)
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
-        buffers.positions[posIdx] = p1_top_x;
-        buffers.positions[posIdx + 1] = -p1_top_y;
+        perpIdx = vertexIndex * 2;
+        buffers.positions[posIdx] = p1x;
+        buffers.positions[posIdx + 1] = -p1y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u1;
         buffers.uvs[uvIdx + 1] = 1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
 
+        // Vertex 5: p0, bottom side (uv.y = -1)
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
-        buffers.positions[posIdx] = p0_bot_x;
-        buffers.positions[posIdx + 1] = -p0_bot_y;
+        perpIdx = vertexIndex * 2;
+        buffers.positions[posIdx] = p0x;
+        buffers.positions[posIdx + 1] = -p0y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u0;
         buffers.uvs[uvIdx + 1] = -1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
 
+        // Vertex 6: p1, bottom side (uv.y = -1)
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
-        buffers.positions[posIdx] = p1_bot_x;
-        buffers.positions[posIdx + 1] = -p1_bot_y;
+        perpIdx = vertexIndex * 2;
+        buffers.positions[posIdx] = p1x;
+        buffers.positions[posIdx + 1] = -p1y;
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u1;
         buffers.uvs[uvIdx + 1] = -1;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = normX;
+        buffers.perpendiculars[perpIdx + 1] = normY;
         vertexIndex++;
       }
 
@@ -662,9 +679,11 @@ export function Edges({
         const corner2Y = baseY - perpY * arrowWidth;
 
         // Add triangle vertices (tip, corner1, corner2)
+        // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
         let posIdx = vertexIndex * 3;
         let uvIdx = vertexIndex * 2;
         let colIdx = vertexIndex * 3;
+        let perpIdx = vertexIndex * 2;
 
         buffers.positions[posIdx] = arrowTipX;
         buffers.positions[posIdx + 1] = -arrowTipY;
@@ -674,11 +693,14 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
 
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
+        perpIdx = vertexIndex * 2;
         buffers.positions[posIdx] = corner1X;
         buffers.positions[posIdx + 1] = -corner1Y;
         buffers.positions[posIdx + 2] = arrowZ;
@@ -687,11 +709,14 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
 
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
+        perpIdx = vertexIndex * 2;
         buffers.positions[posIdx] = corner2X;
         buffers.positions[posIdx + 1] = -corner2Y;
         buffers.positions[posIdx + 2] = arrowZ;
@@ -700,6 +725,8 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
       }
 
@@ -740,9 +767,11 @@ export function Edges({
         const corner2Y = baseY - perpY * startArrowWidth;
 
         // Add triangle vertices
+        // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
         let posIdx = vertexIndex * 3;
         let uvIdx = vertexIndex * 2;
         let colIdx = vertexIndex * 3;
+        let perpIdx = vertexIndex * 2;
 
         buffers.positions[posIdx] = arrowTipX;
         buffers.positions[posIdx + 1] = -arrowTipY;
@@ -752,11 +781,14 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
 
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
+        perpIdx = vertexIndex * 2;
         buffers.positions[posIdx] = corner1X;
         buffers.positions[posIdx + 1] = -corner1Y;
         buffers.positions[posIdx + 2] = arrowZ;
@@ -765,11 +797,14 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
 
         posIdx = vertexIndex * 3;
         uvIdx = vertexIndex * 2;
         colIdx = vertexIndex * 3;
+        perpIdx = vertexIndex * 2;
         buffers.positions[posIdx] = corner2X;
         buffers.positions[posIdx + 1] = -corner2Y;
         buffers.positions[posIdx + 2] = arrowZ;
@@ -778,15 +813,18 @@ export function Edges({
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;
+        buffers.perpendiculars[perpIdx] = 0;
+        buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
       }
     }
 
     // Update attributes
-    if (buffers.positionAttr && buffers.uvAttr && buffers.colorAttr) {
+    if (buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
       buffers.positionAttr.needsUpdate = true;
       buffers.uvAttr.needsUpdate = true;
       buffers.colorAttr.needsUpdate = true;
+      buffers.perpAttr.needsUpdate = true;
     }
 
     // Set draw range

@@ -198,12 +198,8 @@ export function Sockets({
         dirtyRef.current = true;
       }
     );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
+    // Note: viewport changes no longer trigger dirty - GPU handles clipping efficiently
+    // This allows zoom/pan without geometry rebuilds
     const unsubHoveredSocket = store.subscribe(
       (state) => state.hoveredSocketId,
       () => {
@@ -247,7 +243,6 @@ export function Sockets({
 
     return () => {
       unsubNodes();
-      unsubViewport();
       unsubHoveredSocket();
       unsubConnectionDraft();
       unsubEdges();
@@ -255,11 +250,11 @@ export function Sockets({
   }, [store]);
 
   // RAF-synchronized updates
-  useFrame(({ size }) => {
+  useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, nodeMap, viewport, hoveredSocketId, connectionDraft } =
+    const { nodes, nodeMap, hoveredSocketId, connectionDraft } =
       store.getState();
 
     // Use cached connected sockets Set (rebuilt only when edges change)
@@ -293,29 +288,14 @@ export function Sockets({
       sourceSocketCacheRef.current = null;
     }
 
-    // Viewport culling bounds
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
-    const cullPadding = 100;
+    // Note: CPU-side frustum culling removed - GPU handles clipping efficiently
+    // This allows zoom/pan without geometry rebuilds
 
     let visibleCount = 0;
 
     for (const node of nodes) {
       const width = node.width ?? DEFAULT_NODE_WIDTH;
       const height = node.height ?? DEFAULT_NODE_HEIGHT;
-
-      // Frustum culling
-      if (
-        node.position.x + width < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        node.position.y + height < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
-      ) {
-        continue;
-      }
 
       // Render input sockets
       if (node.inputs) {
