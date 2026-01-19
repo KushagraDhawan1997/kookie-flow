@@ -45,6 +45,9 @@ export function Sockets({
     type: string;
   } | null>(null);
 
+  // Track canvas size for resize detection
+  const lastSizeRef = useRef({ width: 0, height: 0 });
+
   // Circle geometry
   const geometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
@@ -250,9 +253,18 @@ export function Sockets({
   }, [store]);
 
   // RAF-synchronized updates
-  useFrame(() => {
+  useFrame(({ size }) => {
     const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+    if (!mesh || !initializedRef.current) return;
+
+    // Mark dirty on canvas resize (prevents ghosting)
+    if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
+      lastSizeRef.current.width = size.width;
+      lastSizeRef.current.height = size.height;
+      dirtyRef.current = true;
+    }
+
+    if (!dirtyRef.current) return;
 
     const { nodes, nodeMap, hoveredSocketId, connectionDraft } =
       store.getState();

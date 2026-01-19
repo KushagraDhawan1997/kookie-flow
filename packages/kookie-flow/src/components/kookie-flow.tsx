@@ -8,7 +8,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
 import { FlowProvider, useFlowStoreApi } from './context';
 import { Grid } from './grid';
@@ -1137,50 +1137,52 @@ function Invalidator() {
 /**
  * Camera controller for pan/zoom.
  * Updates orthographic camera bounds based on viewport and canvas size.
+ *
+ * CRITICAL: Camera update happens in useFrame to ensure it's synchronized
+ * with rendering. We get canvas dimensions directly from the GL context
+ * (not R3F's size state) to avoid stale values during resize.
  */
 function CameraController() {
-  const { camera, size } = useThree();
+  const { camera } = useThree();
   const store = useFlowStoreApi();
 
-  // Track last values to detect changes (for subscription optimization only)
+  // Track last values to detect changes
   const lastRef = useRef({ x: 0, y: 0, zoom: 0, width: 0, height: 0 });
 
-  useLayoutEffect(() => {
+  // Update camera synchronously before each frame renders
+  // Get actual canvas size from renderer to avoid stale R3F state during resize
+  useFrame(({ gl }) => {
     if (!(camera instanceof THREE.OrthographicCamera)) return;
 
-    const updateCamera = () => {
-      const { viewport } = store.getState();
-      const { width, height } = size;
-      const { x, y, zoom } = viewport;
+    const { viewport } = store.getState();
+    // Get actual canvas dimensions directly from the DOM element
+    // This avoids stale R3F size state during resize events
+    const canvas = gl.domElement;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const { x, y, zoom } = viewport;
 
-      // Skip only if BOTH viewport AND size haven't changed
-      const last = lastRef.current;
-      if (
-        x === last.x &&
-        y === last.y &&
-        zoom === last.zoom &&
-        width === last.width &&
-        height === last.height
-      ) {
-        return;
-      }
+    // Skip only if BOTH viewport AND size haven't changed
+    const last = lastRef.current;
+    if (
+      x === last.x &&
+      y === last.y &&
+      zoom === last.zoom &&
+      width === last.width &&
+      height === last.height
+    ) {
+      return;
+    }
 
-      lastRef.current = { x, y, zoom, width, height };
+    lastRef.current = { x, y, zoom, width, height };
 
-      camera.left = -x / zoom;
-      camera.right = (width - x) / zoom;
-      camera.top = y / zoom;
-      camera.bottom = (y - height) / zoom;
-      camera.zoom = 1;
-      camera.updateProjectionMatrix();
-    };
-
-    // Run immediately (handles initial load + resize)
-    updateCamera();
-
-    // Subscribe to viewport changes
-    return store.subscribe(updateCamera);
-  }, [camera, size, store]);
+    camera.left = -x / zoom;
+    camera.right = (width - x) / zoom;
+    camera.top = y / zoom;
+    camera.bottom = (y - height) / zoom;
+    camera.zoom = 1;
+    camera.updateProjectionMatrix();
+  }, -1); // Priority -1: run BEFORE other useFrame hooks (default is 0)
 
   return null;
 }

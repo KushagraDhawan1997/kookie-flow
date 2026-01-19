@@ -151,6 +151,9 @@ export function Edges({
   // Dirty flag
   const dirtyRef = useRef(true);
 
+  // Track canvas size for resize detection
+  const lastSizeRef = useRef({ width: 0, height: 0 });
+
   // Pre-computed colors
   const defaultColor = useMemo(() => new THREE.Color(EDGE_COLORS.default), []);
   const selectedColor = useMemo(() => new THREE.Color(EDGE_COLORS.selected), []);
@@ -310,13 +313,20 @@ export function Edges({
   }, [store, material]);
 
   // RAF-synchronized updates
-  useFrame(() => {
+  useFrame(({ size }) => {
     if (!meshRef.current) return;
 
     const { edges, viewport, selectedEdgeIds } = store.getState();
 
     // Always update zoom uniform (cheap operation)
     material.uniforms.uZoom.value = viewport.zoom;
+
+    // Mark dirty on canvas resize (prevents ghosting)
+    if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
+      lastSizeRef.current.width = size.width;
+      lastSizeRef.current.height = size.height;
+      dirtyRef.current = true;
+    }
 
     // Skip geometry rebuild if not dirty
     if (!dirtyRef.current) return;
