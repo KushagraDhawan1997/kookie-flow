@@ -164,13 +164,13 @@ useKeyboardShortcuts({
 
 ## Performance
 
-Tested on MacBook Pro M1:
+Tested on 16" MacBook Pro M4 Pro:
 
 | Scenario | Performance |
 |----------|-------------|
 | 10,000 nodes, aggressive pan/zoom | 80-120 fps |
 | 10,000 nodes with all labels (WebGL mode) | 60+ fps |
-| 50,000 simple nodes | 60 fps |
+| 50,000 simple nodes | ~30 fps |
 
 ## Roadmap
 
