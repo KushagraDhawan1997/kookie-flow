@@ -1,24 +1,27 @@
 # Kookie Flow
 
-WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.
+WebGL-native node graph library for React.
 
 ## Why?
 
-React Flow struggles not because of node count, but because each node is 20+ DOM elements, each edge is SVG path recalculation, and React reconciles thousands of components on every pan/zoom.
+I love WebGL and I love node-based editors. DOM-based solutions like React Flow exist and work great for many use cases, but I wanted to explore what a canvas-first approach could look like.
 
-**Kookie Flow renders everything in WebGL.** Nodes are instanced meshes. Edges are GPU line segments. Text and widgets stay in DOM (where they belong). The result: 10,000+ nodes at 60fps.
+**Kookie Flow renders geometry in WebGL.** Nodes are instanced meshes (1 draw call). Edges are batched GPU geometry. Text is rendered via MSDF shaders. Interactive widgets stay in DOM where they belong.
+
+The result: 10,000 nodes at 80-120fps during aggressive pan/zoom.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│  DOM Layer (text, widgets)              │
+│  DOM Layer (interactive widgets)        │
 ├─────────────────────────────────────────┤
 │  WebGL Canvas                           │
 │  ├── Instanced nodes (1 draw call)      │
 │  ├── Edges (batched geometry)           │
+│  ├── MSDF text (instanced glyphs)       │
 │  ├── Grid (shader-based)                │
-│  └── Selection, minimap                 │
+│  └── Selection box                      │
 └─────────────────────────────────────────┘
 ```
 
@@ -110,11 +113,11 @@ function App() {
 - **Dirty flags** — Skip unnecessary updates
 - **Safari optimizations** — MSAA disabled, simplified shaders
 
-### DOM Layer
-- **Text labels** — Crisp text that stays readable at any zoom
-- **LOD (Level of Detail)** — Labels hide when zoomed out
-- **GPU-accelerated transforms** — translate3d/matrix3d for smooth panning
-- **Ref-based updates** — Zero React re-renders during drag
+### Text Rendering
+- **WebGL mode** — MSDF (Multi-channel Signed Distance Field) text via instanced glyphs, single draw call for all labels
+- **DOM mode** — Traditional DOM text for maximum compatibility
+- **LOD (Level of Detail)** — Labels hide when zoomed out (configurable thresholds)
+- **Selective updates** — Text only rebuilds when nodes/edges/viewport change, not on hover
 
 ### Plugins
 - **useClipboard** — Copy, paste, cut operations with internal clipboard
@@ -147,6 +150,7 @@ useKeyboardShortcuts({
 | `onEdgeClick` | `function` | - | Callback when edge is clicked |
 | `showGrid` | `boolean` | `true` | Show background grid |
 | `showStats` | `boolean` | `false` | Show FPS stats |
+| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode (WebGL = MSDF, DOM = traditional) |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
@@ -158,13 +162,15 @@ useKeyboardShortcuts({
 | `snapToGrid` | `boolean` | `false` | Snap nodes to grid when dragging |
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 
-## Performance Comparison
+## Performance
 
-| Scenario | React Flow | Kookie Flow |
-|----------|------------|-------------|
-| Simple nodes @ 60fps | ~1,000 | ~50,000 |
-| Styled nodes (shadows) @ 60fps | ~200 | ~30,000 |
-| Nodes with blur @ 60fps | ~50 | ~10,000 |
+Tested on MacBook Pro M1:
+
+| Scenario | Performance |
+|----------|-------------|
+| 10,000 nodes, aggressive pan/zoom | 80-120 fps |
+| 10,000 nodes with all labels (WebGL mode) | 60+ fps |
+| 50,000 simple nodes | 60 fps |
 
 ## Roadmap
 
@@ -172,7 +178,6 @@ useKeyboardShortcuts({
 - [x] Core WebGL renderer (nodes, edges, grid)
 - [x] Pan/zoom camera controls
 - [x] Touch gesture support
-- [x] DOM text labels with LOD
 - [x] Safari performance optimizations
 - [x] Viewport frustum culling
 - [x] Node selection (single, multi, box)
@@ -187,6 +192,7 @@ useKeyboardShortcuts({
 - [x] Context menu plugin
 - [x] Edge labels and markers
 - [x] Socket labels with visibility toggle
+- [x] WebGL text rendering (MSDF)
 - [ ] Minimap
 - [ ] Hybrid node portals
 - [ ] Image texture previews
