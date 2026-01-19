@@ -9,7 +9,7 @@ import {
   SOCKET_MARGIN_TOP,
   SOCKET_SPACING,
 } from '../core/constants';
-import type { Node, EdgeType, SocketType } from '../types';
+import type { Node, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
 import { DEFAULT_SOCKET_TYPES } from '../core/constants';
 
 // Buffer sizing
@@ -19,7 +19,8 @@ const INITIAL_EDGE_CAPACITY = 512;
 // Tessellation settings
 const SEGMENTS_PER_EDGE = 64;
 // Each segment = 1 quad = 2 triangles = 6 vertices
-const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6;
+// Plus up to 2 arrows (3 vertices each) = 6 extra vertices
+const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6 + 6;
 
 // Max points per edge (bezier has SEGMENTS+1, step has 4, straight has 2)
 const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
@@ -28,9 +29,22 @@ const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
 const EDGE_WIDTH = 2.5; // pixels in world space
 const AA_SMOOTHNESS = 3.0; // anti-aliasing edge softness (higher = softer edges)
 
+// Arrow marker settings
+const ARROW_WIDTH = 12; // width of arrow base in pixels
+const ARROW_HEIGHT = 12; // length of arrow in pixels
+
 interface EdgesProps {
   defaultEdgeType?: EdgeType;
   socketTypes?: Record<string, SocketType>;
+}
+
+/** Normalize marker config to full object */
+function normalizeMarker(marker: EdgeMarkerType | EdgeMarker | undefined): EdgeMarker | null {
+  if (!marker) return null;
+  if (typeof marker === 'string') {
+    return { type: marker };
+  }
+  return marker;
 }
 
 // Vertex shader - passes position and UV to fragment
@@ -568,6 +582,172 @@ export function Edges({ defaultEdgeType = 'bezier', socketTypes = DEFAULT_SOCKET
         buffers.positions[posIdx + 2] = z;
         buffers.uvs[uvIdx] = u1;
         buffers.uvs[uvIdx + 1] = -1;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+      }
+
+      // Add arrow markers if defined
+      const markerStart = normalizeMarker(edge.markerStart);
+      const markerEnd = normalizeMarker(edge.markerEnd);
+
+      // Arrow dimensions scaled by zoom for consistent screen-space size
+      const arrowWidth = ((markerEnd?.width ?? ARROW_WIDTH) / 2) / viewport.zoom;
+      const arrowHeight = (markerEnd?.height ?? ARROW_HEIGHT) / viewport.zoom;
+
+      // Z position for arrows (slightly above edges)
+      const arrowZ = 1.5;
+
+      // markerEnd: arrow at target (pointing into target)
+      if (markerEnd) {
+        // Get last segment direction for arrow orientation
+        const lastIdx = (pointsCount - 1) * 2;
+        const prevIdx = (pointsCount - 2) * 2;
+        const tipX = points[lastIdx];
+        const tipY = points[lastIdx + 1];
+        const prevX = points[prevIdx];
+        const prevY = points[prevIdx + 1];
+
+        // Direction vector (from prev to tip)
+        const dirX = tipX - prevX;
+        const dirY = tipY - prevY;
+        const len = Math.sqrt(dirX * dirX + dirY * dirY);
+        const normDirX = len > 0 ? dirX / len : 1;
+        const normDirY = len > 0 ? dirY / len : 0;
+
+        // Perpendicular vector
+        const perpX = -normDirY;
+        const perpY = normDirX;
+
+        // Arrow tip at edge endpoint
+        const arrowTipX = tipX;
+        const arrowTipY = tipY;
+
+        // Arrow base (behind tip)
+        const baseX = tipX - normDirX * arrowHeight;
+        const baseY = tipY - normDirY * arrowHeight;
+
+        // Arrow corners
+        const corner1X = baseX + perpX * arrowWidth;
+        const corner1Y = baseY + perpY * arrowWidth;
+        const corner2X = baseX - perpX * arrowWidth;
+        const corner2Y = baseY - perpY * arrowWidth;
+
+        // Add triangle vertices (tip, corner1, corner2)
+        let posIdx = vertexIndex * 3;
+        let uvIdx = vertexIndex * 2;
+        let colIdx = vertexIndex * 3;
+
+        buffers.positions[posIdx] = arrowTipX;
+        buffers.positions[posIdx + 1] = -arrowTipY;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 0.5;
+        buffers.uvs[uvIdx + 1] = 0;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+
+        posIdx = vertexIndex * 3;
+        uvIdx = vertexIndex * 2;
+        colIdx = vertexIndex * 3;
+        buffers.positions[posIdx] = corner1X;
+        buffers.positions[posIdx + 1] = -corner1Y;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 0;
+        buffers.uvs[uvIdx + 1] = 0;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+
+        posIdx = vertexIndex * 3;
+        uvIdx = vertexIndex * 2;
+        colIdx = vertexIndex * 3;
+        buffers.positions[posIdx] = corner2X;
+        buffers.positions[posIdx + 1] = -corner2Y;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 1;
+        buffers.uvs[uvIdx + 1] = 0;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+      }
+
+      // markerStart: arrow at source (pointing away from source)
+      if (markerStart) {
+        const startArrowWidth = ((markerStart.width ?? ARROW_WIDTH) / 2) / viewport.zoom;
+        const startArrowHeight = (markerStart.height ?? ARROW_HEIGHT) / viewport.zoom;
+
+        // Get first segment direction for arrow orientation
+        const tipX = points[0];
+        const tipY = points[1];
+        const nextX = points[2];
+        const nextY = points[3];
+
+        // Direction vector (from tip to next, then reversed for arrow pointing away)
+        const dirX = tipX - nextX;
+        const dirY = tipY - nextY;
+        const len = Math.sqrt(dirX * dirX + dirY * dirY);
+        const normDirX = len > 0 ? dirX / len : -1;
+        const normDirY = len > 0 ? dirY / len : 0;
+
+        // Perpendicular vector
+        const perpX = -normDirY;
+        const perpY = normDirX;
+
+        // Arrow tip at edge start
+        const arrowTipX = tipX;
+        const arrowTipY = tipY;
+
+        // Arrow base (behind tip, in direction of arrow)
+        const baseX = tipX - normDirX * startArrowHeight;
+        const baseY = tipY - normDirY * startArrowHeight;
+
+        // Arrow corners
+        const corner1X = baseX + perpX * startArrowWidth;
+        const corner1Y = baseY + perpY * startArrowWidth;
+        const corner2X = baseX - perpX * startArrowWidth;
+        const corner2Y = baseY - perpY * startArrowWidth;
+
+        // Add triangle vertices
+        let posIdx = vertexIndex * 3;
+        let uvIdx = vertexIndex * 2;
+        let colIdx = vertexIndex * 3;
+
+        buffers.positions[posIdx] = arrowTipX;
+        buffers.positions[posIdx + 1] = -arrowTipY;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 0.5;
+        buffers.uvs[uvIdx + 1] = 0;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+
+        posIdx = vertexIndex * 3;
+        uvIdx = vertexIndex * 2;
+        colIdx = vertexIndex * 3;
+        buffers.positions[posIdx] = corner1X;
+        buffers.positions[posIdx + 1] = -corner1Y;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 0;
+        buffers.uvs[uvIdx + 1] = 0;
+        buffers.colors[colIdx] = cr;
+        buffers.colors[colIdx + 1] = cg;
+        buffers.colors[colIdx + 2] = cb;
+        vertexIndex++;
+
+        posIdx = vertexIndex * 3;
+        uvIdx = vertexIndex * 2;
+        colIdx = vertexIndex * 3;
+        buffers.positions[posIdx] = corner2X;
+        buffers.positions[posIdx + 1] = -corner2Y;
+        buffers.positions[posIdx + 2] = arrowZ;
+        buffers.uvs[uvIdx] = 1;
+        buffers.uvs[uvIdx + 1] = 0;
         buffers.colors[colIdx] = cr;
         buffers.colors[colIdx + 1] = cg;
         buffers.colors[colIdx + 2] = cb;

@@ -20,6 +20,34 @@ export interface Viewport {
 /** Edge rendering type */
 export type EdgeType = 'straight' | 'bezier' | 'step' | 'smoothstep';
 
+/** Edge marker type */
+export type EdgeMarkerType = 'arrow' | 'arrowClosed';
+
+/** Edge marker configuration */
+export interface EdgeMarker {
+  type: EdgeMarkerType;
+  /** Width of the marker in pixels. Default: 12 */
+  width?: number;
+  /** Height of the marker in pixels. Default: 12 */
+  height?: number;
+  /** Color override (defaults to edge color) */
+  color?: string;
+}
+
+/** Edge label configuration */
+export interface EdgeLabelConfig {
+  /** Label text */
+  text: string;
+  /** Position along edge (0 = start, 0.5 = middle, 1 = end). Default: 0.5 */
+  position?: number;
+  /** Background color. Default: transparent */
+  bgColor?: string;
+  /** Text color. Default: #ffffff */
+  textColor?: string;
+  /** Font size in pixels. Default: 12 */
+  fontSize?: number;
+}
+
 /** Socket type definition */
 export interface SocketType {
   color: string;
@@ -75,6 +103,12 @@ export interface Edge {
   animated?: boolean;
   /** Whether the edge connects incompatible socket types (in loose mode) */
   invalid?: boolean;
+  /** Edge label (string or full config) */
+  label?: string | EdgeLabelConfig;
+  /** Marker at the start of the edge (source side) */
+  markerStart?: EdgeMarkerType | EdgeMarker;
+  /** Marker at the end of the edge (target side) */
+  markerEnd?: EdgeMarkerType | EdgeMarker;
 }
 
 /** Connection in progress */
@@ -256,6 +290,10 @@ export interface KookieFlowProps {
   showStats?: boolean;
   /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false */
   scaleTextWithZoom?: boolean;
+  /** Show socket labels next to sockets. Default: true */
+  showSocketLabels?: boolean;
+  /** Show edge labels on edges. Default: true */
+  showEdgeLabels?: boolean;
   /** Enable snap to grid */
   snapToGrid?: boolean;
   /** Grid snap size */

@@ -15,7 +15,10 @@ export {
   getSocketPosition,
   getSocketAtPosition,
   getEdgeAtPosition,
+  getEdgePointAtT,
+  getEdgeEndpoints,
   type SocketIndexMap,
+  type EdgePointResult,
 } from './utils/geometry';
 
 export { isSocketCompatible, validateConnection, areTypesCompatible } from './utils/connections';
@@ -29,6 +32,9 @@ export type {
   Dimensions,
   Viewport,
   EdgeType,
+  EdgeMarkerType,
+  EdgeMarker,
+  EdgeLabelConfig,
   SocketType,
   Socket,
   SocketHandle,

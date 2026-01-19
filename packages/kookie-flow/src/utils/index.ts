@@ -7,6 +7,11 @@ export {
   getNodesInBox,
   getSocketPosition,
   getSocketAtPosition,
+  getEdgeAtPosition,
+  getEdgePointAtT,
+  getEdgeEndpoints,
+  type EdgePointResult,
+  type SocketIndexMap,
 } from './geometry';
 
 export { isSocketCompatible } from './connections';

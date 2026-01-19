@@ -852,16 +852,40 @@ function useSimpleHistory(maxSize = 50) {
 - [x] Docs: Pattern for simple undo/redo
 - [x] Docs: Pattern for efficient undo/redo (structural sharing)
 
-### Phase 7: Advanced Features
-**Goal:** Feature parity with React Flow
+### Phase 7A: Edge Enhancements ✅ COMPLETE
+**Goal:** Complete edge feature set
 
-- [ ] Minimap
-- [ ] Edge labels
-- [ ] Edge markers (arrows)
-- [ ] Node grouping/frames
-- [ ] Collapsed groups
-- [ ] Comments/sticky notes
-- [ ] Reroute nodes
+- [x] Edge labels (text on edges, positioned at midpoint)
+- [x] Edge markers (arrows at endpoints)
+
+**Implementation notes:**
+- Edge labels: DOM-based in `EdgeLabelsContainer` (consistent with node labels)
+  - Positioned via `getEdgePointAtT()` utility for accurate curve sampling
+  - Supports string or full `EdgeLabelConfig` with position, colors, fontSize
+  - Ref-based updates, RAF throttling, viewport culling
+- Edge markers: Triangle geometry in `Edges.tsx` (same draw call as edges)
+  - `markerStart` and `markerEnd` props on Edge
+  - Direction from curve tangent at endpoint
+  - Configurable width/height, color inherits from edge
+  - Screen-space sized (scales with zoom)
+- Both respect edge selection state and colors
+
+### Phase 7B: Minimap
+**Goal:** Overview navigation panel
+
+- [ ] Minimap component (renders to corner viewport region)
+- [ ] Simplified node rectangles (solid color, no details)
+- [ ] Viewport indicator rectangle (draggable)
+- [ ] Click to pan, drag to move viewport
+- [ ] Configurable position (corner) and size
+
+### Phase 7C: Grouping & Annotations
+**Goal:** Organizational features
+
+- [ ] Node grouping/frames (parent-child relationship)
+- [ ] Collapsed groups (hide children, show summary)
+- [ ] Comments/sticky notes (text-only nodes)
+- [ ] Reroute nodes (edge waypoints)
 
 ### Phase 8: Visual Previews
 **Goal:** The differentiator
@@ -1100,13 +1124,18 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Plugin: `useContextMenu` (right-click + long-press handling)
 - [x] Package exports for `@kushagradhawan/kookie-flow/plugins`
 - [x] `preserveExternalConnections` option for paste (reconnect cloned nodes to existing external nodes)
+- [x] Edge labels (DOM-based, midpoint positioning via `getEdgePointAtT()`)
+- [x] Edge markers (arrow triangles in edge geometry, direction from tangent)
+- [x] `EdgeLabelConfig`, `EdgeMarker`, `EdgeMarkerType` types
+- [x] `getEdgePointAtT()`, `getEdgeEndpoints()` utilities for edge curve sampling
 
 ### Next Immediate Tasks
 
-**Phase 7: Advanced Features**
-1. Minimap
-2. Edge labels
-3. Edge markers (arrows)
+**Phase 7B: Minimap**
+1. Minimap component (renders to corner viewport region)
+2. Simplified node rectangles (solid color, no details)
+3. Viewport indicator rectangle (draggable)
+4. Click to pan, drag to move viewport
 
 ---
 

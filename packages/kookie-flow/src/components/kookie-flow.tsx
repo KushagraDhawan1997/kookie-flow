@@ -52,6 +52,8 @@ export function KookieFlow({
   showMinimap = false,
   showStats = false,
   scaleTextWithZoom = false,
+  showSocketLabels = true,
+  showEdgeLabels = true,
   snapToGrid = false,
   snapGrid = [20, 20],
   defaultEdgeType = 'bezier',
@@ -92,7 +94,7 @@ export function KookieFlow({
         onEdgesChange={onEdgesChange}
       >
         <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} />
-        <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom}>{children}</DOMLayer>
+        <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels}>{children}</DOMLayer>
         <FlowSync
           nodes={nodes}
           edges={edges}

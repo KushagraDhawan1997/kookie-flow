@@ -458,3 +458,167 @@ export function getEdgeAtPosition(
 
   return closestEdge;
 }
+
+/** Result of edge point calculation */
+export interface EdgePointResult {
+  /** Position on the edge */
+  position: XYPosition;
+  /** Tangent direction (unit vector) at that point */
+  tangent: XYPosition;
+  /** Angle in radians (atan2 of tangent) */
+  angle: number;
+}
+
+/**
+ * Calculate the derivative (tangent) of a cubic bezier at parameter t.
+ */
+function bezierTangent(
+  x0: number, y0: number,
+  cx1: number, cy1: number,
+  cx2: number, cy2: number,
+  x1: number, y1: number,
+  t: number
+): XYPosition {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+
+  // Derivative of cubic bezier: 3(1-t)²(P1-P0) + 6(1-t)t(P2-P1) + 3t²(P3-P2)
+  const dx = 3 * mt2 * (cx1 - x0) + 6 * mt * t * (cx2 - cx1) + 3 * t2 * (x1 - cx2);
+  const dy = 3 * mt2 * (cy1 - y0) + 6 * mt * t * (cy2 - cy1) + 3 * t2 * (y1 - cy2);
+
+  return { x: dx, y: dy };
+}
+
+/**
+ * Get a point and tangent along an edge at parameter t (0 = start, 1 = end).
+ * Works with all edge types (bezier, smoothstep, step, straight).
+ */
+export function getEdgePointAtT(
+  edge: Edge,
+  nodeMap: Map<string, Node>,
+  t: number,
+  defaultEdgeType: EdgeType = 'bezier',
+  socketIndexMap?: SocketIndexMap
+): EdgePointResult | null {
+  const sourceNode = nodeMap.get(edge.source);
+  const targetNode = nodeMap.get(edge.target);
+  if (!sourceNode || !targetNode) return null;
+
+  const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
+  const sourceHeight = sourceNode.height ?? DEFAULT_NODE_HEIGHT;
+  const targetHeight = targetNode.height ?? DEFAULT_NODE_HEIGHT;
+
+  // Calculate source socket position
+  let sourceYOffset = sourceHeight / 2;
+  if (edge.sourceSocket) {
+    if (socketIndexMap) {
+      const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+      if (socketInfo) {
+        sourceYOffset = socketInfo.socket.position !== undefined
+          ? socketInfo.socket.position * sourceHeight
+          : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+      }
+    } else if (sourceNode.outputs) {
+      const socketIndex = sourceNode.outputs.findIndex(s => s.id === edge.sourceSocket);
+      if (socketIndex !== -1) {
+        const socket = sourceNode.outputs[socketIndex];
+        sourceYOffset = socket.position !== undefined
+          ? socket.position * sourceHeight
+          : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+      }
+    }
+  }
+
+  // Calculate target socket position
+  let targetYOffset = targetHeight / 2;
+  if (edge.targetSocket) {
+    if (socketIndexMap) {
+      const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
+      if (socketInfo) {
+        targetYOffset = socketInfo.socket.position !== undefined
+          ? socketInfo.socket.position * targetHeight
+          : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+      }
+    } else if (targetNode.inputs) {
+      const socketIndex = targetNode.inputs.findIndex(s => s.id === edge.targetSocket);
+      if (socketIndex !== -1) {
+        const socket = targetNode.inputs[socketIndex];
+        targetYOffset = socket.position !== undefined
+          ? socket.position * targetHeight
+          : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+      }
+    }
+  }
+
+  const x0 = sourceNode.position.x + sourceWidth;
+  const y0 = sourceNode.position.y + sourceYOffset;
+  const x1 = targetNode.position.x;
+  const y1 = targetNode.position.y + targetYOffset;
+
+  const edgeType = edge.type ?? defaultEdgeType;
+
+  let position: XYPosition;
+  let tangent: XYPosition;
+
+  if (edgeType === 'straight') {
+    // Linear interpolation
+    position = {
+      x: x0 + (x1 - x0) * t,
+      y: y0 + (y1 - y0) * t,
+    };
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    tangent = len > 0 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
+  } else if (edgeType === 'step') {
+    // Step edge: 3 segments
+    const midX = x0 + (x1 - x0) / 2;
+
+    if (t < 1/3) {
+      // First horizontal segment
+      const segT = t * 3;
+      position = { x: x0 + (midX - x0) * segT, y: y0 };
+      tangent = { x: 1, y: 0 };
+    } else if (t < 2/3) {
+      // Vertical segment
+      const segT = (t - 1/3) * 3;
+      position = { x: midX, y: y0 + (y1 - y0) * segT };
+      tangent = { x: 0, y: y1 > y0 ? 1 : -1 };
+    } else {
+      // Second horizontal segment
+      const segT = (t - 2/3) * 3;
+      position = { x: midX + (x1 - midX) * segT, y: y1 };
+      tangent = { x: 1, y: 0 };
+    }
+  } else {
+    // Bezier or smoothstep
+    const { cx1, cy1, cx2, cy2 } = getEdgeBezierPoints(x0, y0, x1, y1, edgeType);
+    position = sampleBezier(x0, y0, cx1, cy1, cx2, cy2, x1, y1, t);
+    const rawTangent = bezierTangent(x0, y0, cx1, cy1, cx2, cy2, x1, y1, t);
+    const len = Math.sqrt(rawTangent.x * rawTangent.x + rawTangent.y * rawTangent.y);
+    tangent = len > 0 ? { x: rawTangent.x / len, y: rawTangent.y / len } : { x: 1, y: 0 };
+  }
+
+  const angle = Math.atan2(tangent.y, tangent.x);
+
+  return { position, tangent, angle };
+}
+
+/**
+ * Get edge endpoint positions and tangents for marker rendering.
+ * Returns start (t=0) and end (t=1) points with tangent directions.
+ */
+export function getEdgeEndpoints(
+  edge: Edge,
+  nodeMap: Map<string, Node>,
+  defaultEdgeType: EdgeType = 'bezier',
+  socketIndexMap?: SocketIndexMap
+): { start: EdgePointResult; end: EdgePointResult } | null {
+  const start = getEdgePointAtT(edge, nodeMap, 0, defaultEdgeType, socketIndexMap);
+  const end = getEdgePointAtT(edge, nodeMap, 1, defaultEdgeType, socketIndexMap);
+
+  if (!start || !end) return null;
+
+  return { start, end };
+}

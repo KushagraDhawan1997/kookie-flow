@@ -95,13 +95,36 @@ function generateEdges(nodeCount: number): Edge[] {
   for (let i = 0; i < nodeCount; i++) {
     // Connect to right neighbor
     if ((i + 1) % cols !== 0 && i + 1 < nodeCount) {
-      edges.push({
+      const edge: Edge = {
         id: `edge-h-${i}`,
         source: `node-${i}`,
         target: `node-${i + 1}`,
         sourceSocket: `node-${i}-out-0`,
         targetSocket: `node-${i + 1}-in-0`,
-      });
+      };
+
+      // Add labels to some edges (every 3rd edge)
+      if (i % 3 === 0) {
+        edge.label = `Data ${i + 1}`;
+      }
+
+      // Add arrow markers to some edges (every 2nd edge)
+      if (i % 2 === 0) {
+        edge.markerEnd = 'arrow';
+      }
+
+      // Add styled label to first edge
+      if (i === 0) {
+        edge.label = {
+          text: 'Primary',
+          bgColor: 'rgba(99, 102, 241, 0.8)',
+          textColor: '#fff',
+          fontSize: 11,
+        };
+        edge.markerEnd = { type: 'arrow', width: 16, height: 16 };
+      }
+
+      edges.push(edge);
     }
   }
 
@@ -263,7 +286,7 @@ export default function DemoPage() {
           {nodes.length} nodes, {edges.length} edges
         </p>
         <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-          Select nodes → copy/paste/delete
+          Edge labels &amp; arrow markers demo
         </p>
       </div>
 
