@@ -96,6 +96,26 @@ These simplifications look visually similar but aren't pixel-perfect matches.
 
 ---
 
+## Performance Budget
+
+All styling operations must stay within these limits to maintain 60fps with 10k+ nodes:
+
+| Operation | Budget | Frequency |
+|-----------|--------|-----------|
+| `useThemeTokens()` DOM read | <1ms | Once on mount + theme change |
+| `resolveNodeStyle()` | <0.1ms | Once per render, memoized |
+| Hover attribute update | O(1), 2 indices max | On mouse move |
+| Selection attribute update | O(n) where n = changed | On selection change |
+| Shader uniform update | <0.01ms | On theme/style change only |
+
+**Critical constraints:**
+- Token reading must NOT happen during pan/zoom/drag
+- `resolveNodeStyle()` result must be memoized—never called in render loop
+- Hover updates must modify exactly 2 buffer indices (prev + current), not iterate all nodes
+- No object allocations in hot paths (pre-allocate Float32Arrays, reuse Vector3 instances)
+
+---
+
 ## Phase 1: Dependency & Token Reading
 
 ### 1.1 Add Kookie UI as peerDependency
@@ -263,8 +283,18 @@ function useThemeTokens(): ThemeTokens {
 
     setTokens(readTokens());
 
-    // Watch for theme changes
-    const observer = new MutationObserver(() => setTokens(readTokens()));
+    // Watch for theme changes with microtask batching
+    // (Kookie UI may update multiple data-* attributes in sequence)
+    let pending = false;
+    const observer = new MutationObserver(() => {
+      if (!pending) {
+        pending = true;
+        queueMicrotask(() => {
+          setTokens(readTokens());
+          pending = false;
+        });
+      }
+    });
     observer.observe(root, { attributes: true, attributeFilter: ['data-accent-color', 'data-gray-color', 'data-radius', 'data-scaling', 'class'] });
 
     return () => observer.disconnect();
@@ -338,6 +368,54 @@ const FALLBACK_TOKENS: ThemeTokens = {
   appearance: 'dark',
 };
 ```
+
+### 1.4 ThemeContext Provider
+
+Provide tokens via React context to avoid duplicate DOM reads and ensure single source of truth:
+
+```typescript
+// File: src/contexts/ThemeContext.tsx
+
+const ThemeContext = createContext<ThemeTokens>(FALLBACK_TOKENS);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const tokens = useThemeTokens();
+  return (
+    <ThemeContext.Provider value={tokens}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme(): ThemeTokens {
+  return useContext(ThemeContext);
+}
+```
+
+**Usage in KookieFlow:**
+
+```typescript
+// File: src/KookieFlow.tsx
+
+export function KookieFlow(props: KookieFlowProps) {
+  return (
+    <ThemeProvider>
+      <KookieFlowInner {...props} />
+    </ThemeProvider>
+  );
+}
+
+// Child components use useTheme() instead of useThemeTokens()
+function Nodes() {
+  const tokens = useTheme(); // Reads from context, no DOM access
+  // ...
+}
+```
+
+This ensures:
+- Single DOM read per theme change (in ThemeProvider)
+- All components share the same token reference
+- No risk of components reading stale/different values
 
 ---
 
@@ -655,7 +733,7 @@ function resolveNodeStyle(
 
   // Apply overrides
   return {
-    padding: overrides?.borderRadius ?? padding,
+    padding: overrides?.padding ?? padding,
     headerHeight: overrides?.headerHeight ?? sizeConfig.headerHeight,
     borderRadius: overrides?.borderRadius ?? borderRadius,
     borderWidth: overrides?.borderWidth ?? variantConfig.borderWidth,
@@ -674,6 +752,38 @@ function resolveNodeStyle(
     socketSize: sizeConfig.socketSize,
   };
 }
+```
+
+**IMPORTANT: Memoization Required**
+
+`resolveNodeStyle()` returns a new object every call. Always memoize the result:
+
+```typescript
+// ✅ CORRECT: Memoized, stable reference
+const resolvedStyle = useMemo(
+  () => resolveNodeStyle(size, variant, radius, tokens, overrides),
+  [size, variant, radius, tokens, overrides]
+);
+
+// ❌ WRONG: Creates new object every render, breaks downstream memoization
+const resolvedStyle = resolveNodeStyle(size, variant, radius, tokens, overrides);
+```
+
+For shader uniforms, also avoid creating new Vector3 instances on every style change:
+
+```typescript
+// ✅ CORRECT: Reuse Vector3 instances, update in place
+const uniformsRef = useRef({
+  u_borderColor: { value: new THREE.Vector3() },
+  u_backgroundColor: { value: new THREE.Vector3() },
+  // ...
+});
+
+useEffect(() => {
+  uniformsRef.current.u_borderColor.value.set(...resolvedStyle.borderColor);
+  uniformsRef.current.u_backgroundColor.value.set(...resolvedStyle.background);
+  // Mark material for update if needed
+}, [resolvedStyle]);
 ```
 
 ### 4.2 Color Parsing Utilities
@@ -731,6 +841,19 @@ function parsePx(value: string): number {
 ---
 
 ## Phase 5: Shader Updates
+
+### Coordinate System Note
+
+Kookie Flow uses Y-down world space (matching DOM), but WebGL's Y-axis points up. The vertex shader must flip Y when converting world → clip coordinates:
+
+```glsl
+// Vertex shader: flip Y for WebGL
+vec4 worldPos = vec4(position.xy, 0.0, 1.0);
+worldPos.y = -worldPos.y; // Y-down world → Y-up GL
+gl_Position = projectionMatrix * viewMatrix * worldPos;
+```
+
+Shadow offsets in this plan use positive Y = downward (world space). The shader handles the flip internally.
 
 ### 5.1 Node Shader Uniforms
 
@@ -968,17 +1091,41 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 
 ---
 
-## Open Questions
+## Open Questions (with Recommendations)
 
 1. **Header accent colors** — Should each node type define a header color, or derive from the first output socket type color?
 
+   **Recommendation:** Derive from the node type's primary output socket color. This creates visual consistency without requiring explicit config per node type. If no outputs exist, fall back to `--accent-9`.
+
 2. **Translucent material** — Kookie UI Card supports `material="translucent"` with backdrop blur. Worth supporting in WebGL? (Would require render-to-texture, significant complexity)
+
+   **Recommendation:** Skip for v1. The render-to-texture pipeline adds significant complexity and performance overhead. Revisit if users specifically request it.
 
 3. **Per-node style override** — Should individual nodes be able to override the global variant? e.g., `node.style = { borderColor: '--red-9' }` for error state?
 
+   **Recommendation:** Yes, support it. Error states, warning states, and disabled states are common use cases. Implement via optional `style` property on node data:
+
+   ```typescript
+   interface FlowNode {
+     id: string;
+     // ... existing fields
+     style?: {
+       borderColor?: string;  // CSS var or hex
+       background?: string;
+       opacity?: number;      // For disabled state
+     };
+   }
+   ```
+
+   Style overrides are resolved at render time and passed as per-instance attributes.
+
 4. **Animation** — Should hover/selection transitions be animated? (Interpolate in shader over time using a uniform)
 
+   **Recommendation:** Skip for v1. Instant state changes are acceptable and simpler. If added later, use a global `u_time` uniform and interpolate in shader based on per-instance `a_stateChangeTime` attribute.
+
 5. **Theme change reactivity** — Currently planned to use MutationObserver. Is there a better way to subscribe to Kookie UI theme changes?
+
+   **Recommendation:** MutationObserver with microtask batching (as implemented in Phase 1.2) is the right approach. Kookie UI doesn't expose a programmatic theme change API, so DOM observation is necessary. The batching prevents multiple re-reads when multiple attributes change in sequence.
 
 ---
 
