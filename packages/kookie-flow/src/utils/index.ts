@@ -16,6 +16,16 @@ export {
 
 export { isSocketCompatible } from './connections';
 
+// Color parsing utilities
+export {
+  type RGBColor,
+  type RGBAColor,
+  hexToRGB,
+  parseColorToRGB,
+  parseColorToRGBA,
+  parsePx,
+} from './color';
+
 // MSDF text rendering utilities
 export {
   msdfVertexShader,

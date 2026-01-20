@@ -60,13 +60,20 @@
     "zustand": "^5.0.10"
   },
   "peerDependencies": {
+    "@kushagradhawan/kookie-ui": ">=0.1.147",
     "@react-three/drei": ">=10.0.0",
     "@react-three/fiber": ">=9.0.0",
     "react": ">=19.0.0",
     "react-dom": ">=19.0.0",
     "three": ">=0.170.0"
   },
+  "peerDependenciesMeta": {
+    "@kushagradhawan/kookie-ui": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@kushagradhawan/kookie-ui": "^0.1.147",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@types/react": "^19.0.0",

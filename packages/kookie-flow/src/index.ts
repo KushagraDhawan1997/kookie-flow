@@ -5,6 +5,15 @@ export { Minimap } from './components/minimap';
 
 // Hooks
 export { useGraph } from './hooks/use-graph';
+export {
+  useThemeTokens,
+  FALLBACK_TOKENS,
+  type ThemeTokens,
+  type SimpleShadow,
+} from './hooks/useThemeTokens';
+
+// Contexts
+export { ThemeProvider, useTheme } from './contexts';
 
 // Utilities
 export {
@@ -23,6 +32,16 @@ export {
 } from './utils/geometry';
 
 export { isSocketCompatible, validateConnection, areTypesCompatible } from './utils/connections';
+
+// Color utilities (for custom theme implementations)
+export {
+  type RGBColor,
+  type RGBAColor,
+  hexToRGB,
+  parseColorToRGB,
+  parseColorToRGBA,
+  parsePx,
+} from './utils/color';
 
 // Store types
 export type { FlowState, FlowStore } from './core/store';

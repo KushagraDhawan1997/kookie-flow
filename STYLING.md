@@ -1027,12 +1027,13 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 
 ## Implementation Order
 
-### Milestone 1: Foundation
-- [ ] Add `@kushagradhawan/kookie-ui` as peerDependency + devDependency
-- [ ] Create `useThemeTokens()` hook with CSS var reading
-- [ ] Implement fallback tokens for standalone mode
-- [ ] Add color parsing utilities (`parseColorToRGB`, `hexToRGB`, `parsePx`)
-- [ ] Test token reading with Kookie UI Theme
+### Milestone 1: Foundation ✓
+- [x] Add `@kushagradhawan/kookie-ui` as peerDependency + devDependency
+- [x] Create `useThemeTokens()` hook with CSS var reading
+- [x] Implement fallback tokens for standalone mode
+- [x] Add color parsing utilities (`parseColorToRGB`, `hexToRGB`, `parsePx`)
+- [x] Test token reading with Kookie UI Theme
+- [x] Create `ThemeProvider` context for sharing tokens
 
 ### Milestone 2: Props & Resolution
 - [ ] Add `size`, `variant`, `radius` props to KookieFlowProps

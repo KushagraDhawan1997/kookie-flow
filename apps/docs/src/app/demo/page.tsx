@@ -5,6 +5,7 @@ import {
   KookieFlow,
   useGraph,
   useFlowStoreApi,
+  useThemeTokens,
   type Node,
   type Edge,
 } from '@kushagradhawan/kookie-flow';
@@ -223,6 +224,66 @@ function generateEdges(nodeCount: number): Edge[] {
   return edges;
 }
 
+function ThemeTokensTest() {
+  const tokens = useThemeTokens();
+
+  useEffect(() => {
+    console.log('[ThemeTokens Test] Tokens loaded:', {
+      spacing: {
+        '--space-1': tokens['--space-1'],
+        '--space-2': tokens['--space-2'],
+        '--space-3': tokens['--space-3'],
+      },
+      radius: {
+        '--radius-3': tokens['--radius-3'],
+        '--radius-4': tokens['--radius-4'],
+      },
+      colors: {
+        '--gray-1': tokens['--gray-1'],
+        '--gray-6': tokens['--gray-6'],
+        '--accent-9': tokens['--accent-9'],
+        '--blue-9': tokens['--blue-9'],
+      },
+      appearance: tokens.appearance,
+    });
+  }, [tokens]);
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 16,
+        left: 16,
+        zIndex: 10,
+        background: 'rgba(0,0,0,0.8)',
+        padding: '12px 16px',
+        borderRadius: 8,
+        fontSize: 11,
+        maxWidth: 280,
+      }}
+    >
+      <h3 style={{ fontSize: 12, marginBottom: 8 }}>Theme Tokens Test</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+        <span style={{ color: '#888' }}>--space-3:</span>
+        <span>{tokens['--space-3']}px</span>
+        <span style={{ color: '#888' }}>--radius-4:</span>
+        <span>{tokens['--radius-4']}px</span>
+        <span style={{ color: '#888' }}>--gray-6:</span>
+        <span style={{ color: `rgb(${tokens['--gray-6'].map((v) => Math.round(v * 255)).join(',')})` }}>
+          ■ [{tokens['--gray-6'].map((v) => v.toFixed(2)).join(', ')}]
+        </span>
+        <span style={{ color: '#888' }}>--accent-9:</span>
+        <span style={{ color: `rgb(${tokens['--accent-9'].map((v) => Math.round(v * 255)).join(',')})` }}>
+          ■ [{tokens['--accent-9'].map((v) => v.toFixed(2)).join(', ')}]
+        </span>
+        <span style={{ color: '#888' }}>appearance:</span>
+        <span>{tokens.appearance}</span>
+      </div>
+      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>Check console for full tokens</p>
+    </div>
+  );
+}
+
 function ClipboardDemo() {
   const store = useFlowStoreApi();
   const { copy, paste, cut, hasClipboardContent } = useClipboard();
@@ -350,7 +411,7 @@ function ClipboardDemo() {
 }
 
 export default function DemoPage() {
-  const nodeCount = 5000; // Smxpaller for demo
+  const nodeCount = 1000; // Smxpaller for demo
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
@@ -397,6 +458,7 @@ export default function DemoPage() {
         showEdgeLabels
       >
         <ClipboardDemo />
+        <ThemeTokensTest />
       </KookieFlow>
     </main>
   );
