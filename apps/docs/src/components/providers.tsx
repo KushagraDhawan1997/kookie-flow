@@ -5,7 +5,7 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <Theme
-      accentColor="iris"
+      accentColor="blue"
       grayColor="auto"
       material="solid"
       radius="medium"

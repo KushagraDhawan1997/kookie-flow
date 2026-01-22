@@ -61,7 +61,7 @@ export const MINIMAP_DEFAULTS = {
   width: 200,
   height: 150,
   padding: 20,
-  viewportBorderWidth: 2,
+  viewportBorderWidth: 1,
   minNodeSize: 2,
   /** Base scale for zoomable mode (minimap zoom = viewport.zoom * baseScale) */
   zoomableBaseScale: 0.15,
