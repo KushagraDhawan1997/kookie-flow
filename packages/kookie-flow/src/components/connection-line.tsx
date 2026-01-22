@@ -11,15 +11,7 @@ import {
   DEFAULT_NODE_HEIGHT,
 } from '../core/constants';
 import type { SocketType } from '../types';
-import type { RGBColor } from '../utils/color';
-
-/** Convert RGB array [0-1] to hex string */
-function rgbToHex(rgb: RGBColor): string {
-  const r = Math.round(rgb[0] * 255);
-  const g = Math.round(rgb[1] * 255);
-  const b = Math.round(rgb[2] * 255);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-}
+import { rgbToHex } from '../utils/color';
 
 // Tessellation settings
 const SEGMENTS = 32;

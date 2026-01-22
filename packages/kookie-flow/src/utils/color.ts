@@ -5,6 +5,16 @@
 export type RGBColor = [number, number, number]; // [0-1, 0-1, 0-1]
 export type RGBAColor = [number, number, number, number]; // [0-1, 0-1, 0-1, 0-1]
 
+/**
+ * Convert RGB array [0-1] to hex string.
+ */
+export function rgbToHex(rgb: RGBColor): string {
+  const r = Math.round(rgb[0] * 255);
+  const g = Math.round(rgb[1] * 255);
+  const b = Math.round(rgb[2] * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 // Reusable probe element for color resolution
 let colorProbe: HTMLSpanElement | null = null;
 

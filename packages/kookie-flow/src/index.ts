@@ -44,6 +44,7 @@ export { isSocketCompatible, validateConnection, areTypesCompatible } from './ut
 export {
   type RGBColor,
   type RGBAColor,
+  rgbToHex,
   hexToRGB,
   parseColorToRGB,
   parseColorToRGBA,
@@ -51,6 +52,9 @@ export {
   resolveColorToRGBA,
   parsePx,
 } from './utils/color';
+
+// Socket type utilities
+export { resolveSocketTypes } from './utils/socket-types';
 
 // Style resolution utilities (Milestone 2)
 export {
@@ -117,8 +121,5 @@ export {
   SOCKET_RADIUS,
   SOCKET_SPACING,
   SOCKET_MARGIN_TOP,
-  NODE_COLORS,
-  GRID_COLORS,
-  EDGE_COLORS,
   MINIMAP_DEFAULTS,
 } from './core/constants';

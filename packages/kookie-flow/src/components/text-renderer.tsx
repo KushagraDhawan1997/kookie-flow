@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
-import type { RGBColor } from '../utils/color';
+import { rgbToHex } from '../utils/color';
 import {
   type FontMetrics,
   type TextEntry,
@@ -50,14 +50,6 @@ const MAX_CAPACITY = 250000; // 250k glyphs max per weight
 const MIN_TEXT_ZOOM = 0.15; // Below this, hide ALL text
 const MIN_SOCKET_ZOOM = 0.35; // Below this, hide socket labels
 const MIN_EDGE_ZOOM = 0.25; // Below this, hide edge labels
-
-/** Convert RGB array [0-1] to hex string */
-function rgbToHex(rgb: RGBColor): string {
-  const r = Math.round(rgb[0] * 255);
-  const g = Math.round(rgb[1] * 255);
-  const b = Math.round(rgb[2] * 255);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-}
 
 /**
  * Font data for a single weight.

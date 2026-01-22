@@ -20,7 +20,8 @@ import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
 import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
-import { ThemeProvider, StyleProvider } from '../contexts';
+import { ThemeProvider, StyleProvider, useTheme } from '../contexts';
+import { resolveSocketTypes } from '../utils/socket-types';
 import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
 import {
   EMBEDDED_FONT_METRICS_REGULAR,
@@ -195,6 +196,14 @@ function ThemedFlowContainer({
   minimapProps,
   children,
 }: ThemedFlowContainerProps) {
+  const tokens = useTheme();
+
+  // Resolve socket type colors from theme tokens (memoized)
+  const resolvedSocketTypes = useMemo(
+    () => resolveSocketTypes(socketTypes, tokens),
+    [socketTypes, tokens]
+  );
+
   // Use CSS variable with fallback for standalone mode (no Kookie UI)
   // This avoids hydration mismatch since server and client render the same string
   const containerStyle: CSSProperties = {
@@ -214,7 +223,7 @@ function ThemedFlowContainer({
         maxZoom={maxZoom}
         snapToGrid={snapToGrid}
         snapGrid={snapGrid}
-        socketTypes={socketTypes}
+        socketTypes={resolvedSocketTypes}
         connectionMode={connectionMode}
         isValidConnection={isValidConnection}
         defaultEdgeType={defaultEdgeType}
@@ -226,13 +235,13 @@ function ThemedFlowContainer({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
       >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
+        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
         {showMinimap && <Minimap {...minimapProps} />}
         <FlowSync
           nodes={nodes}
           edges={edges}
-          socketTypes={socketTypes}
+          socketTypes={resolvedSocketTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
         />
