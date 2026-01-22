@@ -12,6 +12,7 @@ import {
   SOCKET_MARGIN_TOP,
 } from '../core/constants';
 import { areTypesCompatible } from '../utils/connections';
+import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
 
@@ -35,10 +36,10 @@ export function Sockets({
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
 
-  // Derive colors from theme tokens
-  const invalidColor = tokens['--red-9'];
-  const validTargetColor = tokens['--green-9'];
-  const fallbackSocketColor = rgbToHex(tokens['--gray-8']);
+  // Derive colors from semantic theme config
+  const invalidColor = tokens[THEME_COLORS.socket.invalid];
+  const validTargetColor = tokens[THEME_COLORS.socket.validTarget];
+  const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
 
   // Cached connected sockets Set (rebuilt only when edges change, not every frame)
   const connectedSocketsRef = useRef<Set<string>>(new Set());

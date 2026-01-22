@@ -21,6 +21,7 @@ import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
+import { THEME_COLORS } from '../core/theme-colors';
 import {
   type FontMetrics,
   type TextEntry,
@@ -241,8 +242,8 @@ export function MultiWeightTextRenderer({
   const tokens = useTheme();
 
   // Derive text colors from theme tokens
-  const primaryTextColor = rgbToHex(tokens['--gray-12']);
-  const secondaryTextColor = rgbToHex(tokens['--gray-11']);
+  const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
+  const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
 
   // Dirty flag shared between weight renderers
   const dirtyRef = useRef(true);

@@ -10,6 +10,7 @@ import {
   DEFAULT_NODE_WIDTH,
   DEFAULT_NODE_HEIGHT,
 } from '../core/constants';
+import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
 
@@ -70,10 +71,10 @@ export function ConnectionLine({
   const meshRef = useRef<THREE.Mesh>(null);
   const initializedRef = useRef(false);
 
-  // Derive colors from theme tokens
-  const defaultLineColor = rgbToHex(tokens['--gray-8']);
-  const invalidColor = rgbToHex(tokens['--red-9']);
-  const fallbackSocketColor = rgbToHex(tokens['--gray-8']);
+  // Derive colors from semantic theme config
+  const defaultLineColor = rgbToHex(tokens[THEME_COLORS.connectionLine.default]);
+  const invalidColor = rgbToHex(tokens[THEME_COLORS.connectionLine.invalid]);
+  const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
 
   // Pre-allocated buffers
   const buffersRef = useRef<{

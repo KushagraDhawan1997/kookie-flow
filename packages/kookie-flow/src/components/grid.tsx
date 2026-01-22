@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { DEFAULT_GRID_SIZE } from '../core/constants';
+import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 
 export interface GridProps {
@@ -31,9 +32,9 @@ export function Grid({
   const dirtyRef = useRef(true);
   const lastViewportRef = useRef({ x: 0, y: 0, zoom: 1 });
 
-  // Use theme tokens as defaults (--gray-3 for lines, --gray-4 for accent)
-  const gridColor = color ?? rgbToHex(tokens['--gray-3']);
-  const gridColorAccent = colorAccent ?? rgbToHex(tokens['--gray-4']);
+  // Use semantic theme colors
+  const gridColor = color ?? rgbToHex(tokens[THEME_COLORS.grid.lines]);
+  const gridColorAccent = colorAccent ?? rgbToHex(tokens[THEME_COLORS.grid.linesAccent]);
 
   const gridMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({

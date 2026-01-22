@@ -8,9 +8,10 @@ import {
   DEFAULT_NODE_HEIGHT,
   SOCKET_MARGIN_TOP,
   SOCKET_SPACING,
+  DEFAULT_SOCKET_TYPES,
 } from '../core/constants';
+import { THEME_COLORS } from '../core/theme-colors';
 import type { Node, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
-import { DEFAULT_SOCKET_TYPES } from '../core/constants';
 
 // Buffer sizing
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -155,19 +156,19 @@ export function Edges({
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
-  // Pre-computed colors from theme tokens
-  const defaultColor = useMemo(
-    () => new THREE.Color(tokens['--gray-8'][0], tokens['--gray-8'][1], tokens['--gray-8'][2]),
-    [tokens]
-  );
-  const selectedColor = useMemo(
-    () => new THREE.Color(tokens['--accent-9'][0], tokens['--accent-9'][1], tokens['--accent-9'][2]),
-    [tokens]
-  );
-  const invalidColor = useMemo(
-    () => new THREE.Color(tokens['--red-9'][0], tokens['--red-9'][1], tokens['--red-9'][2]),
-    [tokens]
-  );
+  // Pre-computed colors from semantic theme config
+  const defaultColor = useMemo(() => {
+    const c = tokens[THEME_COLORS.edge.default];
+    return new THREE.Color(c[0], c[1], c[2]);
+  }, [tokens]);
+  const selectedColor = useMemo(() => {
+    const c = tokens[THEME_COLORS.edge.selected];
+    return new THREE.Color(c[0], c[1], c[2]);
+  }, [tokens]);
+  const invalidColor = useMemo(() => {
+    const c = tokens[THEME_COLORS.edge.invalid];
+    return new THREE.Color(c[0], c[1], c[2]);
+  }, [tokens]);
   // Temp color for socket type lookups (avoids GC in hot path)
   const tempColor = useMemo(() => new THREE.Color(), []);
 

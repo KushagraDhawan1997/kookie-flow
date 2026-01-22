@@ -123,3 +123,6 @@ export {
   SOCKET_MARGIN_TOP,
   MINIMAP_DEFAULTS,
 } from './core/constants';
+
+// Semantic theme colors
+export { THEME_COLORS, resolveColor, type ColorTokenKey } from './core/theme-colors';
