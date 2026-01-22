@@ -250,6 +250,7 @@ function ThemeTokensTest() {
 
   return (
     <div
+      suppressHydrationWarning
       style={{
         position: 'absolute',
         bottom: 16,
@@ -269,11 +270,17 @@ function ThemeTokensTest() {
         <span style={{ color: '#888' }}>--radius-4:</span>
         <span>{tokens['--radius-4']}px</span>
         <span style={{ color: '#888' }}>--gray-6:</span>
-        <span style={{ color: `rgb(${tokens['--gray-6'].map((v) => Math.round(v * 255)).join(',')})` }}>
+        <span
+          style={{ color: `rgb(${tokens['--gray-6'].map((v) => Math.round(v * 255)).join(',')})` }}
+        >
           ■ [{tokens['--gray-6'].map((v) => v.toFixed(2)).join(', ')}]
         </span>
         <span style={{ color: '#888' }}>--accent-9:</span>
-        <span style={{ color: `rgb(${tokens['--accent-9'].map((v) => Math.round(v * 255)).join(',')})` }}>
+        <span
+          style={{
+            color: `rgb(${tokens['--accent-9'].map((v) => Math.round(v * 255)).join(',')})`,
+          }}
+        >
           ■ [{tokens['--accent-9'].map((v) => v.toFixed(2)).join(', ')}]
         </span>
         <span style={{ color: '#888' }}>appearance:</span>
@@ -456,6 +463,10 @@ export default function DemoPage() {
         textRenderMode="webgl"
         showSocketLabels
         showEdgeLabels
+        // Styling props (Milestone 2) - try different values!
+        size="2"
+        variant="surface"
+        radius="medium"
       >
         <ClipboardDemo />
         <ThemeTokensTest />

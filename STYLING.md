@@ -53,8 +53,7 @@ These simplifications look visually similar but aren't pixel-perfect matches.
 │  1. Read CSS vars from :root / .radix-themes                        │
 │  2. Parse into flat token map keyed by CSS var name                 │
 │  3. Convert colors to RGB arrays for WebGL                          │
-│  4. Cache and memoize                                                │
-│  5. Re-read on theme/appearance change                              │
+│  4. Read once on mount (no runtime theme changes)                   │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
@@ -102,11 +101,11 @@ All styling operations must stay within these limits to maintain 60fps with 10k+
 
 | Operation | Budget | Frequency |
 |-----------|--------|-----------|
-| `useThemeTokens()` DOM read | <1ms | Once on mount + theme change |
+| `useThemeTokens()` DOM read | <1ms | Once on mount |
 | `resolveNodeStyle()` | <0.1ms | Once per render, memoized |
 | Hover attribute update | O(1), 2 indices max | On mouse move |
 | Selection attribute update | O(n) where n = changed | On selection change |
-| Shader uniform update | <0.01ms | On theme/style change only |
+| Shader uniform update | <0.01ms | On style prop change only |
 
 **Critical constraints:**
 - Token reading must NOT happen during pan/zoom/drag
@@ -250,19 +249,24 @@ interface SimpleShadow {
 2. Use `getComputedStyle()` to read CSS variables
 3. Parse color strings (`#fcfcfc`, `rgb(...)`) to RGB arrays
 4. Parse shadow strings to structured values
-5. Cache in a ref
-6. Set up MutationObserver to detect `data-*` attribute changes (theme switches)
-7. Provide fallback values if Kookie UI is not present
+5. Provide fallback values if Kookie UI is not present
+6. No runtime theme change support — tokens read once on mount
 
 ```typescript
 function useThemeTokens(): ThemeTokens {
-  const [tokens, setTokens] = useState<ThemeTokens>(FALLBACK_TOKENS);
+  // Read tokens once on mount — no runtime theme change support
+  const [tokens] = useState<ThemeTokens>(() => {
+    // SSR safety check
+    if (typeof document === 'undefined') return FALLBACK_TOKENS;
 
-  useEffect(() => {
     const root = document.querySelector('.radix-themes') ?? document.documentElement;
     const styles = getComputedStyle(root);
 
-    const readTokens = (): ThemeTokens => ({
+    // Check if Kookie UI is present
+    const hasKookieUI = styles.getPropertyValue('--space-1').trim() !== '';
+    if (!hasKookieUI) return FALLBACK_TOKENS;
+
+    return {
       // Spacing
       '--space-1': parsePx(styles.getPropertyValue('--space-1')),
       '--space-2': parsePx(styles.getPropertyValue('--space-2')),
@@ -279,26 +283,8 @@ function useThemeTokens(): ThemeTokens {
       '--purple-9': parseColorToRGB(styles.getPropertyValue('--purple-9')),
       '--green-9': parseColorToRGB(styles.getPropertyValue('--green-9')),
       // ...
-    });
-
-    setTokens(readTokens());
-
-    // Watch for theme changes with microtask batching
-    // (Kookie UI may update multiple data-* attributes in sequence)
-    let pending = false;
-    const observer = new MutationObserver(() => {
-      if (!pending) {
-        pending = true;
-        queueMicrotask(() => {
-          setTokens(readTokens());
-          pending = false;
-        });
-      }
-    });
-    observer.observe(root, { attributes: true, attributeFilter: ['data-accent-color', 'data-gray-color', 'data-radius', 'data-scaling', 'class'] });
-
-    return () => observer.disconnect();
-  }, []);
+    };
+  });
 
   return tokens;
 }
@@ -413,7 +399,7 @@ function Nodes() {
 ```
 
 This ensures:
-- Single DOM read per theme change (in ThemeProvider)
+- Single DOM read on mount (in ThemeProvider)
 - All components share the same token reference
 - No risk of components reading stale/different values
 
@@ -430,6 +416,16 @@ type Size = '1' | '2' | '3' | '4' | '5';
 type Variant = 'surface' | 'outline' | 'soft' | 'classic' | 'ghost';
 type Radius = 'none' | 'small' | 'medium' | 'large' | 'full';
 
+// 26 Kookie UI accent colors
+type AccentColor =
+  | 'gray' | 'gold' | 'bronze' | 'brown'
+  | 'yellow' | 'amber' | 'orange' | 'tomato'
+  | 'red' | 'ruby' | 'crimson' | 'pink'
+  | 'plum' | 'purple' | 'violet' | 'iris'
+  | 'indigo' | 'blue' | 'cyan' | 'teal'
+  | 'jade' | 'green' | 'grass' | 'lime'
+  | 'mint' | 'sky';
+
 interface KookieFlowProps {
   // ... existing props (nodes, edges, etc.)
 
@@ -437,6 +433,10 @@ interface KookieFlowProps {
   size?: Size;           // Default: '2'
   variant?: Variant;     // Default: 'surface'
   radius?: Radius;       // Default: inherits from Theme, or 'medium'
+
+  // Header configuration
+  header?: 'none' | 'inside' | 'outside';  // Default: 'none'
+  accentHeader?: boolean;                   // Default: false — tint header with accent color
 
   // Optional fine-grained overrides
   nodeStyle?: Partial<NodeStyleOverrides>;
@@ -449,10 +449,18 @@ interface NodeStyleOverrides {
   borderWidth?: number;
   borderRadius?: number;    // Direct pixel value (overrides radius prop)
   shadow?: '1' | '2' | '3' | '4' | '5' | '6' | 'none';
+}
 
-  // Node-specific (not in Card)
-  headerHeight?: number;
-  headerBackground?: string;
+// Per-node data can include color override
+interface FlowNode {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+  // ... other fields
+
+  // Per-node color (matches Kookie UI accent colors)
+  color?: AccentColor;
 }
 ```
 
@@ -1035,32 +1043,50 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [x] Test token reading with Kookie UI Theme
 - [x] Create `ThemeProvider` context for sharing tokens
 
-### Milestone 2: Props & Resolution
-- [ ] Add `size`, `variant`, `radius` props to KookieFlowProps
-- [ ] Add `NodeStyleOverrides` type
-- [ ] Define SIZE_MAP matching Kookie UI Card
-- [ ] Define VARIANT_MAP matching Kookie UI Card
-- [ ] Implement `resolveNodeStyle()` function
-- [ ] Wire tokens through context to child components
+### Milestone 2: Props & Resolution ✓
+- [x] Add `size`, `variant`, `radius` props to KookieFlowProps
+- [x] Add `NodeStyleOverrides` type
+- [x] Define SIZE_MAP matching Kookie UI Card
+- [x] Define VARIANT_MAP matching Kookie UI Card
+- [x] Implement `resolveNodeStyle()` function
+- [x] Wire tokens through context to child components
+- [x] Add `header`, `accentHeader` props for header configuration
+- [x] Add `AccentColor` type (26 Kookie UI colors)
+- [x] Add `color` prop to Node interface
+- [x] Create `StyleProvider` and `useResolvedStyle` context
 
 ### Milestone 3: Node Shader
-- [ ] Update node shader to accept color/style uniforms
+- [x] Update node shader to accept color/style uniforms
 - [ ] Add shadow SDF for classic variant
 - [ ] Implement header color region in shader
-- [ ] Update instance attributes for selected/hovered state
-- [ ] Handle transparent backgrounds (ghost, outline)
+- [x] Update instance attributes for selected/hovered state
+- [x] Handle transparent backgrounds (ghost, outline)
 - [ ] Test all 5 variants visually
 
 ### Milestone 4: Socket Colors
-- [ ] Update socketTypes config to accept CSS var references
-- [ ] Implement `resolveSocketColor()` function
-- [ ] Update Sockets.tsx to use resolved colors
-- [ ] Update ConnectionLine to use resolved colors
-- [ ] Test socket colors with different Radix palettes
+- [x] Tokenize fallback socket colors (invalid → `--red-9`, valid target → `--green-9`, default → `--gray-8`)
+- [x] Tokenize connection line colors (default → `--gray-8`, invalid → `--red-9`)
+- [x] Edge colors tokenized (default → `--gray-8`, selected → `--accent-9`, invalid → `--red-9`)
+- [ ] Update socketTypes config to accept CSS var references (deferred — see "Socket Type Theming" below)
+- [ ] Implement `resolveSocketColor()` function (deferred)
+- [ ] Optional: Create `createThemedSocketTypes(tokens)` helper (deferred)
+
+#### Tokenization Summary by Component
+
+| Component | Tokens Used | Purpose |
+|-----------|-------------|---------|
+| grid.tsx | `--gray-3`, `--gray-4` | Minor/major grid lines |
+| kookie-flow.tsx | `--gray-2` | Canvas background |
+| text-renderer.tsx | `--gray-12`, `--gray-11` | Primary/secondary text |
+| dom-layer.tsx | `--gray-12`, `--gray-11` | DOM text labels |
+| selection-box.tsx | `--accent-9` | Fill and border |
+| connection-line.tsx | `--gray-8`, `--red-9` | Default line, invalid state |
+| edges.tsx | `--gray-8`, `--accent-9`, `--red-9` | Default, selected, invalid |
+| sockets.tsx | `--red-9`, `--green-9`, `--gray-8` | Invalid, valid target, fallback |
 
 ### Milestone 5: Polish & Testing
-- [ ] Dark mode testing (appearance toggle)
-- [ ] Light mode testing
+- [ ] Dark mode testing (mount with dark theme)
+- [ ] Light mode testing (mount with light theme)
 - [ ] Standalone mode testing (no Kookie UI)
 - [ ] Socket size scaling with node size
 - [ ] Edge selection color from accent
@@ -1076,6 +1102,7 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 
 ## Testing Checklist
 
+### Variants & Sizing
 - [ ] All 5 variants render correctly (surface, outline, soft, classic, ghost)
 - [ ] All 5 sizes render correctly
 - [ ] Radius prop overrides size-based radius
@@ -1083,50 +1110,111 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [ ] Hover shows background change
 - [ ] Classic variant shows shadow
 - [ ] Ghost/outline have transparent backgrounds
-- [ ] Socket colors resolve from Radix tokens
-- [ ] Dark mode: colors invert appropriately
-- [ ] Light mode: colors work correctly
+
+### Color Tokenization (Completed)
+- [x] Grid lines use `--gray-3` and `--gray-4`
+- [x] Canvas background uses `--gray-2`
+- [x] Text colors: primary `--gray-12`, secondary `--gray-11`
+- [x] Edge colors: default `--gray-8`, selected `--accent-9`, invalid `--red-9`
+- [x] Socket fallback colors: invalid `--red-9`, valid target `--green-9`, default `--gray-8`
+- [x] Connection line: default `--gray-8`, invalid `--red-9`
+- [x] Selection box: fill/border use `--accent-9`
+
+### Theme Integration
+- [ ] Socket type colors resolve from Radix tokens (user-configurable)
+- [ ] Dark mode: colors correct when mounted with dark theme
+- [ ] Light mode: colors correct when mounted with light theme
 - [ ] Standalone mode: fallback tokens work
-- [ ] Performance: no regression in 10k node benchmark
+
+### Performance
+- [ ] No regression in 10k node benchmark
 - [ ] Kookie UI Button inside node looks proportional at matching size
 
 ---
 
-## Open Questions (with Recommendations)
+## Design Decisions (Resolved)
 
-1. **Header accent colors** — Should each node type define a header color, or derive from the first output socket type color?
+1. **Header accent colors** — Optional via props, not automatic.
 
-   **Recommendation:** Derive from the node type's primary output socket color. This creates visual consistency without requiring explicit config per node type. If no outputs exist, fall back to `--accent-9`.
+   Headers are controlled via explicit props rather than derived from socket colors. This keeps the API simple and gives users full control.
 
-2. **Translucent material** — Kookie UI Card supports `material="translucent"` with backdrop blur. Worth supporting in WebGL? (Would require render-to-texture, significant complexity)
+2. **Translucent material** — Skipped for v1.
 
-   **Recommendation:** Skip for v1. The render-to-texture pipeline adds significant complexity and performance overhead. Revisit if users specifically request it.
+   Render-to-texture adds significant complexity. Revisit if users specifically request it.
 
-3. **Per-node style override** — Should individual nodes be able to override the global variant? e.g., `node.style = { borderColor: '--red-9' }` for error state?
+3. **Per-node color override** — Yes, matches Kookie UI pattern.
 
-   **Recommendation:** Yes, support it. Error states, warning states, and disabled states are common use cases. Implement via optional `style` property on node data:
+   Nodes support a `color` prop using the same 26 accent colors as Kookie UI (gray, gold, bronze, brown, yellow, amber, orange, tomato, red, ruby, crimson, pink, plum, purple, violet, iris, indigo, blue, cyan, teal, jade, green, grass, lime, mint, sky).
 
    ```typescript
    interface FlowNode {
      id: string;
      // ... existing fields
-     style?: {
-       borderColor?: string;  // CSS var or hex
-       background?: string;
-       opacity?: number;      // For disabled state
-     };
+     color?: AccentColor;  // 26 Kookie UI accent colors
    }
    ```
 
-   Style overrides are resolved at render time and passed as per-instance attributes.
+4. **Animation** — Skipped for v1.
 
-4. **Animation** — Should hover/selection transitions be animated? (Interpolate in shader over time using a uniform)
+   Instant state changes are acceptable. May add shader interpolation later if needed.
 
-   **Recommendation:** Skip for v1. Instant state changes are acceptable and simpler. If added later, use a global `u_time` uniform and interpolate in shader based on per-instance `a_stateChangeTime` attribute.
+5. **Theme change reactivity** — Read once on mount.
 
-5. **Theme change reactivity** — Currently planned to use MutationObserver. Is there a better way to subscribe to Kookie UI theme changes?
+   No MutationObserver. Tokens are read once when the component mounts. Users who need runtime theme changes can remount the component.
 
-   **Recommendation:** MutationObserver with microtask batching (as implemented in Phase 1.2) is the right approach. Kookie UI doesn't expose a programmatic theme change API, so DOM observation is necessary. The batching prevents multiple re-reads when multiple attributes change in sequence.
+6. **Socket type theming** — User-configurable via props, no built-in helper (yet).
+
+   `DEFAULT_SOCKET_TYPES` in `constants.ts` contains domain-specific colors (e.g., ComfyUI conventions: purple for images, orange for latent, green for models). These are **not** tokenized automatically because:
+   - They represent application-domain semantics, not UI theme colors
+   - Different apps have different data type conventions
+   - Hardcoded colors ensure consistency when no theme is present
+
+   **Current approach:** Users can pass custom `socketTypes` via props and build themed colors using the `useThemeTokens()` hook:
+
+   ```tsx
+   import { useThemeTokens, KookieFlow } from '@kushagradhawan/kookie-flow';
+
+   function MyFlow() {
+     const tokens = useThemeTokens();
+
+     const themedSocketTypes = {
+       image: { color: rgbToHex(tokens['--purple-9']), name: 'Image' },
+       latent: { color: rgbToHex(tokens['--orange-9']), name: 'Latent' },
+       model: { color: rgbToHex(tokens['--green-9']), name: 'Model' },
+       clip: { color: rgbToHex(tokens['--amber-9']), name: 'CLIP' },
+       vae: { color: rgbToHex(tokens['--red-9']), name: 'VAE' },
+       conditioning: { color: rgbToHex(tokens['--cyan-9']), name: 'Conditioning' },
+       any: { color: rgbToHex(tokens['--gray-9']), name: 'Any' },
+     };
+
+     return <KookieFlow socketTypes={themedSocketTypes} ... />;
+   }
+   ```
+
+   **Potential future improvement:** Provide a `createThemedSocketTypes(tokens, mapping)` helper function that makes this easier:
+
+   ```tsx
+   // Potential API (not implemented yet)
+   const socketTypes = createThemedSocketTypes(tokens, {
+     image: { token: '--purple-9', name: 'Image' },
+     latent: { token: '--orange-9', name: 'Latent' },
+     // ...
+   });
+   ```
+
+   **Mapping from current defaults to Radix tokens:**
+
+   | Socket Type | Current Color | Radix Token |
+   |-------------|---------------|-------------|
+   | any | #808080 | `--gray-9` |
+   | image | #a855f7 | `--purple-9` |
+   | latent | #f97316 | `--orange-9` |
+   | model | #22c55e | `--green-9` |
+   | clip | #facc15 | `--amber-9` |
+   | vae | #ef4444 | `--red-9` |
+   | conditioning | #06b6d4 | `--cyan-9` |
+   | control_net | #3b82f6 | `--blue-9` |
+   | mask | #6b7280 | `--gray-8` |
 
 ---
 

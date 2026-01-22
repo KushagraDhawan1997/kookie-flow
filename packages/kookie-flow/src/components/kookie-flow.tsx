@@ -18,10 +18,16 @@ import { Sockets } from './sockets';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
-import { TextRenderer } from './text-renderer';
+import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
-import { GRID_COLORS, DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
-import { EMBEDDED_FONT_METRICS, EMBEDDED_FONT_ATLAS_URL } from '../core/embedded-font';
+import { ThemeProvider, StyleProvider } from '../contexts';
+import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
+import {
+  EMBEDDED_FONT_METRICS_REGULAR,
+  EMBEDDED_FONT_ATLAS_URL_REGULAR,
+  EMBEDDED_FONT_METRICS_SEMIBOLD,
+  EMBEDDED_FONT_ATLAS_URL_SEMIBOLD,
+} from '../core/embedded-font';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
@@ -66,16 +72,138 @@ export function KookieFlow({
   isValidConnection,
   className,
   children,
+  // Styling props (Milestone 2)
+  size = '2',
+  variant = 'surface',
+  radius,
+  header = 'none',
+  accentHeader = false,
+  nodeStyle,
 }: KookieFlowProps) {
+  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
+
+  return (
+    <ThemeProvider>
+      <StyleProvider
+        size={size}
+        variant={variant}
+        radius={radius}
+        header={header}
+        accentHeader={accentHeader}
+        nodeStyle={nodeStyle}
+      >
+        <ThemedFlowContainer
+          nodes={nodes}
+          edges={edges}
+          defaultViewport={defaultViewport}
+          className={className}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
+          snapToGrid={snapToGrid}
+          snapGrid={snapGrid}
+          socketTypes={resolvedSocketTypes}
+          connectionMode={connectionMode}
+          isValidConnection={isValidConnection}
+          defaultEdgeType={defaultEdgeType}
+          edgesSelectable={edgesSelectable}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onConnect={onConnect}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          showGrid={showGrid}
+          showStats={showStats}
+          textRenderMode={textRenderMode}
+          showSocketLabels={showSocketLabels}
+          showEdgeLabels={showEdgeLabels}
+          nodeTypes={nodeTypes}
+          scaleTextWithZoom={scaleTextWithZoom}
+          showMinimap={showMinimap}
+          minimapProps={minimapProps}
+        >
+          {children}
+        </ThemedFlowContainer>
+      </StyleProvider>
+    </ThemeProvider>
+  );
+}
+
+/**
+ * Inner container that has access to theme tokens for styling.
+ */
+interface ThemedFlowContainerProps {
+  nodes: Node[];
+  edges: Edge[];
+  defaultViewport?: KookieFlowProps['defaultViewport'];
+  className?: string;
+  minZoom: number;
+  maxZoom: number;
+  snapToGrid: boolean;
+  snapGrid: [number, number];
+  socketTypes: Record<string, SocketType>;
+  connectionMode: ConnectionMode;
+  isValidConnection?: IsValidConnectionFn;
+  defaultEdgeType: EdgeType;
+  edgesSelectable: boolean;
+  onNodeClick?: (node: Node) => void;
+  onEdgeClick?: (edge: Edge) => void;
+  onPaneClick?: () => void;
+  onConnect?: (connection: Connection) => void;
+  onNodesChange?: KookieFlowProps['onNodesChange'];
+  onEdgesChange?: KookieFlowProps['onEdgesChange'];
+  showGrid: boolean;
+  showStats: boolean;
+  textRenderMode: TextRenderMode;
+  showSocketLabels: boolean;
+  showEdgeLabels: boolean;
+  nodeTypes: KookieFlowProps['nodeTypes'];
+  scaleTextWithZoom: boolean;
+  showMinimap: boolean;
+  minimapProps?: KookieFlowProps['minimapProps'];
+  children?: React.ReactNode;
+}
+
+function ThemedFlowContainer({
+  nodes,
+  edges,
+  defaultViewport,
+  className,
+  minZoom,
+  maxZoom,
+  snapToGrid,
+  snapGrid,
+  socketTypes,
+  connectionMode,
+  isValidConnection,
+  defaultEdgeType,
+  edgesSelectable,
+  onNodeClick,
+  onEdgeClick,
+  onPaneClick,
+  onConnect,
+  onNodesChange,
+  onEdgesChange,
+  showGrid,
+  showStats,
+  textRenderMode,
+  showSocketLabels,
+  showEdgeLabels,
+  nodeTypes,
+  scaleTextWithZoom,
+  showMinimap,
+  minimapProps,
+  children,
+}: ThemedFlowContainerProps) {
+  // Use CSS variable with fallback for standalone mode (no Kookie UI)
+  // This avoids hydration mismatch since server and client render the same string
   const containerStyle: CSSProperties = {
     position: 'relative',
     width: '100%',
     height: '100%',
     overflow: 'hidden',
-    backgroundColor: GRID_COLORS.background,
+    backgroundColor: 'var(--gray-2, #191919)',
   };
-
-  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
 
   return (
     <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
@@ -86,7 +214,7 @@ export function KookieFlow({
         maxZoom={maxZoom}
         snapToGrid={snapToGrid}
         snapGrid={snapGrid}
-        socketTypes={resolvedSocketTypes}
+        socketTypes={socketTypes}
         connectionMode={connectionMode}
         isValidConnection={isValidConnection}
         defaultEdgeType={defaultEdgeType}
@@ -98,13 +226,13 @@ export function KookieFlow({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
       >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
+        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
         {showMinimap && <Minimap {...minimapProps} />}
         <FlowSync
           nodes={nodes}
           edges={edges}
-          socketTypes={resolvedSocketTypes}
+          socketTypes={socketTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
         />
@@ -955,9 +1083,9 @@ interface WebGLTextLayerProps {
 }
 
 function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: WebGLTextLayerProps) {
-  // Load the embedded atlas texture
-  const atlasTexture = useMemo(() => {
-    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL);
+  // Load embedded atlas textures for both weights
+  const regularTexture = useMemo(() => {
+    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL_REGULAR);
     // CRITICAL: Disable flipY - BMFont atlas coordinates assume no Y-flip
     texture.flipY = false;
     texture.minFilter = THREE.LinearFilter;
@@ -966,10 +1094,19 @@ function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: W
     return texture;
   }, []);
 
+  const semiboldTexture = useMemo(() => {
+    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL_SEMIBOLD);
+    texture.flipY = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    return texture;
+  }, []);
+
   return (
-    <TextRenderer
-      fontMetrics={EMBEDDED_FONT_METRICS}
-      atlasTexture={atlasTexture}
+    <MultiWeightTextRenderer
+      regularFont={{ metrics: EMBEDDED_FONT_METRICS_REGULAR, texture: regularTexture }}
+      semiboldFont={{ metrics: EMBEDDED_FONT_METRICS_SEMIBOLD, texture: semiboldTexture }}
       showSocketLabels={showSocketLabels}
       showEdgeLabels={showEdgeLabels}
       defaultEdgeType={defaultEdgeType}

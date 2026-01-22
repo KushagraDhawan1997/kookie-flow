@@ -1,0 +1,318 @@
+/**
+ * Style resolution utilities for mapping KookieFlow props to WebGL-ready values.
+ * Milestone 2: Props & Resolution
+ */
+
+import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
+import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides } from '../types';
+import { parseColorToRGB, type RGBColor } from './color';
+
+// ============================================================================
+// Size Map (matches Kookie UI Card)
+// ============================================================================
+
+interface SizeConfig {
+  /** CSS variable name for padding */
+  padding: keyof ThemeTokens;
+  /** CSS variable name for border radius */
+  borderRadius: keyof ThemeTokens;
+  /** Header height in pixels */
+  headerHeight: number;
+  /** Font size in pixels */
+  fontSize: number;
+  /** Socket radius in pixels */
+  socketSize: number;
+}
+
+export const SIZE_MAP: Record<NodeSize, SizeConfig> = {
+  '1': {
+    padding: '--space-2', // 8px
+    borderRadius: '--radius-3', // 10px
+    headerHeight: 20,
+    fontSize: 12,
+    socketSize: 8,
+  },
+  '2': {
+    padding: '--space-3', // 12px
+    borderRadius: '--radius-4', // 12px
+    headerHeight: 24,
+    fontSize: 14,
+    socketSize: 10,
+  },
+  '3': {
+    padding: '--space-4', // 16px
+    borderRadius: '--radius-4', // 12px
+    headerHeight: 28,
+    fontSize: 14,
+    socketSize: 10,
+  },
+  '4': {
+    padding: '--space-5', // 24px
+    borderRadius: '--radius-5', // 16px
+    headerHeight: 32,
+    fontSize: 16,
+    socketSize: 12,
+  },
+  '5': {
+    padding: '--space-6', // 32px
+    borderRadius: '--radius-5', // 16px
+    headerHeight: 36,
+    fontSize: 16,
+    socketSize: 12,
+  },
+};
+
+// ============================================================================
+// Variant Map (matches Kookie UI Card)
+// ============================================================================
+
+interface VariantConfig {
+  /** Background color token or 'transparent' */
+  background: keyof ThemeTokens | 'transparent';
+  /** Background color on hover */
+  backgroundHover: keyof ThemeTokens;
+  /** Border color token or 'transparent' */
+  borderColor: keyof ThemeTokens | 'transparent';
+  /** Border color on hover */
+  borderColorHover: keyof ThemeTokens | 'transparent';
+  /** Border width in pixels */
+  borderWidth: number;
+  /** Shadow token or 'none' */
+  shadow: keyof ThemeTokens | 'none';
+}
+
+export const VARIANT_MAP: Record<NodeVariant, VariantConfig> = {
+  surface: {
+    background: '--gray-1',
+    backgroundHover: '--gray-2',
+    borderColor: '--gray-6',
+    borderColorHover: '--gray-7',
+    borderWidth: 1,
+    shadow: 'none',
+  },
+  outline: {
+    background: 'transparent',
+    backgroundHover: '--gray-2',
+    borderColor: '--gray-6',
+    borderColorHover: '--gray-7',
+    borderWidth: 1,
+    shadow: 'none',
+  },
+  soft: {
+    background: '--gray-2',
+    backgroundHover: '--gray-3',
+    borderColor: 'transparent',
+    borderColorHover: 'transparent',
+    borderWidth: 0,
+    shadow: 'none',
+  },
+  classic: {
+    background: '--color-surface-solid',
+    backgroundHover: '--gray-2',
+    borderColor: 'transparent',
+    borderColorHover: 'transparent',
+    borderWidth: 0,
+    shadow: '--shadow-2',
+  },
+  ghost: {
+    background: 'transparent',
+    backgroundHover: '--gray-3',
+    borderColor: 'transparent',
+    borderColorHover: 'transparent',
+    borderWidth: 0,
+    shadow: 'none',
+  },
+};
+
+// ============================================================================
+// Radius Map
+// ============================================================================
+
+export const RADIUS_MAP: Record<NodeRadius, keyof ThemeTokens | 0> = {
+  none: 0,
+  small: '--radius-2', // 8px
+  medium: '--radius-4', // 12px
+  large: '--radius-6', // 20px
+  full: '--radius-full', // 9999px
+};
+
+// ============================================================================
+// Resolved Style (WebGL-ready)
+// ============================================================================
+
+/**
+ * Fully resolved node style with all values ready for WebGL shaders.
+ */
+export interface ResolvedNodeStyle {
+  // Layout
+  padding: number;
+  headerHeight: number;
+
+  // Border
+  borderRadius: number;
+  borderWidth: number;
+  borderColor: RGBColor;
+  borderColorHover: RGBColor;
+
+  // Background
+  background: RGBColor;
+  backgroundHover: RGBColor;
+  /** 0 for transparent variants (ghost, outline), 1 otherwise */
+  backgroundAlpha: number;
+
+  // Shadow (for classic variant)
+  shadowBlur: number;
+  shadowOffsetY: number;
+  shadowOpacity: number;
+
+  // Selection state (uses accent color)
+  selectedBorderColor: RGBColor;
+
+  // Text
+  fontSize: number;
+
+  // Sockets
+  socketSize: number;
+}
+
+/** Transparent color constant */
+const TRANSPARENT: RGBColor = [0, 0, 0];
+
+/** No shadow constant */
+const NO_SHADOW: SimpleShadow = { offsetY: 0, blur: 0, opacity: 0 };
+
+/**
+ * Resolve a token reference to its actual value.
+ */
+function resolveTokenPx(
+  token: keyof ThemeTokens | 0,
+  tokens: ThemeTokens
+): number {
+  if (token === 0) return 0;
+  const value = tokens[token];
+  if (typeof value === 'number') return value;
+  return 0;
+}
+
+/**
+ * Resolve a color token reference to RGB.
+ */
+function resolveTokenColor(
+  token: keyof ThemeTokens | 'transparent',
+  tokens: ThemeTokens
+): RGBColor {
+  if (token === 'transparent') return TRANSPARENT;
+  const value = tokens[token];
+  if (Array.isArray(value)) {
+    // Could be RGB or RGBA, take first 3 values
+    return [value[0], value[1], value[2]];
+  }
+  return TRANSPARENT;
+}
+
+/**
+ * Resolve a shadow token reference.
+ */
+function resolveTokenShadow(
+  token: keyof ThemeTokens | 'none',
+  tokens: ThemeTokens
+): SimpleShadow {
+  if (token === 'none') return NO_SHADOW;
+  const value = tokens[token];
+  if (value && typeof value === 'object' && 'blur' in value) {
+    return value as SimpleShadow;
+  }
+  return NO_SHADOW;
+}
+
+/**
+ * Resolve node style props and theme tokens to WebGL-ready values.
+ *
+ * IMPORTANT: This function returns a new object every call.
+ * Always memoize the result with useMemo to avoid unnecessary re-renders.
+ *
+ * @example
+ * ```tsx
+ * const resolvedStyle = useMemo(
+ *   () => resolveNodeStyle(size, variant, radius, tokens, overrides),
+ *   [size, variant, radius, tokens, overrides]
+ * );
+ * ```
+ */
+export function resolveNodeStyle(
+  size: NodeSize = '2',
+  variant: NodeVariant = 'surface',
+  radius: NodeRadius | undefined,
+  tokens: ThemeTokens,
+  overrides?: Partial<NodeStyleOverrides>
+): ResolvedNodeStyle {
+  const sizeConfig = SIZE_MAP[size];
+  const variantConfig = VARIANT_MAP[variant];
+
+  // Resolve padding from size
+  const padding = resolveTokenPx(sizeConfig.padding, tokens);
+
+  // Resolve border radius (explicit radius prop overrides size-based default)
+  let borderRadius: number;
+  if (overrides?.borderRadius !== undefined) {
+    borderRadius = overrides.borderRadius;
+  } else if (radius !== undefined) {
+    borderRadius = resolveTokenPx(RADIUS_MAP[radius], tokens);
+  } else {
+    borderRadius = resolveTokenPx(sizeConfig.borderRadius, tokens);
+  }
+
+  // Resolve background colors
+  const background = overrides?.background
+    ? parseColorToRGB(overrides.background)
+    : resolveTokenColor(variantConfig.background, tokens);
+
+  const backgroundHover = resolveTokenColor(variantConfig.backgroundHover, tokens);
+
+  // Background alpha (transparent for ghost/outline)
+  const backgroundAlpha =
+    variant === 'ghost' || variant === 'outline' ? 0 : 1;
+
+  // Resolve border
+  const borderWidth = overrides?.borderWidth ?? variantConfig.borderWidth;
+
+  const borderColor = overrides?.borderColor
+    ? parseColorToRGB(overrides.borderColor)
+    : resolveTokenColor(variantConfig.borderColor, tokens);
+
+  const borderColorHover = resolveTokenColor(variantConfig.borderColorHover, tokens);
+
+  // Resolve shadow
+  let shadow: SimpleShadow;
+  if (overrides?.shadow !== undefined) {
+    if (overrides.shadow === 'none') {
+      shadow = NO_SHADOW;
+    } else {
+      const shadowKey = `--shadow-${overrides.shadow}` as keyof ThemeTokens;
+      shadow = resolveTokenShadow(shadowKey, tokens);
+    }
+  } else {
+    shadow = resolveTokenShadow(variantConfig.shadow, tokens);
+  }
+
+  // Selection uses accent color
+  const selectedBorderColor = resolveTokenColor('--accent-9', tokens);
+
+  return {
+    padding,
+    headerHeight: sizeConfig.headerHeight,
+    borderRadius,
+    borderWidth,
+    borderColor,
+    borderColorHover,
+    background,
+    backgroundHover,
+    backgroundAlpha,
+    shadowBlur: shadow.blur,
+    shadowOffsetY: shadow.offsetY,
+    shadowOpacity: shadow.opacity,
+    selectedBorderColor,
+    fontSize: sizeConfig.fontSize,
+    socketSize: sizeConfig.socketSize,
+  };
+}

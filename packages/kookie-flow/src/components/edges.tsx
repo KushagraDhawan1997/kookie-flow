@@ -2,8 +2,8 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
 import {
-  EDGE_COLORS,
   DEFAULT_NODE_WIDTH,
   DEFAULT_NODE_HEIGHT,
   SOCKET_MARGIN_TOP,
@@ -109,6 +109,7 @@ export function Edges({
   socketTypes = DEFAULT_SOCKET_TYPES,
 }: EdgesProps) {
   const store = useFlowStoreApi();
+  const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Pre-allocated buffers
@@ -154,12 +155,26 @@ export function Edges({
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
-  // Pre-computed colors
-  const defaultColor = useMemo(() => new THREE.Color(EDGE_COLORS.default), []);
-  const selectedColor = useMemo(() => new THREE.Color(EDGE_COLORS.selected), []);
-  const invalidColor = useMemo(() => new THREE.Color(EDGE_COLORS.invalid), []);
+  // Pre-computed colors from theme tokens
+  const defaultColor = useMemo(
+    () => new THREE.Color(tokens['--gray-8'][0], tokens['--gray-8'][1], tokens['--gray-8'][2]),
+    [tokens]
+  );
+  const selectedColor = useMemo(
+    () => new THREE.Color(tokens['--accent-9'][0], tokens['--accent-9'][1], tokens['--accent-9'][2]),
+    [tokens]
+  );
+  const invalidColor = useMemo(
+    () => new THREE.Color(tokens['--red-9'][0], tokens['--red-9'][1], tokens['--red-9'][2]),
+    [tokens]
+  );
   // Temp color for socket type lookups (avoids GC in hot path)
   const tempColor = useMemo(() => new THREE.Color(), []);
+
+  // Mark dirty when theme colors change
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [tokens]);
 
   // Shader material
   const material = useMemo(() => {

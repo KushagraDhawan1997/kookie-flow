@@ -14,6 +14,13 @@ export {
 
 // Contexts
 export { ThemeProvider, useTheme } from './contexts';
+export {
+  StyleProvider,
+  useNodeStyle,
+  useResolvedStyle,
+  type StyleConfig,
+  type StyleContextValue,
+} from './contexts';
 
 // Utilities
 export {
@@ -40,8 +47,19 @@ export {
   hexToRGB,
   parseColorToRGB,
   parseColorToRGBA,
+  resolveColorToRGB,
+  resolveColorToRGBA,
   parsePx,
 } from './utils/color';
+
+// Style resolution utilities (Milestone 2)
+export {
+  SIZE_MAP,
+  VARIANT_MAP,
+  RADIUS_MAP,
+  resolveNodeStyle,
+  type ResolvedNodeStyle,
+} from './utils/style-resolver';
 
 // Store types
 export type { FlowState, FlowStore } from './core/store';
@@ -70,6 +88,13 @@ export type {
   NodeTypeDefinition,
   NodeComponentProps,
   KookieFlowProps,
+  // Styling types (Milestone 2)
+  NodeSize,
+  NodeVariant,
+  NodeRadius,
+  HeaderPosition,
+  AccentColor,
+  NodeStyleOverrides,
   // Phase 6 types
   CloneElementsOptions,
   CloneElementsResult,

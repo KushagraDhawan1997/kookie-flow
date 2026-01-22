@@ -1,24 +1,30 @@
 /**
  * TextRenderer - High-performance WebGL text rendering using instanced MSDF
  *
- * Renders all text labels (node headers, socket labels, edge labels) in a single
- * draw call using Multi-channel Signed Distance Field (MSDF) technique.
+ * Renders all text labels (node headers, socket labels, edge labels) using
+ * Multi-channel Signed Distance Field (MSDF) technique.
+ *
+ * Supports multiple font weights with separate InstancedMesh per weight
+ * for optimal performance (one draw call per weight).
  *
  * Key optimizations:
- * - Single InstancedMesh for all glyphs = 1 draw call
+ * - InstancedMesh per weight = minimal draw calls
  * - Pre-allocated buffers with dirty flags = zero GC pressure
  * - RAF-synchronized updates via useFrame
  * - LOD: hide text below zoom thresholds
  */
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
+import type { RGBColor } from '../utils/color';
 import {
   type FontMetrics,
   type TextEntry,
+  type TextFontWeight,
   type GlyphMap,
   type KerningMap,
   buildGlyphMap,
@@ -37,63 +43,56 @@ import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
 // Buffer capacity management
 const BUFFER_GROWTH_FACTOR = 1.5;
-const MIN_CAPACITY = 1024;
-const MAX_CAPACITY = 500000; // 500k glyphs max
+const MIN_CAPACITY = 512;
+const MAX_CAPACITY = 250000; // 250k glyphs max per weight
 
 // LOD thresholds
 const MIN_TEXT_ZOOM = 0.15; // Below this, hide ALL text
 const MIN_SOCKET_ZOOM = 0.35; // Below this, hide socket labels
 const MIN_EDGE_ZOOM = 0.25; // Below this, hide edge labels
 
-export interface TextRendererProps {
-  /** Font metrics JSON */
+/** Convert RGB array [0-1] to hex string */
+function rgbToHex(rgb: RGBColor): string {
+  const r = Math.round(rgb[0] * 255);
+  const g = Math.round(rgb[1] * 255);
+  const b = Math.round(rgb[2] * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Font data for a single weight.
+ */
+export interface FontWeightData {
+  metrics: FontMetrics;
+  texture: THREE.Texture;
+}
+
+/**
+ * Props for the single-weight text renderer.
+ */
+interface TextWeightRendererProps {
   fontMetrics: FontMetrics;
-  /** Font atlas texture */
   atlasTexture: THREE.Texture;
-  /** Show socket labels */
-  showSocketLabels?: boolean;
-  /** Show edge labels */
-  showEdgeLabels?: boolean;
-  /** Default edge type for label positioning */
-  defaultEdgeType?: EdgeType;
+  entries: TextEntry[];
+  dirtyRef: React.MutableRefObject<boolean>;
 }
 
 /**
- * Helper to normalize edge label to full config.
+ * Renders text for a single font weight using instanced MSDF.
  */
-function normalizeEdgeLabel(label: string | EdgeLabelConfig): EdgeLabelConfig {
-  if (typeof label === 'string') {
-    return { text: label };
-  }
-  return label;
-}
-
-/**
- * TextRenderer component - renders all text as instanced MSDF glyphs.
- */
-export function TextRenderer({
+function TextWeightRenderer({
   fontMetrics,
   atlasTexture,
-  showSocketLabels = true,
-  showEdgeLabels = true,
-  defaultEdgeType = 'bezier',
-}: TextRendererProps) {
-  const store = useFlowStoreApi();
+  entries,
+  dirtyRef,
+}: TextWeightRendererProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-
-  // Capacity state - triggers buffer recreation
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
-
-  // Dirty flag for updates
-  const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
 
-  // Pre-built lookup maps (rebuilt when metrics change)
+  // Pre-built lookup maps
   const glyphMap = useMemo<GlyphMap>(() => buildGlyphMap(fontMetrics), [fontMetrics]);
   const kerningMap = useMemo<KerningMap>(() => buildKerningMap(fontMetrics), [fontMetrics]);
-
-  // Socket index map for edge label positioning (rebuilt when nodes change)
-  const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
   // Create plane geometry (unit quad)
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -115,14 +114,13 @@ export function TextRenderer({
     });
   }, [atlasTexture]);
 
-  // Pre-allocated buffers (recreated when capacity changes)
+  // Pre-allocated buffers
   const buffers = useMemo(
     () => ({
       matrices: new Float32Array(capacity * 16),
       uvOffsets: new Float32Array(capacity * 4),
       colors: new Float32Array(capacity * 3),
       opacities: new Float32Array(capacity),
-      // Attribute references
       uvOffsetAttr: null as THREE.InstancedBufferAttribute | null,
       colorAttr: null as THREE.InstancedBufferAttribute | null,
       opacityAttr: null as THREE.InstancedBufferAttribute | null,
@@ -130,13 +128,17 @@ export function TextRenderer({
     [capacity]
   );
 
-  // Initialize attributes when mesh is ready or capacity changes
+  // Reset initialized flag when buffers change
+  useEffect(() => {
+    initializedRef.current = false;
+  }, [buffers]);
+
+  // Initialize attributes when mesh is ready
   useEffect(() => {
     if (!meshRef.current) return;
 
     const mesh = meshRef.current;
 
-    // Create attributes with DynamicDrawUsage
     buffers.uvOffsetAttr = new THREE.InstancedBufferAttribute(buffers.uvOffsets, 4);
     buffers.uvOffsetAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.colorAttr = new THREE.InstancedBufferAttribute(buffers.colors, 3);
@@ -150,8 +152,115 @@ export function TextRenderer({
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     initializedRef.current = true;
-    dirtyRef.current = true;
   }, [buffers]);
+
+  // Update on frame
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+
+    if (entries.length === 0) {
+      mesh.count = 0;
+      return;
+    }
+
+    // Check capacity
+    const estimatedGlyphs = countGlyphs(entries, glyphMap);
+    if (estimatedGlyphs > capacity && capacity < MAX_CAPACITY) {
+      setCapacity(Math.min(MAX_CAPACITY, Math.ceil(estimatedGlyphs * BUFFER_GROWTH_FACTOR)));
+      return;
+    }
+
+    // Populate buffers
+    const glyphCount = populateGlyphBuffers(
+      entries,
+      fontMetrics,
+      glyphMap,
+      kerningMap,
+      buffers.matrices,
+      buffers.uvOffsets,
+      buffers.colors,
+      buffers.opacities,
+      capacity
+    );
+
+    // Update instance matrices
+    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, glyphCount * 16));
+    mesh.instanceMatrix.needsUpdate = true;
+
+    // Update attributes
+    if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
+      buffers.uvOffsetAttr.needsUpdate = true;
+      buffers.colorAttr.needsUpdate = true;
+      buffers.opacityAttr.needsUpdate = true;
+    }
+
+    mesh.count = glyphCount;
+  });
+
+  return (
+    <instancedMesh
+      key={capacity}
+      ref={meshRef}
+      args={[geometry, material, capacity]}
+      frustumCulled={false}
+    />
+  );
+}
+
+/**
+ * Props for the multi-weight text renderer.
+ */
+export interface MultiWeightTextRendererProps {
+  /** Font data for regular weight */
+  regularFont: FontWeightData;
+  /** Font data for semibold weight (optional) */
+  semiboldFont?: FontWeightData;
+  /** Show socket labels */
+  showSocketLabels?: boolean;
+  /** Show edge labels */
+  showEdgeLabels?: boolean;
+  /** Default edge type for label positioning */
+  defaultEdgeType?: EdgeType;
+}
+
+/**
+ * Helper to normalize edge label to full config.
+ */
+function normalizeEdgeLabel(label: string | EdgeLabelConfig): EdgeLabelConfig {
+  if (typeof label === 'string') {
+    return { text: label };
+  }
+  return label;
+}
+
+/**
+ * Multi-weight TextRenderer - renders text with multiple font weights.
+ * Each weight gets its own InstancedMesh for optimal performance.
+ */
+export function MultiWeightTextRenderer({
+  regularFont,
+  semiboldFont,
+  showSocketLabels = true,
+  showEdgeLabels = true,
+  defaultEdgeType = 'bezier',
+}: MultiWeightTextRendererProps) {
+  const store = useFlowStoreApi();
+  const tokens = useTheme();
+
+  // Derive text colors from theme tokens
+  const primaryTextColor = rgbToHex(tokens['--gray-12']);
+  const secondaryTextColor = rgbToHex(tokens['--gray-11']);
+
+  // Dirty flag shared between weight renderers
+  const dirtyRef = useRef(true);
+
+  // Socket index map for edge label positioning
+  const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
+
+  // Entries by weight
+  const [regularEntries, setRegularEntries] = useState<TextEntry[]>([]);
+  const [semiboldEntries, setSemiboldEntries] = useState<TextEntry[]>([]);
 
   // Build socket index map
   const rebuildSocketIndexMap = useCallback(() => {
@@ -173,36 +282,7 @@ export function TextRenderer({
     }
   }, [store]);
 
-  // Subscribe to store changes - SELECTIVE to avoid rebuilds on hover/selection
-  useEffect(() => {
-    // Build initial socket index map
-    rebuildSocketIndexMap();
-
-    // Only subscribe to state that affects text content/positions
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      () => {
-        dirtyRef.current = true;
-        rebuildSocketIndexMap();
-      }
-    );
-    const unsubEdges = store.subscribe(
-      (state) => state.edges,
-      () => { dirtyRef.current = true; }
-    );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      () => { dirtyRef.current = true; }
-    );
-
-    return () => {
-      unsubNodes();
-      unsubEdges();
-      unsubViewport();
-    };
-  }, [store, rebuildSocketIndexMap]);
-
-  // Collect text entries from store state
+  // Collect and split text entries
   const collectTextEntries = useCallback(
     (
       zoom: number,
@@ -210,21 +290,20 @@ export function TextRenderer({
       viewRight: number,
       viewTop: number,
       viewBottom: number
-    ): TextEntry[] => {
-      const entries: TextEntry[] = [];
+    ): { regular: TextEntry[]; semibold: TextEntry[] } => {
+      const regular: TextEntry[] = [];
+      const semibold: TextEntry[] = [];
       const { nodes, edges, nodeMap } = store.getState();
 
-      // LOD: Skip all text if zoomed out too far
-      if (zoom < MIN_TEXT_ZOOM) return entries;
+      if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
       const cullPadding = 100;
 
-      // Node headers
+      // Node headers (semibold)
       for (const node of nodes) {
         const width = node.width ?? DEFAULT_NODE_WIDTH;
         const height = node.height ?? DEFAULT_NODE_HEIGHT;
 
-        // Frustum culling
         const nodeRight = node.position.x + width;
         const nodeBottom = node.position.y + height;
         if (
@@ -237,23 +316,30 @@ export function TextRenderer({
         }
 
         const label = node.data.label ?? node.type;
-        entries.push({
+        const entry: TextEntry = {
           id: `node-${node.id}`,
           text: label,
           position: [node.position.x + 12, node.position.y + 8, 0.1],
           fontSize: 12,
-          color: '#ffffff',
+          color: primaryTextColor,
           anchor: 'left',
-        });
+          fontWeight: 'semibold',
+        };
+
+        // Use semibold if available, otherwise fall back to regular
+        if (semiboldFont) {
+          semibold.push(entry);
+        } else {
+          regular.push(entry);
+        }
       }
 
-      // Socket labels (with LOD)
+      // Socket labels (regular)
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
         for (const node of nodes) {
           const width = node.width ?? DEFAULT_NODE_WIDTH;
           const height = node.height ?? DEFAULT_NODE_HEIGHT;
 
-          // Frustum culling
           const nodeRight = node.position.x + width;
           const nodeBottom = node.position.y + height;
           if (
@@ -270,16 +356,15 @@ export function TextRenderer({
             for (let i = 0; i < node.inputs.length; i++) {
               const socket = node.inputs[i];
               const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
-              // Offset text Y to center vertically with socket circle
-              // Text baseline + glyph metrics push text lower, so we compensate upward
               const textY = socketY - 5;
-              entries.push({
+              regular.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
                 position: [node.position.x + 12, textY, 0.1],
                 fontSize: 10,
-                color: '#999999',
+                color: secondaryTextColor,
                 anchor: 'left',
+                fontWeight: 'regular',
               });
             }
           }
@@ -289,22 +374,22 @@ export function TextRenderer({
             for (let i = 0; i < node.outputs.length; i++) {
               const socket = node.outputs[i];
               const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
-              // Offset text Y to center vertically with socket circle
               const textY = socketY - 5;
-              entries.push({
+              regular.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
                 position: [node.position.x + width - 12, textY, 0.1],
                 fontSize: 10,
-                color: '#999999',
+                color: secondaryTextColor,
                 anchor: 'right',
+                fontWeight: 'regular',
               });
             }
           }
         }
       }
 
-      // Edge labels (with LOD)
+      // Edge labels (regular)
       if (showEdgeLabels && zoom >= MIN_EDGE_ZOOM) {
         for (const edge of edges) {
           if (!edge.label) continue;
@@ -312,7 +397,6 @@ export function TextRenderer({
           const labelConfig = normalizeEdgeLabel(edge.label);
           const t = labelConfig.position ?? 0.5;
 
-          // Get point along edge
           const pointResult = getEdgePointAtT(
             edge,
             nodeMap,
@@ -324,7 +408,6 @@ export function TextRenderer({
 
           const { position } = pointResult;
 
-          // Frustum culling
           if (
             position.x < viewLeft - cullPadding ||
             position.x > viewRight + cullPadding ||
@@ -334,51 +417,83 @@ export function TextRenderer({
             continue;
           }
 
-          entries.push({
+          regular.push({
             id: `edge-${edge.id}`,
             text: labelConfig.text,
             position: [position.x, position.y, 0.15],
             fontSize: labelConfig.fontSize ?? 11,
-            color: labelConfig.textColor ?? '#ffffff',
+            color: labelConfig.textColor ?? primaryTextColor,
             anchor: 'center',
+            fontWeight: 'regular',
           });
         }
       }
 
-      return entries;
+      return { regular, semibold };
     },
-    [store, showSocketLabels, showEdgeLabels, defaultEdgeType]
+    [store, showSocketLabels, showEdgeLabels, defaultEdgeType, primaryTextColor, secondaryTextColor, semiboldFont]
   );
 
-  // RAF-synchronized update loop
+  // Subscribe to store changes
+  useEffect(() => {
+    rebuildSocketIndexMap();
+
+    const unsubNodes = store.subscribe(
+      (state) => state.nodes,
+      () => {
+        dirtyRef.current = true;
+        rebuildSocketIndexMap();
+      }
+    );
+    const unsubEdges = store.subscribe(
+      (state) => state.edges,
+      () => {
+        dirtyRef.current = true;
+      }
+    );
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => {
+        dirtyRef.current = true;
+      }
+    );
+
+    return () => {
+      unsubNodes();
+      unsubEdges();
+      unsubViewport();
+    };
+  }, [store, rebuildSocketIndexMap]);
+
+  // Mark dirty when colors change
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [primaryTextColor, secondaryTextColor]);
+
+  // Collect entries on frame
   useFrame(({ size }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+    if (!dirtyRef.current) return;
 
     const { viewport, nodes } = store.getState();
 
-    // LOD: Hide all text if zoomed out too far
     if (viewport.zoom < MIN_TEXT_ZOOM) {
-      mesh.count = 0;
+      setRegularEntries([]);
+      setSemiboldEntries([]);
       dirtyRef.current = false;
       return;
     }
 
-    // Viewport bounds in world space for culling
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
     const viewRight = (size.width - viewport.x) * invZoom;
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
 
-    // Rebuild socket index map if nodes changed
-    // (simple check - could be more sophisticated)
     if (nodes.length > 0 && socketIndexMapRef.current.size === 0) {
       rebuildSocketIndexMap();
     }
 
-    // Collect text entries
-    const entries = collectTextEntries(
+    const { regular, semibold } = collectTextEntries(
       viewport.zoom,
       viewLeft,
       viewRight,
@@ -386,53 +501,62 @@ export function TextRenderer({
       viewBottom
     );
 
-    if (entries.length === 0) {
-      mesh.count = 0;
-      dirtyRef.current = false;
-      return;
-    }
+    setRegularEntries(regular);
+    setSemiboldEntries(semibold);
 
-    // Estimate glyph count and check capacity
-    const estimatedGlyphs = countGlyphs(entries, glyphMap);
-    if (estimatedGlyphs > capacity && capacity < MAX_CAPACITY) {
-      setCapacity(Math.min(MAX_CAPACITY, Math.ceil(estimatedGlyphs * BUFFER_GROWTH_FACTOR)));
-      return; // Will re-render with new capacity
-    }
-
-    // Populate buffers
-    const glyphCount = populateGlyphBuffers(
-      entries,
-      fontMetrics,
-      glyphMap,
-      kerningMap,
-      buffers.matrices,
-      buffers.uvOffsets,
-      buffers.colors,
-      buffers.opacities,
-      capacity
-    );
-
-    // Update instance matrices directly
-    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, glyphCount * 16));
-    mesh.instanceMatrix.needsUpdate = true;
-
-    // Update attributes
-    if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
-      buffers.uvOffsetAttr.needsUpdate = true;
-      buffers.colorAttr.needsUpdate = true;
-      buffers.opacityAttr.needsUpdate = true;
-    }
-
-    mesh.count = glyphCount;
-    dirtyRef.current = false;
+    // Don't clear dirty flag here - let weight renderers clear it
   });
 
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
+    <>
+      <TextWeightRenderer
+        fontMetrics={regularFont.metrics}
+        atlasTexture={regularFont.texture}
+        entries={regularEntries}
+        dirtyRef={dirtyRef}
+      />
+      {semiboldFont && semiboldEntries.length > 0 && (
+        <TextWeightRenderer
+          fontMetrics={semiboldFont.metrics}
+          atlasTexture={semiboldFont.texture}
+          entries={semiboldEntries}
+          dirtyRef={dirtyRef}
+        />
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// Legacy single-weight API (for backwards compatibility)
+// ============================================================================
+
+export interface TextRendererProps {
+  /** Font metrics JSON */
+  fontMetrics: FontMetrics;
+  /** Font atlas texture */
+  atlasTexture: THREE.Texture;
+  /** Show socket labels */
+  showSocketLabels?: boolean;
+  /** Show edge labels */
+  showEdgeLabels?: boolean;
+  /** Default edge type for label positioning */
+  defaultEdgeType?: EdgeType;
+}
+
+/**
+ * Single-weight TextRenderer (legacy API).
+ * @deprecated Use MultiWeightTextRenderer for multi-weight support.
+ */
+export function TextRenderer({
+  fontMetrics,
+  atlasTexture,
+  ...props
+}: TextRendererProps) {
+  return (
+    <MultiWeightTextRenderer
+      regularFont={{ metrics: fontMetrics, texture: atlasTexture }}
+      {...props}
     />
   );
 }
@@ -459,7 +583,7 @@ export function TextRendererLoader({
   ...props
 }: TextRendererLoaderProps) {
   const [fontMetrics, setFontMetrics] = useState<FontMetrics | null>(null);
-  const atlasTexture = useLoader(THREE.TextureLoader, atlasUrl);
+  const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
 
   // Load font metrics
   useEffect(() => {
@@ -469,18 +593,24 @@ export function TextRendererLoader({
       .catch((err) => console.error('Failed to load font metrics:', err));
   }, [fontMetricsUrl]);
 
-  // Configure atlas texture
+  // Load atlas texture
   useEffect(() => {
-    if (atlasTexture) {
-      // CRITICAL: Disable flipY - BMFont atlas coordinates assume no Y-flip
-      atlasTexture.flipY = false;
-      atlasTexture.minFilter = THREE.LinearFilter;
-      atlasTexture.magFilter = THREE.LinearFilter;
-      atlasTexture.generateMipmaps = false;
-    }
-  }, [atlasTexture]);
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      atlasUrl,
+      (texture) => {
+        texture.flipY = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        setAtlasTexture(texture);
+      },
+      undefined,
+      (err) => console.error('Failed to load font atlas:', err)
+    );
+  }, [atlasUrl]);
 
-  if (!fontMetrics) return null;
+  if (!fontMetrics || !atlasTexture) return null;
 
   return <TextRenderer fontMetrics={fontMetrics} atlasTexture={atlasTexture} {...props} />;
 }

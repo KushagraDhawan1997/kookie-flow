@@ -124,6 +124,11 @@ export interface FontMetrics {
 export type TextAnchor = 'left' | 'center' | 'right';
 
 /**
+ * Font weight for text rendering.
+ */
+export type TextFontWeight = 'regular' | 'semibold';
+
+/**
  * Input for a single text entry to be rendered.
  */
 export interface TextEntry {
@@ -141,6 +146,8 @@ export interface TextEntry {
   anchor?: TextAnchor;
   /** Opacity (0-1). Default: 1 */
   opacity?: number;
+  /** Font weight. Default: 'regular' */
+  fontWeight?: TextFontWeight;
 }
 
 /**

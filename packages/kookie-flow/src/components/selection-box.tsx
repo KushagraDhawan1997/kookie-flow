@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
 
 /**
  * Selection box rendered during box selection.
@@ -9,8 +10,12 @@ import { useFlowStoreApi } from './context';
  */
 export function SelectionBox() {
   const store = useFlowStoreApi();
+  const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
   const dirtyRef = useRef(true);
+
+  // Derive accent color from theme tokens
+  const accentColor = tokens['--accent-9'];
 
   // Simple plane geometry
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -19,8 +24,8 @@ export function SelectionBox() {
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uFillColor: { value: new THREE.Color('#6366f1') },
-        uBorderColor: { value: new THREE.Color('#818cf8') },
+        uFillColor: { value: new THREE.Color(accentColor[0], accentColor[1], accentColor[2]) },
+        uBorderColor: { value: new THREE.Color(accentColor[0], accentColor[1], accentColor[2]) },
         uSize: { value: new THREE.Vector2(1, 1) },
         uZoom: { value: 1.0 },
         uTime: { value: 0 },
@@ -94,7 +99,7 @@ export function SelectionBox() {
       depthWrite: false,
       depthTest: false,
     });
-  }, []);
+  }, [accentColor]);
 
   // Subscribe to selection box and viewport changes
   useEffect(() => {

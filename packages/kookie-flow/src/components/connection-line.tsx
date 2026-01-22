@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   DEFAULT_SOCKET_TYPES,
   SOCKET_SPACING,
@@ -10,6 +11,15 @@ import {
   DEFAULT_NODE_HEIGHT,
 } from '../core/constants';
 import type { SocketType } from '../types';
+import type { RGBColor } from '../utils/color';
+
+/** Convert RGB array [0-1] to hex string */
+function rgbToHex(rgb: RGBColor): string {
+  const r = Math.round(rgb[0] * 255);
+  const g = Math.round(rgb[1] * 255);
+  const b = Math.round(rgb[2] * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 // Tessellation settings
 const SEGMENTS = 32;
@@ -64,8 +74,14 @@ export function ConnectionLine({
   socketTypes = DEFAULT_SOCKET_TYPES,
 }: ConnectionLineProps) {
   const store = useFlowStoreApi();
+  const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
   const initializedRef = useRef(false);
+
+  // Derive colors from theme tokens
+  const defaultLineColor = rgbToHex(tokens['--gray-8']);
+  const invalidColor = rgbToHex(tokens['--red-9']);
+  const fallbackSocketColor = rgbToHex(tokens['--gray-8']);
 
   // Pre-allocated buffers
   const buffersRef = useRef<{
@@ -98,7 +114,7 @@ export function ConnectionLine({
         vertexShader,
         fragmentShader,
         uniforms: {
-          uColor: { value: new THREE.Color('#888888') },
+          uColor: { value: new THREE.Color(defaultLineColor) },
           uAASmooth: { value: 0.3 },
           uLength: { value: 100 },
         },
@@ -107,7 +123,7 @@ export function ConnectionLine({
         depthTest: false,
         side: THREE.DoubleSide,
       }),
-    []
+    [defaultLineColor]
   );
 
   // Initialize attributes after mesh is mounted
@@ -336,11 +352,11 @@ export function ConnectionLine({
     // Update color based on validity and source socket type
     if (!connectionDraft.isValid) {
       // Invalid connection: show red
-      (material.uniforms.uColor.value as THREE.Color).set('#ff4444');
+      (material.uniforms.uColor.value as THREE.Color).set(invalidColor);
     } else {
       // Valid connection: use source socket type color
-      // Fallback chain: socket type → 'any' type → default gray
-      const typeConfig = socketTypes[socket.type] ?? socketTypes.any ?? { color: '#808080', name: 'Any' };
+      // Fallback chain: socket type → 'any' type → theme gray
+      const typeConfig = socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor, name: 'Any' };
       (material.uniforms.uColor.value as THREE.Color).set(typeConfig.color);
     }
   });

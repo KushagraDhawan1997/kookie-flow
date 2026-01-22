@@ -52,3 +52,12 @@ export {
   countGlyphs,
   populateGlyphBuffers,
 } from './text-layout';
+
+// Style resolution utilities (Milestone 2)
+export {
+  SIZE_MAP,
+  VARIANT_MAP,
+  RADIUS_MAP,
+  type ResolvedNodeStyle,
+  resolveNodeStyle,
+} from './style-resolver';

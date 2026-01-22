@@ -2,7 +2,8 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { NODE_COLORS, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
+import { useResolvedStyle } from '../contexts';
+import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
 
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
@@ -22,6 +23,7 @@ const MIN_CAPACITY = 256;
 export function Nodes() {
   const store = useFlowStoreApi();
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const resolvedStyle = useResolvedStyle();
 
   // Get initial node count for capacity
   const [capacity, setCapacity] = useState(() => {
@@ -36,18 +38,19 @@ export function Nodes() {
   // Create geometry once
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
-  // Create optimized material with simpler shader
+  // Create material with resolved style
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uBackgroundColor: { value: new THREE.Color(NODE_COLORS.background) },
-        uHoveredColor: { value: new THREE.Color(NODE_COLORS.backgroundHovered) },
-        uSelectedColor: { value: new THREE.Color(NODE_COLORS.backgroundSelected) },
-        uBorderColor: { value: new THREE.Color(NODE_COLORS.border) },
-        uHoveredBorderColor: { value: new THREE.Color(NODE_COLORS.borderHovered) },
-        uSelectedBorderColor: { value: new THREE.Color(NODE_COLORS.borderSelected) },
-        uCornerRadius: { value: 8.0 },
-        uBorderWidth: { value: 2.0 },
+        uBackgroundColor: { value: new THREE.Color(...resolvedStyle.background) },
+        uHoveredColor: { value: new THREE.Color(...resolvedStyle.backgroundHover) },
+        uSelectedColor: { value: new THREE.Color(...resolvedStyle.background) }, // Same as bg, border shows selection
+        uBorderColor: { value: new THREE.Color(...resolvedStyle.borderColor) },
+        uHoveredBorderColor: { value: new THREE.Color(...resolvedStyle.borderColorHover) },
+        uSelectedBorderColor: { value: new THREE.Color(...resolvedStyle.selectedBorderColor) },
+        uCornerRadius: { value: resolvedStyle.borderRadius },
+        uBorderWidth: { value: resolvedStyle.borderWidth },
+        uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
       },
       vertexShader: /* glsl */ `
         attribute float aSelected;
@@ -83,6 +86,7 @@ export function Nodes() {
         uniform vec3 uSelectedBorderColor;
         uniform float uCornerRadius;
         uniform float uBorderWidth;
+        uniform float uBackgroundAlpha;
 
         varying vec2 vUv;
         varying float vSelected;
@@ -100,8 +104,8 @@ export function Nodes() {
 
           float d = roundedBoxSDF(p, b, uCornerRadius);
 
-          // Early discard for pixels outside the rounded rect
-          if (d > 1.0) discard;
+          // Early discard for pixels outside the rounded rect (with border)
+          if (d > uBorderWidth + 1.0) discard;
 
           // Background: selected > hovered > default
           vec3 bgColor = mix(
@@ -118,12 +122,24 @@ export function Nodes() {
 
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
-          float alpha = 1.0 - smoothstep(-aa, aa, d);
 
           // Border calculation
           float borderD = d + uBorderWidth;
           float borderMask = smoothstep(-aa, aa, borderD) - smoothstep(-aa, aa, d);
+
+          // Background fill (respects backgroundAlpha for ghost/outline variants)
+          float fillMask = 1.0 - smoothstep(-aa, aa, d);
+          float bgAlpha = fillMask * uBackgroundAlpha;
+
+          // Composite: border on top of background
           vec3 color = mix(bgColor, borderColor, borderMask);
+          float alpha = max(bgAlpha, borderMask * fillMask);
+
+          // For transparent backgrounds, only show border
+          if (uBackgroundAlpha < 0.01) {
+            color = borderColor;
+            alpha = borderMask * fillMask;
+          }
 
           gl_FragColor = vec4(color, alpha);
         }
@@ -132,7 +148,7 @@ export function Nodes() {
       depthWrite: false,
       depthTest: false,
     });
-  }, []);
+  }, [resolvedStyle]);
 
   // Buffers created with current capacity - recreated when capacity changes
   const buffers = useMemo(() => ({
@@ -143,6 +159,12 @@ export function Nodes() {
     hoveredAttr: null as THREE.InstancedBufferAttribute | null,
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
   }), [capacity]);
+
+  // Reset initialized flag when buffers change (mesh will be recreated due to key change)
+  // This prevents useFrame from running before attributes are set up
+  useEffect(() => {
+    initializedRef.current = false;
+  }, [buffers]);
 
   // Initialize attributes when mesh is ready or capacity changes
   useEffect(() => {

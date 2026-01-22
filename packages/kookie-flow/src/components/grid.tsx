@@ -2,7 +2,17 @@ import { useMemo, useRef, useEffect } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { GRID_COLORS, DEFAULT_GRID_SIZE } from '../core/constants';
+import { useTheme } from '../contexts/ThemeContext';
+import { DEFAULT_GRID_SIZE } from '../core/constants';
+import type { RGBColor } from '../utils/color';
+
+/** Convert RGB array [0-1] to hex string for THREE.Color */
+function rgbToHex(rgb: RGBColor): string {
+  const r = Math.round(rgb[0] * 255);
+  const g = Math.round(rgb[1] * 255);
+  const b = Math.round(rgb[2] * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 export interface GridProps {
   size?: number;
@@ -19,21 +29,26 @@ export interface GridProps {
  */
 export function Grid({
   size = DEFAULT_GRID_SIZE,
-  color = GRID_COLORS.lines,
-  colorAccent = GRID_COLORS.linesAccent,
+  color,
+  colorAccent,
 }: GridProps) {
   const { camera } = useThree();
   const store = useFlowStoreApi();
+  const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
   const dirtyRef = useRef(true);
   const lastViewportRef = useRef({ x: 0, y: 0, zoom: 1 });
+
+  // Use theme tokens as defaults (--gray-3 for lines, --gray-4 for accent)
+  const gridColor = color ?? rgbToHex(tokens['--gray-3']);
+  const gridColorAccent = colorAccent ?? rgbToHex(tokens['--gray-4']);
 
   const gridMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
         uGridSize: { value: size },
-        uColor: { value: new THREE.Color(color) },
-        uColorAccent: { value: new THREE.Color(colorAccent) },
+        uColor: { value: new THREE.Color(gridColor) },
+        uColorAccent: { value: new THREE.Color(gridColorAccent) },
       },
       vertexShader: /* glsl */ `
         varying vec2 vWorldPos;
@@ -81,7 +96,7 @@ export function Grid({
       depthWrite: false,
       depthTest: false,
     });
-  }, [size, color, colorAccent]);
+  }, [size, gridColor, gridColorAccent]);
 
   // Subscribe to viewport changes
   useEffect(() => {

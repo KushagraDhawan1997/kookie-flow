@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   DEFAULT_SOCKET_TYPES,
   DEFAULT_NODE_WIDTH,
@@ -12,6 +13,15 @@ import {
 } from '../core/constants';
 import { areTypesCompatible } from '../utils/connections';
 import type { SocketType } from '../types';
+import type { RGBColor } from '../utils/color';
+
+/** Convert RGB array [0-1] to hex string */
+function rgbToHex(rgb: RGBColor): string {
+  const r = Math.round(rgb[0] * 255);
+  const g = Math.round(rgb[1] * 255);
+  const b = Math.round(rgb[2] * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
@@ -26,11 +36,17 @@ export function Sockets({
   socketTypes = DEFAULT_SOCKET_TYPES,
 }: SocketsProps) {
   const store = useFlowStoreApi();
+  const tokens = useTheme();
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
+
+  // Derive colors from theme tokens
+  const invalidColor = tokens['--red-9'];
+  const validTargetColor = tokens['--green-9'];
+  const fallbackSocketColor = rgbToHex(tokens['--gray-8']);
 
   // Cached connected sockets Set (rebuilt only when edges change, not every frame)
   const connectedSocketsRef = useRef<Set<string>>(new Set());
@@ -48,6 +64,11 @@ export function Sockets({
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
+  // Mark dirty when theme colors change
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [invalidColor, validTargetColor, fallbackSocketColor]);
+
   // Circle geometry
   const geometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
@@ -55,6 +76,10 @@ export function Sockets({
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
+        uniforms: {
+          uInvalidColor: { value: new THREE.Color(invalidColor[0], invalidColor[1], invalidColor[2]) },
+          uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
+        },
         vertexShader: /* glsl */ `
           attribute vec3 aColor;
           attribute float aHovered;
@@ -86,6 +111,9 @@ export function Sockets({
         fragmentShader: /* glsl */ `
           precision highp float;
 
+          uniform vec3 uInvalidColor;
+          uniform vec3 uValidTargetColor;
+
           varying vec3 vColor;
           varying float vHovered;
           varying float vConnected;
@@ -102,15 +130,13 @@ export function Sockets({
             float aa = fwidth(dist) * 1.5;
             float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
 
-            // Base color: socket type color or RED if invalid
-            // Invalid takes priority over everything else
-            vec3 invalidRed = vec3(1.0, 0.27, 0.27); // matches #ff4444
-            vec3 color = mix(vColor, invalidRed, vInvalidHover);
+            // Base color: socket type color or invalid color if hovering invalid target
+            vec3 color = mix(vColor, uInvalidColor, vInvalidHover);
 
             // Only apply hover/valid brightening if NOT invalid
             float notInvalid = 1.0 - vInvalidHover;
             color = mix(color, color * 1.4, vHovered * notInvalid);
-            color = mix(color, vec3(0.3, 0.9, 0.4), vValidTarget * 0.6 * notInvalid);
+            color = mix(color, uValidTargetColor, vValidTarget * 0.6 * notInvalid);
 
             // Inner hollow for disconnected sockets (thinner ring = more visible hollow)
             float innerRadius = 0.65;
@@ -127,7 +153,7 @@ export function Sockets({
         depthWrite: false,
         depthTest: false,
       }),
-    []
+    [invalidColor, validTargetColor]
   );
 
   // Pre-allocated buffers
@@ -331,7 +357,7 @@ export function Sockets({
 
           // Color from socket type
           const typeConfig =
-            socketTypes[socket.type] ?? socketTypes.any ?? { color: '#808080' };
+            socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
           tempColor.set(typeConfig.color);
           buffers.colors[visibleCount * 3] = tempColor.r;
           buffers.colors[visibleCount * 3 + 1] = tempColor.g;
@@ -395,7 +421,7 @@ export function Sockets({
           mesh.setMatrixAt(visibleCount, tempMatrix);
 
           const typeConfig =
-            socketTypes[socket.type] ?? socketTypes.any ?? { color: '#808080' };
+            socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
           tempColor.set(typeConfig.color);
           buffers.colors[visibleCount * 3] = tempColor.r;
           buffers.colors[visibleCount * 3 + 1] = tempColor.g;

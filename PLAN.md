@@ -11,20 +11,21 @@ This document is the source of truth for building Kookie Flow. It is written for
 **This is the #1 priority. Nothing else matters if performance suffers.**
 
 Before writing ANY code, ask yourself:
+
 1. Does this trigger React re-renders during pan/zoom/drag? **UNACCEPTABLE.**
 2. Does this allocate memory in hot paths (event handlers, render loops)? **UNACCEPTABLE.**
 3. Is this O(n) when it could be O(log n) or O(1)? **UNACCEPTABLE.**
 
 ### Rules (never violate these):
 
-| Rule | Why |
-|------|-----|
+| Rule                                          | Why                                                                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | **Zero React re-renders during interactions** | Use refs for all position/transform updates. React state only for element creation/removal. |
-| **RAF-throttled DOM updates** | Never update DOM synchronously in event handlers. Schedule via `requestAnimationFrame`. |
-| **Pre-allocated buffers** | GPU buffers sized once at init. No allocations during render. |
-| **Dirty flags over subscriptions** | Don't re-render on every state change. Track what changed, update only that. |
-| **Spatial indexing for hit testing** | Quadtree for O(log n). Never iterate all nodes in event handlers. |
-| **Ref-based position updates** | `element.style.transform` via refs, not React props. |
+| **RAF-throttled DOM updates**                 | Never update DOM synchronously in event handlers. Schedule via `requestAnimationFrame`.     |
+| **Pre-allocated buffers**                     | GPU buffers sized once at init. No allocations during render.                               |
+| **Dirty flags over subscriptions**            | Don't re-render on every state change. Track what changed, update only that.                |
+| **Spatial indexing for hit testing**          | Quadtree for O(log n). Never iterate all nodes in event handlers.                           |
+| **Ref-based position updates**                | `element.style.transform` via refs, not React props.                                        |
 
 ### Performance Architecture Pattern
 
@@ -37,7 +38,7 @@ const updatePositions = useCallback(() => {
   rafIdRef.current = 0;
   const { nodes } = store.getState();
   labelsRef.current.forEach((el, id) => {
-    const node = nodes.find(n => n.id === id);
+    const node = nodes.find((n) => n.id === id);
     if (node) el.style.transform = `translate3d(${node.x}px, ${node.y}px, 0)`;
   });
 }, [store]);
@@ -83,6 +84,7 @@ if (state.nodes.length !== nodes.length) setNodes(state.nodes);
 ### Why React Flow Is Slow
 
 React Flow renders each node as 20+ DOM elements:
+
 - Container div
 - Header div
 - Body div
@@ -93,6 +95,7 @@ React Flow renders each node as 20+ DOM elements:
 Each edge is an SVG `<path>` element with bezier recalculation on every frame.
 
 **On pan/zoom:**
+
 1. React reconciles all visible node components
 2. CSS transforms update for every node
 3. SVG paths recalculate for every edge
@@ -105,6 +108,7 @@ Each edge is an SVG `<path>` element with bezier recalculation on every frame.
 Render geometry in WebGL. Keep text/widgets in DOM.
 
 **On pan/zoom:**
+
 1. Update one uniform (camera matrix)
 2. GPU renders all nodes in 1-2 draw calls
 3. Single DOM container transforms for text layer
@@ -167,35 +171,35 @@ Render geometry in WebGL. Keep text/widgets in DOM.
 
 ### What Renders in WebGL
 
-| Element | Technique | Draw Calls |
-|---------|-----------|------------|
-| Node backgrounds | InstancedMesh + SDF shader | 1 |
-| Node headers | InstancedMesh (same as above) | 0 (merged) |
-| Sockets | InstancedMesh (circles) | 1 |
-| Edges | BufferGeometry line segments | 1 |
-| Grid | Full-screen quad + shader | 1 |
-| Selection box | Quad with dashed shader | 1 |
-| Image previews | Texture atlas + instanced quads | 1 |
-| 3D mesh previews | Standard Three.js meshes | N (one per visible preview) |
+| Element          | Technique                       | Draw Calls                  |
+| ---------------- | ------------------------------- | --------------------------- |
+| Node backgrounds | InstancedMesh + SDF shader      | 1                           |
+| Node headers     | InstancedMesh (same as above)   | 0 (merged)                  |
+| Sockets          | InstancedMesh (circles)         | 1                           |
+| Edges            | BufferGeometry line segments    | 1                           |
+| Grid             | Full-screen quad + shader       | 1                           |
+| Selection box    | Quad with dashed shader         | 1                           |
+| Image previews   | Texture atlas + instanced quads | 1                           |
+| 3D mesh previews | Standard Three.js meshes        | N (one per visible preview) |
 
 **Total for 10,000 nodes:** ~5-10 draw calls
 
 ### What Renders in DOM
 
-| Element | Why DOM |
-|---------|---------|
-| Node title text | Font flexibility, accessibility, selection |
-| Socket labels | Same |
-| Input widgets | Native form elements, focus management |
-| Custom node content | User flexibility (escape hatch) |
+| Element             | Why DOM                                    |
+| ------------------- | ------------------------------------------ |
+| Node title text     | Font flexibility, accessibility, selection |
+| Socket labels       | Same                                       |
+| Input widgets       | Native form elements, focus management     |
+| Custom node content | User flexibility (escape hatch)            |
 
 ### Level of Detail (LOD)
 
 Text rendering follows zoom-based LOD:
 
 ```typescript
-const MIN_TEXT_ZOOM = 0.3;  // Below this, hide all text
-const MIN_LABEL_SIZE = 8;   // Minimum screen-space font size
+const MIN_TEXT_ZOOM = 0.3; // Below this, hide all text
+const MIN_LABEL_SIZE = 8; // Minimum screen-space font size
 
 // In DOMLayer:
 if (viewport.zoom < MIN_TEXT_ZOOM) {
@@ -216,6 +220,7 @@ if (screenSize < MIN_LABEL_SIZE * 2) {
 ### Core Components
 
 #### `<KookieFlow>` — Main container
+
 ```typescript
 interface KookieFlowProps {
   nodes: Node[];
@@ -242,45 +247,53 @@ interface KookieFlowProps {
 ```
 
 #### `<Nodes>` — Instanced node renderer
+
 - Uses `THREE.InstancedMesh` with custom shader
 - Per-instance attributes: position, size, color, selected, headerHeight
 - SDF-based rounded rectangles with border
 - Updates instance matrices only when nodes change
 
 #### `<Sockets>` — Instanced socket renderer
+
 - Circles at input/output positions
 - Per-instance attributes: position, color, hovered, connected
 - Hit testing via raycaster or color picking
 
 #### `<Edges>` — Batched edge renderer
+
 - Line segments or bezier curves
 - Color-coded by socket type
 - Selected state with glow/thickness change
 - Animated flow (optional, via shader)
 
 #### `<Grid>` — Infinite grid shader
+
 - Single full-screen quad
 - Fragment shader draws grid lines
 - Scales with zoom level
 - Accent lines every N units
 
 #### `<DOMLayer>` — Text and widget overlay
+
 - Absolutely positioned over canvas
 - Single transform container synced with camera
 - Renders only visible nodes' text/widgets
 - Pooling for performance (optional)
 
 #### `<SelectionBox>` — Box selection overlay
+
 - Rendered during drag-select
 - Dashed border shader
 - Calculates intersecting nodes on release
 
 #### `<ConnectionLine>` — Temporary edge while connecting
+
 - Follows mouse from source socket
 - Snaps to valid target sockets
 - Color indicates validity
 
 #### `<Minimap>` — Overview panel
+
 - Renders to separate small canvas or viewport region
 - Simplified node representation (just rectangles)
 - Viewport indicator rectangle
@@ -500,6 +513,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 ## Implementation Phases
 
 ### Phase 1: Core Renderer ✅ SCAFFOLDED
+
 **Goal:** Render static nodes and edges
 
 - [x] Project structure (monorepo, build, types)
@@ -513,6 +527,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] **TODO:** Verify instancing works correctly
 
 ### Phase 2: Camera Controls
+
 **Goal:** Pan and zoom
 
 - [ ] Pointer event handling on canvas
@@ -524,6 +539,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] Smooth animated transitions (optional)
 
 ### Phase 3: Selection ✅ COMPLETE
+
 **Goal:** Select nodes and edges
 
 - [x] Click to select single node
@@ -536,24 +552,29 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Selection state in store
 
 ### Phase 3.5: Performance Foundations ✅ COMPLETE
+
 **Goal:** Ensure O(log n) or better for all hot paths before adding more features
 
 **Critical (blocks scale):**
+
 - [x] Quadtree spatial index for hit testing (hover, click, box select)
 - [x] Selection as `Set<string>` - avoid creating new node arrays on select
 - [x] Node map for O(1) lookup by ID
 - [ ] Numeric ID interning for O(1) comparisons in render loops (deferred)
 
 **Important (improves responsiveness):**
+
 - [ ] Partial GPU buffer updates (only changed indices) (deferred)
 - [ ] Separate dirty flags for hover vs selection vs position changes (deferred)
 
 **Benchmarks to hit:**
+
 - 10,000 nodes: <1ms hit testing ✓
 - 10,000 nodes: <16ms full render cycle
 - Selection change: zero array allocations ✓
 
 ### Phase 4: Node Dragging ✅ COMPLETE
+
 **Goal:** Move nodes around
 
 - [x] Drag selected nodes
@@ -564,6 +585,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] Undo/redo support (optional, phase 6)
 
 **Implementation notes:**
+
 - `updateNodePositions()` in store for efficient batch updates during drag
 - Quadtree updated incrementally (not full rebuild) on position change
 - DOM labels use ref-based position updates (zero React re-renders during drag)
@@ -574,15 +596,18 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Object reuse for lastScreenPos to avoid allocations in pointer move handler
 
 ### Phase 4.5: Edge Curves ✅ COMPLETE
+
 **Goal:** Render edges as curves with full shader control for effects
 
 **Edge Types:**
+
 - `straight` - direct line (fastest)
 - `bezier` - smooth S-curve (React Flow default)
 - `step` - orthogonal right-angle path
 - `smoothstep` - bezier with constrained curvature
 
 **Implementation (mesh-based for effects):**
+
 - [x] Triangle strip (ribbon) geometry following bezier path
 - [x] Custom `ShaderMaterial` for full effect control
 - [x] Configurable line width via uniform
@@ -594,11 +619,13 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Per-edge `type` override support
 
 **Why mesh-based over LineSegments:**
+
 - `GL_LINES` = 1px, no AA, no custom shaders
 - Mesh ribbons = any width, AA, full shader control
 - Enables: glow, animated flow, gradients, dashes, arrows, pulses
 
 **Performance notes:**
+
 - 64 segments × 6 vertices per segment = 384 vertices per edge
 - 10,000 edges = 3.84M vertices (~46MB) - still fine for GPU
 - Single draw call maintained
@@ -606,6 +633,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Adaptive bezier control points for natural curves (no forced S-curves)
 
 **Future effects (enabled by this architecture):**
+
 - Animated flow: UV scrolling in fragment shader
 - Glow: SDF distance + blur
 - Gradients: vertex colors or UV-based
@@ -614,6 +642,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Pulse/highlight: uniform animation
 
 ### Phase 5: Edge Connections ✅ COMPLETE
+
 **Goal:** Connect nodes via sockets
 
 - [x] Render sockets (instanced circles)
@@ -624,6 +653,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Socket type colors (uses socketTypes config)
 
 **Implementation notes:**
+
 - `Sockets.tsx`: InstancedMesh with SDF circles, hollow/filled state via uniform
 - `ConnectionLine.tsx`: WebGL dashed bezier, pre-allocated Float32Array buffers
 - `connections.ts`: Socket compatibility utilities
@@ -632,9 +662,11 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - Zero allocations in useFrame (single-pass geometry + length calculation)
 
 ### Phase 5.5: Connection Validation & Edge Selection ✅ COMPLETE
+
 **Goal:** Complete connection UX with validation feedback and edge interactivity
 
 **Connection Validation:**
+
 - [x] `connectionMode` prop: `"strict"` | `"loose"` (default: `"loose"`)
 - [x] `isValidConnection` prop: custom validation function (overrides mode)
 - [x] Connection line color inherits source socket type color
@@ -642,6 +674,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Enforce socket type compatibility when `connectionMode="strict"`
 
 **Edge Selection & Interaction:**
+
 - [x] Edge hit testing (point-to-bezier distance check)
 - [x] Click to select edge (single selection pool with nodes)
 - [x] Ctrl+click to add edge to selection
@@ -651,6 +684,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [x] Delete selected edges (Delete key, shared with nodes)
 
 **Implementation notes:**
+
 - `validateConnection()` in `connections.ts`: mode-based validation with custom override
 - `areTypesCompatible()`: socket type compatibility checking with explicit compatibleWith support
 - `getEdgeAtPosition()` in `geometry.ts`: bezier/step/straight distance calculation with viewport-scaled tolerance
@@ -658,6 +692,7 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - `ConnectionLine.tsx`: cached socket lookup for O(1) in hot path
 
 **API:**
+
 ```typescript
 <KookieFlow
   // Connection validation
@@ -671,18 +706,21 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 ```
 
 **Deferred:**
+
 - [x] Auto-scroll when dragging near viewport edges
 
 ### Phase 6: Core Operations & Event Plugins ✅ COMPLETE
+
 **Goal:** Optimized core operations for clipboard/history patterns + event-handling plugins
 
 **Architecture Principle:** Core handles all performance-critical operations (cloning, batch updates, ID generation). Plugins are thin wrappers for event handling. Users who need custom behavior call the same optimized core methods.
 
 **Why this design:**
+
 - `node.data` is user-defined and can contain anything (functions, images, backend refs)
 - Serialization, history snapshots, and data transformation are inherently app-specific
-- We can optimize the *structural* operations (cloning, ID remapping, batch insert)
-- We cannot optimize the *data* operations (what to copy, how to serialize)
+- We can optimize the _structural_ operations (cloning, ID remapping, batch insert)
+- We cannot optimize the _data_ operations (what to copy, how to serialize)
 - Internal clipboard (same tab) works without serialization - just hold references
 
 **Core additions (in store):**
@@ -719,11 +757,11 @@ store.getConnectedEdges(nodeIds: string[]): Edge[]
 
 **Plugins (`@kushagradhawan/kookie-flow/plugins`):**
 
-| Plugin | What it does | Exposes |
-|--------|--------------|---------|
-| `useClipboard` | Thin wrapper for internal clipboard | `copy()`, `paste()`, `cut()` |
+| Plugin                 | What it does                                                             | Exposes                        |
+| ---------------------- | ------------------------------------------------------------------------ | ------------------------------ |
+| `useClipboard`         | Thin wrapper for internal clipboard                                      | `copy()`, `paste()`, `cut()`   |
 | `useKeyboardShortcuts` | Event listeners, modifier detection (`mod` = Cmd/Ctrl), focus management | Config object for key bindings |
-| `useContextMenu` | Right-click + long-press listening, hit testing | `{ contextMenu, closeMenu }` |
+| `useContextMenu`       | Right-click + long-press listening, hit testing                          | `{ contextMenu, closeMenu }`   |
 
 **NOT included as plugins:**
 | Feature | Why not |
@@ -771,8 +809,8 @@ const paste = () => {
     offset: { x: 100, y: 100 },
     transformData: (data) => ({
       ...data,
-      status: 'idle',      // reset transient state
-      backendId: null,     // clear backend reference
+      status: 'idle', // reset transient state
+      backendId: null, // clear backend reference
     }),
   });
 };
@@ -783,13 +821,13 @@ const paste = () => {
 ```typescript
 const copyToBrowser = async () => {
   const nodes = store.getSelectedNodes();
-  const edges = store.getConnectedEdges(nodes.map(n => n.id));
+  const edges = store.getConnectedEdges(nodes.map((n) => n.id));
 
   // User decides what to serialize
   const payload = {
-    nodes: nodes.map(n => ({
+    nodes: nodes.map((n) => ({
       ...n,
-      data: { prompt: n.data.prompt },  // only serializable fields
+      data: { prompt: n.data.prompt }, // only serializable fields
     })),
     edges,
   };
@@ -832,13 +870,16 @@ function useSimpleHistory(maxSize = 50) {
     store.setEdges(snapshot.edges);
   };
 
-  const redo = () => { /* inverse of undo */ };
+  const redo = () => {
+    /* inverse of undo */
+  };
 
   return { push, undo, redo, canUndo: past.current.length > 0 };
 }
 ```
 
 **Tasks:**
+
 - [x] Core: `cloneElements()` with pre-allocated ID pool, single-pass edge remapping
 - [x] Core: `addElements()` with batch state update + batch quadtree insert
 - [x] Core: `deleteElements()`, `deleteSelected()`
@@ -853,6 +894,7 @@ function useSimpleHistory(maxSize = 50) {
 - [x] Docs: Pattern for efficient undo/redo (structural sharing)
 
 ### Phase 7A: Edge Enhancements ✅ COMPLETE
+
 **Goal:** Complete edge feature set
 
 - [x] Edge labels (text on edges, positioned at midpoint)
@@ -862,6 +904,7 @@ function useSimpleHistory(maxSize = 50) {
 - [x] `showEdgeLabels` prop (toggle edge label visibility)
 
 **Implementation notes:**
+
 - Edge labels: DOM-based in `EdgeLabelsContainer` (consistent with node labels)
   - Positioned via `getEdgePointAtT()` utility for accurate curve sampling
   - Supports string or full `EdgeLabelConfig` with position, colors, fontSize
@@ -879,9 +922,11 @@ function useSimpleHistory(maxSize = 50) {
 - All respect edge selection state and colors
 
 ### Phase 7.5: WebGL Text Rendering (MSDF) ✅ COMPLETE
+
 **Goal:** Replace DOM text with GPU-rendered instanced MSDF for 10k+ node performance
 
 **Problem:**
+
 - DOM labels cause 30-40fps drop at scale (1000+ nodes with socket/edge labels)
 - Each DOM element = composite layer overhead
 - troika-three-text = 1 draw call per Text instance (500+ = performance death)
@@ -890,6 +935,7 @@ function useSimpleHistory(maxSize = 50) {
 **Solution: Custom Instanced MSDF Renderer**
 
 One `InstancedMesh` where each instance = one glyph quad:
+
 ```
 "Node 1" = 6 glyph instances (N, o, d, e, space, 1)
 10,000 labels × ~8 glyphs avg = 80,000 glyph instances
@@ -898,6 +944,7 @@ One `InstancedMesh` where each instance = one glyph quad:
 ```
 
 **Build Step (MSDF Atlas Generation):**
+
 - [ ] Add `msdf-bmfont-xml` as dev dependency
 - [ ] Generate MSDF atlas from Inter font (or system font)
 - [ ] Output: `inter-msdf.png` (atlas texture) + `inter-msdf.json` (glyph metrics)
@@ -905,6 +952,7 @@ One `InstancedMesh` where each instance = one glyph quad:
 - [ ] Include pre-generated atlas in package for zero-config usage
 
 **Core Component: `<TextRenderer>`**
+
 - [ ] Single `InstancedMesh` with MSDF shader material
 - [ ] Per-glyph instance attributes:
   - `position` (vec3): world position of glyph quad
@@ -916,6 +964,7 @@ One `InstancedMesh` where each instance = one glyph quad:
 - [ ] Anchor points: left, center, right alignment
 
 **MSDF Shader:**
+
 - [ ] Vertex shader: billboard quads from instance attributes
 - [ ] Fragment shader: MSDF sampling with `median(r, g, b)` technique
 - [ ] Anti-aliasing via `fwidth()` for screen-space smoothing
@@ -923,6 +972,7 @@ One `InstancedMesh` where each instance = one glyph quad:
 - [ ] Alpha threshold for crisp edges
 
 **Integration with Existing Systems:**
+
 - [ ] `<NodeLabels>` → feeds entries to TextRenderer (replaces `CrispLabelsContainer`)
 - [ ] `<SocketLabels>` → feeds entries to TextRenderer (replaces `SocketLabelsContainer`)
 - [ ] `<EdgeLabels>` → feeds entries to TextRenderer (replaces `EdgeLabelsContainer`)
@@ -931,14 +981,16 @@ One `InstancedMesh` where each instance = one glyph quad:
 - [ ] LOD: hide all text below `MIN_TEXT_ZOOM` threshold
 
 **LOD Strategy:**
+
 ```typescript
-const MIN_TEXT_ZOOM = 0.3;      // Below this, hide ALL text
-const MIN_SOCKET_ZOOM = 0.5;    // Below this, hide socket labels
-const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
+const MIN_TEXT_ZOOM = 0.3; // Below this, hide ALL text
+const MIN_SOCKET_ZOOM = 0.5; // Below this, hide socket labels
+const MIN_EDGE_ZOOM = 0.4; // Below this, hide edge labels
 // Node headers visible longest (most important)
 ```
 
 **API:**
+
 ```typescript
 // Internal usage (components feed text entries)
 <TextRenderer
@@ -960,12 +1012,14 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 ```
 
 **Performance Targets:**
+
 - 10,000 nodes with all labels: 60fps
 - Single draw call for all text
 - Zero GC pressure (pre-allocated buffers, no per-frame allocations)
 - <1ms for full text buffer rebuild
 
 **Tasks:**
+
 - [x] Build: Add `msdf-bmfont-xml`, create font generation script
 - [x] Build: Generate Inter MSDF atlas, include in package
 - [x] Core: `TextRenderer.tsx` - instanced mesh with MSDF material
@@ -980,17 +1034,20 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - [x] Test: Verify 10k nodes at 60fps with all labels enabled
 
 **What Stays in DOM:**
+
 - Input widgets (text fields, sliders, dropdowns) — interactive, few in number
 - Custom node content (user's React components) — escape hatch
 - Tooltips (if added later)
 
 **References:**
+
 - [msdf-bmfont-xml](https://github.com/soimy/msdf-bmfont-xml) — Atlas generation
 - [three-msdf-text-utils](https://github.com/leochocolat/three-msdf-text-utils) — Shader reference
 - [CSS-Tricks: WebGL Text](https://css-tricks.com/techniques-for-rendering-text-with-webgl/) — MSDF technique overview
 - [Three.js Forum: 10k Labels](https://discourse.threejs.org/t/performant-approach-for-displaying-text-labels-10000/21863) — LOD strategy
 
 ### Phase 7B: Minimap ✅ COMPLETE
+
 **Goal:** Overview navigation panel
 
 - [x] Minimap component (Canvas 2D, renders to corner)
@@ -1001,6 +1058,7 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - [x] `zoomable` prop: minimap zooms with main canvas (alternative mode)
 
 **Implementation notes:**
+
 - Canvas 2D for efficient rendering of 10k+ rectangles (single draw call equivalent)
 - RAF-throttled updates via store subscription
 - HiDPI support (`devicePixelRatio` scaling)
@@ -1008,6 +1066,7 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - Interactive: click to pan, drag viewport indicator (or anywhere in zoomable mode)
 
 ### Phase 7C: Grouping & Annotations
+
 **Goal:** Organizational features
 
 - [ ] Node grouping/frames (parent-child relationship)
@@ -1016,6 +1075,7 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - [ ] Reroute nodes (edge waypoints)
 
 ### Phase 8: Visual Previews
+
 **Goal:** The differentiator
 
 - [ ] Image texture previews in nodes
@@ -1025,6 +1085,7 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 - [ ] Preview caching
 
 ### Phase 9: Polish & Production
+
 **Goal:** Production ready
 
 - [ ] GPU-based hit testing (color picking) - alternative to quadtree if needed
@@ -1043,11 +1104,11 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 
 ### Why R3F over raw WebGL or Pixi.js
 
-| Option | Pros | Cons |
-|--------|------|------|
-| **Raw WebGL** | Full control, smaller bundle | Massive effort, reinvent everything |
-| **Pixi.js** | Great 2D perf, batching | No 3D, would need second renderer for mesh previews |
-| **Three.js/R3F** | Mature, great tooling, 3D support, React integration | Slight overhead, 3D concepts leak into 2D |
+| Option           | Pros                                                 | Cons                                                |
+| ---------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| **Raw WebGL**    | Full control, smaller bundle                         | Massive effort, reinvent everything                 |
+| **Pixi.js**      | Great 2D perf, batching                              | No 3D, would need second renderer for mesh previews |
+| **Three.js/R3F** | Mature, great tooling, 3D support, React integration | Slight overhead, 3D concepts leak into 2D           |
 
 **Decision:** R3F. The 3D mesh preview feature is a key differentiator. Same WebGL context means no separate canvas per preview. The overhead is minimal and the ecosystem is excellent.
 
@@ -1064,6 +1125,7 @@ const MIN_EDGE_ZOOM = 0.4;      // Below this, hide edge labels
 **Initial approach (Phase 7A):** DOM text overlays. With LOD and culling, aimed for ~50-100 visible labels.
 
 **Problem discovered:** At 1000+ nodes with socket/edge labels enabled, DOM causes 30-40fps drop even with:
+
 - Ref-based updates (no React re-renders)
 - RAF throttling
 - Viewport culling
@@ -1072,17 +1134,18 @@ The composite layer overhead of hundreds of DOM elements is unavoidable.
 
 **WebGL text options evaluated:**
 
-| Option | Pros | Cons |
-|--------|------|------|
-| **troika-three-text** | Easy API, SDF quality | 1 draw call per Text instance → 500+ kills perf |
-| **Thomas** | R3F-native, claims instancing | Last release June 2023, risky dependency |
-| **three-msdf-text-utils** | Good shader, maintained | No instancing (1 mesh per label) |
-| **Canvas-to-texture** | Simple | Blurry on zoom, expensive updates |
-| **Custom instanced MSDF** | 1 draw call for ALL text, full control | Engineering effort |
+| Option                    | Pros                                   | Cons                                            |
+| ------------------------- | -------------------------------------- | ----------------------------------------------- |
+| **troika-three-text**     | Easy API, SDF quality                  | 1 draw call per Text instance → 500+ kills perf |
+| **Thomas**                | R3F-native, claims instancing          | Last release June 2023, risky dependency        |
+| **three-msdf-text-utils** | Good shader, maintained                | No instancing (1 mesh per label)                |
+| **Canvas-to-texture**     | Simple                                 | Blurry on zoom, expensive updates               |
+| **Custom instanced MSDF** | 1 draw call for ALL text, full control | Engineering effort                              |
 
 **Decision:** Custom instanced MSDF (Phase 7.5). One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw call = 60fps.
 
 **What stays in DOM:**
+
 - Interactive widgets (inputs, dropdowns) — require native elements
 - Custom node content — user escape hatch
 - These are few in number and viewport-culled to ~50-100 max
@@ -1090,6 +1153,7 @@ The composite layer overhead of hundreds of DOM elements is unavoidable.
 ### Coordinate System
 
 **Y-down** (matching DOM/Canvas2D conventions):
+
 - Node position (0,0) is top-left of node
 - Positive Y goes down
 - Matches user mental model from DOM
@@ -1098,6 +1162,7 @@ The composite layer overhead of hundreds of DOM elements is unavoidable.
 ### Why "Optimized Core + Thin Plugins"
 
 **The problem with generic plugins:**
+
 - `node.data` is user-defined - can contain functions, images, backend refs, anything
 - Serialization is app-specific - we can't know what fields matter
 - History/undo is app-specific - full snapshots don't scale, action-based needs data knowledge
@@ -1105,19 +1170,21 @@ The composite layer overhead of hundreds of DOM elements is unavoidable.
 
 **Our approach:**
 
-| Layer | What it handles | Example |
-|-------|-----------------|---------|
-| **Core (store)** | Structural operations - cloning, ID remapping, batch insert, quadtree | `store.cloneElements()`, `store.addElements()` |
-| **Plugins** | Event wiring - thin wrappers that call core methods | `useClipboard()` calls `store.copySelectedToInternal()` |
-| **User code** | Data transformation - what to copy, how to serialize, backend sync | `transformData: (d) => ({ prompt: d.prompt })` |
+| Layer            | What it handles                                                       | Example                                                 |
+| ---------------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Core (store)** | Structural operations - cloning, ID remapping, batch insert, quadtree | `store.cloneElements()`, `store.addElements()`          |
+| **Plugins**      | Event wiring - thin wrappers that call core methods                   | `useClipboard()` calls `store.copySelectedToInternal()` |
+| **User code**    | Data transformation - what to copy, how to serialize, backend sync    | `transformData: (d) => ({ prompt: d.prompt })`          |
 
 **Key principles:**
+
 1. **Optimize what we can** - Structural operations (ID generation, edge remapping, batch updates) are universal. We optimize these in core.
 2. **Don't pretend on what we can't** - Data transformation is app-specific. User provides callbacks, we call them efficiently.
 3. **Internal clipboard is free** - Same-tab copy/paste needs no serialization. We just hold references and clone on paste.
 4. **Same primitives for everyone** - Custom users call the same optimized methods our plugins use.
 
 **Why no `useHistory` plugin:**
+
 - Full state snapshots: 10k nodes × 50 undo steps = 500MB memory
 - Action-based undo: requires knowing all possible data mutations
 - Structural sharing: complex, app-specific (what counts as "changed"?)
@@ -1198,12 +1265,17 @@ packages/kookie-flow/
 ```
 
 Users can import:
+
 ```typescript
 // Core - includes optimized store methods
 import { KookieFlow, useFlowStore } from '@kushagradhawan/kookie-flow';
 
 // All plugins
-import { useClipboard, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+import {
+  useClipboard,
+  useKeyboardShortcuts,
+  useContextMenu,
+} from '@kushagradhawan/kookie-flow/plugins';
 
 // Individual plugin (smallest bundle)
 import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
@@ -1214,6 +1286,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ## Current Status
 
 ### Completed
+
 - [x] Monorepo structure (pnpm + Turborepo)
 - [x] Package configuration (tsup, TypeScript, exports)
 - [x] Type definitions (Node, Edge, Socket, etc.)
@@ -1301,6 +1374,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ### Next Immediate Tasks
 
 **Phase 7C: Grouping & Annotations**
+
 1. Node grouping/frames (parent-child relationship)
 2. Collapsed groups (hide children, show summary)
 3. Comments/sticky notes (text-only nodes)
@@ -1311,24 +1385,28 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ## Notes for LLM Implementers
 
 ### When Modifying Shaders
+
 - WebGL Y-axis is up, but our world uses Y-down
 - Negate Y when converting world → GL coordinates
 - Instance matrices should position node centers, not corners
 - SDF functions expect coordinates centered at (0,0)
 
 ### When Adding Features
+
 - Update types in `src/types/index.ts` first
 - Add to store if it's interactive state
 - Export from appropriate index.ts files
 - Add to this PLAN.md's phase tracking
 
 ### When Debugging
+
 - Check browser console for Three.js warnings
 - Use React DevTools to verify state updates
 - R3F has `<Stats>` component for FPS monitoring
 - Three.js inspector browser extension helps with scene debugging
 
 ### Performance Considerations
+
 - Always use `useMemo` for geometry/material creation
 - Instance attributes should use `Float32Array`, not regular arrays
 - Pre-allocate GPU buffers and reuse them (avoid GC pressure)
@@ -1340,6 +1418,30 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - Avoid RAF batching on input handlers (causes latency)
 - Use `frameloop="always"` with dirty flags instead of `frameloop="demand"`
 
+### Profiling Results (January 2026)
+
+**Test: Dragging 1000 nodes simultaneously**
+
+| Component        | CPU % | Notes                              |
+| ---------------- | ----- | ---------------------------------- |
+| Quadtree updates | 0.0ms | Sub-millisecond, not a bottleneck  |
+| Edges.useFrame   | 27.4% | Expected - rebuilds edge geometry  |
+| bufferSubData    | 19.3% | GPU upload for edge/socket buffers |
+
+**Key findings:**
+
+- **120fps maintained** with 1000 nodes during drag - acceptable performance
+- **Quadtree is O(log n)** and verified working via console.log (too fast to register in profiler)
+- **Pan/zoom has no geometry rebuilds** - `uZoom` uniform handles zoom in shaders
+- **Edge rebuild is expected** - when nodes move, edges must recalculate control points
+
+**Future optimizations (if scaling to 10k+ nodes):**
+
+1. **Throttle edge updates** - Skip frames during rapid drag (every 2nd/3rd frame)
+2. **GPU-based node positions** - Store positions in texture, read in vertex shader
+3. **Partial edge updates** - Only rebuild edges connected to moved nodes
+4. **LOD for edges** - Simplify curves at low zoom levels
+
 ---
 
-*Last updated: January 2026*
+_Last updated: January 2026_

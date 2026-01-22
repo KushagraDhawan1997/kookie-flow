@@ -10,6 +10,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       material="solid"
       radius="medium"
       fontFamily="sans"
+      appearance="light"
     >
       {children}
     </Theme>

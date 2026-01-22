@@ -188,16 +188,35 @@ function getCSSVarRGBA(styles: CSSStyleDeclaration, name: string, fallback: RGBA
 }
 
 /**
+ * Detect appearance (light/dark) from a Radix Themes element.
+ * Radix Themes uses .light/.dark classes, or inherits from system preference.
+ */
+function detectAppearance(root: Element): 'light' | 'dark' {
+  // Check for explicit class (Radix Themes uses .light or .dark)
+  // IMPORTANT: Check light FIRST since we want explicit light to override dark
+  if (root.classList.contains('light')) return 'light';
+  if (root.classList.contains('dark')) return 'dark';
+
+  // Check for data attribute (some versions might use this)
+  const dataAppearance = root.getAttribute('data-appearance');
+  if (dataAppearance === 'light') return 'light';
+  if (dataAppearance === 'dark') return 'dark';
+
+  // Check color-scheme CSS property as fallback
+  const colorScheme = getComputedStyle(root).colorScheme;
+  if (colorScheme?.includes('light')) return 'light';
+  if (colorScheme?.includes('dark')) return 'dark';
+
+  // Default to light
+  return 'light';
+}
+
+/**
  * Read all theme tokens from CSS variables.
  */
 function readTokensFromDOM(root: Element): ThemeTokens {
   const styles = getComputedStyle(root);
-
-  // Detect appearance from data attribute or class
-  const appearance = root.classList.contains('dark') ||
-    root.getAttribute('data-is-root-theme') === 'true' && root.classList.contains('dark')
-    ? 'dark'
-    : 'light';
+  const appearance = detectAppearance(root);
 
   return {
     // Spacing
@@ -292,21 +311,43 @@ function areTokensValid(tokens: ThemeTokens): boolean {
  * @returns Theme tokens with WebGL-compatible values
  */
 export function useThemeTokens(): ThemeTokens {
-  const [tokens, setTokens] = useState<ThemeTokens>(FALLBACK_TOKENS);
+  // Lazy initializer: try to read tokens synchronously on first render
+  // This avoids the dark→light flash from using FALLBACK_TOKENS initially
+  const [tokens, setTokens] = useState<ThemeTokens>(() => {
+    if (typeof document === 'undefined') return FALLBACK_TOKENS;
+    const root = document.querySelector('.radix-themes') ?? document.documentElement;
+    const domTokens = readTokensFromDOM(root);
+    return areTokensValid(domTokens) ? domTokens : FALLBACK_TOKENS;
+  });
 
   useEffect(() => {
     const root = document.querySelector('.radix-themes') ?? document.documentElement;
 
+    // Compare tokens to avoid unnecessary re-renders
+    const tokensEqual = (a: ThemeTokens, b: ThemeTokens): boolean => {
+      // Quick check on appearance first (most likely to change)
+      if (a.appearance !== b.appearance) return false;
+      // Check a few critical numeric values
+      if (a['--space-3'] !== b['--space-3']) return false;
+      if (a['--radius-4'] !== b['--radius-4']) return false;
+      // Check a color (arrays need element comparison)
+      const aGray = a['--gray-6'];
+      const bGray = b['--gray-6'];
+      if (aGray[0] !== bGray[0] || aGray[1] !== bGray[1] || aGray[2] !== bGray[2]) return false;
+      return true;
+    };
+
     const tryRead = () => {
       const newTokens = readTokensFromDOM(root);
       if (areTokensValid(newTokens)) {
-        setTokens(newTokens);
+        // Only update if tokens actually changed
+        setTokens((prev) => tokensEqual(prev, newTokens) ? prev : newTokens);
         return true;
       }
       return false;
     };
 
-    // Try reading immediately
+    // Re-read in case CSS wasn't fully loaded during useState initializer
     tryRead();
 
     // If document isn't fully loaded yet, also listen for load event
