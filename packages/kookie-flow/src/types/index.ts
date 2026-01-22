@@ -323,15 +323,15 @@ export interface MinimapProps {
   width?: number;
   /** Height in pixels. Default: 150 */
   height?: number;
-  /** Background color. Default: 'rgba(20, 20, 20, 0.9)' */
+  /** Background color. Default: from THEME_COLORS.minimap.background with 0.9 alpha */
   backgroundColor?: string;
-  /** Node color (or function for per-node color). Default: '#666666' */
+  /** Node color (or function for per-node color). Default: from THEME_COLORS.minimap.node */
   nodeColor?: string | ((node: Node) => string);
-  /** Selected node color. Default: '#6366f1' (indigo) */
+  /** Selected node color. Default: from THEME_COLORS.minimap.nodeSelected */
   selectedNodeColor?: string;
-  /** Viewport indicator fill color. Default: 'rgba(99, 102, 241, 0.3)' */
+  /** Viewport indicator fill color. Default: from THEME_COLORS.minimap.viewport with 0.3 alpha */
   viewportColor?: string;
-  /** Viewport indicator border color. Default: '#6366f1' */
+  /** Viewport indicator border color. Default: from THEME_COLORS.minimap.viewportBorder */
   viewportBorderColor?: string;
   /** Padding around content in minimap pixels. Default: 20 */
   padding?: number;

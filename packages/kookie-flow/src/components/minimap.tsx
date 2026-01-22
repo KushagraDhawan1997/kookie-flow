@@ -3,15 +3,15 @@ import {
   useCallback,
   useLayoutEffect,
   useEffect,
+  useMemo,
   type CSSProperties,
 } from 'react';
 import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
+import { THEME_COLORS } from '../core/theme-colors';
+import { rgbToHex } from '../utils/color';
 import type { MinimapProps, Node } from '../types';
-import {
-  DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
-  MINIMAP_DEFAULTS,
-} from '../core/constants';
+import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT, MINIMAP_DEFAULTS } from '../core/constants';
 
 /** Transform to map world coordinates to minimap coordinates */
 interface MinimapTransform {
@@ -74,10 +74,7 @@ function calculateMinimapTransform(
   const availableHeight = minimapHeight - padding * 2;
 
   // Scale to fit
-  const scale = Math.min(
-    availableWidth / worldWidth,
-    availableHeight / worldHeight
-  );
+  const scale = Math.min(availableWidth / worldWidth, availableHeight / worldHeight);
 
   // Center in minimap
   const scaledWidth = worldWidth * scale;
@@ -130,17 +127,47 @@ export function Minimap({
   position = 'bottom-right',
   width = MINIMAP_DEFAULTS.width,
   height = MINIMAP_DEFAULTS.height,
-  backgroundColor = MINIMAP_DEFAULTS.backgroundColor,
-  nodeColor = MINIMAP_DEFAULTS.nodeColor,
-  selectedNodeColor = MINIMAP_DEFAULTS.selectedNodeColor,
-  viewportColor = MINIMAP_DEFAULTS.viewportColor,
-  viewportBorderColor = MINIMAP_DEFAULTS.viewportBorderColor,
+  backgroundColor: backgroundColorProp,
+  nodeColor: nodeColorProp,
+  selectedNodeColor: selectedNodeColorProp,
+  viewportColor: viewportColorProp,
+  viewportBorderColor: viewportBorderColorProp,
   padding = MINIMAP_DEFAULTS.padding,
   interactive = true,
   zoomable = false,
   className,
 }: MinimapProps) {
   const store = useFlowStoreApi();
+  const tokens = useTheme();
+
+  // Derive colors from theme with prop overrides
+  const { backgroundColor, nodeColor, selectedNodeColor, viewportColor, viewportBorderColor } =
+    useMemo(() => {
+      const bgRgb = tokens[THEME_COLORS.minimap.background];
+      const nodeRgb = tokens[THEME_COLORS.minimap.node];
+      const selectedRgb = tokens[THEME_COLORS.minimap.nodeSelected];
+      const viewportRgb = tokens[THEME_COLORS.minimap.viewport];
+      const viewportBorderRgb = tokens[THEME_COLORS.minimap.viewportBorder];
+
+      return {
+        backgroundColor:
+          backgroundColorProp ??
+          `rgba(${Math.round(bgRgb[0] * 255)}, ${Math.round(bgRgb[1] * 255)}, ${Math.round(bgRgb[2] * 255)}, 0.9)`,
+        nodeColor: nodeColorProp ?? rgbToHex(nodeRgb),
+        selectedNodeColor: selectedNodeColorProp ?? rgbToHex(selectedRgb),
+        viewportColor:
+          viewportColorProp ??
+          `rgba(${Math.round(viewportRgb[0] * 255)}, ${Math.round(viewportRgb[1] * 255)}, ${Math.round(viewportRgb[2] * 255)}, 0.3)`,
+        viewportBorderColor: viewportBorderColorProp ?? rgbToHex(viewportBorderRgb),
+      };
+    }, [
+      tokens,
+      backgroundColorProp,
+      nodeColorProp,
+      selectedNodeColorProp,
+      viewportColorProp,
+      viewportBorderColorProp,
+    ]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const rafIdRef = useRef<number>(0);
@@ -167,9 +194,9 @@ export function Minimap({
 
   // Dirty flags
   const dirtyRef = useRef({
-    nodes: true,      // Nodes changed (positions, count, etc.)
-    selection: true,  // Selection changed
-    viewport: true,   // Viewport changed
+    nodes: true, // Nodes changed (positions, count, etc.)
+    selection: true, // Selection changed
+    viewport: true, // Viewport changed
   });
 
   // Main render function - only redraws what's necessary
@@ -186,7 +213,9 @@ export function Minimap({
 
     // Check what actually changed
     const currentHash = hashNodePositions(nodes);
-    const nodesChanged = currentHash !== lastPositionHashRef.current || nodes.length !== (lastPositionHashRef.current === 0 ? 0 : nodes.length);
+    const nodesChanged =
+      currentHash !== lastPositionHashRef.current ||
+      nodes.length !== (lastPositionHashRef.current === 0 ? 0 : nodes.length);
     const selectionChanged = selectedNodeIds !== lastSelectionRef.current;
 
     if (nodesChanged) {
@@ -246,9 +275,14 @@ export function Minimap({
         ctx.fillStyle = isSelected
           ? selectedNodeColor
           : typeof nodeColor === 'function'
-          ? nodeColor(node)
-          : nodeColor;
-        ctx.fillRect(x, y, Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW), Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH));
+            ? nodeColor(node)
+            : nodeColor;
+        ctx.fillRect(
+          x,
+          y,
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
+        );
       }
 
       // Draw viewport indicator as border
@@ -305,9 +339,14 @@ export function Minimap({
         ctx.fillStyle = isSelected
           ? selectedNodeColor
           : typeof nodeColor === 'function'
-          ? nodeColor(node)
-          : nodeColor;
-        ctx.fillRect(x, y, Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW), Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH));
+            ? nodeColor(node)
+            : nodeColor;
+        ctx.fillRect(
+          x,
+          y,
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
+        );
       }
 
       // Draw viewport indicator
@@ -367,18 +406,15 @@ export function Minimap({
   }, [render]);
 
   // Check if point is inside viewport indicator
-  const isInsideViewportIndicator = useCallback(
-    (minimapX: number, minimapY: number): boolean => {
-      const rect = viewportRectRef.current;
-      return (
-        minimapX >= rect.x &&
-        minimapX <= rect.x + rect.w &&
-        minimapY >= rect.y &&
-        minimapY <= rect.y + rect.h
-      );
-    },
-    []
-  );
+  const isInsideViewportIndicator = useCallback((minimapX: number, minimapY: number): boolean => {
+    const rect = viewportRectRef.current;
+    return (
+      minimapX >= rect.x &&
+      minimapX <= rect.x + rect.w &&
+      minimapY >= rect.y &&
+      minimapY <= rect.y + rect.h
+    );
+  }, []);
 
   // Click handler - pan to clicked position
   const handleClick = useCallback(
@@ -660,9 +696,9 @@ export function Minimap({
     ...positionStyle,
     width,
     height,
-    borderRadius: 4,
+    borderRadius: 'var(--radius-2)',
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+    boxShadow: 'var(--shadow-2)',
     pointerEvents: interactive ? 'auto' : 'none',
   };
 

@@ -87,12 +87,16 @@ export const THEME_COLORS = {
 
   // ============================================
   // Minimap
+  // Note: Alpha values for background (0.9) and viewport fill (0.3)
+  // are applied in the minimap component itself.
+  // Shadow uses var(--shadow-3) directly from Kookie UI.
   // ============================================
   minimap: {
     background: '--gray-1',
     node: '--gray-8',
     nodeSelected: '--accent-9',
     viewport: '--accent-9',
+    viewportBorder: '--accent-9',
   },
 } as const;
 
