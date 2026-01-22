@@ -58,6 +58,18 @@ export {
   SIZE_MAP,
   VARIANT_MAP,
   RADIUS_MAP,
+  SOCKET_ROW_HEIGHT_TOKEN,
+  WIDGET_HEIGHT_TOKEN,
   type ResolvedNodeStyle,
+  type ResolvedSocketLayout,
   resolveNodeStyle,
+  resolveSocketLayout,
+  calculateMinNodeHeight,
 } from './style-resolver';
+
+// Widget utilities (Phase 7D)
+export {
+  resolveWidgetConfig,
+  isSocketConnected,
+  buildConnectedSocketsSet,
+} from './widgets';

@@ -1080,7 +1080,7 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Milestones 1-2 complete, Milestone 3-4 in progress.
+**Current status:** Milestones 1-3.5 complete. Milestone 4-5 in progress.
 
 ### Phase 7C: Grouping & Annotations
 
@@ -1554,20 +1554,20 @@ This ensures widgets fit naturally in socket rows and scale properly.
 
 **Tasks:**
 
-- [ ] Types: Extend `Socket` with widget config fields
-- [ ] Types: Extend `SocketType` with default widget config
-- [ ] Types: Add `WidgetProps`, `WidgetConfig`, `ResolvedWidgetConfig`
-- [ ] Core: Update `DEFAULT_SOCKET_TYPES` with widget defaults
-- [ ] Core: `resolveWidgetConfig()` utility function
+- [x] Types: Extend `Socket` with widget config fields
+- [x] Types: Extend `SocketType` with default widget config
+- [x] Types: Add `WidgetProps`, `WidgetConfig`, `ResolvedWidgetConfig`
+- [x] Core: Update `DEFAULT_SOCKET_TYPES` with widget defaults
+- [x] Core: `resolveWidgetConfig()` utility function
 - [ ] Core: Track connected sockets in store for widget visibility
-- [ ] Components: Built-in widgets (Slider, NumberInput, Select, Checkbox, TextInput, ColorInput)
-- [ ] Components: `WidgetsLayer.tsx` in DOM layer
-- [ ] Components: Widget positioning (adjacent to socket, inside node bounds)
-- [ ] Integration: `widgetTypes` prop for custom/override widgets
-- [ ] Integration: `onWidgetChange` callback
+- [x] Components: Built-in widgets (Slider, NumberInput, Select, Checkbox, TextInput, ColorInput)
+- [x] Components: `WidgetsLayer.tsx` in DOM layer
+- [x] Components: Widget positioning (adjacent to socket, inside node bounds)
+- [x] Integration: `widgetTypes` prop for custom/override widgets
+- [x] Integration: `onWidgetChange` callback
 - [ ] Integration: Value storage in `node.data.values`
-- [ ] Performance: Viewport culling for widgets
-- [ ] Performance: Memoized widget resolution
+- [x] Performance: Viewport culling for widgets
+- [x] Performance: Memoized widget resolution
 - [ ] Docs: Widget usage examples
 - [ ] Docs: Custom widget component guide
 
@@ -1881,6 +1881,12 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Style resolution (`resolveNodeStyle()`, `style-resolver.ts`)
 - [x] Semantic color tokenization (grid, edges, sockets, selection box, text)
 - [x] Fallback tokens for standalone mode (no Kookie UI required)
+- [x] Typography tokens (`--font-size-N`, `--line-height-N`) in ThemeTokens
+- [x] Socket layout tokenization (`--space-6`, `--space-7` for row/widget heights)
+- [x] `ResolvedSocketLayout` interface and `resolveSocketLayout()` function
+- [x] `calculateMinNodeHeight()` for automatic node height calculation
+- [x] Socket widgets infrastructure (types, built-in widgets, WidgetsLayer)
+- [x] Built-in widgets: SliderWidget, NumberWidget, SelectWidget, CheckboxWidget, TextWidget, ColorWidget
 
 > **Note:** Full styling plan and remaining tasks tracked in [STYLING.md](./STYLING.md)
 
@@ -1888,9 +1894,15 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 **Styling (in progress):** See [STYLING.md](./STYLING.md) for detailed tracking
 
-- Milestone 3: Node shader updates (shadow SDF, header color region)
+- Milestone 3: Node shader updates (shadow SDF for classic variant, header color region)
 - Milestone 4: Socket type theming (user-configurable via CSS vars)
 - Milestone 5: Polish & testing (dark/light mode, standalone mode)
+
+**Phase 7D (in progress):** Socket widgets
+
+- Track connected sockets in store for automatic widget visibility
+- Value storage in `node.data.values`
+- Documentation: widget usage examples, custom widget guide
 
 **Phase 7C: Grouping & Annotations**
 

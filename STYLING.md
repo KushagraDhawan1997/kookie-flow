@@ -1228,33 +1228,32 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [x] Update instance attributes for selected/hovered state
 - [x] Handle transparent backgrounds (ghost, outline)
 - [ ] Test all 5 variants visually
-- [ ] Add `--font-size-1` through `--font-size-5` to `ThemeTokens` interface
-- [ ] Add `--line-height-1` through `--line-height-5` to `ThemeTokens` interface
-- [ ] Add fallback values for typography tokens in `FALLBACK_TOKENS`
-- [ ] Update `readTokensFromDOM()` to read typography tokens from CSS
-- [ ] Update SIZE_MAP to use `--font-size-N` tokens instead of hardcoded pixels
-- [ ] Remove headerHeight from SIZE_MAP (use `--space-7` fixed for row height)
-- [ ] Update `resolveNodeStyle()` to resolve font-size and line-height tokens
+- [x] Add `--font-size-1` through `--font-size-5` to `ThemeTokens` interface
+- [x] Add `--line-height-1` through `--line-height-5` to `ThemeTokens` interface
+- [x] Add fallback values for typography tokens in `FALLBACK_TOKENS`
+- [x] Update `readTokensFromDOM()` to read typography tokens from CSS
+- [x] Update SIZE_MAP to use `--font-size-N` tokens instead of hardcoded pixels
+- [x] Remove headerHeight from SIZE_MAP (use `--space-7` fixed for row height)
+- [x] Update `resolveNodeStyle()` to resolve font-size and line-height tokens
 
-### Milestone 3.5: Socket Layout Tokenization (Widget Prep)
+### Milestone 3.5: Socket Layout Tokenization (Widget Prep) ✓
 
 Socket layout is fixed to size 2 with horizontal widget layout: `[socket] [label] [widget]`
 
 Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4px vertical padding.
 
-- [ ] Add `--space-6` and `--space-7` to `ThemeTokens` interface
-- [ ] Add `SOCKET_ROW_HEIGHT = '--space-7'` constant (40px, replaces `SOCKET_SPACING`)
-- [ ] Add `WIDGET_HEIGHT = '--space-6'` constant (32px, for vertical centering)
-- [ ] Create `ResolvedSocketLayout` interface (`rowHeight`, `widgetHeight`, `marginTop`, `socketSize`)
-- [ ] Create `resolveSocketLayout()` function
-- [ ] Update `getSocketPosition()` to accept layout parameter instead of using constants
-- [ ] Remove static `SOCKET_SPACING` and `SOCKET_MARGIN_TOP` from constants.ts
-- [ ] Update `edges.tsx` to use resolved socket layout
-- [ ] Update `sockets.tsx` to use resolved socket layout
-- [ ] Update `connection-line.tsx` to use resolved socket layout
-- [ ] Update `geometry.ts` hit testing to use resolved socket layout
-- [ ] Add socket layout to context (StyleProvider or separate SocketLayoutContext)
-- [ ] Test socket positions with widgets at size 2
+- [x] Add `--space-6` and `--space-7` to `ThemeTokens` interface
+- [x] Add `SOCKET_ROW_HEIGHT_TOKEN` and `WIDGET_HEIGHT_TOKEN` constants
+- [x] Create `ResolvedSocketLayout` interface (`rowHeight`, `widgetHeight`, `marginTop`, `socketSize`, `padding`)
+- [x] Create `resolveSocketLayout()` function
+- [x] Update `getSocketPosition()` to accept layout parameter instead of using constants
+- [x] Update `edges.tsx` to use resolved socket layout
+- [x] Update `sockets.tsx` to use resolved socket layout
+- [x] Update `connection-line.tsx` to use resolved socket layout
+- [x] Update `geometry.ts` hit testing to use resolved socket layout
+- [x] Add socket layout to context (StyleProvider with `useSocketLayout` hook)
+- [x] Implement `calculateMinNodeHeight()` for automatic node height calculation
+- [x] Test socket positions with widgets at size 2
 
 ### Milestone 4: Socket Colors
 - [x] Tokenize fallback socket colors (invalid → `--red-9`, valid target → `--green-9`, default → `--gray-8`)

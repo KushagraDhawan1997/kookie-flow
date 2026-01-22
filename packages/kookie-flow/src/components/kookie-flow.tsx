@@ -20,7 +20,8 @@ import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
 import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
-import { ThemeProvider, StyleProvider, useTheme } from '../contexts';
+import { WidgetsLayer } from './widgets-layer';
+import { ThemeProvider, StyleProvider, useTheme, useSocketLayout } from '../contexts';
 import { resolveSocketTypes } from '../utils/socket-types';
 import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
 import {
@@ -80,6 +81,10 @@ export function KookieFlow({
   header = 'none',
   accentHeader = false,
   nodeStyle,
+  // Widget props (Phase 7D)
+  widgetTypes,
+  onWidgetChange,
+  showWidgets = true,
 }: KookieFlowProps) {
   const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
 
@@ -122,6 +127,9 @@ export function KookieFlow({
           scaleTextWithZoom={scaleTextWithZoom}
           showMinimap={showMinimap}
           minimapProps={minimapProps}
+          widgetTypes={widgetTypes}
+          onWidgetChange={onWidgetChange}
+          showWidgets={showWidgets}
         >
           {children}
         </ThemedFlowContainer>
@@ -163,6 +171,10 @@ interface ThemedFlowContainerProps {
   showMinimap: boolean;
   minimapProps?: KookieFlowProps['minimapProps'];
   children?: React.ReactNode;
+  // Widget props (Phase 7D)
+  widgetTypes?: KookieFlowProps['widgetTypes'];
+  onWidgetChange?: KookieFlowProps['onWidgetChange'];
+  showWidgets: boolean;
 }
 
 function ThemedFlowContainer({
@@ -195,6 +207,9 @@ function ThemedFlowContainer({
   showMinimap,
   minimapProps,
   children,
+  widgetTypes,
+  onWidgetChange,
+  showWidgets,
 }: ThemedFlowContainerProps) {
   const tokens = useTheme();
 
@@ -237,6 +252,13 @@ function ThemedFlowContainer({
       >
         <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
         <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
+        {showWidgets && (
+          <WidgetsLayer
+            socketTypes={resolvedSocketTypes}
+            widgetTypes={widgetTypes}
+            onWidgetChange={onWidgetChange}
+          />
+        )}
         {showMinimap && <Minimap {...minimapProps} />}
         <FlowSync
           nodes={nodes}
@@ -282,6 +304,7 @@ const DRAG_THRESHOLD = 5;
 function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
+  const socketLayout = useSocketLayout();
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -465,7 +488,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           worldPos,
           nodes,
           viewport,
-          { width: rect.width, height: rect.height }
+          { width: rect.width, height: rect.height },
+          socketLayout
         );
 
         if (socket) {
@@ -483,7 +507,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown, store]
+    [isSpaceDown, store, socketLayout]
   );
 
   // Handle pointer move
@@ -520,7 +544,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           worldPos,
           nodes,
           viewport,
-          { width: rect.width, height: rect.height }
+          { width: rect.width, height: rect.height },
+          socketLayout
         );
         store.getState().setHoveredSocketId(hoveredSocket);
 
@@ -678,7 +703,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           worldPos,
           nodes,
           viewport,
-          { width: rect.width, height: rect.height }
+          { width: rect.width, height: rect.height },
+          socketLayout
         );
 
         // Update socket hover if changed
@@ -699,7 +725,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
       }
     },
-    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll]
+    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll, socketLayout]
   );
 
   // Handle pointer up
@@ -821,7 +847,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           onNodeClick?.(clickedNode);
         } else if (edgesSelectable) {
           // Check for edge click
-          const clickedEdge = getEdgeAtPosition(clickPos, edges, nodeMap, defaultEdgeType, viewport);
+          const clickedEdge = getEdgeAtPosition(clickPos, edges, nodeMap, defaultEdgeType, viewport, undefined, socketLayout);
           if (clickedEdge) {
             const additive = e.ctrlKey || e.metaKey;
             store.getState().selectEdge(clickedEdge.id, additive);

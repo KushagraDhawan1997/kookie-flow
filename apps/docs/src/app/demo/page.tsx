@@ -65,6 +65,20 @@ const socketPatterns = [
   },
 ];
 
+// Kookie UI accent colors for node variety
+const nodeColors = [
+  'purple',
+  'blue',
+  'green',
+  'orange',
+  'red',
+  'pink',
+  'cyan',
+  'teal',
+  'indigo',
+  'violet',
+] as const;
+
 // Generate demo nodes with sockets
 function generateNodes(count: number): Node[] {
   const cols = Math.ceil(Math.sqrt(count));
@@ -73,7 +87,7 @@ function generateNodes(count: number): Node[] {
   return Array.from({ length: count }, (_, i) => {
     const pattern = socketPatterns[i % socketPatterns.length];
 
-    return {
+    const node: Node = {
       id: `node-${i}`,
       type: 'default',
       position: {
@@ -94,6 +108,13 @@ function generateNodes(count: number): Node[] {
         type: output.type,
       })),
     };
+
+    // Add custom colors to some nodes (every 10th node)
+    if (i % 10 === 0) {
+      node.color = nodeColors[(i / 10) % nodeColors.length];
+    }
+
+    return node;
   });
 }
 
@@ -499,7 +520,7 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2) - try different values!
         size="2"
-        variant="classic"
+        variant="surface"
         radius="medium"
         header="inside"
         accentHeader

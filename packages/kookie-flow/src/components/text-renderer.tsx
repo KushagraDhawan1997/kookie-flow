@@ -19,7 +19,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNodeStyle } from '../contexts/StyleContext';
+import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -34,12 +34,8 @@ import {
   populateGlyphBuffers,
   countGlyphs,
 } from '../utils/text-layout';
-import {
-  DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
-  SOCKET_MARGIN_TOP,
-  SOCKET_SPACING,
-} from '../core/constants';
+import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
@@ -242,6 +238,7 @@ export function MultiWeightTextRenderer({
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const { resolved: style, config } = useNodeStyle();
+  const socketLayout = useSocketLayout();
 
   // Derive text colors from theme tokens
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
@@ -297,7 +294,9 @@ export function MultiWeightTextRenderer({
       // Node headers (semibold)
       for (const node of nodes) {
         const width = node.width ?? DEFAULT_NODE_WIDTH;
-        const height = node.height ?? DEFAULT_NODE_HEIGHT;
+        const outputCount = node.outputs?.length ?? 0;
+        const inputCount = node.inputs?.length ?? 0;
+        const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
         const nodeRight = node.position.x + width;
         const nodeBottom = node.position.y + height;
@@ -339,7 +338,9 @@ export function MultiWeightTextRenderer({
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
         for (const node of nodes) {
           const width = node.width ?? DEFAULT_NODE_WIDTH;
-          const height = node.height ?? DEFAULT_NODE_HEIGHT;
+          const outputCount = node.outputs?.length ?? 0;
+          const inputCount = node.inputs?.length ?? 0;
+          const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
           const nodeRight = node.position.x + width;
           const nodeBottom = node.position.y + height;
@@ -352,29 +353,12 @@ export function MultiWeightTextRenderer({
             continue;
           }
 
-          // Input sockets
-          if (node.inputs) {
-            for (let i = 0; i < node.inputs.length; i++) {
-              const socket = node.inputs[i];
-              const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
-              const textY = socketY - 5;
-              regular.push({
-                id: `socket-${node.id}-${socket.id}`,
-                text: socket.name,
-                position: [node.position.x + 12, textY, 0.1],
-                fontSize: 10,
-                color: secondaryTextColor,
-                anchor: 'left',
-                fontWeight: 'regular',
-              });
-            }
-          }
-
-          // Output sockets
+          // Output sockets (first in layout order)
           if (node.outputs) {
             for (let i = 0; i < node.outputs.length; i++) {
               const socket = node.outputs[i];
-              const socketY = node.position.y + SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
+              // Output rowIndex = i
+              const socketY = node.position.y + socketLayout.marginTop + i * socketLayout.rowHeight + socketLayout.rowHeight / 2;
               const textY = socketY - 5;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
@@ -383,6 +367,26 @@ export function MultiWeightTextRenderer({
                 fontSize: 10,
                 color: secondaryTextColor,
                 anchor: 'right',
+                fontWeight: 'regular',
+              });
+            }
+          }
+
+          // Input sockets (after outputs in layout order)
+          if (node.inputs) {
+            for (let i = 0; i < node.inputs.length; i++) {
+              const socket = node.inputs[i];
+              // Input rowIndex = outputCount + i
+              const rowIndex = outputCount + i;
+              const socketY = node.position.y + socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+              const textY = socketY - 5;
+              regular.push({
+                id: `socket-${node.id}-${socket.id}`,
+                text: socket.name,
+                position: [node.position.x + 12, textY, 0.1],
+                fontSize: 10,
+                color: secondaryTextColor,
+                anchor: 'left',
                 fontWeight: 'regular',
               });
             }

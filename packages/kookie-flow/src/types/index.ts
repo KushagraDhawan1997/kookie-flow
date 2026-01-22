@@ -48,10 +48,72 @@ export interface EdgeLabelConfig {
   fontSize?: number;
 }
 
+// ============================================================================
+// Widget Types (Phase 7D)
+// ============================================================================
+
+/** Built-in widget types for socket inputs */
+export type WidgetType = 'slider' | 'number' | 'select' | 'checkbox' | 'text' | 'color';
+
+/** Props passed to widget components */
+export interface WidgetProps {
+  /** Current value */
+  value: unknown;
+  /** Callback when value changes */
+  onChange: (value: unknown) => void;
+  /** Whether the widget is disabled (e.g., socket is connected) */
+  disabled?: boolean;
+  /** Minimum value (for slider/number) */
+  min?: number;
+  /** Maximum value (for slider/number) */
+  max?: number;
+  /** Step value (for slider/number) */
+  step?: number;
+  /** Options (for select) */
+  options?: string[];
+  /** Placeholder text (for text input) */
+  placeholder?: string;
+}
+
+/** Inline widget component definition */
+export interface InlineWidgetComponent {
+  component: React.ComponentType<WidgetProps>;
+}
+
+/** Resolved widget configuration (after merging socket + type defaults) */
+export interface ResolvedWidgetConfig {
+  /** Widget type */
+  type: WidgetType;
+  /** Min value for slider/number */
+  min?: number;
+  /** Max value for slider/number */
+  max?: number;
+  /** Step value for slider/number */
+  step?: number;
+  /** Options for select */
+  options?: string[];
+  /** Placeholder for text input */
+  placeholder?: string;
+  /** Default value */
+  defaultValue?: unknown;
+  /** Custom component (if provided inline on socket) */
+  customComponent?: React.ComponentType<WidgetProps>;
+}
+
 /** Socket type definition */
 export interface SocketType {
   color: string;
   name: string;
+  /** Compatibility rules */
+  compatibleWith?: string[] | '*';
+  /** Default widget type for sockets of this type */
+  widget?: WidgetType;
+  /** Default min value for slider/number widgets */
+  min?: number;
+  /** Default max value for slider/number widgets */
+  max?: number;
+  /** Default step value for slider/number widgets */
+  step?: number;
 }
 
 /** Socket definition on a node */
@@ -61,6 +123,20 @@ export interface Socket {
   type: string;
   /** Position relative to node (0 = top, 1 = bottom) */
   position?: number;
+  /** Widget type override (false = disable widget) */
+  widget?: WidgetType | false | InlineWidgetComponent;
+  /** Min value override for slider/number */
+  min?: number;
+  /** Max value override for slider/number */
+  max?: number;
+  /** Step value override for slider/number */
+  step?: number;
+  /** Options for select widget */
+  options?: string[];
+  /** Placeholder for text widget */
+  placeholder?: string;
+  /** Default value when unconnected */
+  defaultValue?: unknown;
 }
 
 /** Socket handle for identifying a specific socket on a node */
@@ -429,4 +505,15 @@ export interface KookieFlowProps {
   accentHeader?: boolean;
   /** Fine-grained style overrides */
   nodeStyle?: Partial<NodeStyleOverrides>;
+
+  // ============================================================================
+  // Widget Props (Phase 7D)
+  // ============================================================================
+
+  /** Custom widget components (keyed by widget type name) */
+  widgetTypes?: Record<string, React.ComponentType<WidgetProps>>;
+  /** Callback when a widget value changes */
+  onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
+  /** Show widgets on unconnected input sockets. Default: true */
+  showWidgets?: boolean;
 }

@@ -26,48 +26,53 @@ interface SizeConfig {
   padding: keyof ThemeTokens;
   /** CSS variable name for border radius */
   borderRadius: keyof ThemeTokens;
-  /** Header height in pixels */
-  headerHeight: number;
-  /** Font size in pixels */
-  fontSize: number;
+  /** CSS variable name for font size */
+  fontSize: keyof ThemeTokens;
   /** Socket radius in pixels */
   socketSize: number;
 }
+
+/**
+ * Socket row height token (fixed to --space-7 = 40px).
+ * Both header (inside) and socket rows use this height for widget alignment.
+ */
+export const SOCKET_ROW_HEIGHT_TOKEN: keyof ThemeTokens = '--space-7';
+
+/**
+ * Widget height token (--space-6 = 32px at scale 1).
+ * All Kookie UI components at size 2 use this height.
+ */
+export const WIDGET_HEIGHT_TOKEN: keyof ThemeTokens = '--space-6';
 
 export const SIZE_MAP: Record<NodeSize, SizeConfig> = {
   '1': {
     padding: '--space-2', // 8px
     borderRadius: '--radius-3', // 10px
-    headerHeight: 20,
-    fontSize: 12,
+    fontSize: '--font-size-1', // 12px
     socketSize: 8,
   },
   '2': {
     padding: '--space-3', // 12px
     borderRadius: '--radius-4', // 12px
-    headerHeight: 24,
-    fontSize: 14,
+    fontSize: '--font-size-2', // 14px
     socketSize: 10,
   },
   '3': {
     padding: '--space-4', // 16px
     borderRadius: '--radius-4', // 12px
-    headerHeight: 28,
-    fontSize: 14,
+    fontSize: '--font-size-2', // 14px
     socketSize: 10,
   },
   '4': {
     padding: '--space-5', // 24px
     borderRadius: '--radius-5', // 16px
-    headerHeight: 32,
-    fontSize: 16,
+    fontSize: '--font-size-3', // 16px
     socketSize: 12,
   },
   '5': {
     padding: '--space-6', // 32px
     borderRadius: '--radius-5', // 16px
-    headerHeight: 36,
-    fontSize: 16,
+    fontSize: '--font-size-3', // 16px
     socketSize: 12,
   },
 };
@@ -322,9 +327,16 @@ export function resolveNodeStyle(
     ? resolveTokenColor('--accent-3', tokens)
     : resolveTokenColor('--gray-3', tokens);
 
+  // Header height uses fixed row height token (--space-7 = 40px)
+  // This ensures header aligns with socket rows for widget layout
+  const headerHeight = resolveTokenPx(SOCKET_ROW_HEIGHT_TOKEN, tokens);
+
+  // Resolve font size from token
+  const fontSize = resolveTokenPx(sizeConfig.fontSize, tokens);
+
   return {
     padding,
-    headerHeight: sizeConfig.headerHeight,
+    headerHeight,
     headerBackground,
     headerPosition,
     borderRadius,
@@ -338,7 +350,82 @@ export function resolveNodeStyle(
     shadowOffsetY: shadow.offsetY,
     shadowOpacity: shadow.opacity,
     selectedBorderColor,
-    fontSize: sizeConfig.fontSize,
+    fontSize,
     socketSize: sizeConfig.socketSize,
   };
+}
+
+// ============================================================================
+// Socket Layout Resolution (Milestone 3.5)
+// ============================================================================
+
+/**
+ * Resolved socket layout values for positioning sockets and widgets.
+ * All socket rows (header inside, outputs, inputs) use the same row height.
+ */
+export interface ResolvedSocketLayout {
+  /** Row height in pixels (from --space-7, default 40px) */
+  rowHeight: number;
+  /** Widget height in pixels (from --space-6, default 32px) */
+  widgetHeight: number;
+  /** Margin from top of node to first socket row */
+  marginTop: number;
+  /** Socket circle radius in pixels */
+  socketSize: number;
+  /** Padding inside node (from size config) */
+  padding: number;
+}
+
+/**
+ * Resolve socket layout from theme tokens and node style settings.
+ *
+ * Layout order: Header (if inside) → Output rows → Input rows
+ *
+ * @param hasHeaderInside - Whether the node has an inside header
+ * @param size - Node size for padding and socket size
+ * @param tokens - Theme tokens for resolving --space-N values
+ */
+export function resolveSocketLayout(
+  hasHeaderInside: boolean,
+  size: NodeSize = '2',
+  tokens: ThemeTokens
+): ResolvedSocketLayout {
+  const sizeConfig = SIZE_MAP[size];
+  const rowHeight = resolveTokenPx(SOCKET_ROW_HEIGHT_TOKEN, tokens);
+  const widgetHeight = resolveTokenPx(WIDGET_HEIGHT_TOKEN, tokens);
+  const padding = resolveTokenPx(sizeConfig.padding, tokens);
+
+  // Margin from top depends on header position:
+  // - No header or outside header: marginTop = padding
+  // - Inside header: marginTop = rowHeight + padding (skip header row)
+  const marginTop = hasHeaderInside ? rowHeight + padding : padding;
+
+  return {
+    rowHeight,
+    widgetHeight,
+    marginTop,
+    socketSize: sizeConfig.socketSize,
+    padding,
+  };
+}
+
+/**
+ * Calculate the minimum height required for a node based on socket count.
+ *
+ * Height = marginTop + max(1, totalRows) * rowHeight + bottomPadding
+ *
+ * @param outputCount - Number of output sockets
+ * @param inputCount - Number of input sockets
+ * @param layout - Resolved socket layout
+ * @returns Minimum required height in pixels
+ */
+export function calculateMinNodeHeight(
+  outputCount: number,
+  inputCount: number,
+  layout: ResolvedSocketLayout
+): number {
+  const totalRows = outputCount + inputCount;
+  // At least 1 row for nodes with no sockets
+  const rows = Math.max(1, totalRows);
+  return layout.marginTop + rows * layout.rowHeight + layout.padding;
 }

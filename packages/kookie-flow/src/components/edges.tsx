@@ -3,13 +3,12 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
-  SOCKET_MARGIN_TOP,
-  SOCKET_SPACING,
   DEFAULT_SOCKET_TYPES,
 } from '../core/constants';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { Node, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
 
@@ -111,6 +110,7 @@ export function Edges({
 }: EdgesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const socketLayout = useSocketLayout();
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Pre-allocated buffers
@@ -373,10 +373,15 @@ export function Edges({
       if (!sourceNode || !targetNode) continue;
 
       const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
-      const sourceHeight = sourceNode.height ?? DEFAULT_NODE_HEIGHT;
-      const targetHeight = targetNode.height ?? DEFAULT_NODE_HEIGHT;
+      const sourceOutputCount = sourceNode.outputs?.length ?? 0;
+      const sourceInputCount = sourceNode.inputs?.length ?? 0;
+      const sourceHeight = sourceNode.height ?? calculateMinNodeHeight(sourceOutputCount, sourceInputCount, socketLayout);
+      const targetOutputCount = targetNode.outputs?.length ?? 0;
+      const targetInputCount = targetNode.inputs?.length ?? 0;
+      const targetHeight = targetNode.height ?? calculateMinNodeHeight(targetOutputCount, targetInputCount, socketLayout);
 
       // Calculate source socket position - O(1) lookup via socketIndexMap
+      // Source socket is always an output (rowIndex = outputIndex)
       let sourceYOffset = sourceHeight / 2; // fallback to center
       if (edge.sourceSocket) {
         const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
@@ -384,19 +389,22 @@ export function Edges({
           sourceYOffset =
             socketInfo.socket.position !== undefined
               ? socketInfo.socket.position * sourceHeight
-              : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+              : socketLayout.marginTop + socketInfo.index * socketLayout.rowHeight + socketLayout.rowHeight / 2;
         }
       }
 
       // Calculate target socket position - O(1) lookup via socketIndexMap
+      // Target socket is always an input (rowIndex = outputCount + inputIndex)
       let targetYOffset = targetHeight / 2; // fallback to center
       if (edge.targetSocket) {
         const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
         if (socketInfo) {
+          const targetOutputCount = targetNode.outputs?.length ?? 0;
+          const rowIndex = targetOutputCount + socketInfo.index;
           targetYOffset =
             socketInfo.socket.position !== undefined
               ? socketInfo.socket.position * targetHeight
-              : SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
+              : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
         }
       }
 

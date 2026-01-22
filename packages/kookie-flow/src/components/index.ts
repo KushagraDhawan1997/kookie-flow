@@ -9,3 +9,5 @@ export { DOMLayer } from './dom-layer';
 export { SelectionBox } from './selection-box';
 export { TextRenderer, TextRendererLoader } from './text-renderer';
 export { Minimap } from './minimap';
+export { WidgetsLayer } from './widgets-layer';
+export { BUILT_IN_WIDGETS } from './widgets';

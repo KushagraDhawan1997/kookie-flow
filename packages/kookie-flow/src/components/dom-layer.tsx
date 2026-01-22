@@ -7,14 +7,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowStoreApi } from './context';
-import { useNodeStyle } from '../contexts/StyleContext';
+import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
 import type { NodeTypeDefinition, Edge, EdgeType, EdgeLabelConfig } from '../types';
-import {
-  DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
-  SOCKET_MARGIN_TOP,
-  SOCKET_SPACING,
-} from '../core/constants';
+import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
 export interface DOMLayerProps {
@@ -93,6 +89,7 @@ export function DOMLayer({
 function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
   const store = useFlowStoreApi();
   const { resolved: style, config } = useNodeStyle();
+  const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
@@ -146,7 +143,9 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       }
 
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const height = node.height ?? DEFAULT_NODE_HEIGHT;
+      const outputCount = node.outputs?.length ?? 0;
+      const inputCount = node.inputs?.length ?? 0;
+      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
       // Frustum culling
       const nodeRight = node.position.x + width;
@@ -182,7 +181,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
       el.style.fontSize = `${fontSize}px`;
     });
-  }, [store, config, style]);
+  }, [store, config, style, socketLayout]);
 
   // Schedule update with RAF throttling
   const scheduleUpdate = useCallback(() => {
@@ -650,6 +649,7 @@ const edgeLabelStyle: CSSProperties = {
  */
 function SocketLabelsContainer() {
   const store = useFlowStoreApi();
+  const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
@@ -699,7 +699,9 @@ function SocketLabelsContainer() {
       }
 
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const height = node.height ?? DEFAULT_NODE_HEIGHT;
+      const outputCount = node.outputs?.length ?? 0;
+      const inputCount = node.inputs?.length ?? 0;
+      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
       // Frustum culling
       const nodeRight = node.position.x + width;
@@ -725,8 +727,10 @@ function SocketLabelsContainer() {
       // Get socket index from data attribute
       const socketIndex = parseInt(el.dataset.socketIndex ?? '0', 10);
 
-      // Calculate socket position in world space
-      const socketY = node.position.y + SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+      // Calculate socket position in world space using socket layout
+      // Layout order: outputs first, then inputs
+      const rowIndex = side === 'input' ? outputCount + socketIndex : socketIndex;
+      const socketY = node.position.y + socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
       const socketX = side === 'input' ? node.position.x : node.position.x + width;
 
       // Label offset from socket (in world space)
@@ -740,7 +744,7 @@ function SocketLabelsContainer() {
       el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
       el.style.fontSize = `${fontSize}px`;
     });
-  }, [store]);
+  }, [store, socketLayout]);
 
   // Schedule update with RAF throttling
   const scheduleUpdate = useCallback(() => {
@@ -789,9 +793,11 @@ function SocketLabelsContainer() {
     name: string;
     side: 'input' | 'output';
     index: number;
+    outputCount: number;
   }> = [];
 
   for (const node of nodes) {
+    const outputCount = node.outputs?.length ?? 0;
     if (node.inputs) {
       for (let i = 0; i < node.inputs.length; i++) {
         const socket = node.inputs[i];
@@ -800,6 +806,7 @@ function SocketLabelsContainer() {
           name: socket.name,
           side: 'input',
           index: i,
+          outputCount,
         });
       }
     }
@@ -811,6 +818,7 @@ function SocketLabelsContainer() {
           name: socket.name,
           side: 'output',
           index: i,
+          outputCount,
         });
       }
     }
@@ -827,6 +835,7 @@ function SocketLabelsContainer() {
           key={item.key}
           ref={setLabelRef(item.key)}
           data-socket-index={item.index}
+          data-output-count={item.outputCount}
           style={{
             ...socketLabelStyle,
             textAlign: item.side === 'input' ? 'left' : 'right',

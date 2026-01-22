@@ -22,6 +22,7 @@ export interface ThemeTokens {
   '--space-4': number;
   '--space-5': number;
   '--space-6': number;
+  '--space-7': number;
 
   // Radius (resolved to pixels)
   '--radius-1': number;
@@ -31,6 +32,22 @@ export interface ThemeTokens {
   '--radius-5': number;
   '--radius-6': number;
   '--radius-full': number;
+
+  // Typography - Font sizes (resolved to pixels)
+  // Used for node labels and widget sizing alignment
+  '--font-size-1': number;
+  '--font-size-2': number;
+  '--font-size-3': number;
+  '--font-size-4': number;
+  '--font-size-5': number;
+
+  // Typography - Line heights (resolved to pixels)
+  // Used for header heights to match text vertical rhythm
+  '--line-height-1': number;
+  '--line-height-2': number;
+  '--line-height-3': number;
+  '--line-height-4': number;
+  '--line-height-5': number;
 
   // Gray scale (as RGB arrays [0-1] for WebGL)
   '--gray-1': RGBColor;
@@ -94,6 +111,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--space-4': 16,
   '--space-5': 24,
   '--space-6': 32,
+  '--space-7': 40,
 
   // Radius (actual Kookie UI values at scaling=1, radius-factor=1)
   '--radius-1': 6,
@@ -103,6 +121,20 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--radius-5': 16,
   '--radius-6': 20,
   '--radius-full': 9999,
+
+  // Typography - Font sizes (assuming scaling = 1)
+  '--font-size-1': 12,
+  '--font-size-2': 14,
+  '--font-size-3': 16,
+  '--font-size-4': 18,
+  '--font-size-5': 20,
+
+  // Typography - Line heights (assuming scaling = 1)
+  '--line-height-1': 16,
+  '--line-height-2': 20,
+  '--line-height-3': 24,
+  '--line-height-4': 26,
+  '--line-height-5': 28,
 
   // Gray (dark mode defaults)
   '--gray-1': [0.067, 0.067, 0.067], // #111111
@@ -228,6 +260,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--space-4': getCSSVarPx(styles, '--space-4', FALLBACK_TOKENS['--space-4']),
     '--space-5': getCSSVarPx(styles, '--space-5', FALLBACK_TOKENS['--space-5']),
     '--space-6': getCSSVarPx(styles, '--space-6', FALLBACK_TOKENS['--space-6']),
+    '--space-7': getCSSVarPx(styles, '--space-7', FALLBACK_TOKENS['--space-7']),
 
     // Radius
     '--radius-1': getCSSVarPx(styles, '--radius-1', FALLBACK_TOKENS['--radius-1']),
@@ -237,6 +270,20 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--radius-5': getCSSVarPx(styles, '--radius-5', FALLBACK_TOKENS['--radius-5']),
     '--radius-6': getCSSVarPx(styles, '--radius-6', FALLBACK_TOKENS['--radius-6']),
     '--radius-full': getCSSVarPx(styles, '--radius-full', FALLBACK_TOKENS['--radius-full']),
+
+    // Typography - Font sizes
+    '--font-size-1': getCSSVarPx(styles, '--font-size-1', FALLBACK_TOKENS['--font-size-1']),
+    '--font-size-2': getCSSVarPx(styles, '--font-size-2', FALLBACK_TOKENS['--font-size-2']),
+    '--font-size-3': getCSSVarPx(styles, '--font-size-3', FALLBACK_TOKENS['--font-size-3']),
+    '--font-size-4': getCSSVarPx(styles, '--font-size-4', FALLBACK_TOKENS['--font-size-4']),
+    '--font-size-5': getCSSVarPx(styles, '--font-size-5', FALLBACK_TOKENS['--font-size-5']),
+
+    // Typography - Line heights
+    '--line-height-1': getCSSVarPx(styles, '--line-height-1', FALLBACK_TOKENS['--line-height-1']),
+    '--line-height-2': getCSSVarPx(styles, '--line-height-2', FALLBACK_TOKENS['--line-height-2']),
+    '--line-height-3': getCSSVarPx(styles, '--line-height-3', FALLBACK_TOKENS['--line-height-3']),
+    '--line-height-4': getCSSVarPx(styles, '--line-height-4', FALLBACK_TOKENS['--line-height-4']),
+    '--line-height-5': getCSSVarPx(styles, '--line-height-5', FALLBACK_TOKENS['--line-height-5']),
 
     // Gray scale
     '--gray-1': getCSSVarRGB(styles, '--gray-1', FALLBACK_TOKENS['--gray-1']),

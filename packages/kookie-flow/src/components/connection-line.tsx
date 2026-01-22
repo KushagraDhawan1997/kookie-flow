@@ -3,13 +3,12 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
-  SOCKET_SPACING,
-  SOCKET_MARGIN_TOP,
   DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
 } from '../core/constants';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
@@ -68,6 +67,7 @@ export function ConnectionLine({
 }: ConnectionLineProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const socketLayout = useSocketLayout();
   const meshRef = useRef<THREE.Mesh>(null);
   const initializedRef = useRef(false);
 
@@ -166,7 +166,9 @@ export function ConnectionLine({
 
     // Calculate source socket position
     const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
-    const sourceHeight = sourceNode.height ?? DEFAULT_NODE_HEIGHT;
+    const sourceOutputCount = sourceNode.outputs?.length ?? 0;
+    const sourceInputCount = sourceNode.inputs?.length ?? 0;
+    const sourceHeight = sourceNode.height ?? calculateMinNodeHeight(sourceOutputCount, sourceInputCount, socketLayout);
     const sourceSockets = connectionDraft.source.isInput
       ? sourceNode.inputs
       : sourceNode.outputs;
@@ -197,10 +199,16 @@ export function ConnectionLine({
       socket = sourceSockets[socketIndex];
       socketCacheRef.current = { key: cacheKey, index: socketIndex, socket };
     }
+    // Calculate row index based on socket type
+    // Layout order: outputs first, then inputs
+    const outputCount = sourceNode.outputs?.length ?? 0;
+    const rowIndex = connectionDraft.source.isInput
+      ? outputCount + socketIndex
+      : socketIndex;
     const yOffset =
       socket.position !== undefined
         ? socket.position * sourceHeight
-        : SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+        : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
 
     const sourceX = connectionDraft.source.isInput
       ? sourceNode.position.x

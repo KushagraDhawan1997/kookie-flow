@@ -3,14 +3,13 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
   DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
   SOCKET_RADIUS,
-  SOCKET_SPACING,
-  SOCKET_MARGIN_TOP,
 } from '../core/constants';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
@@ -30,6 +29,7 @@ export function Sockets({
 }: SocketsProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const socketLayout = useSocketLayout();
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
@@ -326,18 +326,23 @@ export function Sockets({
 
     for (const node of nodes) {
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const height = node.height ?? DEFAULT_NODE_HEIGHT;
+      const outputCount = node.outputs?.length ?? 0;
+      const inputCount = node.inputs?.length ?? 0;
+      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
-      // Render input sockets
+      // Render input sockets (after outputs in layout order)
       if (node.inputs) {
         for (let i = 0; i < node.inputs.length; i++) {
           if (visibleCount >= capacity) break;
 
           const socket = node.inputs[i];
+          // Layout: outputs first, then inputs
+          // rowIndex = outputCount + inputIndex
+          const rowIndex = outputCount + i;
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
-              : SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
+              : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
 
           // Position matrix
           tempMatrix.identity();
@@ -394,16 +399,17 @@ export function Sockets({
         }
       }
 
-      // Render output sockets
+      // Render output sockets (first in layout order)
       if (node.outputs) {
         for (let i = 0; i < node.outputs.length; i++) {
           if (visibleCount >= capacity) break;
 
           const socket = node.outputs[i];
+          // Layout: outputs are first, rowIndex = outputIndex
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
-              : SOCKET_MARGIN_TOP + i * SOCKET_SPACING;
+              : socketLayout.marginTop + i * socketLayout.rowHeight + socketLayout.rowHeight / 2;
 
           tempMatrix.identity();
           tempMatrix.setPosition(

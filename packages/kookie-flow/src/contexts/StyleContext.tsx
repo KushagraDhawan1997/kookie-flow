@@ -1,6 +1,11 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useTheme } from './ThemeContext';
-import { resolveNodeStyle, type ResolvedNodeStyle } from '../utils/style-resolver';
+import {
+  resolveNodeStyle,
+  resolveSocketLayout,
+  type ResolvedNodeStyle,
+  type ResolvedSocketLayout,
+} from '../utils/style-resolver';
 import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides, HeaderPosition } from '../types';
 
 /**
@@ -21,6 +26,8 @@ export interface StyleConfig {
 export interface StyleContextValue {
   /** Resolved WebGL-ready style values */
   resolved: ResolvedNodeStyle;
+  /** Resolved socket layout for positioning sockets and widgets */
+  socketLayout: ResolvedSocketLayout;
   /** Original configuration */
   config: StyleConfig;
 }
@@ -42,7 +49,7 @@ const DEFAULT_CONFIG: StyleConfig = {
 const DEFAULT_CONTEXT: StyleContextValue = {
   resolved: {
     padding: 12,
-    headerHeight: 24,
+    headerHeight: 40, // --space-7 default
     headerBackground: [0.133, 0.133, 0.133], // --gray-3 default
     headerPosition: 0, // none
     borderRadius: 12,
@@ -58,6 +65,13 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     selectedBorderColor: [0.392, 0.404, 0.961],
     fontSize: 14,
     socketSize: 10,
+  },
+  socketLayout: {
+    rowHeight: 40, // --space-7 default
+    widgetHeight: 32, // --space-6 default
+    marginTop: 12, // padding (no header)
+    socketSize: 10,
+    padding: 12,
   },
   config: DEFAULT_CONFIG,
 };
@@ -94,6 +108,8 @@ export function StyleProvider({
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
     const resolved = resolveNodeStyle(size, variant, radius, header, accentHeader, tokens, nodeStyle);
+    const hasHeaderInside = header === 'inside';
+    const socketLayout = resolveSocketLayout(hasHeaderInside, size, tokens);
     const config: StyleConfig = {
       size,
       variant,
@@ -102,7 +118,7 @@ export function StyleProvider({
       accentHeader,
       nodeStyle,
     };
-    return { resolved, config };
+    return { resolved, socketLayout, config };
   }, [size, variant, radius, header, accentHeader, nodeStyle, tokens]);
 
   return <StyleContext.Provider value={value}>{children}</StyleContext.Provider>;
@@ -120,4 +136,11 @@ export function useNodeStyle(): StyleContextValue {
  */
 export function useResolvedStyle(): ResolvedNodeStyle {
   return useContext(StyleContext).resolved;
+}
+
+/**
+ * Hook to access the resolved socket layout (convenience).
+ */
+export function useSocketLayout(): ResolvedSocketLayout {
+  return useContext(StyleContext).socketLayout;
 }

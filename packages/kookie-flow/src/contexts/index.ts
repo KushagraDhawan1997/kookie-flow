@@ -3,6 +3,7 @@ export {
   StyleProvider,
   useNodeStyle,
   useResolvedStyle,
+  useSocketLayout,
   type StyleConfig,
   type StyleContextValue,
 } from './StyleContext';

@@ -8,10 +8,12 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSocketLayout } from '../contexts/StyleContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import type { MinimapProps, Node } from '../types';
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT, MINIMAP_DEFAULTS } from '../core/constants';
+import { DEFAULT_NODE_WIDTH, MINIMAP_DEFAULTS } from '../core/constants';
+import { calculateMinNodeHeight, type ResolvedSocketLayout } from '../utils/style-resolver';
 
 /** Transform to map world coordinates to minimap coordinates */
 interface MinimapTransform {
@@ -41,6 +43,7 @@ function calculateMinimapTransform(
   minimapWidth: number,
   minimapHeight: number,
   padding: number,
+  socketLayout: ResolvedSocketLayout,
   out: MinimapTransform
 ): boolean {
   if (nodes.length === 0) return false;
@@ -54,7 +57,9 @@ function calculateMinimapTransform(
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     const w = node.width ?? DEFAULT_NODE_WIDTH;
-    const h = node.height ?? DEFAULT_NODE_HEIGHT;
+    const outputCount = node.outputs?.length ?? 0;
+    const inputCount = node.inputs?.length ?? 0;
+    const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
     const px = node.position.x;
     const py = node.position.y;
     if (px < minX) minX = px;
@@ -139,6 +144,7 @@ export function Minimap({
 }: MinimapProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const socketLayout = useSocketLayout();
 
   // Derive colors from theme with prop overrides
   const { backgroundColor, nodeColor, selectedNodeColor, viewportColor, viewportBorderColor } =
@@ -257,7 +263,9 @@ export function Minimap({
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         const w = node.width ?? DEFAULT_NODE_WIDTH;
-        const h = node.height ?? DEFAULT_NODE_HEIGHT;
+        const outputCount = node.outputs?.length ?? 0;
+        const inputCount = node.inputs?.length ?? 0;
+        const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
         const scaledW = w * minimapScale;
         const scaledH = h * minimapScale;
@@ -306,6 +314,7 @@ export function Minimap({
           width,
           height,
           padding,
+          socketLayout,
           transformRef.current
         );
       }
@@ -323,7 +332,9 @@ export function Minimap({
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         const w = node.width ?? DEFAULT_NODE_WIDTH;
-        const h = node.height ?? DEFAULT_NODE_HEIGHT;
+        const outputCount = node.outputs?.length ?? 0;
+        const inputCount = node.inputs?.length ?? 0;
+        const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
         const scaledW = w * scale;
         const scaledH = h * scale;

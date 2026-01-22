@@ -2,8 +2,9 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { useResolvedStyle } from '../contexts';
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '../core/constants';
+import { useResolvedStyle, useSocketLayout } from '../contexts';
+import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { DEFAULT_NODE_WIDTH } from '../core/constants';
 
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
@@ -24,6 +25,7 @@ export function Nodes() {
   const store = useFlowStoreApi();
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const resolvedStyle = useResolvedStyle();
+  const socketLayout = useSocketLayout();
 
   // Get initial node count for capacity
   const [capacity, setCapacity] = useState(() => {
@@ -270,7 +272,10 @@ export function Nodes() {
     for (let i = 0; i < nodes.length && visibleCount < maxVisible; i++) {
       const node = nodes[i];
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const height = node.height ?? DEFAULT_NODE_HEIGHT;
+      // Calculate height based on socket count if not explicitly set
+      const outputCount = node.outputs?.length ?? 0;
+      const inputCount = node.inputs?.length ?? 0;
+      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
       // Frustum culling - skip nodes outside viewport
       const nodeRight = node.position.x + width;

@@ -18,6 +18,7 @@ export {
   StyleProvider,
   useNodeStyle,
   useResolvedStyle,
+  useSocketLayout,
   type StyleConfig,
   type StyleContextValue,
 } from './contexts';
@@ -56,13 +57,18 @@ export {
 // Socket type utilities
 export { resolveSocketTypes } from './utils/socket-types';
 
-// Style resolution utilities (Milestone 2)
+// Style resolution utilities (Milestone 2 & 3.5)
 export {
   SIZE_MAP,
   VARIANT_MAP,
   RADIUS_MAP,
+  SOCKET_ROW_HEIGHT_TOKEN,
+  WIDGET_HEIGHT_TOKEN,
   resolveNodeStyle,
+  resolveSocketLayout,
+  calculateMinNodeHeight,
   type ResolvedNodeStyle,
+  type ResolvedSocketLayout,
 } from './utils/style-resolver';
 
 // Store types
@@ -99,6 +105,11 @@ export type {
   HeaderPosition,
   AccentColor,
   NodeStyleOverrides,
+  // Widget types (Phase 7D)
+  WidgetType,
+  WidgetProps,
+  InlineWidgetComponent,
+  ResolvedWidgetConfig,
   // Phase 6 types
   CloneElementsOptions,
   CloneElementsResult,
