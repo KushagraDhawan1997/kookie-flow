@@ -1393,7 +1393,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Minimap configurable: position, size, colors, interactive mode
 - [x] Kookie UI theme integration (`useThemeTokens()` hook, `ThemeContext`)
 - [x] Styling props: `size`, `variant`, `radius` (wired to shader)
-- [ ] Styling props: `header`, `accentHeader` (typed but not wired to shader)
+- [x] Styling props: `header`, `accentHeader` (wired to shader)
 - [ ] Per-node `color` override (typed but not wired to shader)
 - [ ] Shadow SDF for `classic` variant (not implemented)
 - [x] 26 accent colors support (`AccentColor` type)

@@ -4,8 +4,18 @@
  */
 
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
-import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides } from '../types';
+import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides, HeaderPosition } from '../types';
 import { parseColorToRGB, type RGBColor } from './color';
+
+// ============================================================================
+// Header Position Map
+// ============================================================================
+
+const HEADER_POSITION_MAP: Record<HeaderPosition, 0 | 1 | 2> = {
+  none: 0,
+  inside: 1,
+  outside: 2,
+};
 
 // ============================================================================
 // Size Map (matches Kookie UI Card)
@@ -148,6 +158,12 @@ export interface ResolvedNodeStyle {
   padding: number;
   headerHeight: number;
 
+  // Header styling
+  /** Header background color (gray or accent tint) */
+  headerBackground: RGBColor;
+  /** Header position: 0=none, 1=inside, 2=outside */
+  headerPosition: 0 | 1 | 2;
+
   // Border
   borderRadius: number;
   borderWidth: number;
@@ -234,8 +250,8 @@ function resolveTokenShadow(
  * @example
  * ```tsx
  * const resolvedStyle = useMemo(
- *   () => resolveNodeStyle(size, variant, radius, tokens, overrides),
- *   [size, variant, radius, tokens, overrides]
+ *   () => resolveNodeStyle(size, variant, radius, header, accentHeader, tokens, overrides),
+ *   [size, variant, radius, header, accentHeader, tokens, overrides]
  * );
  * ```
  */
@@ -243,6 +259,8 @@ export function resolveNodeStyle(
   size: NodeSize = '2',
   variant: NodeVariant = 'surface',
   radius: NodeRadius | undefined,
+  header: HeaderPosition = 'none',
+  accentHeader: boolean = false,
   tokens: ThemeTokens,
   overrides?: Partial<NodeStyleOverrides>
 ): ResolvedNodeStyle {
@@ -298,9 +316,17 @@ export function resolveNodeStyle(
   // Selection uses accent color
   const selectedBorderColor = resolveTokenColor('--accent-9', tokens);
 
+  // Header styling
+  const headerPosition = HEADER_POSITION_MAP[header];
+  const headerBackground = accentHeader
+    ? resolveTokenColor('--accent-3', tokens)
+    : resolveTokenColor('--gray-3', tokens);
+
   return {
     padding,
     headerHeight: sizeConfig.headerHeight,
+    headerBackground,
+    headerPosition,
     borderRadius,
     borderWidth,
     borderColor,

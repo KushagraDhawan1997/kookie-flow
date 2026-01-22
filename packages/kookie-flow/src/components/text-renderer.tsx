@@ -19,6 +19,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNodeStyle } from '../contexts/StyleContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -240,6 +241,7 @@ export function MultiWeightTextRenderer({
 }: MultiWeightTextRendererProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const { resolved: style, config } = useNodeStyle();
 
   // Derive text colors from theme tokens
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
@@ -309,10 +311,16 @@ export function MultiWeightTextRenderer({
         }
 
         const label = node.data.label ?? node.type;
+        // Position label based on header mode:
+        // - 'none' or 'inside': inside node at top
+        // - 'outside': floating above node
+        const labelY = config.header === 'outside'
+          ? node.position.y - style.headerHeight + 8
+          : node.position.y + 8;
         const entry: TextEntry = {
           id: `node-${node.id}`,
           text: label,
-          position: [node.position.x + 12, node.position.y + 8, 0.1],
+          position: [node.position.x + 12, labelY, 0.1],
           fontSize: 12,
           color: primaryTextColor,
           anchor: 'left',
@@ -424,7 +432,7 @@ export function MultiWeightTextRenderer({
 
       return { regular, semibold };
     },
-    [store, showSocketLabels, showEdgeLabels, defaultEdgeType, primaryTextColor, secondaryTextColor, semiboldFont]
+    [store, showSocketLabels, showEdgeLabels, defaultEdgeType, primaryTextColor, secondaryTextColor, semiboldFont, config, style]
   );
 
   // Subscribe to store changes

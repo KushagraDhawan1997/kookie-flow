@@ -51,6 +51,7 @@ export interface ThemeTokens {
   '--gray-a6': RGBAColor;
 
   // Accent colors (from Theme's accentColor prop)
+  '--accent-3': RGBColor;
   '--accent-9': RGBColor;
   '--accent-a3': RGBAColor;
 
@@ -122,6 +123,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--gray-a6': [0.239, 0.239, 0.239, 0.5],
 
   // Accent (indigo defaults)
+  '--accent-3': [0.114, 0.118, 0.208], // Subtle accent background (indigo-3)
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
   '--accent-a3': [0.392, 0.404, 0.961, 0.3],
 
@@ -255,6 +257,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--gray-a6': getCSSVarRGBA(styles, '--gray-a6', FALLBACK_TOKENS['--gray-a6']),
 
     // Accent
+    '--accent-3': getCSSVarRGB(styles, '--accent-3', FALLBACK_TOKENS['--accent-3']),
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
     '--accent-a3': getCSSVarRGBA(styles, '--accent-a3', FALLBACK_TOKENS['--accent-a3']),
 

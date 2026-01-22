@@ -226,6 +226,11 @@ function generateEdges(nodeCount: number): Edge[] {
 
 function ThemeTokensTest() {
   const tokens = useThemeTokens();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     console.log('[ThemeTokens Test] Tokens loaded:', {
@@ -248,9 +253,10 @@ function ThemeTokensTest() {
     });
   }, [tokens]);
 
+  if (!mounted) return null;
+
   return (
     <div
-      suppressHydrationWarning
       style={{
         position: 'absolute',
         bottom: 16,
@@ -465,8 +471,10 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2) - try different values!
         size="2"
-        variant="surface"
+        variant="classic"
         radius="medium"
+        header="outside"
+        accentHeader
       >
         <ClipboardDemo />
         <ThemeTokensTest />

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowStoreApi } from './context';
+import { useNodeStyle } from '../contexts/StyleContext';
 import type { NodeTypeDefinition, Edge, EdgeType, EdgeLabelConfig } from '../types';
 import {
   DEFAULT_NODE_WIDTH,
@@ -91,6 +92,7 @@ export function DOMLayer({
  */
 function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
   const store = useFlowStoreApi();
+  const { resolved: style, config } = useNodeStyle();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
@@ -168,15 +170,19 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       }
 
       // Calculate screen position
+      // For 'outside' header, position label above the node
+      const labelY = config.header === 'outside'
+        ? node.position.y - style.headerHeight + 8
+        : node.position.y + 8;
       const screenX = (node.position.x + 12) * viewport.zoom + viewport.x;
-      const screenY = (node.position.y + 8) * viewport.zoom + viewport.y;
+      const screenY = labelY * viewport.zoom + viewport.y;
 
       // Update with translate3d for GPU acceleration (critical for Safari)
       el.style.visibility = 'visible';
       el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
       el.style.fontSize = `${fontSize}px`;
     });
-  }, [store]);
+  }, [store, config, style]);
 
   // Schedule update with RAF throttling
   const scheduleUpdate = useCallback(() => {
@@ -271,6 +277,7 @@ const crispLabelStyle: CSSProperties = {
  */
 function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
   const store = useFlowStoreApi();
+  const { resolved: style, config } = useNodeStyle();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
@@ -301,10 +308,14 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     labelsRef.current.forEach((labelEl, nodeId) => {
       const node = nodeMap.get(nodeId);
       if (node) {
-        labelEl.style.transform = `translate3d(${node.position.x + 12}px, ${node.position.y + 8}px, 0)`;
+        // For 'outside' header, position label above the node
+        const labelY = config.header === 'outside'
+          ? node.position.y - style.headerHeight + 8
+          : node.position.y + 8;
+        labelEl.style.transform = `translate3d(${node.position.x + 12}px, ${labelY}px, 0)`;
       }
     });
-  }, [store]);
+  }, [store, config, style]);
 
   const scheduleUpdate = useCallback(() => {
     if (rafIdRef.current === 0) {

@@ -51,6 +51,10 @@ export function Nodes() {
         uCornerRadius: { value: resolvedStyle.borderRadius },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
+        // Header styling
+        uHeaderColor: { value: new THREE.Color(...resolvedStyle.headerBackground) },
+        uHeaderHeight: { value: resolvedStyle.headerHeight },
+        uHeaderPosition: { value: resolvedStyle.headerPosition },
       },
       vertexShader: /* glsl */ `
         attribute float aSelected;
@@ -87,6 +91,10 @@ export function Nodes() {
         uniform float uCornerRadius;
         uniform float uBorderWidth;
         uniform float uBackgroundAlpha;
+        // Header uniforms
+        uniform vec3 uHeaderColor;
+        uniform float uHeaderHeight;
+        uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
 
         varying vec2 vUv;
         varying float vSelected;
@@ -113,6 +121,17 @@ export function Nodes() {
             uSelectedColor,
             vSelected
           );
+
+          // Header region check (top of node) - only for "inside" mode (1.0)
+          // "outside" mode (2.0) has no colored header - just floating text above
+          if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
+            float halfHeight = b.y;
+            float headerBottom = halfHeight - uHeaderHeight;
+            // Smoothstep for anti-aliased edge between header and body
+            float headerMask = smoothstep(headerBottom - 0.5, headerBottom + 0.5, p.y);
+            bgColor = mix(bgColor, uHeaderColor, headerMask);
+          }
+
           // Border: selected > hovered > default
           vec3 borderColor = mix(
             mix(uBorderColor, uHoveredBorderColor, vHovered),

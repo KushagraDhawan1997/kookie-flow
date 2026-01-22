@@ -43,6 +43,8 @@ const DEFAULT_CONTEXT: StyleContextValue = {
   resolved: {
     padding: 12,
     headerHeight: 24,
+    headerBackground: [0.133, 0.133, 0.133], // --gray-3 default
+    headerPosition: 0, // none
     borderRadius: 12,
     borderWidth: 1,
     borderColor: [0.239, 0.239, 0.239],
@@ -91,7 +93,7 @@ export function StyleProvider({
 
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
-    const resolved = resolveNodeStyle(size, variant, radius, tokens, nodeStyle);
+    const resolved = resolveNodeStyle(size, variant, radius, header, accentHeader, tokens, nodeStyle);
     const config: StyleConfig = {
       size,
       variant,
