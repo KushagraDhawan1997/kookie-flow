@@ -167,6 +167,22 @@ interface ThemeTokens {
   '--radius-6': number;
   '--radius-full': number;  // 9999px
 
+  // Typography - Font sizes (resolved to pixels)
+  // Used for node labels and widget sizing alignment
+  '--font-size-1': number;  // 12px × scaling
+  '--font-size-2': number;  // 14px × scaling
+  '--font-size-3': number;  // 16px × scaling
+  '--font-size-4': number;  // 18px × scaling
+  '--font-size-5': number;  // 20px × scaling
+
+  // Typography - Line heights (resolved to pixels)
+  // Used for header heights to match text vertical rhythm
+  '--line-height-1': number;  // 16px × scaling
+  '--line-height-2': number;  // 20px × scaling
+  '--line-height-3': number;  // 24px × scaling
+  '--line-height-4': number;  // 26px × scaling
+  '--line-height-5': number;  // 28px × scaling
+
   // Gray scale (as RGB arrays [0-1] for WebGL)
   '--gray-1': RGBColor;   // lightest
   '--gray-2': RGBColor;
@@ -273,6 +289,20 @@ function useThemeTokens(): ThemeTokens {
       '--space-3': parsePx(styles.getPropertyValue('--space-3')),
       // ...
 
+      // Typography - Font sizes
+      '--font-size-1': parsePx(styles.getPropertyValue('--font-size-1')),
+      '--font-size-2': parsePx(styles.getPropertyValue('--font-size-2')),
+      '--font-size-3': parsePx(styles.getPropertyValue('--font-size-3')),
+      '--font-size-4': parsePx(styles.getPropertyValue('--font-size-4')),
+      '--font-size-5': parsePx(styles.getPropertyValue('--font-size-5')),
+
+      // Typography - Line heights
+      '--line-height-1': parsePx(styles.getPropertyValue('--line-height-1')),
+      '--line-height-2': parsePx(styles.getPropertyValue('--line-height-2')),
+      '--line-height-3': parsePx(styles.getPropertyValue('--line-height-3')),
+      '--line-height-4': parsePx(styles.getPropertyValue('--line-height-4')),
+      '--line-height-5': parsePx(styles.getPropertyValue('--line-height-5')),
+
       // Colors
       '--gray-1': parseColorToRGB(styles.getPropertyValue('--gray-1')),
       '--gray-2': parseColorToRGB(styles.getPropertyValue('--gray-2')),
@@ -312,6 +342,20 @@ const FALLBACK_TOKENS: ThemeTokens = {
   '--radius-5': 16,
   '--radius-6': 20,
   '--radius-full': 9999,
+
+  // Typography - Font sizes (assuming scaling = 1)
+  '--font-size-1': 12,
+  '--font-size-2': 14,
+  '--font-size-3': 16,
+  '--font-size-4': 18,
+  '--font-size-5': 20,
+
+  // Typography - Line heights (assuming scaling = 1)
+  '--line-height-1': 16,
+  '--line-height-2': 20,
+  '--line-height-3': 24,
+  '--line-height-4': 26,
+  '--line-height-5': 28,
 
   // Gray (dark mode defaults)
   '--gray-1': [0.067, 0.067, 0.067],   // #111111
@@ -466,47 +510,169 @@ interface FlowNode {
 
 ### 2.2 Size Scale Mapping
 
-Match Kookie UI Card exactly:
+**Decision: Fixed to size 2 for socket/widget layout**
+
+While SIZE_MAP supports sizes 1-5 for node styling (padding, border radius, font), socket rows and header height (inside) are fixed at 40px (`--space-7`) to provide breathing room around 32px widgets.
 
 ```typescript
 const SIZE_MAP = {
-  '1': {
-    padding: '--space-2',       // 8px
-    borderRadius: '--radius-3', // 10px (matches Card size-1 feel)
-    headerHeight: 20,
-    fontSize: 12,
-    socketSize: 8,
-  },
   '2': {
     padding: '--space-3',       // 12px
     borderRadius: '--radius-4', // 12px
-    headerHeight: 24,
-    fontSize: 14,
+    fontSize: '--font-size-2',  // 14px
     socketSize: 10,
   },
-  '3': {
-    padding: '--space-4',       // 16px
-    borderRadius: '--radius-4', // 12px
-    headerHeight: 28,
-    fontSize: 14,
-    socketSize: 10,
-  },
-  '4': {
-    padding: '--space-5',       // 24px
-    borderRadius: '--radius-5', // 16px
-    headerHeight: 32,
-    fontSize: 16,
-    socketSize: 12,
-  },
-  '5': {
-    padding: '--space-6',       // 32px
-    borderRadius: '--radius-5', // 16px
-    headerHeight: 36,
-    fontSize: 16,
-    socketSize: 12,
-  },
+  // Other sizes available for future use, but socket layout locked to size 2
 };
+
+// Fixed layout values (not in SIZE_MAP)
+const ROW_HEIGHT = '--space-7';  // 40px - header (inside) and socket rows
+const WIDGET_HEIGHT = '--space-6';  // 32px - Button/Slider/Select at size 2
+// Implicit vertical padding: 4px above + 4px below widget
 ```
+
+**Why token-based sizing matters:**
+
+Using Kookie UI tokens ensures:
+1. Node labels at size '2' match Kookie UI `<Text size="2">`
+2. Widgets (Slider, Select, etc.) at size '2' (32px) fit within 40px rows with breathing room
+3. The `--scaling` CSS variable affects everything uniformly
+4. Header (inside) and socket rows share the same 40px height
+
+### 2.2.1 Socket Layout Tokenization
+
+Socket positioning must use tokens to ensure proper alignment with Kookie UI widgets.
+
+**Current state** (`constants.ts` hardcoded values):
+
+```typescript
+export const SOCKET_RADIUS = 6;
+export const SOCKET_SPACING = 24;  // Row height between sockets
+export const SOCKET_MARGIN_TOP = 30;  // Offset from top of node
+```
+
+**Decision: Fixed to size 2, vertical stack layout**
+
+All rows (header, outputs, inputs) use `--space-7` (40px) height, with 32px widgets centered vertically.
+
+**Layout order**: Header (if inside) → Output rows → Input rows
+
+```
+Header position: "inside"
+┌─────────────────────────────────────────────────┐
+│  [Node Title]                          (accent) │  40px header row
+├─────────────────────────────────────────────────┤
+│                              [Output Label] [●] │  40px output row (right-aligned)
+│                              [Output Label] [●] │  40px output row
+├─────────────────────────────────────────────────┤
+│  [●] [Input Label] [═══32px Widget═══]          │  40px input row (left-aligned)
+│  [●] [Input Label] [═══32px Widget═══]          │  40px input row
+└─────────────────────────────────────────────────┘
+
+Header position: "none"
+┌─────────────────────────────────────────────────┐
+│                              [Output Label] [●] │  40px output row
+├─────────────────────────────────────────────────┤
+│  [●] [Input Label] [═══32px Widget═══]          │  40px input row
+│  [●] [Input Label] [═══32px Widget═══]          │
+└─────────────────────────────────────────────────┘
+
+Header position: "outside"
+     [Node Title]                                    ← floats above, separate
+┌─────────────────────────────────────────────────┐
+│                              [Output Label] [●] │  40px output row
+├─────────────────────────────────────────────────┤
+│  [●] [Input Label] [═══32px Widget═══]          │  40px input row
+└─────────────────────────────────────────────────┘
+```
+
+**Row types:**
+- **Output rows**: Socket on right edge, label right-aligned, no widget
+- **Input rows**: Socket on left edge, label left-aligned, widget fills remaining width
+
+**Row height token: `--space-7` (40px)**
+
+Both header (inside) and socket rows use the same height token.
+
+**Widget height: `--space-6` (32px)**
+
+From Kookie UI `base-button.css`:
+```css
+&:where(.rt-r-size-2) {
+  --base-button-height: var(--space-6);  /* 32px at 100% scaling */
+}
+```
+
+Widgets are vertically centered in 40px rows, creating 4px padding above and below.
+
+Both tokens scale with `--scaling`: `calc(Npx * var(--scaling))`
+
+**Solution: Add socket layout constants using tokens**
+
+```typescript
+// In constants.ts - replace hardcoded values
+export const SOCKET_ROW_HEIGHT = '--space-7';  // 40px - row height with breathing room
+export const WIDGET_HEIGHT = '--space-6';  // 32px - Button/Slider/Select at size 2
+export const SOCKET_RADIUS = 6;  // Keep as-is (visual, not layout)
+
+// Socket margin from top is derived at runtime:
+// marginTop = padding (if no header) OR rowHeight + padding (if header inside)
+```
+
+**Architecture change:**
+
+The `getSocketPosition()` function in `geometry.ts` needs resolved layout values:
+
+```typescript
+interface ResolvedSocketLayout {
+  rowHeight: number;     // Resolved from --space-7 (40px)
+  widgetHeight: number;  // Resolved from --space-6 (32px)
+  marginTop: number;     // Derived from padding (+ rowHeight if header inside)
+  socketSize: number;    // From SIZE_MAP (10 for size 2)
+}
+
+function getSocketPosition(
+  node: Node,
+  socketId: string,
+  isInput: boolean,
+  layout: ResolvedSocketLayout
+): XYPosition | null {
+  // Find socket index within its array (inputs or outputs)
+  const sockets = isInput ? node.inputs : node.outputs;
+  const index = sockets?.findIndex(s => s.id === socketId) ?? -1;
+  if (index === -1) return null;
+
+  // Outputs come first, then inputs
+  const outputCount = node.outputs?.length ?? 0;
+  const rowIndex = isInput ? outputCount + index : index;
+
+  // Y position: marginTop + rowIndex * rowHeight + rowHeight/2 (center of row)
+  const y = layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
+
+  // X position: left edge for inputs, right edge for outputs
+  const x = isInput ? 0 : node.width;
+
+  return { x: node.position.x + x, y: node.position.y + y };
+}
+```
+
+**Impact on other systems:**
+
+1. **Edge rendering** (`edges.tsx`) - Uses `getSocketPosition()` for endpoint calculation
+2. **Hit testing** (`geometry.ts`) - Uses socket positions for click detection
+3. **Connection line** (`connection-line.tsx`) - Uses socket positions during drag
+4. **DOM widgets** (Phase 7D) - Need socket positions for widget placement
+
+All need access to resolved layout values via context or props.
+
+**Widget alignment guarantee:**
+
+With row height = `--space-7` (40px) and widget height = `--space-6` (32px):
+- Button size 2: 32px height, 4px padding above/below
+- Slider size 2: 32px height, centered in row
+- Select size 2: 32px height, centered in row
+- All scale uniformly with `--scaling`
+- Visual breathing room between consecutive widgets
 
 ### 2.3 Variant Definitions
 
@@ -1055,13 +1221,40 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [x] Add `color` prop to Node interface
 - [x] Create `StyleProvider` and `useResolvedStyle` context
 
-### Milestone 3: Node Shader
+### Milestone 3: Node Shader & Token Alignment
 - [x] Update node shader to accept color/style uniforms
 - [ ] Add shadow SDF for classic variant
 - [ ] Implement header color region in shader
 - [x] Update instance attributes for selected/hovered state
 - [x] Handle transparent backgrounds (ghost, outline)
 - [ ] Test all 5 variants visually
+- [ ] Add `--font-size-1` through `--font-size-5` to `ThemeTokens` interface
+- [ ] Add `--line-height-1` through `--line-height-5` to `ThemeTokens` interface
+- [ ] Add fallback values for typography tokens in `FALLBACK_TOKENS`
+- [ ] Update `readTokensFromDOM()` to read typography tokens from CSS
+- [ ] Update SIZE_MAP to use `--font-size-N` tokens instead of hardcoded pixels
+- [ ] Remove headerHeight from SIZE_MAP (use `--space-7` fixed for row height)
+- [ ] Update `resolveNodeStyle()` to resolve font-size and line-height tokens
+
+### Milestone 3.5: Socket Layout Tokenization (Widget Prep)
+
+Socket layout is fixed to size 2 with horizontal widget layout: `[socket] [label] [widget]`
+
+Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4px vertical padding.
+
+- [ ] Add `--space-6` and `--space-7` to `ThemeTokens` interface
+- [ ] Add `SOCKET_ROW_HEIGHT = '--space-7'` constant (40px, replaces `SOCKET_SPACING`)
+- [ ] Add `WIDGET_HEIGHT = '--space-6'` constant (32px, for vertical centering)
+- [ ] Create `ResolvedSocketLayout` interface (`rowHeight`, `widgetHeight`, `marginTop`, `socketSize`)
+- [ ] Create `resolveSocketLayout()` function
+- [ ] Update `getSocketPosition()` to accept layout parameter instead of using constants
+- [ ] Remove static `SOCKET_SPACING` and `SOCKET_MARGIN_TOP` from constants.ts
+- [ ] Update `edges.tsx` to use resolved socket layout
+- [ ] Update `sockets.tsx` to use resolved socket layout
+- [ ] Update `connection-line.tsx` to use resolved socket layout
+- [ ] Update `geometry.ts` hit testing to use resolved socket layout
+- [ ] Add socket layout to context (StyleProvider or separate SocketLayoutContext)
+- [ ] Test socket positions with widgets at size 2
 
 ### Milestone 4: Socket Colors
 - [x] Tokenize fallback socket colors (invalid → `--red-9`, valid target → `--green-9`, default → `--gray-8`)

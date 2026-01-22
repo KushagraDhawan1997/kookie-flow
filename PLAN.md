@@ -1072,6 +1072,7 @@ const MIN_EDGE_ZOOM = 0.4; // Below this, hide edge labels
 See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tracking.
 
 **Summary:**
+
 - Size tiers (`'1'`-`'5'`) matching Kookie UI Card
 - Visual variants: `surface`, `outline`, `soft`, `classic`, `ghost`
 - Border radius styles: `none`, `small`, `medium`, `large`, `full`
@@ -1089,6 +1090,486 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - [ ] Collapsed groups (hide children, show summary)
 - [ ] Comments/sticky notes (text-only nodes)
 - [ ] Reroute nodes (edge waypoints)
+
+### Phase 7D: Socket Widgets
+
+**Goal:** Input widgets on sockets that auto-hide when connected
+
+When a socket is unconnected, show a UI widget (slider, dropdown, checkbox, etc.) so users can set default values. When the socket gets a connection, the widget hides automatically (value comes from upstream node).
+
+**Architecture Overview:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Widget Resolution Flow                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Socket Definition          SocketType Config         Library Defaults  │
+│  (per-socket)               (via socketTypes prop)    (built-in)        │
+│       │                            │                        │           │
+│       ▼                            ▼                        ▼           │
+│  ┌─────────┐                ┌─────────────┐          ┌─────────────┐    │
+│  │ widget  │───overrides───▶│   widget    │──falls───▶│   widget    │   │
+│  │ min/max │                │   min/max   │  back to  │   min/max   │   │
+│  │ options │                │   options   │           │   (none)    │   │
+│  └─────────┘                └─────────────┘           └─────────────┘   │
+│       │                            │                        │           │
+│       └────────────────────────────┴────────────────────────┘           │
+│                                    │                                    │
+│                                    ▼                                    │
+│                           Final Widget Config                           │
+│                                    │                                    │
+│                                    ▼                                    │
+│                    ┌───────────────────────────────┐                    │
+│                    │  Is socket connected?         │                    │
+│                    └───────────────────────────────┘                    │
+│                          │                │                             │
+│                         YES              NO                             │
+│                          │                │                             │
+│                          ▼                ▼                             │
+│                    ┌─────────┐    ┌─────────────────┐                   │
+│                    │  Hide   │    │  Render Widget  │                   │
+│                    │ Widget  │    │  (DOM Layer)    │                   │
+│                    └─────────┘    └─────────────────┘                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Type Definitions:**
+
+```typescript
+// Built-in widget types
+type WidgetType = 'slider' | 'number' | 'select' | 'checkbox' | 'text' | 'color';
+
+// Widget configuration (merged from socket + type defaults)
+interface WidgetConfig {
+  type: WidgetType | false; // false = explicitly disable widget
+  min?: number; // For slider/number
+  max?: number; // For slider/number
+  step?: number; // For slider/number
+  options?: string[]; // For select
+  placeholder?: string; // For text
+}
+
+// Extended Socket type
+interface Socket {
+  id: string;
+  name: string;
+  type: string; // Maps to SocketType for defaults
+
+  // Widget overrides (optional - falls back to SocketType defaults)
+  widget?: WidgetType | false; // Override widget type or disable
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+  defaultValue?: unknown; // Initial value
+}
+
+// Extended SocketType (in socketTypes config)
+interface SocketType {
+  name: string;
+  color: string;
+  compatibleWith?: string[] | '*';
+
+  // Default widget for this socket type (NEW)
+  widget?: WidgetType;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+// Values stored in node.data
+interface NodeData {
+  label?: string;
+  values?: Record<string, unknown>; // socketId → current value
+  [key: string]: unknown;
+}
+```
+
+**Library Default Widget Mappings:**
+
+```typescript
+// In constants.ts - extend DEFAULT_SOCKET_TYPES
+export const DEFAULT_SOCKET_TYPES = {
+  float: {
+    name: 'Float',
+    color: '--teal-9',
+    widget: 'slider',
+    min: 0,
+    max: 1,
+  },
+  int: {
+    name: 'Integer',
+    color: '--blue-9',
+    widget: 'number',
+    step: 1,
+  },
+  boolean: {
+    name: 'Boolean',
+    color: '--orange-9',
+    widget: 'checkbox',
+  },
+  string: {
+    name: 'String',
+    color: '--green-9',
+    widget: 'text',
+  },
+  enum: {
+    name: 'Enum',
+    color: '--amber-9',
+    widget: 'select', // options provided per-socket
+  },
+  // Types with no default widget (connection-only)
+  image: { name: 'Image', color: '--purple-9' },
+  mesh: { name: 'Mesh', color: '--pink-9' },
+  any: { name: 'Any', color: '--gray-9' },
+};
+```
+
+**Consumer Usage Examples:**
+
+```typescript
+// Example 1: Uses library defaults
+const node: Node = {
+  id: 'sampler',
+  type: 'default',
+  position: { x: 0, y: 0 },
+  data: {
+    label: 'Sampler',
+    values: { 'in-0': 0.5 }  // Current value
+  },
+  inputs: [
+    { id: 'in-0', name: 'Strength', type: 'float' },
+    // → renders slider 0-1 (from float defaults)
+  ],
+};
+
+// Example 2: Override config on socket
+const node: Node = {
+  id: 'processor',
+  inputs: [
+    {
+      id: 'in-0',
+      name: 'Steps',
+      type: 'int',
+      min: 1,           // Override default
+      max: 100,         // Override default
+      defaultValue: 20,
+    },
+    // → renders number input 1-100
+  ],
+};
+
+// Example 3: Override widget type on socket
+const node: Node = {
+  id: 'mixer',
+  inputs: [
+    {
+      id: 'in-0',
+      name: 'Factor',
+      type: 'float',
+      widget: 'number',  // Use number instead of slider
+    },
+  ],
+};
+
+// Example 4: Disable widget
+const node: Node = {
+  id: 'passthrough',
+  inputs: [
+    {
+      id: 'in-0',
+      name: 'Input',
+      type: 'float',
+      widget: false,  // No widget, connection only
+    },
+  ],
+};
+
+// Example 5: Enum/select with options
+const node: Node = {
+  id: 'converter',
+  inputs: [
+    {
+      id: 'in-0',
+      name: 'Method',
+      type: 'enum',
+      options: ['nearest', 'bilinear', 'bicubic'],
+      defaultValue: 'bilinear',
+    },
+  ],
+};
+
+// Example 6: Override type-level defaults globally
+<KookieFlow
+  socketTypes={{
+    float: {
+      name: 'Float',
+      color: '--teal-9',
+      widget: 'number',  // Change all floats to number inputs
+      min: -1000,
+      max: 1000,
+    },
+  }}
+/>
+```
+
+**Custom Widget Components:**
+
+```typescript
+// Widget component props (passed by library)
+interface WidgetProps<T = unknown> {
+  value: T;
+  onChange: (value: T) => void;
+  disabled: boolean;            // True when socket is connected
+  socket: Socket;               // Full socket definition
+  node: Node;                   // Parent node
+  config: ResolvedWidgetConfig; // Merged config (socket + type defaults)
+}
+
+// Option A: Register custom widgets globally
+<KookieFlow
+  widgetTypes={{
+    // Custom widget type
+    colorPicker: ({ value, onChange, disabled }) => (
+      <ColorPicker value={value} onChange={onChange} disabled={disabled} />
+    ),
+
+    // Override built-in
+    slider: ({ value, onChange, config }) => (
+      <MyFancySlider
+        value={value}
+        onChange={onChange}
+        min={config.min}
+        max={config.max}
+      />
+    ),
+  }}
+/>
+
+// Then use by name
+{ type: 'color', widget: 'colorPicker' }
+
+// Option B: Inline component on socket (one-off)
+const node: Node = {
+  inputs: [
+    {
+      id: 'in-0',
+      name: 'Color',
+      type: 'color',
+      widget: {
+        component: ({ value, onChange, disabled }) => (
+          <MySpecialColorWheel value={value} onChange={onChange} disabled={disabled} />
+        ),
+      },
+    },
+  ],
+};
+
+// Option C: Both (inline overrides registered)
+// Registered widgets checked first, then inline component
+```
+
+**Value Management:**
+
+```typescript
+// Values live in node.data.values (consumer's state)
+interface NodeData {
+  label?: string;
+  values?: Record<string, unknown>;  // socketId → value
+}
+
+// KookieFlow calls onNodesChange when widget value changes
+<KookieFlow
+  nodes={nodes}
+  onNodesChange={(changes) => {
+    // changes includes: { type: 'data', id: nodeId, data: { values: {...} } }
+  }}
+/>
+
+// Or dedicated callback for widget changes
+<KookieFlow
+  onWidgetChange={(nodeId, socketId, value) => {
+    // Consumer updates their state
+  }}
+/>
+```
+
+**Widget Resolution Function:**
+
+```typescript
+// In utils/widgets.ts
+export function resolveWidgetConfig(
+  socket: Socket,
+  socketTypes: Record<string, SocketType>
+): ResolvedWidgetConfig | null {
+  const socketType = socketTypes[socket.type];
+
+  // Check if explicitly disabled
+  if (socket.widget === false) return null;
+
+  // Determine widget type (socket → type → null)
+  const widgetType = socket.widget ?? socketType?.widget ?? null;
+  if (!widgetType) return null;
+
+  // Merge config (socket overrides type defaults)
+  return {
+    type: widgetType,
+    min: socket.min ?? socketType?.min,
+    max: socket.max ?? socketType?.max,
+    step: socket.step ?? socketType?.step,
+    options: socket.options,
+    defaultValue: socket.defaultValue,
+  };
+}
+```
+
+**DOM Layer Integration:**
+
+```typescript
+// In DOMLayer.tsx or new WidgetsLayer.tsx
+function SocketWidget({ socket, node, isConnected }: Props) {
+  const config = resolveWidgetConfig(socket, socketTypes);
+
+  // No widget configured
+  if (!config) return null;
+
+  // Socket is connected - hide widget
+  if (isConnected) return null;
+
+  // Check for custom component (registered or inline)
+  const CustomComponent = widgetTypes[config.type] ?? socket.widget?.component;
+  if (CustomComponent) {
+    return <CustomComponent value={...} onChange={...} disabled={false} />;
+  }
+
+  // Built-in widgets
+  switch (config.type) {
+    case 'slider':
+      return <Slider value={...} min={config.min} max={config.max} />;
+    case 'number':
+      return <NumberInput value={...} step={config.step} />;
+    case 'select':
+      return <Select value={...} options={config.options} />;
+    case 'checkbox':
+      return <Checkbox checked={...} />;
+    case 'text':
+      return <TextInput value={...} placeholder={config.placeholder} />;
+    case 'color':
+      return <ColorInput value={...} />;
+  }
+}
+```
+
+**Widget Layout (Fixed to Size 2):**
+
+All widgets use Kookie UI components at size 2. No size prop exposed - keeps things simple.
+
+```
+Node layout (vertical stack): Header → Outputs → Inputs
+┌──────────────────────────────────────────────────────┐
+│  [Node Title]                             (accent)   │  40px header (if inside)
+├──────────────────────────────────────────────────────┤
+│                                [Output Label] [●]    │  40px output row
+│                                [Output Label] [●]    │  (right-aligned, no widget)
+├──────────────────────────────────────────────────────┤
+│  [●] [Input Label] [═══32px Widget═══]               │  40px input row
+│  [●] [Input Label] [═══32px Widget═══]               │  (widget fills width)
+│  [●] [Input Label]                                   │  (no widget if connected)
+└──────────────────────────────────────────────────────┘
+```
+
+**Row height token: `--space-7` (40px)**
+**Widget height: `--space-6` (32px)**
+
+From Kookie UI `base-button.css`:
+
+```css
+&:where(.rt-r-size-2) {
+  --base-button-height: var(--space-6); /* 32px at 100% scaling */
+}
+```
+
+All size 2 components (Button, Slider, Select, etc.) are 32px tall, centered in 40px rows with 4px breathing room above/below.
+
+**Implementation:**
+
+```typescript
+function SocketWidget({ socket, node, isConnected }: Props) {
+  // Fixed to size 2 - no size prop needed
+  return (
+    <Slider
+      size="2"
+      value={...}
+      min={config.min}
+      max={config.max}
+    />
+  );
+}
+```
+
+**Zoom Behavior:**
+
+Widgets scale with zoom (CSS transform on DOM layer container):
+
+- Widgets shrink/grow naturally with the node
+- Below `minWidgetZoom` threshold (default: 0.4), widgets hide entirely
+- No counter-scaling - keeps visual integrity with node content
+
+**Performance Considerations:**
+
+- Widgets render in DOM layer (interactive elements need native inputs)
+- Only render widgets for visible, unconnected sockets
+- Viewport culling: skip widgets outside frustum
+- Ref-based position updates (same pattern as labels)
+- Use Kookie UI components (already optimized)
+- Memoize widget resolution (socketTypes rarely changes)
+
+**API Summary:**
+
+```typescript
+interface KookieFlowProps {
+  // Existing
+  nodes: Node[];
+  edges: Edge[];
+  socketTypes?: Record<string, SocketType>;
+  onNodesChange?: (changes: NodeChange[]) => void;
+
+  // New for widgets
+  widgetTypes?: Record<string, React.ComponentType<WidgetProps>>;
+  onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
+  showWidgets?: boolean; // Default: true, toggle all widgets
+}
+```
+
+**Prerequisites (see STYLING.md):**
+
+Before implementing widgets, complete token alignment work:
+
+- STYLING.md Milestone 3: Typography tokens (`--font-size-N`, `--line-height-N`)
+- STYLING.md Milestone 3.5: Socket layout tokenization (`--space-7` for 40px row height, `--space-6` for 32px widget height)
+
+This ensures widgets fit naturally in socket rows and scale properly.
+
+**Tasks:**
+
+- [ ] Types: Extend `Socket` with widget config fields
+- [ ] Types: Extend `SocketType` with default widget config
+- [ ] Types: Add `WidgetProps`, `WidgetConfig`, `ResolvedWidgetConfig`
+- [ ] Core: Update `DEFAULT_SOCKET_TYPES` with widget defaults
+- [ ] Core: `resolveWidgetConfig()` utility function
+- [ ] Core: Track connected sockets in store for widget visibility
+- [ ] Components: Built-in widgets (Slider, NumberInput, Select, Checkbox, TextInput, ColorInput)
+- [ ] Components: `WidgetsLayer.tsx` in DOM layer
+- [ ] Components: Widget positioning (adjacent to socket, inside node bounds)
+- [ ] Integration: `widgetTypes` prop for custom/override widgets
+- [ ] Integration: `onWidgetChange` callback
+- [ ] Integration: Value storage in `node.data.values`
+- [ ] Performance: Viewport culling for widgets
+- [ ] Performance: Memoized widget resolution
+- [ ] Docs: Widget usage examples
+- [ ] Docs: Custom widget component guide
 
 ### Phase 8: Visual Previews
 
@@ -1406,6 +1887,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ### Next Immediate Tasks
 
 **Styling (in progress):** See [STYLING.md](./STYLING.md) for detailed tracking
+
 - Milestone 3: Node shader updates (shadow SDF, header color region)
 - Milestone 4: Socket type theming (user-configurable via CSS vars)
 - Milestone 5: Polish & testing (dark/light mode, standalone mode)
