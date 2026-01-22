@@ -945,11 +945,11 @@ One `InstancedMesh` where each instance = one glyph quad:
 
 **Build Step (MSDF Atlas Generation):**
 
-- [ ] Add `msdf-bmfont-xml` as dev dependency
-- [ ] Generate MSDF atlas from Inter font (or system font)
-- [ ] Output: `inter-msdf.png` (atlas texture) + `inter-msdf.json` (glyph metrics)
-- [ ] Add build script: `pnpm generate:fonts`
-- [ ] Include pre-generated atlas in package for zero-config usage
+- [x] Add `msdf-bmfont-xml` as dev dependency
+- [x] Generate MSDF atlas from Google Sans font (Regular + SemiBold weights)
+- [x] Output: `google-sans-*-msdf.png` (atlas textures) + `GoogleSans-*.json` (glyph metrics)
+- [x] Add build script: `pnpm generate:fonts`
+- [x] Include pre-generated atlas in package for zero-config usage
 
 **Core Component: `<TextRenderer>`**
 
@@ -1021,7 +1021,7 @@ const MIN_EDGE_ZOOM = 0.4; // Below this, hide edge labels
 **Tasks:**
 
 - [x] Build: Add `msdf-bmfont-xml`, create font generation script
-- [x] Build: Generate Inter MSDF atlas, include in package
+- [x] Build: Generate Google Sans MSDF atlas (Regular + SemiBold), include in package
 - [x] Core: `TextRenderer.tsx` - instanced mesh with MSDF material
 - [x] Core: `msdf-shader.ts` - vertex/fragment shaders
 - [x] Core: `text-layout.ts` - character positioning from metrics
@@ -1064,6 +1064,22 @@ const MIN_EDGE_ZOOM = 0.4; // Below this, hide edge labels
 - HiDPI support (`devicePixelRatio` scaling)
 - Two modes: standard (fixed overview) and zoomable (mirrors main viewport)
 - Interactive: click to pan, drag viewport indicator (or anywhere in zoomable mode)
+
+### Styling & Theme Integration
+
+**Goal:** Kookie UI design system integration
+
+See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tracking.
+
+**Summary:**
+- Size tiers (`'1'`-`'5'`) matching Kookie UI Card
+- Visual variants: `surface`, `outline`, `soft`, `classic`, `ghost`
+- Border radius styles: `none`, `small`, `medium`, `large`, `full`
+- 26 accent colors from Kookie UI palette
+- Theme token reading via `useThemeTokens()` hook
+- Fallback tokens for standalone mode (no Kookie UI dependency)
+
+**Current status:** Milestones 1-2 complete, Milestone 3-4 in progress.
 
 ### Phase 7C: Grouping & Annotations
 
@@ -1218,10 +1234,12 @@ packages/kookie-flow/
 │   │   ├── constants.ts            # Colors, defaults
 │   │   ├── spatial.ts              # Quadtree for hit testing
 │   │   ├── serialization.ts        # Node/edge serialization utilities
+│   │   ├── theme-colors.ts         # Semantic color configuration
 │   │   └── index.ts
 │   │
 │   ├── hooks/
 │   │   ├── useGraph.ts             # External state management
+│   │   ├── useThemeTokens.ts       # CSS variable token reading
 │   │   ├── useViewport.ts          # Viewport controls [TODO]
 │   │   ├── useSelection.ts         # Selection management [TODO]
 │   │   └── index.ts
@@ -1240,11 +1258,14 @@ packages/kookie-flow/
 │       ├── connections.ts          # Connection validation, socket compatibility
 │       ├── text-layout.ts          # MSDF glyph positioning, text measurement
 │       ├── msdf-shader.ts          # MSDF vertex/fragment shaders
+│       ├── style-resolver.ts       # Node size/variant/radius resolution
 │       └── index.ts
 │
 ├── fonts/
-│   ├── inter-msdf.png              # Pre-generated MSDF atlas texture
-│   └── inter-msdf.json             # Glyph metrics (position, size, advance)
+│   ├── google-sans-regular-msdf.png   # MSDF atlas texture (Regular weight)
+│   ├── google-sans-semibold-msdf.png  # MSDF atlas texture (SemiBold weight)
+│   ├── GoogleSans-Regular.json        # Glyph metrics (Regular)
+│   └── GoogleSans-SemiBold.json       # Glyph metrics (SemiBold)
 │
 ├── package.json
 ├── tsconfig.json
@@ -1370,8 +1391,24 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Minimap click-to-pan and drag-to-move-viewport
 - [x] Minimap `zoomable` prop (minimap zooms with main canvas)
 - [x] Minimap configurable: position, size, colors, interactive mode
+- [x] Kookie UI theme integration (`useThemeTokens()` hook, `ThemeContext`)
+- [x] Styling props: `size`, `variant`, `radius` (wired to shader)
+- [ ] Styling props: `header`, `accentHeader` (typed but not wired to shader)
+- [ ] Per-node `color` override (typed but not wired to shader)
+- [ ] Shadow SDF for `classic` variant (not implemented)
+- [x] 26 accent colors support (`AccentColor` type)
+- [x] Style resolution (`resolveNodeStyle()`, `style-resolver.ts`)
+- [x] Semantic color tokenization (grid, edges, sockets, selection box, text)
+- [x] Fallback tokens for standalone mode (no Kookie UI required)
+
+> **Note:** Full styling plan and remaining tasks tracked in [STYLING.md](./STYLING.md)
 
 ### Next Immediate Tasks
+
+**Styling (in progress):** See [STYLING.md](./STYLING.md) for detailed tracking
+- Milestone 3: Node shader updates (shadow SDF, header color region)
+- Milestone 4: Socket type theming (user-configurable via CSS vars)
+- Milestone 5: Polish & testing (dark/light mode, standalone mode)
 
 **Phase 7C: Grouping & Annotations**
 
