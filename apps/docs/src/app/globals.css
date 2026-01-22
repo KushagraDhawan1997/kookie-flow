@@ -1,4 +1,5 @@
 @import 'tailwindcss/preflight';
+@import '@kushagradhawan/kookie-ui/styles.css';
 
 /* Minimal global styles - Kookie UI handles the rest */
 

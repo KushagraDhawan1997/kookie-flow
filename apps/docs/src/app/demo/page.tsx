@@ -145,15 +145,12 @@ function generateEdges(nodeCount: number): Edge[] {
           edge.markerEnd = 'arrow';
         }
 
-        // Add styled label to first edge
-        if (i === 0) {
-          edge.label = {
-            text: 'Primary',
-            bgColor: 'rgba(99, 102, 241, 0.8)',
-            textColor: '#fff',
-            fontSize: 11,
-          };
+        // Add labels to some horizontal edges (spread across graph)
+        if (i % 50 === 0) {
+          edge.label = `Flow ${i}`;
           edge.markerEnd = { type: 'arrow', width: 16, height: 16 };
+        } else if (i % 50 === 25) {
+          edge.label = 'Transfer';
         }
 
         edges.push(edge);
@@ -165,13 +162,22 @@ function generateEdges(nodeCount: number): Edge[] {
     if (bottomIdx < nodeCount) {
       const sockets = findCompatibleSockets(i, bottomIdx);
       if (sockets) {
-        edges.push({
+        const verticalEdge: Edge = {
           id: `edge-v-${i}`,
           source: `node-${i}`,
           target: `node-${bottomIdx}`,
           sourceSocket: sockets.sourceSocket,
           targetSocket: sockets.targetSocket,
-        });
+        };
+
+        // Add labels to some vertical edges (spread across graph)
+        if (i % 64 === 0) {
+          verticalEdge.label = 'Data ↓';
+        } else if (i % 64 === 32) {
+          verticalEdge.label = 'Sync';
+        }
+
+        edges.push(verticalEdge);
       }
     }
 
@@ -180,14 +186,21 @@ function generateEdges(nodeCount: number): Edge[] {
     if (i % 3 === 0 && col + 1 < cols && diagIdx < nodeCount) {
       const sockets = findCompatibleSockets(i, diagIdx);
       if (sockets) {
-        edges.push({
+        const diagEdge: Edge = {
           id: `edge-d-${i}`,
           source: `node-${i}`,
           target: `node-${diagIdx}`,
           sourceSocket: sockets.sourceSocket,
           targetSocket: sockets.targetSocket,
           markerEnd: 'arrow',
-        });
+        };
+
+        // Add labels to some diagonal edges
+        if (i % 99 === 0) {
+          diagEdge.label = { text: 'Bypass', position: 0.6 };
+        }
+
+        edges.push(diagEdge);
       }
     }
 
@@ -195,13 +208,21 @@ function generateEdges(nodeCount: number): Edge[] {
     if (i % 5 === 0 && col + 2 < cols && i + 2 < nodeCount) {
       const sockets = findCompatibleSockets(i, i + 2);
       if (sockets) {
-        edges.push({
+        const skipEdge: Edge = {
           id: `edge-skip-${i}`,
           source: `node-${i}`,
           target: `node-${i + 2}`,
           sourceSocket: sockets.sourceSocket,
           targetSocket: sockets.targetSocket,
-        });
+        };
+
+        // Add labels to some skip edges
+        if (i % 100 === 0) {
+          skipEdge.label = { text: 'Skip →', position: 0.4 };
+          skipEdge.markerEnd = 'arrow';
+        }
+
+        edges.push(skipEdge);
       }
     }
 
@@ -210,13 +231,20 @@ function generateEdges(nodeCount: number): Edge[] {
     if (i % 7 === 0 && longVertIdx < nodeCount) {
       const sockets = findCompatibleSockets(i, longVertIdx);
       if (sockets) {
-        edges.push({
+        const longEdge: Edge = {
           id: `edge-lv-${i}`,
           source: `node-${i}`,
           target: `node-${longVertIdx}`,
           sourceSocket: sockets.sourceSocket,
           targetSocket: sockets.targetSocket,
-        });
+        };
+
+        // Add labels to some long edges
+        if (i % 77 === 0) {
+          longEdge.label = 'Long Path';
+        }
+
+        edges.push(longEdge);
       }
     }
   }
@@ -473,7 +501,7 @@ export default function DemoPage() {
         size="2"
         variant="classic"
         radius="medium"
-        header="outside"
+        header="inside"
         accentHeader
       >
         <ClipboardDemo />
