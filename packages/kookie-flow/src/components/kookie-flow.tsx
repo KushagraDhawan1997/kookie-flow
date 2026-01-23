@@ -544,10 +544,52 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   );
 
   // Handle pointer move
+  // IMPORTANT: Use refs and store state (synchronous) for checks instead of React state
+  // (which is batched). This prevents issues when events fire before React processes state updates.
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent) => {
-      // Handle panning
-      if (isPanning && lastPointerPos.current) {
+      const { connectionDraft, selectionBox } = store.getState();
+      const primaryButtonDown = (e.buttons & 1) !== 0;
+
+      // Safety cleanup: if button was released but we missed the pointerup event
+      // (can happen if released outside container), clean up any active state
+      if (!primaryButtonDown && e.buttons === 0) {
+        if (dragState.current || selectionBox || connectionDraft || pointerDownPos.current || lastPointerPos.current) {
+          // Cancel any active operations
+          if (autoScrollRef.current.rafId) {
+            cancelAnimationFrame(autoScrollRef.current.rafId);
+            autoScrollRef.current.rafId = 0;
+          }
+          autoScrollRef.current.active = false;
+          autoScrollRef.current.lastScreenPos = null;
+
+          if (connectionDraft) {
+            store.getState().cancelConnectionDraft();
+            setIsConnecting(false);
+          }
+          if (selectionBox) {
+            store.getState().setSelectionBox(null);
+            setIsBoxSelecting(false);
+          }
+          if (dragState.current) {
+            setIsDragging(false);
+          }
+          if (lastPointerPos.current) {
+            setIsPanning(false);
+          }
+
+          dragState.current = null;
+          pendingDragRef.current = null;
+          pointerDownPos.current = null;
+          lastPointerPos.current = null;
+          hasDragged.current = false;
+        }
+        // Fall through to hover state handling below
+      }
+
+      // Handle panning (check ref, not React state)
+      // Note: panning uses middle button (button 1) or left button with space, check e.buttons appropriately
+      if (lastPointerPos.current && e.buttons !== 0) {
         const deltaX = e.clientX - lastPointerPos.current.x;
         const deltaY = e.clientY - lastPointerPos.current.y;
 
@@ -562,14 +604,15 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         return;
       }
 
-      // Handle connection draft
-      if (isConnecting) {
+      // Handle connection draft (check store state, not React state)
+      // Also verify primary button is still held
+      if (connectionDraft && primaryButtonDown) {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, nodes, nodeMap, connectionDraft } = store.getState();
+        const { viewport, nodes, nodeMap } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check for socket hover during connection
@@ -585,7 +628,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         // Check type compatibility for visual feedback (always show, regardless of mode)
         // Use nodeMap for O(1) lookups in hot path
         let isTypeCompatible = true;
-        if (hoveredSocket && connectionDraft) {
+        if (hoveredSocket) {
           isTypeCompatible = isSocketCompatible(
             connectionDraft.source,
             hoveredSocket,
@@ -600,7 +643,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       }
 
       // Check for drag threshold to start box selection or node dragging
-      if (pointerDownPos.current && !isBoxSelecting && !isDragging) {
+      // Use refs to check state: dragState.current for dragging, selectionBox for box selection
+      if (pointerDownPos.current && !selectionBox && !dragState.current) {
         const dx = e.clientX - pointerDownPos.current.screenX;
         const dy = e.clientY - pointerDownPos.current.screenY;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -622,8 +666,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
             let dragNodeIds: string[];
 
             if (selectedNodeIds.has(clickedNode.id)) {
-              // Drag all selected nodes
-              dragNodeIds = [...selectedNodeIds];
+              // Drag all selected nodes - put clicked node FIRST so cursor offset calculation works
+              // (cursorOffset was captured relative to clicked node, not arbitrary first selected node)
+              dragNodeIds = [clickedNode.id, ...[...selectedNodeIds].filter(id => id !== clickedNode.id)];
             } else {
               // Select and drag just this node
               store.getState().selectNode(clickedNode.id);
@@ -664,8 +709,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
       // Update node dragging
       // Use ref check (dragState.current) instead of React state (isDragging)
-      // to avoid 1-frame lag when drag starts (React state batches updates)
-      if (dragState.current) {
+      // Also verify primary button is still held (e.buttons & 1)
+      if (dragState.current && (e.buttons & 1)) {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
@@ -717,22 +762,21 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         return;
       }
 
-      // Update box selection
-      if (isBoxSelecting) {
+      // Update box selection (check store state, not React state)
+      // Also verify primary button is still held (e.buttons & 1)
+      if (selectionBox && (e.buttons & 1)) {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, selectionBox } = store.getState();
+        const { viewport } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        if (selectionBox) {
-          store.getState().setSelectionBox({
-            start: selectionBox.start,
-            end: worldPos,
-          });
-        }
+        store.getState().setSelectionBox({
+          start: selectionBox.start,
+          end: worldPos,
+        });
         return;
       }
 
@@ -773,17 +817,22 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
       }
     },
-    [isPanning, isBoxSelecting, isDragging, isConnecting, snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll, socketLayout]
+    [snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll, socketLayout]
   );
 
   // Handle pointer up
+  // IMPORTANT: Use refs and store state (synchronous) for cleanup checks instead of React state
+  // (which is batched). This prevents state from getting stuck when onPointerLeave fires
+  // before React has processed the state updates from handlePointerMove.
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent) => {
-      // End connection draft
-      if (isConnecting) {
-        const { connectionDraft, hoveredSocketId, nodeMap } = store.getState();
+      const { connectionDraft, selectionBox } = store.getState();
 
-        if (connectionDraft && hoveredSocketId) {
+      // End connection draft (check store state, not React state)
+      if (connectionDraft) {
+        const { hoveredSocketId, nodeMap } = store.getState();
+
+        if (hoveredSocketId) {
           // Check if connection is valid (use nodeMap for O(1))
           const isValid = validateConnection(
             connectionDraft.source,
@@ -823,19 +872,23 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         store.getState().cancelConnectionDraft();
         setIsConnecting(false);
         containerRef.current?.releasePointerCapture(e.pointerId);
+        pointerDownPos.current = null;
+        pendingDragRef.current = null;
         return;
       }
 
-      // End panning
-      if (isPanning) {
+      // End panning (check ref, not React state)
+      if (lastPointerPos.current) {
         setIsPanning(false);
         lastPointerPos.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
+        pointerDownPos.current = null;
+        pendingDragRef.current = null;
         return;
       }
 
-      // End node dragging
-      if (isDragging) {
+      // End node dragging (check ref, not React state)
+      if (dragState.current) {
         // Cancel auto-scroll
         if (autoScrollRef.current.rafId) {
           cancelAnimationFrame(autoScrollRef.current.rafId);
@@ -852,32 +905,32 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         return;
       }
 
-      // End box selection
-      if (isBoxSelecting) {
-        const { selectionBox, quadtree, selectedNodeIds } = store.getState();
-        if (selectionBox) {
-          // Use quadtree for O(log n) range query
-          const bounds = boundsFromCorners(
-            selectionBox.start.x,
-            selectionBox.start.y,
-            selectionBox.end.x,
-            selectionBox.end.y
-          );
-          const selectedIds = quadtree.queryRange(bounds);
+      // End box selection (check store state, not React state)
+      if (selectionBox) {
+        const { quadtree, selectedNodeIds } = store.getState();
+        // Use quadtree for O(log n) range query
+        const bounds = boundsFromCorners(
+          selectionBox.start.x,
+          selectionBox.start.y,
+          selectionBox.end.x,
+          selectionBox.end.y
+        );
+        const selectedIds = quadtree.queryRange(bounds);
 
-          // Select the nodes (additive with Ctrl/Cmd key)
-          if (e.ctrlKey || e.metaKey) {
-            // Add to existing selection - use Set for O(1) merge
-            const newSelection = [...new Set([...selectedNodeIds, ...selectedIds])];
-            store.getState().selectNodes(newSelection);
-          } else {
-            store.getState().selectNodes(selectedIds);
-          }
+        // Select the nodes (additive with Ctrl/Cmd key)
+        if (e.ctrlKey || e.metaKey) {
+          // Add to existing selection - use Set for O(1) merge
+          const newSelection = [...new Set([...selectedNodeIds, ...selectedIds])];
+          store.getState().selectNodes(newSelection);
+        } else {
+          store.getState().selectNodes(selectedIds);
         }
+
         store.getState().setSelectionBox(null);
         setIsBoxSelecting(false);
         containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
+        pendingDragRef.current = null;
         return;
       }
 
@@ -918,7 +971,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       pointerDownPos.current = null;
       pendingDragRef.current = null;
     },
-    [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect]
+    [socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect, socketLayout]
   );
 
   // Cleanup auto-scroll RAF on unmount
