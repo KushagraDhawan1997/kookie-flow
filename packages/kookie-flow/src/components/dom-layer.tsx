@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
-import type { NodeTypeDefinition, Edge, EdgeType, EdgeLabelConfig } from '../types';
+import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig } from '../types';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 import { calculateMinNodeHeight } from '../utils/style-resolver';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
@@ -97,8 +97,9 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
   // Track nodes for re-rendering when they change
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
-  // Track container size for resize detection
-  const lastSizeRef = useRef({ width: 0, height: 0 });
+  // Cached container size - updated via ResizeObserver (avoids layout thrashing)
+  // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
+  const cachedSizeRef = useRef({ width: 0, height: 0 });
 
   // Update function - positions all labels
   const updateLabels = useCallback(() => {
@@ -117,13 +118,9 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     }
     container.style.visibility = 'visible';
 
-    // Calculate viewport bounds for culling
-    const containerRect = container.parentElement?.getBoundingClientRect();
-    const viewWidth = containerRect?.width ?? window.innerWidth;
-    const viewHeight = containerRect?.height ?? window.innerHeight;
-
-    // Track size for resize detection
-    lastSizeRef.current = { width: viewWidth, height: viewHeight };
+    // Use cached size (updated via ResizeObserver) - avoids layout thrashing
+    const viewWidth = cachedSizeRef.current.width;
+    const viewHeight = cachedSizeRef.current.height;
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -205,11 +202,17 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       scheduleUpdate();
     });
 
-    // Resize observer for container size changes
+    // Resize observer for container size changes - also caches size to avoid getBoundingClientRect
     const parent = containerRef.current?.parentElement;
     let resizeObserver: ResizeObserver | null = null;
     if (parent) {
-      resizeObserver = new ResizeObserver(() => {
+      resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+          // Cache size from ResizeObserver (avoids layout thrashing)
+          cachedSizeRef.current.width = entry.contentRect.width;
+          cachedSizeRef.current.height = entry.contentRect.height;
+        }
         // Run synchronously on resize for immediate feedback
         updateLabels();
       });
@@ -439,6 +442,10 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   // Build socket index map for O(1) lookups (rebuilt when nodes change)
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
+  // Cached container size - updated via ResizeObserver (avoids layout thrashing)
+  // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
+  const cachedSizeRef = useRef({ width: 0, height: 0 });
+
   // Update function - positions all edge labels
   const updateLabels = useCallback(() => {
     pendingRef.current = false;
@@ -457,10 +464,9 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     }
     container.style.visibility = 'visible';
 
-    // Calculate viewport bounds for culling
-    const containerRect = container.parentElement?.getBoundingClientRect();
-    const viewWidth = containerRect?.width ?? window.innerWidth;
-    const viewHeight = containerRect?.height ?? window.innerHeight;
+    // Use cached size (updated via ResizeObserver) - avoids layout thrashing
+    const viewWidth = cachedSizeRef.current.width;
+    const viewHeight = cachedSizeRef.current.height;
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -533,7 +539,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   }, [updateLabels]);
 
   // Helper to rebuild socket index map
-  const rebuildSocketIndexMap = (nodes: typeof store.getState().nodes) => {
+  const rebuildSocketIndexMap = (nodes: Node[]) => {
     socketIndexMapRef.current.clear();
     for (const n of nodes) {
       if (n.inputs) {
@@ -552,7 +558,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   };
 
   // Helper to rebuild edge map
-  const rebuildEdgeMap = (edges: typeof store.getState().edges) => {
+  const rebuildEdgeMap = (edges: Edge[]) => {
     edgeMapRef.current.clear();
     for (const e of edges) {
       edgeMapRef.current.set(e.id, e);
@@ -604,11 +610,27 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
       () => scheduleUpdate()
     );
 
+    // Resize observer for container size changes - caches size to avoid getBoundingClientRect
+    const parent = containerRef.current?.parentElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+          cachedSizeRef.current.width = entry.contentRect.width;
+          cachedSizeRef.current.height = entry.contentRect.height;
+        }
+        updateLabels();
+      });
+      resizeObserver.observe(parent);
+    }
+
     return () => {
       unsubNodes();
       unsubEdges();
       unsubViewport();
       unsubPositions();
+      resizeObserver?.disconnect();
     };
   }, [store, updateLabels, scheduleUpdate, edgesWithLabels]);
 
@@ -678,6 +700,10 @@ function SocketLabelsContainer() {
   // Track nodes for React element creation
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
+  // Cached container size - updated via ResizeObserver (avoids layout thrashing)
+  // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
+  const cachedSizeRef = useRef({ width: 0, height: 0 });
+
   // Update function - positions all socket labels
   const updateLabels = useCallback(() => {
     pendingRef.current = false;
@@ -695,10 +721,9 @@ function SocketLabelsContainer() {
     }
     container.style.visibility = 'visible';
 
-    // Calculate viewport bounds for culling
-    const containerRect = container.parentElement?.getBoundingClientRect();
-    const viewWidth = containerRect?.width ?? window.innerWidth;
-    const viewHeight = containerRect?.height ?? window.innerHeight;
+    // Use cached size (updated via ResizeObserver) - avoids layout thrashing
+    const viewWidth = cachedSizeRef.current.width;
+    const viewHeight = cachedSizeRef.current.height;
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -789,8 +814,24 @@ function SocketLabelsContainer() {
       scheduleUpdate();
     });
 
+    // Resize observer for container size changes - caches size to avoid getBoundingClientRect
+    const parent = containerRef.current?.parentElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+          cachedSizeRef.current.width = entry.contentRect.width;
+          cachedSizeRef.current.height = entry.contentRect.height;
+        }
+        updateLabels();
+      });
+      resizeObserver.observe(parent);
+    }
+
     return () => {
       unsub();
+      resizeObserver?.disconnect();
     };
   }, [store, updateLabels, scheduleUpdate, nodes.length]);
 

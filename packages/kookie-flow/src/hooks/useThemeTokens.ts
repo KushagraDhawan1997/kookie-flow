@@ -75,6 +75,7 @@ export interface ThemeTokens {
   // Radix color palette (for socket types)
   '--blue-9': RGBColor;
   '--purple-9': RGBColor;
+  '--violet-9': RGBColor;
   '--green-9': RGBColor;
   '--red-9': RGBColor;
   '--amber-9': RGBColor;
@@ -162,6 +163,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   // Radix colors for sockets
   '--blue-9': [0.0, 0.565, 1.0], // #0090ff
   '--purple-9': [0.557, 0.341, 0.969], // #8e57f7
+  '--violet-9': [0.431, 0.337, 0.812], // #6e56cf
   '--green-9': [0.18, 0.71, 0.486], // #2eb77c
   '--red-9': [0.906, 0.318, 0.365], // #e7515d
   '--amber-9': [1.0, 0.773, 0.239], // #ffc53d
@@ -311,6 +313,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Radix colors for sockets
     '--blue-9': getCSSVarRGB(styles, '--blue-9', FALLBACK_TOKENS['--blue-9']),
     '--purple-9': getCSSVarRGB(styles, '--purple-9', FALLBACK_TOKENS['--purple-9']),
+    '--violet-9': getCSSVarRGB(styles, '--violet-9', FALLBACK_TOKENS['--violet-9']),
     '--green-9': getCSSVarRGB(styles, '--green-9', FALLBACK_TOKENS['--green-9']),
     '--red-9': getCSSVarRGB(styles, '--red-9', FALLBACK_TOKENS['--red-9']),
     '--amber-9': getCSSVarRGB(styles, '--amber-9', FALLBACK_TOKENS['--amber-9']),

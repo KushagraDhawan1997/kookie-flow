@@ -304,6 +304,15 @@ const DRAG_THRESHOLD = 5;
 function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
+
+  // Cached container rect - updated via ResizeObserver (avoids layout thrashing)
+  // This prevents expensive getBoundingClientRect() calls in hot paths (pointer move handlers)
+  const cachedRectRef = useRef<{ left: number; top: number; width: number; height: number }>({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+  });
   const socketLayout = useSocketLayout();
 
   // Track interaction state
@@ -443,7 +452,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
 
-      const rect = container.getBoundingClientRect();
+      // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+      const rect = cachedRectRef.current;
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
 
@@ -476,11 +486,53 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     };
   }, [store, minZoom, maxZoom, updateViewport]);
 
+  // Cache container rect via ResizeObserver - avoids layout thrashing from getBoundingClientRect()
+  // This runs once on mount and updates only when container size changes
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Initial measurement (only once, at mount)
+    const rect = container.getBoundingClientRect();
+    cachedRectRef.current = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+
+    // Update on resize (no layout query - ResizeObserver provides size directly)
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        // contentRect gives us width/height without forcing layout
+        cachedRectRef.current.width = entry.contentRect.width;
+        cachedRectRef.current.height = entry.contentRect.height;
+      }
+    });
+    resizeObserver.observe(container);
+
+    // Update position on scroll (rare, but needed for correct pointer position calculation)
+    const updatePosition = () => {
+      // Only update left/top (position can change on scroll, but size won't)
+      const rect = container.getBoundingClientRect();
+      cachedRectRef.current.left = rect.left;
+      cachedRectRef.current.top = rect.top;
+    };
+    window.addEventListener('scroll', updatePosition, { passive: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('scroll', updatePosition);
+    };
+  }, []);
+
   // Handle pointer down
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!containerRef.current) return;
+      // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+      const rect = cachedRectRef.current;
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -611,8 +663,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       // Handle connection draft (check store state, not React state)
       // Also verify primary button is still held
       if (connectionDraft && primaryButtonDown) {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
+        // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+        const rect = cachedRectRef.current;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
@@ -689,18 +741,16 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
               if (node) startPositions.set(id, { x: node.position.x, y: node.position.y });
             }
 
-            // Cache container rect once to avoid layout queries in RAF loop
-            const rect = containerRef.current?.getBoundingClientRect();
-
             // Use cursor offset captured at click time (React Flow style)
             // This ensures smooth dragging - cursor stays at same spot on node
             const cursorOffset = pendingDragRef.current?.cursorOffset ?? { x: 0, y: 0 };
 
+            // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
             dragState.current = {
               nodeIds: dragNodeIds,
               startPositions,
               cursorOffset,
-              containerRect: { width: rect?.width ?? 0, height: rect?.height ?? 0 },
+              containerRect: { width: cachedRectRef.current.width, height: cachedRectRef.current.height },
             };
             setIsDragging(true);
           } else {
@@ -718,8 +768,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       // Use ref check (dragState.current) instead of React state (isDragging)
       // Also verify primary button is still held (e.buttons & 1)
       if (dragState.current && (e.buttons & 1)) {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
+        // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+        const rect = cachedRectRef.current;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
@@ -772,8 +822,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       // Update box selection (check store state, not React state)
       // Also verify primary button is still held (e.buttons & 1)
       if (selectionBox && (e.buttons & 1)) {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
+        // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+        const rect = cachedRectRef.current;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
@@ -789,8 +839,8 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
       // Update hover state (only when not dragging or box selecting)
       if (!pointerDownPos.current) {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
+        // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+        const rect = cachedRectRef.current;
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
@@ -1089,8 +1139,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   // Touch handlers for pinch-to-zoom and two-finger pan
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!containerRef.current) return;
+      // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+      const rect = cachedRectRef.current;
 
       for (let i = 0; i < e.changedTouches.length; i++) {
         const touch = e.changedTouches[i];
@@ -1117,8 +1168,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!containerRef.current) return;
+      // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+      const rect = cachedRectRef.current;
 
       for (let i = 0; i < e.changedTouches.length; i++) {
         const touch = e.changedTouches[i];

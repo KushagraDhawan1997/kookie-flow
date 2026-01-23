@@ -15,6 +15,7 @@ type ColorTokenKey =
   | '--gray-12'
   | '--blue-9'
   | '--purple-9'
+  | '--violet-9'
   | '--green-9'
   | '--red-9'
   | '--amber-9'

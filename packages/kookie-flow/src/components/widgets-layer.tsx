@@ -49,8 +49,8 @@ export interface WidgetsLayerProps {
   minWidgetZoom?: number;
 }
 
-// LOD threshold for widgets
-const DEFAULT_MIN_WIDGET_ZOOM = 0.4;
+// LOD threshold for widgets - match node/label visibility (0.1 = minZoom default)
+const DEFAULT_MIN_WIDGET_ZOOM = 0.1;
 
 // Container styles
 const containerStyle: CSSProperties = {
@@ -178,6 +178,13 @@ export function WidgetsLayer({
   const widgetRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
+  // Cached container size - updated via ResizeObserver (avoids layout thrashing)
+  // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
+  const cachedSizeRef = useRef<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+
   // Track nodes and connected sockets for widget creation
   const [nodes, setNodes] = useState(() => store.getState().nodes);
   const [connectedSockets, setConnectedSockets] = useState(() => store.getState().connectedSockets);
@@ -249,10 +256,9 @@ export function WidgetsLayer({
     }
     container.style.visibility = 'visible';
 
-    // Calculate viewport bounds for culling (precompute once)
-    const containerRect = container.parentElement?.getBoundingClientRect();
-    const viewWidth = containerRect?.width ?? window.innerWidth;
-    const viewHeight = containerRect?.height ?? window.innerHeight;
+    // Use cached size (updated via ResizeObserver) - avoids layout thrashing
+    const viewWidth = cachedSizeRef.current.width;
+    const viewHeight = cachedSizeRef.current.height;
 
     const invZoom = 1 / zoom;
     const viewLeft = -vpX * invZoom;
@@ -328,6 +334,24 @@ export function WidgetsLayer({
   // Selective subscription for position updates
   // Uses positionVersion (increments on node drag) + viewport changes
   useLayoutEffect(() => {
+    const container = containerRef.current;
+    const parent = container?.parentElement;
+
+    // Set up ResizeObserver to cache container size (avoids getBoundingClientRect in hot path)
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+          cachedSizeRef.current.width = entry.contentRect.width;
+          cachedSizeRef.current.height = entry.contentRect.height;
+          // Trigger position update on resize
+          updatePositions();
+        }
+      });
+      resizeObserver.observe(parent);
+    }
+
     // Position updates: subscribe to viewport and positionVersion
     // Note: nodeMap is mutated in place, so we use positionVersion as change signal
     const unsubscribePositions = store.subscribe(
@@ -356,6 +380,7 @@ export function WidgetsLayer({
     updatePositions();
 
     return () => {
+      resizeObserver?.disconnect();
       unsubscribePositions();
       unsubscribeState();
     };

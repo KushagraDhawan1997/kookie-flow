@@ -356,7 +356,8 @@ export function Nodes() {
       buffers.sizeAttr.needsUpdate = true;
     }
 
-    mesh.count = visibleCount;
+    // Safety: never exceed buffer capacity to prevent WebGL errors
+    mesh.count = Math.min(visibleCount, capacity);
     dirtyRef.current = false;
   });
 

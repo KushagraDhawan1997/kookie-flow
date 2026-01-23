@@ -124,7 +124,7 @@ All styling operations must stay within these limits to maintain 60fps with 10k+
 ```json
 {
   "peerDependencies": {
-    "@kushagradhawan/kookie-ui": ">=0.1.147",
+    "@kushagradhawan/kookie-ui": ">=0.1.151",
     "@react-three/drei": ">=10.0.0",
     "@react-three/fiber": ">=9.0.0",
     "react": ">=19.0.0",
@@ -132,7 +132,7 @@ All styling operations must stay within these limits to maintain 60fps with 10k+
     "three": ">=0.170.0"
   },
   "devDependencies": {
-    "@kushagradhawan/kookie-ui": "^0.1.147",
+    "@kushagradhawan/kookie-ui": "^0.1.151",
     // ... existing
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   KookieFlow,
   useGraph,
@@ -652,15 +652,28 @@ export default function DemoPage() {
   const [variant, setVariant] = useState<NodeVariant>('surface');
   const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
 
+  // Use ref to accumulate changes without triggering re-renders
+  const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleWidgetChange = useCallback(
     (nodeId: string, socketId: string, value: unknown) => {
-      setWidgetValues((prev) => ({
-        ...prev,
+      // Accumulate in ref (no re-render)
+      pendingValuesRef.current = {
+        ...pendingValuesRef.current,
         [nodeId]: {
-          ...prev[nodeId],
+          ...pendingValuesRef.current[nodeId],
           [socketId]: value,
         },
-      }));
+      };
+
+      // Debounce the state update (only updates display panel, not the widget itself)
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(() => {
+        setWidgetValues({ ...pendingValuesRef.current });
+      }, 150);
     },
     []
   );

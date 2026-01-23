@@ -174,8 +174,9 @@ function TextWeightRenderer({
       capacity
     );
 
-    // Update instance matrices
-    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, glyphCount * 16));
+    // Update instance matrices (cap to capacity to prevent buffer overflow)
+    const safeGlyphCount = Math.min(glyphCount, capacity);
+    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, safeGlyphCount * 16));
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
@@ -185,7 +186,7 @@ function TextWeightRenderer({
       buffers.opacityAttr.needsUpdate = true;
     }
 
-    mesh.count = glyphCount;
+    mesh.count = safeGlyphCount;
   });
 
   return (
