@@ -433,6 +433,9 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     return store.getState().edges.filter(e => e.label !== undefined);
   });
 
+  // Edge map for O(1) lookups (rebuilt when edges change)
+  const edgeMapRef = useRef<Map<string, Edge>>(new Map());
+
   // Build socket index map for O(1) lookups (rebuilt when nodes change)
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
@@ -443,7 +446,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, edges, nodeMap } = store.getState();
+    const { viewport, nodeMap } = store.getState();
     const labels = labelsRef.current;
     const socketIndexMap = socketIndexMapRef.current;
 
@@ -470,7 +473,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     const baseFontSize = Math.max(10, Math.min(14, 12 * viewport.zoom));
 
     labels.forEach((el, edgeId) => {
-      const edge = edges.find(e => e.id === edgeId);
+      const edge = edgeMapRef.current.get(edgeId);
       if (!edge || !edge.label) {
         el.style.visibility = 'hidden';
         return;
@@ -529,10 +532,8 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     }
   }, [updateLabels]);
 
-  // Setup subscriptions and initial update
-  useLayoutEffect(() => {
-    // Build initial socket index map
-    const { nodes } = store.getState();
+  // Helper to rebuild socket index map
+  const rebuildSocketIndexMap = (nodes: typeof store.getState().nodes) => {
     socketIndexMapRef.current.clear();
     for (const n of nodes) {
       if (n.inputs) {
@@ -548,42 +549,66 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
         }
       }
     }
+  };
+
+  // Helper to rebuild edge map
+  const rebuildEdgeMap = (edges: typeof store.getState().edges) => {
+    edgeMapRef.current.clear();
+    for (const e of edges) {
+      edgeMapRef.current.set(e.id, e);
+    }
+  };
+
+  // Setup subscriptions and initial update
+  useLayoutEffect(() => {
+    // Build initial maps
+    const { nodes, edges } = store.getState();
+    rebuildSocketIndexMap(nodes);
+    rebuildEdgeMap(edges);
 
     // Run initial update synchronously
     updateLabels();
 
-    // Subscribe to store changes
-    const unsub = store.subscribe((state) => {
-      // Update socket index map when nodes change
-      const currentNodes = state.nodes;
-      socketIndexMapRef.current.clear();
-      for (const n of currentNodes) {
-        if (n.inputs) {
-          for (let i = 0; i < n.inputs.length; i++) {
-            const s = n.inputs[i];
-            socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
-          }
-        }
-        if (n.outputs) {
-          for (let i = 0; i < n.outputs.length; i++) {
-            const s = n.outputs[i];
-            socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
-          }
-        }
+    // Subscribe to node structure changes only (not position changes)
+    // Rebuild socket index map only when nodes are added/removed
+    const unsubNodes = store.subscribe(
+      (state) => state.nodes.length,
+      () => {
+        rebuildSocketIndexMap(store.getState().nodes);
       }
+    );
 
-      // Re-render if edges with labels changed
-      const newEdgesWithLabels = state.edges.filter(e => e.label !== undefined);
-      if (newEdgesWithLabels.length !== edgesWithLabels.length ||
-          newEdgesWithLabels.some((e, i) => e.id !== edgesWithLabels[i]?.id)) {
-        setEdgesWithLabels(newEdgesWithLabels);
+    // Subscribe to edge changes - rebuild edge map and check for label changes
+    const unsubEdges = store.subscribe(
+      (state) => state.edges,
+      (edges) => {
+        rebuildEdgeMap(edges);
+        // Re-render if edges with labels changed
+        const newEdgesWithLabels = edges.filter(e => e.label !== undefined);
+        if (newEdgesWithLabels.length !== edgesWithLabels.length ||
+            newEdgesWithLabels.some((e, i) => e.id !== edgesWithLabels[i]?.id)) {
+          setEdgesWithLabels(newEdgesWithLabels);
+        }
+        scheduleUpdate();
       }
+    );
 
-      scheduleUpdate();
-    });
+    // Subscribe to viewport and position changes for label positioning
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => scheduleUpdate()
+    );
+
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
+      () => scheduleUpdate()
+    );
 
     return () => {
-      unsub();
+      unsubNodes();
+      unsubEdges();
+      unsubViewport();
+      unsubPositions();
     };
   }, [store, updateLabels, scheduleUpdate, edgesWithLabels]);
 
