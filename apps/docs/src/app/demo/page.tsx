@@ -536,11 +536,7 @@ function ClipboardDemo() {
 }
 
 // Widget values display panel
-function WidgetValuesPanel({
-  values,
-}: {
-  values: Record<string, Record<string, unknown>>;
-}) {
+function WidgetValuesPanel({ values }: { values: Record<string, Record<string, unknown>> }) {
   const entries = Object.entries(values);
   if (entries.length === 0) return null;
 
@@ -571,9 +567,7 @@ function WidgetValuesPanel({
           ))}
         </div>
       ))}
-      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>
-        Last 5 changed nodes shown
-      </p>
+      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>Last 5 changed nodes shown</p>
     </div>
   );
 }
@@ -656,27 +650,24 @@ export default function DemoPage() {
   const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleWidgetChange = useCallback(
-    (nodeId: string, socketId: string, value: unknown) => {
-      // Accumulate in ref (no re-render)
-      pendingValuesRef.current = {
-        ...pendingValuesRef.current,
-        [nodeId]: {
-          ...pendingValuesRef.current[nodeId],
-          [socketId]: value,
-        },
-      };
+  const handleWidgetChange = useCallback((nodeId: string, socketId: string, value: unknown) => {
+    // Accumulate in ref (no re-render)
+    pendingValuesRef.current = {
+      ...pendingValuesRef.current,
+      [nodeId]: {
+        ...pendingValuesRef.current[nodeId],
+        [socketId]: value,
+      },
+    };
 
-      // Debounce the state update (only updates display panel, not the widget itself)
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      debounceTimeoutRef.current = setTimeout(() => {
-        setWidgetValues({ ...pendingValuesRef.current });
-      }, 150);
-    },
-    []
-  );
+    // Debounce the state update (only updates display panel, not the widget itself)
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      setWidgetValues({ ...pendingValuesRef.current });
+    }, 150);
+  }, []);
 
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
     initialNodes,
@@ -720,9 +711,9 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2)
         size="2"
-        variant="classic"
+        variant="surface"
         radius="medium"
-        header="inside"
+        header="outside"
         accentHeader
         // Widget callback (uses DEFAULT_SOCKET_TYPES from package)
         onWidgetChange={handleWidgetChange}
