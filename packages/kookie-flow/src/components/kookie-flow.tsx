@@ -339,6 +339,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     active: boolean;
   }>({ rafId: 0, lastScreenPos: null, active: false });
 
+  // Pre-allocated array for quadtree queries (avoids GC in hot paths)
+  const queryResultsRef = useRef<string[]>([]);
+
   // Update viewport immediately for responsive input (no RAF batching)
   // Rendering components handle their own batching via dirty flags
   const updateViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => {
@@ -520,8 +523,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
         // Check if clicking on a node - capture offset for smooth dragging
         const { quadtree, nodeMap } = store.getState();
-        const candidateIds = quadtree.queryPoint(worldPos.x, worldPos.y);
-        const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
+        queryResultsRef.current.length = 0;
+        quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
+        const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedNode) {
           // Store cursor offset from node position (React Flow style)
@@ -655,11 +659,14 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
           // Check if we're clicking on a node or empty space
           // Use quadtree for O(log n) hit testing
           const { quadtree, nodeMap, selectedNodeIds } = store.getState();
-          const candidateIds = quadtree.queryPoint(
+          // Clear and reuse pre-allocated array to avoid GC
+          queryResultsRef.current.length = 0;
+          quadtree.queryPoint(
             pointerDownPos.current.x,
-            pointerDownPos.current.y
+            pointerDownPos.current.y,
+            queryResultsRef.current
           );
-          const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
+          const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
           if (clickedNode) {
             // Start node dragging
@@ -808,8 +815,10 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         }
 
         // Use quadtree for O(log n) hit testing for nodes
-        const candidateIds = quadtree.queryPoint(worldPos.x, worldPos.y);
-        const newHoveredId = candidateIds.length > 0 ? candidateIds[0] : null;
+        // Clear and reuse pre-allocated array to avoid GC
+        queryResultsRef.current.length = 0;
+        quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
+        const newHoveredId = queryResultsRef.current.length > 0 ? queryResultsRef.current[0] : null;
 
         // Only update if changed to avoid unnecessary re-renders
         if (newHoveredId !== hoveredNodeId) {
@@ -939,8 +948,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         // Use quadtree for O(log n) hit testing
         const { quadtree, nodeMap, edges, viewport } = store.getState();
         const clickPos = { x: pointerDownPos.current.x, y: pointerDownPos.current.y };
-        const candidateIds = quadtree.queryPoint(clickPos.x, clickPos.y);
-        const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
+        queryResultsRef.current.length = 0;
+        quadtree.queryPoint(clickPos.x, clickPos.y, queryResultsRef.current);
+        const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedNode) {
           // Click on node: select it

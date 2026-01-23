@@ -123,32 +123,37 @@ export class Quadtree {
   /**
    * Query all node IDs that contain the given point.
    * Returns IDs in reverse insertion order (topmost first for z-ordering).
+   *
+   * @param x - X coordinate to query
+   * @param y - Y coordinate to query
+   * @param results - Optional pre-allocated array to avoid allocations in hot paths
    */
-  queryPoint(x: number, y: number): string[] {
-    const results: string[] = [];
+  queryPoint(x: number, y: number, results?: string[]): string[] {
+    // Use provided array or create new one (only at top level)
+    const output = results ?? [];
 
     // Check if point is within this quadrant's bounds
     if (!this.containsPoint(x, y)) {
-      return results;
+      return output;
     }
 
     // Check local entries
     for (let i = this.entries.length - 1; i >= 0; i--) {
       const entry = this.entries[i];
       if (this.pointInBounds(x, y, entry.bounds)) {
-        results.push(entry.id);
+        output.push(entry.id);
       }
     }
 
-    // Check children
+    // Check children (pass same array to avoid spread allocations)
     if (this.divided) {
-      results.push(...this.nw!.queryPoint(x, y));
-      results.push(...this.ne!.queryPoint(x, y));
-      results.push(...this.sw!.queryPoint(x, y));
-      results.push(...this.se!.queryPoint(x, y));
+      this.nw!.queryPoint(x, y, output);
+      this.ne!.queryPoint(x, y, output);
+      this.sw!.queryPoint(x, y, output);
+      this.se!.queryPoint(x, y, output);
     }
 
-    return results;
+    return output;
   }
 
   /**

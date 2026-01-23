@@ -283,36 +283,48 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const { nodes } = get();
         const nextNodes = [...nodes];
 
+        // Build id->index map once for O(1) lookups: O(n)
+        const idToIndex = new Map<string, number>();
+        for (let i = 0; i < nextNodes.length; i++) {
+          idToIndex.set(nextNodes[i].id, i);
+        }
+
         for (const change of changes) {
           switch (change.type) {
             case 'position': {
-              const index = nextNodes.findIndex((n) => n.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextNodes[index] = { ...nextNodes[index], position: change.position };
               }
               break;
             }
             case 'select': {
-              const index = nextNodes.findIndex((n) => n.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextNodes[index] = { ...nextNodes[index], selected: change.selected };
               }
               break;
             }
             case 'remove': {
-              const index = nextNodes.findIndex((n) => n.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextNodes.splice(index, 1);
+                // Update indices for subsequent removals (shift down)
+                idToIndex.delete(change.id);
+                for (let i = index; i < nextNodes.length; i++) {
+                  idToIndex.set(nextNodes[i].id, i);
+                }
               }
               break;
             }
             case 'add': {
+              idToIndex.set(change.node.id, nextNodes.length);
               nextNodes.push(change.node);
               break;
             }
             case 'dimensions': {
-              const index = nextNodes.findIndex((n) => n.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextNodes[index] = {
                   ...nextNodes[index],
                   width: change.dimensions.width,
@@ -333,23 +345,35 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const { edges } = get();
         const nextEdges = [...edges];
 
+        // Build id->index map once for O(1) lookups: O(e)
+        const idToIndex = new Map<string, number>();
+        for (let i = 0; i < nextEdges.length; i++) {
+          idToIndex.set(nextEdges[i].id, i);
+        }
+
         for (const change of changes) {
           switch (change.type) {
             case 'select': {
-              const index = nextEdges.findIndex((e) => e.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextEdges[index] = { ...nextEdges[index], selected: change.selected };
               }
               break;
             }
             case 'remove': {
-              const index = nextEdges.findIndex((e) => e.id === change.id);
-              if (index !== -1) {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
                 nextEdges.splice(index, 1);
+                // Update indices for subsequent removals (shift down)
+                idToIndex.delete(change.id);
+                for (let i = index; i < nextEdges.length; i++) {
+                  idToIndex.set(nextEdges[i].id, i);
+                }
               }
               break;
             }
             case 'add': {
+              idToIndex.set(change.edge.id, nextEdges.length);
               nextEdges.push(change.edge);
               break;
             }
