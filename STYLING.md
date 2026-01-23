@@ -1223,11 +1223,11 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 
 ### Milestone 3: Node Shader & Token Alignment
 - [x] Update node shader to accept color/style uniforms
-- [ ] Add shadow SDF for classic variant
-- [ ] Implement header color region in shader
+- [x] Add shadow SDF for classic variant
+- [x] Implement header color region in shader
 - [x] Update instance attributes for selected/hovered state
 - [x] Handle transparent backgrounds (ghost, outline)
-- [ ] Test all 5 variants visually
+- [x] Test all 5 variants visually (variant showcase in demo)
 - [x] Add `--font-size-1` through `--font-size-5` to `ThemeTokens` interface
 - [x] Add `--line-height-1` through `--line-height-5` to `ThemeTokens` interface
 - [x] Add fallback values for typography tokens in `FALLBACK_TOKENS`

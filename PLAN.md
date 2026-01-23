@@ -1559,13 +1559,13 @@ This ensures widgets fit naturally in socket rows and scale properly.
 - [x] Types: Add `WidgetProps`, `WidgetConfig`, `ResolvedWidgetConfig`
 - [x] Core: Update `DEFAULT_SOCKET_TYPES` with widget defaults
 - [x] Core: `resolveWidgetConfig()` utility function
-- [ ] Core: Track connected sockets in store for widget visibility
+- [x] Core: Track connected sockets in store for widget visibility
 - [x] Components: Built-in widgets (Slider, NumberInput, Select, Checkbox, TextInput, ColorInput)
 - [x] Components: `WidgetsLayer.tsx` in DOM layer
 - [x] Components: Widget positioning (adjacent to socket, inside node bounds)
 - [x] Integration: `widgetTypes` prop for custom/override widgets
 - [x] Integration: `onWidgetChange` callback
-- [ ] Integration: Value storage in `node.data.values`
+- [x] Integration: Value storage in `node.data.values` (reads from node.data.values, callback notifies)
 - [x] Performance: Viewport culling for widgets
 - [x] Performance: Memoized widget resolution
 - [ ] Docs: Widget usage examples
@@ -1876,7 +1876,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Styling props: `size`, `variant`, `radius` (wired to shader)
 - [x] Styling props: `header`, `accentHeader` (wired to shader)
 - [ ] Per-node `color` override (typed but not wired to shader)
-- [ ] Shadow SDF for `classic` variant (not implemented)
+- [x] Shadow SDF for `classic` variant (with geometry expansion for unclipped shadows)
 - [x] 26 accent colors support (`AccentColor` type)
 - [x] Style resolution (`resolveNodeStyle()`, `style-resolver.ts`)
 - [x] Semantic color tokenization (grid, edges, sockets, selection box, text)
