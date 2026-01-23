@@ -49,7 +49,7 @@ const containerStyle: CSSProperties = {
  * - translate3d for GPU-accelerated transforms (critical for Safari)
  * - LOD: hides labels when zoomed out
  * - Viewport culling: only updates visible labels
- * - Single RAF-throttled subscription for all labels
+ * - Microtask batching for same-frame updates (no 1-frame lag during drag)
  * - Ref-based updates that bypass React rendering
  */
 export function DOMLayer({
@@ -84,7 +84,7 @@ export function DOMLayer({
 
 /**
  * Container for crisp (non-scaled) labels.
- * Uses a single store subscription + RAF for all label updates.
+ * Uses microtask batching for same-frame updates (no 1-frame lag during drag).
  */
 function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
   const store = useFlowStoreApi();
@@ -92,7 +92,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
   const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const rafIdRef = useRef<number>(0);
+  const pendingRef = useRef(false);
 
   // Track nodes for re-rendering when they change
   const [nodes, setNodes] = useState(() => store.getState().nodes);
@@ -102,7 +102,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
 
   // Update function - positions all labels
   const updateLabels = useCallback(() => {
-    rafIdRef.current = 0;
+    pendingRef.current = false;
 
     const container = containerRef.current;
     if (!container) return;
@@ -183,10 +183,11 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     });
   }, [store, config, style, socketLayout]);
 
-  // Schedule update with RAF throttling
+  // Schedule update using microtask for same-frame batching (no 1-frame lag)
   const scheduleUpdate = useCallback(() => {
-    if (rafIdRef.current === 0) {
-      rafIdRef.current = requestAnimationFrame(() => updateLabels());
+    if (!pendingRef.current) {
+      pendingRef.current = true;
+      queueMicrotask(updateLabels);
     }
   }, [updateLabels]);
 
@@ -195,7 +196,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     // Run initial update synchronously (refs are set after commit)
     updateLabels();
 
-    // Subscribe to store changes - RAF throttling handles frequency
+    // Subscribe to store changes
     const unsub = store.subscribe((state) => {
       // Re-render if node count changed (add/remove elements)
       if (state.nodes.length !== nodes.length) {
@@ -218,9 +219,6 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     return () => {
       unsub();
       resizeObserver?.disconnect();
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
   }, [store, updateLabels, scheduleUpdate, nodes.length, nodes]);
 
@@ -279,14 +277,14 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
   const { resolved: style, config } = useNodeStyle();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const rafIdRef = useRef<number>(0);
+  const pendingRef = useRef(false);
 
   // Track nodes for element creation/removal only
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
   // Update container transform and label positions via refs
   const updateTransform = useCallback(() => {
-    rafIdRef.current = 0;
+    pendingRef.current = false;
     const el = containerRef.current;
     if (!el) return;
 
@@ -317,8 +315,9 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
   }, [store, config, style]);
 
   const scheduleUpdate = useCallback(() => {
-    if (rafIdRef.current === 0) {
-      rafIdRef.current = requestAnimationFrame(updateTransform);
+    if (!pendingRef.current) {
+      pendingRef.current = true;
+      queueMicrotask(updateTransform);
     }
   }, [updateTransform]);
 
@@ -350,7 +349,6 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     return () => {
       unsub();
       resizeObserver?.disconnect();
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
   }, [store, updateTransform, scheduleUpdate, nodes.length]);
 
@@ -428,7 +426,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   const store = useFlowStoreApi();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const rafIdRef = useRef<number>(0);
+  const pendingRef = useRef(false);
 
   // Track edges with labels for React element creation
   const [edgesWithLabels, setEdgesWithLabels] = useState<Edge[]>(() => {
@@ -440,7 +438,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
 
   // Update function - positions all edge labels
   const updateLabels = useCallback(() => {
-    rafIdRef.current = 0;
+    pendingRef.current = false;
 
     const container = containerRef.current;
     if (!container) return;
@@ -523,10 +521,11 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     });
   }, [store, defaultEdgeType]);
 
-  // Schedule update with RAF throttling
+  // Schedule update using microtask for same-frame batching
   const scheduleUpdate = useCallback(() => {
-    if (rafIdRef.current === 0) {
-      rafIdRef.current = requestAnimationFrame(() => updateLabels());
+    if (!pendingRef.current) {
+      pendingRef.current = true;
+      queueMicrotask(updateLabels);
     }
   }, [updateLabels]);
 
@@ -585,9 +584,6 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
 
     return () => {
       unsub();
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
   }, [store, updateLabels, scheduleUpdate, edgesWithLabels]);
 
@@ -652,14 +648,14 @@ function SocketLabelsContainer() {
   const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const rafIdRef = useRef<number>(0);
+  const pendingRef = useRef(false);
 
   // Track nodes for React element creation
   const [nodes, setNodes] = useState(() => store.getState().nodes);
 
   // Update function - positions all socket labels
   const updateLabels = useCallback(() => {
-    rafIdRef.current = 0;
+    pendingRef.current = false;
 
     const container = containerRef.current;
     if (!container) return;
@@ -746,10 +742,11 @@ function SocketLabelsContainer() {
     });
   }, [store, socketLayout]);
 
-  // Schedule update with RAF throttling
+  // Schedule update using microtask for same-frame batching
   const scheduleUpdate = useCallback(() => {
-    if (rafIdRef.current === 0) {
-      rafIdRef.current = requestAnimationFrame(() => updateLabels());
+    if (!pendingRef.current) {
+      pendingRef.current = true;
+      queueMicrotask(updateLabels);
     }
   }, [updateLabels]);
 
@@ -769,9 +766,6 @@ function SocketLabelsContainer() {
 
     return () => {
       unsub();
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
   }, [store, updateLabels, scheduleUpdate, nodes.length]);
 

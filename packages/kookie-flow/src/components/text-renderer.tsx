@@ -63,8 +63,8 @@ export interface FontWeightData {
 interface TextWeightRendererProps {
   fontMetrics: FontMetrics;
   atlasTexture: THREE.Texture;
-  entries: TextEntry[];
-  dirtyRef: React.MutableRefObject<boolean>;
+  /** Ref to entries array - read directly in useFrame for same-frame updates */
+  entriesRef: React.MutableRefObject<TextEntry[]>;
 }
 
 /**
@@ -73,8 +73,7 @@ interface TextWeightRendererProps {
 function TextWeightRenderer({
   fontMetrics,
   atlasTexture,
-  entries,
-  dirtyRef,
+  entriesRef,
 }: TextWeightRendererProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
@@ -144,11 +143,12 @@ function TextWeightRenderer({
     initializedRef.current = true;
   }, [buffers]);
 
-  // Update on frame
+  // Update on frame - read from ref for same-frame updates (no React batching delay)
   useFrame(() => {
     const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+    if (!mesh || !initializedRef.current) return;
 
+    const entries = entriesRef.current;
     if (entries.length === 0) {
       mesh.count = 0;
       return;
@@ -244,15 +244,15 @@ export function MultiWeightTextRenderer({
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
   const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
 
-  // Dirty flag shared between weight renderers
-  const dirtyRef = useRef(true);
-
   // Socket index map for edge label positioning
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
-  // Entries by weight
-  const [regularEntries, setRegularEntries] = useState<TextEntry[]>([]);
-  const [semiboldEntries, setSemiboldEntries] = useState<TextEntry[]>([]);
+  // Entries by weight - use refs for same-frame updates (avoid React batching delay)
+  const regularEntriesRef = useRef<TextEntry[]>([]);
+  const semiboldEntriesRef = useRef<TextEntry[]>([]);
+
+  // Track whether we have semibold entries (for conditional rendering)
+  const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
 
   // Build socket index map
   const rebuildSocketIndexMap = useCallback(() => {
@@ -313,9 +313,10 @@ export function MultiWeightTextRenderer({
         // Position label based on header mode:
         // - 'none' or 'inside': inside node at top
         // - 'outside': floating above node
-        const labelY = config.header === 'outside'
-          ? node.position.y - style.headerHeight + 8
-          : node.position.y + 8;
+        const labelY =
+          config.header === 'outside'
+            ? node.position.y - style.headerHeight + 8
+            : node.position.y + 8;
         const entry: TextEntry = {
           id: `node-${node.id}`,
           text: label,
@@ -340,7 +341,8 @@ export function MultiWeightTextRenderer({
           const width = node.width ?? DEFAULT_NODE_WIDTH;
           const outputCount = node.outputs?.length ?? 0;
           const inputCount = node.inputs?.length ?? 0;
-          const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+          const height =
+            node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
 
           const nodeRight = node.position.x + width;
           const nodeBottom = node.position.y + height;
@@ -358,7 +360,11 @@ export function MultiWeightTextRenderer({
             for (let i = 0; i < node.outputs.length; i++) {
               const socket = node.outputs[i];
               // Output rowIndex = i
-              const socketY = node.position.y + socketLayout.marginTop + i * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+              const socketY =
+                node.position.y +
+                socketLayout.marginTop +
+                i * socketLayout.rowHeight +
+                socketLayout.rowHeight / 2;
               const textY = socketY - 5;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
@@ -378,7 +384,11 @@ export function MultiWeightTextRenderer({
               const socket = node.inputs[i];
               // Input rowIndex = outputCount + i
               const rowIndex = outputCount + i;
-              const socketY = node.position.y + socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+              const socketY =
+                node.position.y +
+                socketLayout.marginTop +
+                rowIndex * socketLayout.rowHeight +
+                socketLayout.rowHeight / 2;
               const textY = socketY - 5;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
@@ -436,55 +446,47 @@ export function MultiWeightTextRenderer({
 
       return { regular, semibold };
     },
-    [store, showSocketLabels, showEdgeLabels, defaultEdgeType, primaryTextColor, secondaryTextColor, semiboldFont, config, style]
+    [
+      store,
+      showSocketLabels,
+      showEdgeLabels,
+      defaultEdgeType,
+      primaryTextColor,
+      secondaryTextColor,
+      semiboldFont,
+      config,
+      style,
+      socketLayout,
+    ]
   );
 
-  // Subscribe to store changes
+  // Subscribe to store changes - rebuild socket index map when nodes are added/removed
+  // IMPORTANT: Subscribe to nodes.length, NOT nodes array - position changes create new
+  // array references which would cause this to fire every frame during drag
   useEffect(() => {
     rebuildSocketIndexMap();
 
     const unsubNodes = store.subscribe(
-      (state) => state.nodes,
+      (state) => state.nodes.length,
       () => {
-        dirtyRef.current = true;
         rebuildSocketIndexMap();
-      }
-    );
-    const unsubEdges = store.subscribe(
-      (state) => state.edges,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      () => {
-        dirtyRef.current = true;
       }
     );
 
     return () => {
       unsubNodes();
-      unsubEdges();
-      unsubViewport();
     };
   }, [store, rebuildSocketIndexMap]);
 
-  // Mark dirty when colors change
-  useEffect(() => {
-    dirtyRef.current = true;
-  }, [primaryTextColor, secondaryTextColor]);
-
-  // Collect entries on frame
+  // Collect entries on frame - update refs directly for same-frame rendering
+  // Always collect every frame to ensure positions are fresh during drag
   useFrame(({ size }) => {
-    if (!dirtyRef.current) return;
-
     const { viewport, nodes } = store.getState();
 
     if (viewport.zoom < MIN_TEXT_ZOOM) {
-      setRegularEntries([]);
-      setSemiboldEntries([]);
-      dirtyRef.current = false;
+      regularEntriesRef.current = [];
+      semiboldEntriesRef.current = [];
+      if (hasSemiboldEntries) setHasSemiboldEntries(false);
       return;
     }
 
@@ -506,10 +508,15 @@ export function MultiWeightTextRenderer({
       viewBottom
     );
 
-    setRegularEntries(regular);
-    setSemiboldEntries(semibold);
+    // Update refs directly - available immediately to child useFrame calls
+    regularEntriesRef.current = regular;
+    semiboldEntriesRef.current = semibold;
 
-    // Don't clear dirty flag here - let weight renderers clear it
+    // Only trigger React re-render if semibold presence changes (for conditional mount)
+    const hasSemibold = semibold.length > 0;
+    if (hasSemibold !== hasSemiboldEntries) {
+      setHasSemiboldEntries(hasSemibold);
+    }
   });
 
   return (
@@ -517,15 +524,13 @@ export function MultiWeightTextRenderer({
       <TextWeightRenderer
         fontMetrics={regularFont.metrics}
         atlasTexture={regularFont.texture}
-        entries={regularEntries}
-        dirtyRef={dirtyRef}
+        entriesRef={regularEntriesRef}
       />
-      {semiboldFont && semiboldEntries.length > 0 && (
+      {semiboldFont && hasSemiboldEntries && (
         <TextWeightRenderer
           fontMetrics={semiboldFont.metrics}
           atlasTexture={semiboldFont.texture}
-          entries={semiboldEntries}
-          dirtyRef={dirtyRef}
+          entriesRef={semiboldEntriesRef}
         />
       )}
     </>
@@ -553,11 +558,7 @@ export interface TextRendererProps {
  * Single-weight TextRenderer (legacy API).
  * @deprecated Use MultiWeightTextRenderer for multi-weight support.
  */
-export function TextRenderer({
-  fontMetrics,
-  atlasTexture,
-  ...props
-}: TextRendererProps) {
+export function TextRenderer({ fontMetrics, atlasTexture, ...props }: TextRendererProps) {
   return (
     <MultiWeightTextRenderer
       regularFont={{ metrics: fontMetrics, texture: atlasTexture }}

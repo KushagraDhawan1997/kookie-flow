@@ -129,7 +129,7 @@ export function WidgetsLayer({
   const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
-  const rafIdRef = useRef<number>(0);
+  const pendingRef = useRef(false);
 
   // Track nodes and edges for widget creation
   const [nodes, setNodes] = useState(() => store.getState().nodes);
@@ -165,9 +165,9 @@ export function WidgetsLayer({
     return configs;
   }, [nodes, connectedSockets, socketTypes]);
 
-  // Position update function (RAF-throttled)
+  // Position update function (microtask-batched for same-frame updates)
   const updatePositions = useCallback(() => {
-    rafIdRef.current = 0;
+    pendingRef.current = false;
 
     const container = containerRef.current;
     if (!container) return;
@@ -258,9 +258,10 @@ export function WidgetsLayer({
       setNodes((prev) => (prev.length !== state.nodes.length ? state.nodes : prev));
       setEdges((prev) => (prev.length !== state.edges.length ? state.edges : prev));
 
-      // Schedule position update
-      if (rafIdRef.current === 0) {
-        rafIdRef.current = requestAnimationFrame(updatePositions);
+      // Schedule position update using microtask (same-frame, no 1-frame lag)
+      if (!pendingRef.current) {
+        pendingRef.current = true;
+        queueMicrotask(updatePositions);
       }
     });
 
@@ -269,9 +270,6 @@ export function WidgetsLayer({
 
     return () => {
       unsubscribe();
-      if (rafIdRef.current !== 0) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
   }, [store, updatePositions]);
 

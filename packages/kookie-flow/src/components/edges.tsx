@@ -141,11 +141,11 @@ export function Edges({
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
-  // Node map for O(1) lookups
+  // Node map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
   const nodeMapRef = useRef<Map<string, Node>>(new Map());
 
   // Socket index map for O(1) lookups: "${nodeId}:${socketId}:input|output" -> { index, socket }
-  // Rebuilt when nodes change, not per frame
+  // Rebuilt only when nodes are added/removed (not on position changes)
   const socketIndexMapRef = useRef<
     Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
   >(new Map());
@@ -263,28 +263,43 @@ export function Edges({
     mesh.geometry.setAttribute('aColor', buffers.colorAttr);
     mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
 
-    // Subscribe to changes
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      (nodes) => {
-        nodeMapRef.current.clear();
-        socketIndexMapRef.current.clear();
-        for (const n of nodes) {
-          nodeMapRef.current.set(n.id, n);
-          // Build socket index map for O(1) lookups
-          if (n.inputs) {
-            for (let i = 0; i < n.inputs.length; i++) {
-              const s = n.inputs[i];
-              socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
-            }
-          }
-          if (n.outputs) {
-            for (let i = 0; i < n.outputs.length; i++) {
-              const s = n.outputs[i];
-              socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
-            }
+    // Helper to rebuild socket index map (only called on add/remove, not position changes)
+    const rebuildSocketIndexMap = (nodes: Node[]) => {
+      socketIndexMapRef.current.clear();
+      for (const n of nodes) {
+        if (n.inputs) {
+          for (let i = 0; i < n.inputs.length; i++) {
+            const s = n.inputs[i];
+            socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
           }
         }
+        if (n.outputs) {
+          for (let i = 0; i < n.outputs.length; i++) {
+            const s = n.outputs[i];
+            socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
+          }
+        }
+      }
+    };
+
+    // Subscribe to changes
+    // IMPORTANT: nodes.length subscription for socket index map rebuild (only on add/remove)
+    // Also sync nodeMapRef here - store creates new nodeMap only on add/remove,
+    // during drag it mutates the same Map in place (updateNodePositions)
+    const unsubNodesLength = store.subscribe(
+      (state) => state.nodes.length,
+      () => {
+        const { nodes, nodeMap } = store.getState();
+        nodeMapRef.current = nodeMap;
+        rebuildSocketIndexMap(nodes);
+        dirtyRef.current = true;
+      }
+    );
+    // Nodes reference change = position changed, just set dirty flag
+    // nodeMapRef doesn't need sync - store mutates same Map object during drag
+    const unsubNodesDirty = store.subscribe(
+      (state) => state.nodes,
+      () => {
         dirtyRef.current = true;
       }
     );
@@ -302,26 +317,14 @@ export function Edges({
       }
     );
 
-    // Initialize node map and socket index map
-    const { nodes } = store.getState();
-    for (const n of nodes) {
-      nodeMapRef.current.set(n.id, n);
-      if (n.inputs) {
-        for (let i = 0; i < n.inputs.length; i++) {
-          const s = n.inputs[i];
-          socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
-        }
-      }
-      if (n.outputs) {
-        for (let i = 0; i < n.outputs.length; i++) {
-          const s = n.outputs[i];
-          socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
-        }
-      }
-    }
+    // Initialize nodeMap ref and socket index map
+    const { nodes, nodeMap } = store.getState();
+    nodeMapRef.current = nodeMap;
+    rebuildSocketIndexMap(nodes);
 
     return () => {
-      unsubNodes();
+      unsubNodesLength();
+      unsubNodesDirty();
       unsubEdges();
       unsubSelection();
       material.dispose();
@@ -333,6 +336,7 @@ export function Edges({
     if (!meshRef.current) return;
 
     const { edges, viewport, selectedEdgeIds } = store.getState();
+    const nodeMap = nodeMapRef.current;
 
     // Always update zoom uniform (cheap operation)
     material.uniforms.uZoom.value = viewport.zoom;
@@ -346,7 +350,6 @@ export function Edges({
 
     // Skip geometry rebuild if not dirty
     if (!dirtyRef.current) return;
-    const nodeMap = nodeMapRef.current;
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
     const mesh = meshRef.current;

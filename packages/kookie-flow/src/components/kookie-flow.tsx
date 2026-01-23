@@ -322,8 +322,14 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   const dragState = useRef<{
     nodeIds: string[];
     startPositions: Map<string, { x: number; y: number }>;
-    startWorldPos: { x: number; y: number };
+    cursorOffset: { x: number; y: number }; // Offset from cursor to primary node position at click time
     containerRect: { width: number; height: number }; // Cached to avoid layout queries in RAF
+  } | null>(null);
+
+  // Pending drag info - captured at click time, used when threshold is crossed
+  const pendingDragRef = useRef<{
+    clickedNodeId: string;
+    cursorOffset: { x: number; y: number }; // cursor position - node position at click time
   } | null>(null);
 
   // Auto-scroll state for dragging near viewport edges
@@ -378,19 +384,26 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
     });
 
     // 2. Update node positions based on new viewport
-    // No compensation needed: viewport pan increases cursor's worldPos,
-    // which increases delta, which moves the node with the viewport
+    // Use cursor offset approach (same as main drag handler)
     const currentWorldPos = screenToWorld(
       { x: screenX, y: screenY },
       store.getState().viewport
     );
-    let deltaX = currentWorldPos.x - dragState.current.startWorldPos.x;
-    let deltaY = currentWorldPos.y - dragState.current.startWorldPos.y;
+
+    // Calculate primary node position using cursor offset
+    let primaryX = currentWorldPos.x - dragState.current.cursorOffset.x;
+    let primaryY = currentWorldPos.y - dragState.current.cursorOffset.y;
 
     if (snapToGrid) {
-      deltaX = Math.round(deltaX / snapGrid[0]) * snapGrid[0];
-      deltaY = Math.round(deltaY / snapGrid[1]) * snapGrid[1];
+      primaryX = Math.round(primaryX / snapGrid[0]) * snapGrid[0];
+      primaryY = Math.round(primaryY / snapGrid[1]) * snapGrid[1];
     }
+
+    // Calculate delta from primary node's start position
+    const primaryNodeId = dragState.current.nodeIds[0];
+    const primaryStartPos = dragState.current.startPositions.get(primaryNodeId)!;
+    const deltaX = primaryX - primaryStartPos.x;
+    const deltaY = primaryY - primaryStartPos.y;
 
     const updates = dragState.current.nodeIds.map((id) => {
       const startPos = dragState.current!.startPositions.get(id)!;
@@ -504,6 +517,26 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         // Store the pointer down position
         pointerDownPos.current = { x: worldPos.x, y: worldPos.y, screenX: e.clientX, screenY: e.clientY };
         hasDragged.current = false;
+
+        // Check if clicking on a node - capture offset for smooth dragging
+        const { quadtree, nodeMap } = store.getState();
+        const candidateIds = quadtree.queryPoint(worldPos.x, worldPos.y);
+        const clickedNode = candidateIds.length > 0 ? nodeMap.get(candidateIds[0]) : null;
+
+        if (clickedNode) {
+          // Store cursor offset from node position (React Flow style)
+          // This ensures the node doesn't "jump" when drag threshold is crossed
+          pendingDragRef.current = {
+            clickedNodeId: clickedNode.id,
+            cursorOffset: {
+              x: worldPos.x - clickedNode.position.x,
+              y: worldPos.y - clickedNode.position.y,
+            },
+          };
+        } else {
+          pendingDragRef.current = null;
+        }
+
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
@@ -606,10 +639,15 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
             // Cache container rect once to avoid layout queries in RAF loop
             const rect = containerRef.current?.getBoundingClientRect();
+
+            // Use cursor offset captured at click time (React Flow style)
+            // This ensures smooth dragging - cursor stays at same spot on node
+            const cursorOffset = pendingDragRef.current?.cursorOffset ?? { x: 0, y: 0 };
+
             dragState.current = {
               nodeIds: dragNodeIds,
               startPositions,
-              startWorldPos: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
+              cursorOffset,
               containerRect: { width: rect?.width ?? 0, height: rect?.height ?? 0 },
             };
             setIsDragging(true);
@@ -625,7 +663,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       }
 
       // Update node dragging
-      if (isDragging && dragState.current) {
+      // Use ref check (dragState.current) instead of React state (isDragging)
+      // to avoid 1-frame lag when drag starts (React state batches updates)
+      if (dragState.current) {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
@@ -634,15 +674,23 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
         const { viewport } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        // Calculate delta from drag start
-        let deltaX = worldPos.x - dragState.current.startWorldPos.x;
-        let deltaY = worldPos.y - dragState.current.startWorldPos.y;
+        // Calculate primary node position using cursor offset (React Flow style)
+        // This keeps cursor at same spot on node throughout drag
+        let primaryX = worldPos.x - dragState.current.cursorOffset.x;
+        let primaryY = worldPos.y - dragState.current.cursorOffset.y;
 
         // Apply snap to grid if enabled
         if (snapToGrid) {
-          deltaX = Math.round(deltaX / snapGrid[0]) * snapGrid[0];
-          deltaY = Math.round(deltaY / snapGrid[1]) * snapGrid[1];
+          primaryX = Math.round(primaryX / snapGrid[0]) * snapGrid[0];
+          primaryY = Math.round(primaryY / snapGrid[1]) * snapGrid[1];
         }
+
+        // Calculate delta from primary node's start position
+        // This delta applies to all dragged nodes to maintain relative positions
+        const primaryNodeId = dragState.current.nodeIds[0];
+        const primaryStartPos = dragState.current.startPositions.get(primaryNodeId)!;
+        const deltaX = primaryX - primaryStartPos.x;
+        const deltaY = primaryY - primaryStartPos.y;
 
         // Update all dragged node positions
         const updates = dragState.current.nodeIds.map((id) => {
@@ -798,6 +846,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
 
         setIsDragging(false);
         dragState.current = null;
+        pendingDragRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
         return;
@@ -867,6 +916,7 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
       }
 
       pointerDownPos.current = null;
+      pendingDragRef.current = null;
     },
     [isPanning, isDragging, isBoxSelecting, isConnecting, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect]
   );
