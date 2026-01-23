@@ -314,10 +314,12 @@ export function MultiWeightTextRenderer({
         // Position label based on header mode:
         // - 'none' or 'inside': inside node at top
         // - 'outside': floating above node
+        // Vertically center text within header (fontSize=12, approximate line-height ~14)
+        const verticalOffset = (style.headerHeight - 14) / 2;
         const labelY =
           config.header === 'outside'
-            ? node.position.y - style.headerHeight + 8
-            : node.position.y + 8;
+            ? node.position.y - style.headerHeight + verticalOffset
+            : node.position.y + verticalOffset;
         const entry: TextEntry = {
           id: `node-${node.id}`,
           text: label,

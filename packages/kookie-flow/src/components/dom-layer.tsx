@@ -166,10 +166,12 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       }
 
       // Calculate screen position
+      // Vertically center text within header (fontSize=12, approximate line-height ~14)
+      const verticalOffset = (style.headerHeight - 14) / 2;
       // For 'outside' header, position label above the node
       const labelY = config.header === 'outside'
-        ? node.position.y - style.headerHeight + 8
-        : node.position.y + 8;
+        ? node.position.y - style.headerHeight + verticalOffset
+        : node.position.y + verticalOffset;
       const screenX = (node.position.x + 12) * viewport.zoom + viewport.x;
       const screenY = labelY * viewport.zoom + viewport.y;
 
@@ -308,10 +310,12 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     labelsRef.current.forEach((labelEl, nodeId) => {
       const node = nodeMap.get(nodeId);
       if (node) {
+        // Vertically center text within header (fontSize=12, approximate line-height ~14)
+        const verticalOffset = (style.headerHeight - 14) / 2;
         // For 'outside' header, position label above the node
         const labelY = config.header === 'outside'
-          ? node.position.y - style.headerHeight + 8
-          : node.position.y + 8;
+          ? node.position.y - style.headerHeight + verticalOffset
+          : node.position.y + verticalOffset;
         labelEl.style.transform = `translate3d(${node.position.x + 12}px, ${labelY}px, 0)`;
       }
     });
