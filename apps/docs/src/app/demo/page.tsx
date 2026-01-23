@@ -80,12 +80,72 @@ const nodeColors = [
   'violet',
 ] as const;
 
+// Widget demo nodes (positioned at top, left of main grid)
+const widgetDemoNodes: Node[] = [
+  {
+    id: 'widget-demo-1',
+    type: 'default',
+    position: { x: -600, y: 0 },
+    data: { label: 'Slider Demo' },
+    inputs: [
+      { id: 'w1-in-0', name: 'Amount', type: 'float' },
+      { id: 'w1-in-1', name: 'Intensity', type: 'float', min: 0, max: 10 },
+    ],
+    outputs: [{ id: 'w1-out-0', name: 'Result', type: 'float' }],
+  },
+  {
+    id: 'widget-demo-2',
+    type: 'default',
+    position: { x: -600, y: 180 },
+    data: { label: 'Number Demo' },
+    inputs: [
+      { id: 'w2-in-0', name: 'Width', type: 'int' },
+      { id: 'w2-in-1', name: 'Height', type: 'int', min: 1, max: 4096 },
+    ],
+    outputs: [{ id: 'w2-out-0', name: 'Size', type: 'int' }],
+  },
+  {
+    id: 'widget-demo-3',
+    type: 'default',
+    position: { x: -600, y: 360 },
+    data: { label: 'Select Demo' },
+    inputs: [
+      { id: 'w3-in-0', name: 'Mode', type: 'enum', options: ['Linear', 'Cubic', 'Nearest'] },
+      { id: 'w3-in-1', name: 'Format', type: 'enum', options: ['RGB', 'RGBA', 'Grayscale'] },
+    ],
+    outputs: [{ id: 'w3-out-0', name: 'Config', type: 'string' }],
+  },
+  {
+    id: 'widget-demo-4',
+    type: 'default',
+    position: { x: -600, y: 540 },
+    data: { label: 'Mixed Widgets' },
+    inputs: [
+      { id: 'w4-in-0', name: 'Enabled', type: 'boolean' },
+      { id: 'w4-in-1', name: 'Name', type: 'string', placeholder: 'Enter name...' },
+      { id: 'w4-in-2', name: 'Tint', type: 'color' },
+    ],
+    outputs: [{ id: 'w4-out-0', name: 'Output', type: 'image' }],
+  },
+  {
+    id: 'widget-demo-5',
+    type: 'default',
+    position: { x: -600, y: 760 },
+    data: { label: 'No Widget' },
+    inputs: [
+      { id: 'w5-in-0', name: 'Image', type: 'image' }, // No widget (connection only)
+      { id: 'w5-in-1', name: 'Disabled', type: 'float', widget: false }, // Explicitly disabled
+    ],
+    outputs: [{ id: 'w5-out-0', name: 'Result', type: 'image' }],
+  },
+];
+
 // Generate demo nodes with sockets
 function generateNodes(count: number): Node[] {
   const cols = Math.ceil(Math.sqrt(count));
   const spacing = 300;
 
-  return Array.from({ length: count }, (_, i) => {
+  const gridNodes = Array.from({ length: count }, (_, i) => {
     const pattern = socketPatterns[i % socketPatterns.length];
 
     const node: Node = {
@@ -117,6 +177,8 @@ function generateNodes(count: number): Node[] {
 
     return node;
   });
+
+  return [...widgetDemoNodes, ...gridNodes];
 }
 
 // Find compatible socket pair between two nodes
@@ -473,6 +535,49 @@ function ClipboardDemo() {
   );
 }
 
+// Widget values display panel
+function WidgetValuesPanel({
+  values,
+}: {
+  values: Record<string, Record<string, unknown>>;
+}) {
+  const entries = Object.entries(values);
+  if (entries.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 16,
+        right: 16,
+        zIndex: 10,
+        background: 'rgba(0,0,0,0.8)',
+        padding: '12px 16px',
+        borderRadius: 8,
+        fontSize: 11,
+        maxWidth: 300,
+        maxHeight: 200,
+        overflow: 'auto',
+      }}
+    >
+      <h3 style={{ fontSize: 12, marginBottom: 8 }}>Widget Values</h3>
+      {entries.slice(-5).map(([nodeId, sockets]) => (
+        <div key={nodeId} style={{ marginBottom: 4 }}>
+          <span style={{ color: '#4ade80' }}>{nodeId}</span>
+          {Object.entries(sockets).map(([socketId, value]) => (
+            <div key={socketId} style={{ paddingLeft: 8, color: '#888' }}>
+              .{socketId.split('-').pop()} = {JSON.stringify(value)}
+            </div>
+          ))}
+        </div>
+      ))}
+      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>
+        Last 5 changed nodes shown
+      </p>
+    </div>
+  );
+}
+
 // All available node variants
 const VARIANTS: NodeVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
 
@@ -545,6 +650,18 @@ export default function DemoPage() {
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
   const [variant, setVariant] = useState<NodeVariant>('surface');
+  const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
+
+  const handleWidgetChange = (nodeId: string, socketId: string, value: unknown) => {
+    setWidgetValues((prev) => ({
+      ...prev,
+      [nodeId]: {
+        ...prev[nodeId],
+        [socketId]: value,
+      },
+    }));
+    console.log(`[Widget] ${nodeId}.${socketId} = ${JSON.stringify(value)}`);
+  };
 
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
     initialNodes,
@@ -589,15 +706,17 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2)
         size="2"
-        // variant={variant}
         variant="classic"
         radius="medium"
         header="inside"
         accentHeader
+        // Widget callback (uses DEFAULT_SOCKET_TYPES from package)
+        onWidgetChange={handleWidgetChange}
       >
         <ClipboardDemo />
         <ThemeTokensTest />
         <VariantShowcase variant={variant} setVariant={setVariant} />
+        <WidgetValuesPanel values={widgetValues} />
       </KookieFlow>
     </main>
   );

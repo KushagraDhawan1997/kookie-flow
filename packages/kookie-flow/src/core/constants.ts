@@ -33,24 +33,26 @@ export const SOCKET_HIT_TOLERANCE = 4;
  * ML text-related (amber): conditioning, clip
  */
 export const DEFAULT_SOCKET_TYPES = {
-  // Common types - maximally diverse colors
+  // Primitive types with widgets
+  float: { name: 'Float', color: '--teal-9', widget: 'slider' as const, min: 0, max: 1, step: 0.01 },
+  int: { name: 'Integer', color: '--blue-9', widget: 'number' as const, min: 0, max: 100, step: 1 },
+  boolean: { name: 'Boolean', color: '--orange-9', widget: 'checkbox' as const },
+  string: { name: 'String', color: '--green-9', widget: 'text' as const },
+  color: { name: 'Color', color: '--pink-9', widget: 'color' as const },
+  enum: { name: 'Enum', color: '--amber-9', widget: 'select' as const },
+  // Connection-only types (no widget)
   image: { name: 'Image', color: '--purple-9' },
-  string: { name: 'String', color: '--green-9' },
-  int: { name: 'Integer', color: '--blue-9' },
-  float: { name: 'Float', color: '--teal-9' },
-  boolean: { name: 'Boolean', color: '--orange-9' },
-  mesh: { name: 'Mesh', color: '--pink-9' },
-  // Neutral/utility types
+  mesh: { name: 'Mesh', color: '--violet-9' },
+  signal: { name: 'Signal', color: '--cyan-9' },
   any: { name: 'Any', color: '--gray-9' },
   mask: { name: 'Mask', color: '--gray-12' },
-  // ML-specific types (cyan for less common)
+  // ML-specific types (no widget)
   latent: { name: 'Latent', color: '--cyan-9' },
   model: { name: 'Model', color: '--cyan-9' },
-  // ML text-related types (amber)
   conditioning: { name: 'Conditioning', color: '--amber-9' },
   clip: { name: 'CLIP', color: '--amber-9' },
   vae: { name: 'VAE', color: '--red-9' },
-} as const;
+};
 
 /** Auto-scroll settings */
 export const AUTO_SCROLL_EDGE_THRESHOLD = 50; // pixels from edge to trigger

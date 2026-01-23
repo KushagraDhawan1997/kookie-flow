@@ -235,9 +235,12 @@ export function WidgetsLayer({
       const screenY = socketY * viewport.zoom + viewport.y;
 
       // Position widget (centered vertically in row)
-      el.style.transform = `translate3d(${screenX}px, ${screenY - (socketLayout.widgetHeight / 2) * viewport.zoom}px, 0)`;
-      el.style.width = `${(width - socketLayout.padding * 2 - 80) * viewport.zoom}px`;
-      el.style.height = `${socketLayout.widgetHeight * viewport.zoom}px`;
+      // Use transform scale so inner components scale naturally
+      const widgetWidth = width - socketLayout.padding * 2 - 80;
+      el.style.transform = `translate3d(${screenX}px, ${screenY - (socketLayout.widgetHeight / 2) * viewport.zoom}px, 0) scale(${viewport.zoom})`;
+      el.style.transformOrigin = 'top left';
+      el.style.width = `${widgetWidth}px`;
+      el.style.height = `${socketLayout.widgetHeight}px`;
     });
   }, [store, socketLayout, minWidgetZoom]);
 

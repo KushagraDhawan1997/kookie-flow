@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { Slider } from '@kushagradhawan/kookie-ui';
+import { Box, Slider } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
 export function SliderWidget({
@@ -29,15 +29,16 @@ export function SliderWidget({
   );
 
   return (
-    <Slider
-      size="2"
-      value={sliderValue}
-      onValueChange={handleValueChange}
-      min={min}
-      max={max}
-      step={step}
-      disabled={disabled}
-      style={{ flex: 1 }}
-    />
+    <Box width="100%">
+      <Slider
+        size="2"
+        value={sliderValue}
+        onValueChange={handleValueChange}
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+      />
+    </Box>
   );
 }

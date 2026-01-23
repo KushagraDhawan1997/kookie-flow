@@ -1568,8 +1568,8 @@ This ensures widgets fit naturally in socket rows and scale properly.
 - [x] Integration: Value storage in `node.data.values` (reads from node.data.values, callback notifies)
 - [x] Performance: Viewport culling for widgets
 - [x] Performance: Memoized widget resolution
-- [ ] Docs: Widget usage examples
-- [ ] Docs: Custom widget component guide
+- [x] Docs: Widget usage examples (added to demo page)
+- [x] Docs: Custom widget component guide (demo shows all widget types + inline override)
 
 ### Phase 8: Visual Previews
 
@@ -1898,11 +1898,12 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - Milestone 4: Socket type theming (user-configurable via CSS vars)
 - Milestone 5: Polish & testing (dark/light mode, standalone mode)
 
-**Phase 7D (in progress):** Socket widgets
+**Phase 7D (complete):** Socket widgets
 
-- Track connected sockets in store for automatic widget visibility
+All tasks done including:
+- Connected sockets tracking in store
 - Value storage in `node.data.values`
-- Documentation: widget usage examples, custom widget guide
+- Widget demo page with all 6 widget types
 
 **Phase 7C: Grouping & Annotations**
 
