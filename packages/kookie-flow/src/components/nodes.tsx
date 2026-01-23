@@ -57,16 +57,24 @@ export function Nodes() {
         uHeaderColor: { value: new THREE.Color(...resolvedStyle.headerBackground) },
         uHeaderHeight: { value: resolvedStyle.headerHeight },
         uHeaderPosition: { value: resolvedStyle.headerPosition },
+        // Shadow styling (classic variant)
+        uShadowBlur: { value: resolvedStyle.shadowBlur },
+        uShadowOffsetY: { value: resolvedStyle.shadowOffsetY },
+        uShadowOpacity: { value: resolvedStyle.shadowOpacity },
       },
       vertexShader: /* glsl */ `
         attribute float aSelected;
         attribute float aHovered;
         attribute vec2 aSize;
 
+        uniform float uShadowBlur;
+        uniform float uShadowOffsetY;
+
         varying vec2 vUv;
         varying float vSelected;
         varying float vHovered;
         varying vec2 vSize;
+        varying vec2 vExpandedSize;
 
         void main() {
           vUv = uv;
@@ -74,9 +82,14 @@ export function Nodes() {
           vHovered = aHovered;
           vSize = aSize;
 
+          // Expand geometry to include shadow padding
+          float shadowPadding = uShadowBlur + abs(uShadowOffsetY);
+          vec2 expandedSize = aSize + vec2(shadowPadding * 2.0);
+          vExpandedSize = expandedSize;
+
           vec3 pos = position;
-          pos.x *= aSize.x;
-          pos.y *= aSize.y;
+          pos.x *= expandedSize.x;
+          pos.y *= expandedSize.y;
 
           gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
         }
@@ -97,11 +110,16 @@ export function Nodes() {
         uniform vec3 uHeaderColor;
         uniform float uHeaderHeight;
         uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
+        // Shadow uniforms
+        uniform float uShadowBlur;
+        uniform float uShadowOffsetY;
+        uniform float uShadowOpacity;
 
         varying vec2 vUv;
         varying float vSelected;
         varying float vHovered;
         varying vec2 vSize;
+        varying vec2 vExpandedSize;
 
         float roundedBoxSDF(vec2 p, vec2 b, float r) {
           vec2 q = abs(p) - b + r;
@@ -109,13 +127,25 @@ export function Nodes() {
         }
 
         void main() {
-          vec2 p = (vUv - 0.5) * vSize;
+          // Map UV to expanded coordinate space, then use node size for SDF
+          vec2 p = (vUv - 0.5) * vExpandedSize;
           vec2 b = vSize * 0.5;
+
+          // Shadow calculation (rendered behind main shape)
+          float shadowAlpha = 0.0;
+          if (uShadowOpacity > 0.0) {
+            // Offset shadow position (Y is negated because WebGL Y-up vs our Y-down)
+            vec2 shadowP = p + vec2(0.0, uShadowOffsetY);
+            float shadowD = roundedBoxSDF(shadowP, b, uCornerRadius);
+            // Soft shadow using blur as the falloff distance
+            shadowAlpha = uShadowOpacity * (1.0 - smoothstep(-uShadowBlur, uShadowBlur * 0.5, shadowD));
+          }
 
           float d = roundedBoxSDF(p, b, uCornerRadius);
 
-          // Early discard for pixels outside the rounded rect (with border)
-          if (d > uBorderWidth + 1.0) discard;
+          // Early discard for pixels outside both shadow and main shape
+          float maxExtent = max(uBorderWidth, uShadowBlur + abs(uShadowOffsetY)) + 1.0;
+          if (d > maxExtent && shadowAlpha < 0.01) discard;
 
           // Background: selected > hovered > default
           vec3 bgColor = mix(
@@ -152,7 +182,11 @@ export function Nodes() {
           float fillMask = 1.0 - smoothstep(-aa, aa, d);
           float bgAlpha = fillMask * uBackgroundAlpha;
 
-          // Composite: border on top of background
+          // Composite: shadow first, then border on top of background
+          // Shadow is black, behind everything
+          vec3 shadowColor = vec3(0.0);
+          float shadowMask = shadowAlpha * (1.0 - fillMask); // Shadow only visible outside main shape
+
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
 
@@ -161,6 +195,10 @@ export function Nodes() {
             color = borderColor;
             alpha = borderMask * fillMask;
           }
+
+          // Blend shadow underneath (premultiplied alpha compositing)
+          color = mix(shadowColor, color, clamp(alpha / max(alpha + shadowMask, 0.001), 0.0, 1.0));
+          alpha = alpha + shadowMask * (1.0 - alpha);
 
           gl_FragColor = vec4(color, alpha);
         }

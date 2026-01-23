@@ -93,7 +93,7 @@ export const THEME_COLORS = {
   // ============================================
   minimap: {
     background: '--gray-1',
-    node: '--gray-8',
+    node: '--gray-4',
     nodeSelected: '--accent-9',
     viewport: '--accent-9',
     viewportBorder: '--accent-9',

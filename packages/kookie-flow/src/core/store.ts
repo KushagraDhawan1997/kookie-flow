@@ -58,6 +58,13 @@ export interface FlowState {
   /** Quadtree for O(log n) spatial queries */
   quadtree: Quadtree;
 
+  /**
+   * Connected sockets cache - O(1) lookup for widget visibility.
+   * Format: "nodeId:socketId" for each input socket that has an incoming edge.
+   * Rebuilt when edges change.
+   */
+  connectedSockets: Set<string>;
+
   /** Internal clipboard (holds references, no serialization) */
   internalClipboard: InternalClipboard | null;
 
@@ -183,11 +190,23 @@ function rebuildDerivedState(nodes: Node[]) {
   return { nodeMap, quadtree };
 }
 
+// Helper to rebuild connected sockets set from edges
+function rebuildConnectedSockets(edges: Edge[]): Set<string> {
+  const connected = new Set<string>();
+  for (const edge of edges) {
+    if (edge.targetSocket) {
+      connected.add(`${edge.target}:${edge.targetSocket}`);
+    }
+  }
+  return connected;
+}
+
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
-  // Initialize derived state from initial nodes
+  // Initialize derived state from initial nodes and edges
   const initialNodes = initialState?.nodes ?? [];
   const initialEdges = initialState?.edges ?? [];
   const { nodeMap, quadtree } = rebuildDerivedState(initialNodes);
+  const connectedSockets = rebuildConnectedSockets(initialEdges);
 
   return create<FlowState>()(
     subscribeWithSelector((set, get) => ({
@@ -208,6 +227,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Derived state for O(1) lookups
       nodeMap,
       quadtree,
+      connectedSockets,
 
       // Internal clipboard
       internalClipboard: null,
@@ -217,7 +237,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const { nodeMap, quadtree } = rebuildDerivedState(nodes);
         set({ nodes, nodeMap, quadtree });
       },
-      setEdges: (edges) => set({ edges }),
+      setEdges: (edges) => set({ edges, connectedSockets: rebuildConnectedSockets(edges) }),
       setViewport: (viewport) => set({ viewport }),
       setHoveredNodeId: (hoveredNodeId) => set({ hoveredNodeId }),
       setHoveredSocketId: (hoveredSocketId) => set({ hoveredSocketId }),
@@ -326,7 +346,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        set({ edges: nextEdges });
+        set({ edges: nextEdges, connectedSockets: rebuildConnectedSockets(nextEdges) });
       },
 
       // Selection - O(1) operations using Sets
@@ -595,7 +615,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Rebuild derived state once
         const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
-        set({ nodes: nextNodes, edges: nextEdges, nodeMap, quadtree });
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          nodeMap,
+          quadtree,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+        });
       },
 
       deleteElements: (batch) => {
@@ -636,6 +662,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           edges: nextEdges,
           nodeMap,
           quadtree,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
           selectedNodeIds: nextSelectedNodeIds,
           selectedEdgeIds: nextSelectedEdgeIds,
         });

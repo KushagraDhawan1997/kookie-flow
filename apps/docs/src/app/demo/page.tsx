@@ -8,6 +8,7 @@ import {
   useThemeTokens,
   type Node,
   type Edge,
+  type NodeVariant,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
 
@@ -472,10 +473,78 @@ function ClipboardDemo() {
   );
 }
 
+// All available node variants
+const VARIANTS: NodeVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
+
+function VariantShowcase({
+  variant,
+  setVariant,
+}: {
+  variant: NodeVariant;
+  setVariant: (v: NodeVariant) => void;
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 200,
+        left: 16,
+        zIndex: 10,
+        background: 'rgba(0,0,0,0.8)',
+        padding: '12px 16px',
+        borderRadius: 8,
+        fontSize: 12,
+        minWidth: 180,
+        pointerEvents: 'auto',
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h3 style={{ fontSize: 13, marginBottom: 10 }}>Node Variants</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {VARIANTS.map((v) => (
+          <label
+            key={v}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="radio"
+              name="variant"
+              value={v}
+              checked={variant === v}
+              onChange={() => setVariant(v)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span
+              style={{
+                color: variant === v ? '#4ade80' : '#888',
+                textTransform: 'capitalize',
+              }}
+            >
+              {v}
+              {v === 'classic' && ' (shadow)'}
+            </span>
+          </label>
+        ))}
+      </div>
+      <p style={{ color: '#555', fontSize: 10, marginTop: 10 }}>
+        Classic variant shows drop shadows
+      </p>
+    </div>
+  );
+}
+
 export default function DemoPage() {
-  const nodeCount = 1000; // Smxpaller for demo
+  const nodeCount = 1000;
   const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
+  const [variant, setVariant] = useState<NodeVariant>('surface');
 
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
     initialNodes,
@@ -501,7 +570,7 @@ export default function DemoPage() {
           {nodes.length} nodes, {edges.length} edges
         </p>
         <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-          Edge labels &amp; arrow markers demo
+          Variant: <span style={{ color: '#4ade80', textTransform: 'capitalize' }}>{variant}</span>
         </p>
       </div>
 
@@ -518,15 +587,17 @@ export default function DemoPage() {
         textRenderMode="webgl"
         showSocketLabels
         showEdgeLabels
-        // Styling props (Milestone 2) - try different values!
+        // Styling props (Milestone 2)
         size="2"
-        variant="surface"
+        // variant={variant}
+        variant="classic"
         radius="medium"
         header="inside"
         accentHeader
       >
         <ClipboardDemo />
         <ThemeTokensTest />
+        <VariantShowcase variant={variant} setVariant={setVariant} />
       </KookieFlow>
     </main>
   );

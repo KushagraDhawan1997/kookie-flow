@@ -19,10 +19,7 @@ import {
 import { useFlowStoreApi } from './context';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { BUILT_IN_WIDGETS } from './widgets';
-import {
-  resolveWidgetConfig,
-  buildConnectedSocketsSet,
-} from '../utils/widgets';
+import { resolveWidgetConfig } from '../utils/widgets';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 import { calculateMinNodeHeight } from '../utils/style-resolver';
 import type {
@@ -131,15 +128,9 @@ export function WidgetsLayer({
   const widgetRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
-  // Track nodes and edges for widget creation
+  // Track nodes and connected sockets for widget creation
   const [nodes, setNodes] = useState(() => store.getState().nodes);
-  const [edges, setEdges] = useState(() => store.getState().edges);
-
-  // Compute connected sockets set
-  const connectedSockets = useMemo(
-    () => buildConnectedSocketsSet(edges),
-    [edges]
-  );
+  const [connectedSockets, setConnectedSockets] = useState(() => store.getState().connectedSockets);
 
   // Widget configs per node socket (memoized to avoid recalculation)
   const widgetConfigs = useMemo(() => {
@@ -253,10 +244,10 @@ export function WidgetsLayer({
   // Subscribe to store changes
   useLayoutEffect(() => {
     const unsubscribe = store.subscribe(() => {
-      // Check for node/edge changes (triggers React render for widget creation)
+      // Check for node/connected socket changes (triggers React render for widget creation)
       const state = store.getState();
       setNodes((prev) => (prev.length !== state.nodes.length ? state.nodes : prev));
-      setEdges((prev) => (prev.length !== state.edges.length ? state.edges : prev));
+      setConnectedSockets((prev) => (prev.size !== state.connectedSockets.size ? state.connectedSockets : prev));
 
       // Schedule position update using microtask (same-frame, no 1-frame lag)
       if (!pendingRef.current) {
