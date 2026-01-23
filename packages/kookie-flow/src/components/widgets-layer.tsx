@@ -313,7 +313,7 @@ export function WidgetsLayer({
       // Widget world position
       const widgetX = node.position.x + socketLayout.padding + 60;
       const widgetY = socketY - socketLayout.widgetHeight / 2;
-      const widgetWidth = width - socketLayout.padding * 2 - 80;
+      const widgetWidth = width - socketLayout.padding * 2 - 60;
 
       // Convert to screen coordinates for transform (scale doesn't affect translate)
       const screenX = widgetX * zoom + vpX;

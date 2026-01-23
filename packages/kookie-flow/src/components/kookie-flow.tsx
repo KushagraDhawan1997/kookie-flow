@@ -1480,23 +1480,39 @@ function Invalidator() {
  * (not R3F's size state) to avoid stale values during resize.
  */
 function CameraController() {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const store = useFlowStoreApi();
 
   // Track last values to detect changes
   const lastRef = useRef({ x: 0, y: 0, zoom: 0, width: 0, height: 0 });
 
+  // Cache canvas size via ResizeObserver to avoid layout thrashing from clientWidth/clientHeight reads
+  const cachedSizeRef = useRef({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    // Initialize with current size
+    cachedSizeRef.current.width = canvas.clientWidth;
+    cachedSizeRef.current.height = canvas.clientHeight;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        cachedSizeRef.current.width = entry.contentRect.width;
+        cachedSizeRef.current.height = entry.contentRect.height;
+      }
+    });
+    resizeObserver.observe(canvas);
+
+    return () => resizeObserver.disconnect();
+  }, [gl]);
+
   // Update camera synchronously before each frame renders
-  // Get actual canvas size from renderer to avoid stale R3F state during resize
-  useFrame(({ gl }) => {
+  useFrame(() => {
     if (!(camera instanceof THREE.OrthographicCamera)) return;
 
     const { viewport } = store.getState();
-    // Get actual canvas dimensions directly from the DOM element
-    // This avoids stale R3F size state during resize events
-    const canvas = gl.domElement;
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+    const { width, height } = cachedSizeRef.current;
     const { x, y, zoom } = viewport;
 
     // Skip only if BOTH viewport AND size haven't changed
