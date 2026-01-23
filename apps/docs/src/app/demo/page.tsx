@@ -713,7 +713,6 @@ export default function DemoPage() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         showGrid
-        showStats
         showMinimap
         minimapProps={{ zoomable: false }}
         textRenderMode="webgl"
