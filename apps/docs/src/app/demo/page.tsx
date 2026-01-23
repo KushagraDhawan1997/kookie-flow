@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   KookieFlow,
   useGraph,
@@ -652,16 +652,18 @@ export default function DemoPage() {
   const [variant, setVariant] = useState<NodeVariant>('surface');
   const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
 
-  const handleWidgetChange = (nodeId: string, socketId: string, value: unknown) => {
-    setWidgetValues((prev) => ({
-      ...prev,
-      [nodeId]: {
-        ...prev[nodeId],
-        [socketId]: value,
-      },
-    }));
-    console.log(`[Widget] ${nodeId}.${socketId} = ${JSON.stringify(value)}`);
-  };
+  const handleWidgetChange = useCallback(
+    (nodeId: string, socketId: string, value: unknown) => {
+      setWidgetValues((prev) => ({
+        ...prev,
+        [nodeId]: {
+          ...prev[nodeId],
+          [socketId]: value,
+        },
+      }));
+    },
+    []
+  );
 
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
     initialNodes,

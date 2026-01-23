@@ -6,6 +6,12 @@
  * - Viewport culling (only renders visible widgets)
  * - LOD (hides widgets when zoomed out below threshold)
  * - Auto-hide when socket is connected
+ *
+ * Performance optimizations:
+ * - Selective store subscription (viewport + nodeMap only for positions)
+ * - Pre-parsed nodeId in data attributes (no string splitting in hot loop)
+ * - Batched style writes via cssText
+ * - Cached node heights
  */
 
 import {
@@ -14,6 +20,7 @@ import {
   useLayoutEffect,
   useState,
   useMemo,
+  memo,
   type CSSProperties,
 } from 'react';
 import { useFlowStoreApi } from './context';
@@ -29,6 +36,7 @@ import type {
   WidgetProps,
   ResolvedWidgetConfig,
 } from '../types';
+import { shallow } from 'zustand/shallow';
 
 export interface WidgetsLayerProps {
   /** Socket type definitions for widget resolution */
@@ -53,6 +61,7 @@ const containerStyle: CSSProperties = {
   height: '100%',
   pointerEvents: 'none', // Container is non-interactive
   overflow: 'hidden',
+  zIndex: 5, // Above DOMLayer but below overlays
 };
 
 /**
@@ -61,56 +70,97 @@ const containerStyle: CSSProperties = {
  */
 interface SocketWidgetProps {
   nodeId: string;
-  socket: Socket;
+  socketId: string;
   config: ResolvedWidgetConfig;
-  widgetTypes: Record<string, React.ComponentType<WidgetProps>>;
+  /** Pre-resolved widget component (avoid passing widgetTypes object) */
+  WidgetComponent: React.ComponentType<WidgetProps>;
   onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
   initialValue: unknown;
 }
 
-function SocketWidget({
-  nodeId,
-  socket,
-  config,
-  widgetTypes,
-  onWidgetChange,
-  initialValue,
-}: SocketWidgetProps) {
-  // Local value state (widget controls its own value, notifies parent on change)
-  const [value, setValue] = useState(initialValue ?? config.defaultValue);
+const SocketWidget = memo(
+  function SocketWidget({
+    nodeId,
+    socketId,
+    config,
+    WidgetComponent,
+    onWidgetChange,
+    initialValue,
+  }: SocketWidgetProps) {
+    // Local value state (widget controls its own value, notifies parent on change)
+    const [value, setValue] = useState(initialValue ?? config.defaultValue);
 
-  const handleChange = useCallback(
-    (newValue: unknown) => {
-      setValue(newValue);
-      onWidgetChange?.(nodeId, socket.id, newValue);
-    },
-    [nodeId, socket.id, onWidgetChange]
-  );
+    const handleChange = useCallback(
+      (newValue: unknown) => {
+        setValue(newValue);
+        onWidgetChange?.(nodeId, socketId, newValue);
+      },
+      [nodeId, socketId, onWidgetChange]
+    );
 
-  // Get widget component: custom component from config, or registered type, or built-in
-  const WidgetComponent = useMemo(() => {
-    if (config.customComponent) {
-      return config.customComponent;
-    }
-    return widgetTypes[config.type] ?? BUILT_IN_WIDGETS[config.type];
-  }, [config.customComponent, config.type, widgetTypes]);
+    return (
+      <WidgetComponent
+        value={value}
+        onChange={handleChange}
+        min={config.min}
+        max={config.max}
+        step={config.step}
+        options={config.options}
+        placeholder={config.placeholder}
+      />
+    );
+  },
+  // Custom comparison: only re-render if value-affecting props change
+  (prev, next) =>
+    prev.nodeId === next.nodeId &&
+    prev.socketId === next.socketId &&
+    prev.WidgetComponent === next.WidgetComponent &&
+    prev.onWidgetChange === next.onWidgetChange &&
+    prev.initialValue === next.initialValue &&
+    prev.config.type === next.config.type &&
+    prev.config.min === next.config.min &&
+    prev.config.max === next.config.max &&
+    prev.config.step === next.config.step
+);
 
-  if (!WidgetComponent) {
-    return null;
+// Cached node height computation to avoid recalculating in hot loop
+const nodeHeightCache = new Map<string, number>();
+
+function getCachedNodeHeight(
+  node: Node,
+  socketLayout: ReturnType<typeof useSocketLayout>
+): number {
+  if (node.height !== undefined) return node.height;
+
+  const cacheKey = `${node.outputs?.length ?? 0}:${node.inputs?.length ?? 0}`;
+  let height = nodeHeightCache.get(cacheKey);
+  if (height === undefined) {
+    height = calculateMinNodeHeight(
+      node.outputs?.length ?? 0,
+      node.inputs?.length ?? 0,
+      socketLayout
+    );
+    nodeHeightCache.set(cacheKey, height);
   }
-
-  return (
-    <WidgetComponent
-      value={value}
-      onChange={handleChange}
-      min={config.min}
-      max={config.max}
-      step={config.step}
-      options={config.options}
-      placeholder={config.placeholder}
-    />
-  );
+  return height;
 }
+
+// Pre-allocated style string builder to reduce GC pressure
+// Uses transform scale() instead of CSS zoom for better performance
+// Scale doesn't affect translate, so we position in screen coords
+const buildWidgetStyle = (
+  screenX: number,
+  screenY: number,
+  zoom: number,
+  width: number,
+  height: number,
+  visible: boolean
+): string =>
+  `position:absolute;top:0;left:0;pointer-events:auto;display:flex;align-items:center;` +
+  `visibility:${visible ? 'visible' : 'hidden'};` +
+  `transform:translate3d(${screenX}px,${screenY}px,0) scale(${zoom});` +
+  `transform-origin:0 0;width:${width}px;height:${height}px;` +
+  `contain:layout style;will-change:transform`;
 
 /**
  * Widgets layer component.
@@ -132,14 +182,31 @@ export function WidgetsLayer({
   const [nodes, setNodes] = useState(() => store.getState().nodes);
   const [connectedSockets, setConnectedSockets] = useState(() => store.getState().connectedSockets);
 
+  // Stable reference to widgetTypes to avoid re-resolving components unnecessarily
+  const widgetTypesRef = useRef(widgetTypes);
+  widgetTypesRef.current = widgetTypes;
+
   // Widget configs per node socket (memoized to avoid recalculation)
+  // Pre-resolves widget components to avoid passing unstable widgetTypes object to children
   const widgetConfigs = useMemo(() => {
-    const configs = new Map<string, { node: Node; socket: Socket; config: ResolvedWidgetConfig }>();
+    const configs = new Map<
+      string,
+      {
+        node: Node;
+        socket: Socket;
+        config: ResolvedWidgetConfig;
+        inputIndex: number;
+        WidgetComponent: React.ComponentType<WidgetProps>;
+      }
+    >();
+
+    const currentWidgetTypes = widgetTypesRef.current;
 
     for (const node of nodes) {
       if (!node.inputs) continue;
 
-      for (const socket of node.inputs) {
+      for (let inputIndex = 0; inputIndex < node.inputs.length; inputIndex++) {
+        const socket = node.inputs[inputIndex];
         const key = `${node.id}:${socket.id}`;
 
         // Skip if socket is connected
@@ -149,7 +216,15 @@ export function WidgetsLayer({
         const config = resolveWidgetConfig(socket, socketTypes);
         if (!config) continue;
 
-        configs.set(key, { node, socket, config });
+        // Pre-resolve widget component (avoids passing widgetTypes to child)
+        const WidgetComponent =
+          config.customComponent ??
+          currentWidgetTypes[config.type] ??
+          BUILT_IN_WIDGETS[config.type];
+
+        if (!WidgetComponent) continue;
+
+        configs.set(key, { node, socket, config, inputIndex, WidgetComponent });
       }
     }
 
@@ -165,39 +240,43 @@ export function WidgetsLayer({
 
     const { viewport, nodeMap } = store.getState();
     const widgets = widgetRefsMap.current;
+    const { zoom, x: vpX, y: vpY } = viewport;
 
     // LOD: Hide all widgets if zoomed out too far
-    if (viewport.zoom < minWidgetZoom) {
+    if (zoom < minWidgetZoom) {
       container.style.visibility = 'hidden';
       return;
     }
     container.style.visibility = 'visible';
 
-    // Calculate viewport bounds for culling
+    // Calculate viewport bounds for culling (precompute once)
     const containerRect = container.parentElement?.getBoundingClientRect();
     const viewWidth = containerRect?.width ?? window.innerWidth;
     const viewHeight = containerRect?.height ?? window.innerHeight;
 
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (viewWidth - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (viewHeight - viewport.y) * invZoom;
-    const cullPadding = 150; // Larger padding for widgets
+    const invZoom = 1 / zoom;
+    const viewLeft = -vpX * invZoom;
+    const viewRight = (viewWidth - vpX) * invZoom;
+    const viewTop = -vpY * invZoom;
+    const viewBottom = (viewHeight - vpY) * invZoom;
+    const cullPadding = 150;
 
     widgets.forEach((el, key) => {
-      const [nodeId] = key.split(':');
-      const node = nodeMap.get(nodeId);
+      // Get nodeId from data attribute (no string splitting)
+      const nodeId = el.dataset.nodeId;
+      if (!nodeId) {
+        el.style.visibility = 'hidden';
+        return;
+      }
 
+      const node = nodeMap.get(nodeId);
       if (!node) {
         el.style.visibility = 'hidden';
         return;
       }
 
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const outputCount = node.outputs?.length ?? 0;
-      const inputCount = node.inputs?.length ?? 0;
-      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      const height = getCachedNodeHeight(node, socketLayout);
 
       // Frustum culling
       const nodeRight = node.position.x + width;
@@ -213,13 +292,11 @@ export function WidgetsLayer({
         return;
       }
 
-      el.style.visibility = 'visible';
+      // Get socket index from data attribute (pre-parsed as number)
+      const socketIndex = Number(el.dataset.socketIndex) || 0;
+      const outputCount = node.outputs?.length ?? 0;
 
-      // Get socket index from data attribute
-      const socketIndex = parseInt(el.dataset.socketIndex ?? '0', 10);
-
-      // Calculate socket row Y position
-      // Layout order: outputs first, then inputs
+      // Calculate socket row Y position (world coords)
       const rowIndex = outputCount + socketIndex;
       const socketY =
         node.position.y +
@@ -227,43 +304,60 @@ export function WidgetsLayer({
         rowIndex * socketLayout.rowHeight +
         socketLayout.rowHeight / 2;
 
-      // Widget starts after socket label area (roughly 60px from left edge)
+      // Widget world position
       const widgetX = node.position.x + socketLayout.padding + 60;
-
-      // Transform to screen coordinates
-      const screenX = widgetX * viewport.zoom + viewport.x;
-      const screenY = socketY * viewport.zoom + viewport.y;
-
-      // Position widget (centered vertically in row)
-      // Use transform scale so inner components scale naturally
+      const widgetY = socketY - socketLayout.widgetHeight / 2;
       const widgetWidth = width - socketLayout.padding * 2 - 80;
-      el.style.transform = `translate3d(${screenX}px, ${screenY - (socketLayout.widgetHeight / 2) * viewport.zoom}px, 0) scale(${viewport.zoom})`;
-      el.style.transformOrigin = 'top left';
-      el.style.width = `${widgetWidth}px`;
-      el.style.height = `${socketLayout.widgetHeight}px`;
+
+      // Convert to screen coordinates for transform (scale doesn't affect translate)
+      const screenX = widgetX * zoom + vpX;
+      const screenY = widgetY * zoom + vpY;
+
+      // Batched style write via cssText
+      el.style.cssText = buildWidgetStyle(
+        screenX,
+        screenY,
+        zoom,
+        widgetWidth,
+        socketLayout.widgetHeight,
+        true
+      );
     });
   }, [store, socketLayout, minWidgetZoom]);
 
-  // Subscribe to store changes
+  // Selective subscription for position updates
+  // Uses positionVersion (increments on node drag) + viewport changes
   useLayoutEffect(() => {
-    const unsubscribe = store.subscribe(() => {
-      // Check for node/connected socket changes (triggers React render for widget creation)
-      const state = store.getState();
-      setNodes((prev) => (prev.length !== state.nodes.length ? state.nodes : prev));
-      setConnectedSockets((prev) => (prev.size !== state.connectedSockets.size ? state.connectedSockets : prev));
+    // Position updates: subscribe to viewport and positionVersion
+    // Note: nodeMap is mutated in place, so we use positionVersion as change signal
+    const unsubscribePositions = store.subscribe(
+      (state) => ({ viewport: state.viewport, positionVersion: state.positionVersion }),
+      () => {
+        if (!pendingRef.current) {
+          pendingRef.current = true;
+          queueMicrotask(updatePositions);
+        }
+      },
+      { equalityFn: shallow }
+    );
 
-      // Schedule position update using microtask (same-frame, no 1-frame lag)
-      if (!pendingRef.current) {
-        pendingRef.current = true;
-        queueMicrotask(updatePositions);
-      }
-    });
+    // React state updates: subscribe to nodes and connectedSockets for widget creation/removal
+    const unsubscribeState = store.subscribe(
+      (state) => ({ nodesLen: state.nodes.length, socketsSize: state.connectedSockets.size }),
+      ({ nodesLen, socketsSize }) => {
+        const state = store.getState();
+        setNodes((prev) => (prev.length !== nodesLen ? state.nodes : prev));
+        setConnectedSockets((prev) => (prev.size !== socketsSize ? state.connectedSockets : prev));
+      },
+      { equalityFn: shallow }
+    );
 
     // Initial position update
     updatePositions();
 
     return () => {
-      unsubscribe();
+      unsubscribePositions();
+      unsubscribeState();
     };
   }, [store, updatePositions]);
 
@@ -281,13 +375,18 @@ export function WidgetsLayer({
     updatePositions();
   }, [widgetConfigs, updatePositions]);
 
-  // Collect widgets to render
-  const widgetEntries = Array.from(widgetConfigs.entries());
+  // Collect widgets to render (avoid Array.from in render by using useMemo)
+  const widgetEntries = useMemo(
+    () => Array.from(widgetConfigs.entries()),
+    [widgetConfigs]
+  );
+
+  // Stable event handlers (avoid creating new functions in render loop)
+  const stopPropagation = useCallback((e: React.SyntheticEvent) => e.stopPropagation(), []);
 
   return (
     <div ref={containerRef} style={containerStyle}>
-      {widgetEntries.map(([key, { node, socket, config }]) => {
-        const inputIndex = node.inputs?.findIndex((s) => s.id === socket.id) ?? 0;
+      {widgetEntries.map(([key, { node, socket, config, inputIndex, WidgetComponent }]) => {
         const nodeData = node.data as Record<string, unknown> | undefined;
         const values = nodeData?.values as Record<string, unknown> | undefined;
         const initialValue = values?.[socket.id];
@@ -302,21 +401,27 @@ export function WidgetsLayer({
                 widgetRefsMap.current.delete(key);
               }
             }}
+            data-node-id={node.id}
             data-socket-index={inputIndex}
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
-              pointerEvents: 'auto', // Widgets are interactive
+              pointerEvents: 'auto',
               display: 'flex',
               alignItems: 'center',
             }}
+            // Stop propagation to prevent InputHandler from capturing widget interactions
+            onPointerDown={stopPropagation}
+            onPointerMove={stopPropagation}
+            onPointerUp={stopPropagation}
+            onClick={stopPropagation}
           >
             <SocketWidget
               nodeId={node.id}
-              socket={socket}
+              socketId={socket.id}
               config={config}
-              widgetTypes={widgetTypes}
+              WidgetComponent={WidgetComponent}
               onWidgetChange={onWidgetChange}
               initialValue={initialValue}
             />

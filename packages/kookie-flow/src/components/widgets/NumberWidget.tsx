@@ -55,6 +55,7 @@ export function NumberWidget({
   return (
     <TextField.Root
       size="2"
+      variant="soft"
       type="number"
       value={localValue}
       onChange={handleChange}

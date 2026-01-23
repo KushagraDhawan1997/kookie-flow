@@ -65,6 +65,13 @@ export interface FlowState {
    */
   connectedSockets: Set<string>;
 
+  /**
+   * Position version counter - increments on any position update.
+   * Used by components that need to track position changes without
+   * relying on nodeMap reference changes (which may be mutated in place).
+   */
+  positionVersion: number;
+
   /** Internal clipboard (holds references, no serialization) */
   internalClipboard: InternalClipboard | null;
 
@@ -228,6 +235,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       nodeMap,
       quadtree,
       connectedSockets,
+
+      // Position version for tracking position changes
+      positionVersion: 0,
 
       // Internal clipboard
       internalClipboard: null,
@@ -494,7 +504,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Updates positions and quadtree incrementally without full rebuild
       // O(n+k) where n=nodes, k=updates (builds index map once, then O(1) per update)
       updateNodePositions: (updates) => {
-        const { nodes, nodeMap, quadtree } = get();
+        const { nodes, nodeMap, quadtree, positionVersion } = get();
         const nextNodes = [...nodes];
 
         // Build id->index map once: O(n)
@@ -514,7 +524,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        set({ nodes: nextNodes });
+        // Increment positionVersion so subscribers know positions changed
+        set({ nodes: nextNodes, positionVersion: positionVersion + 1 });
       },
 
       // ========================================

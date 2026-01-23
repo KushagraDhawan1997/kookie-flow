@@ -32,6 +32,7 @@ export function SliderWidget({
     <Box width="100%">
       <Slider
         size="2"
+        variant="soft"
         value={sliderValue}
         onValueChange={handleValueChange}
         min={min}

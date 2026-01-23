@@ -31,6 +31,7 @@ export function SelectWidget({
       disabled={disabled}
     >
       <Select.Trigger
+        variant="soft"
         placeholder={placeholder ?? 'Select...'}
         style={{ flex: 1 }}
       />

@@ -1,6 +1,12 @@
 @import 'tailwindcss/preflight';
 @import '@kushagradhawan/kookie-ui/styles.css';
 
+/* Google Sans font family overrides for Kookie UI */
+:root {
+  --font-sans: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Google Sans Mono', ui-monospace, 'SF Mono', monospace;
+}
+
 /* Minimal global styles - Kookie UI handles the rest */
 
 html,

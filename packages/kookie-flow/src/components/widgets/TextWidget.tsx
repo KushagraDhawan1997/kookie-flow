@@ -25,6 +25,7 @@ export function TextWidget({
   return (
     <TextField.Root
       size="2"
+      variant="soft"
       value={strValue}
       onChange={handleChange}
       disabled={disabled}

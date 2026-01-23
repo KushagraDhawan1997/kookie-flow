@@ -21,6 +21,7 @@ export function CheckboxWidget({ value, onChange, disabled }: WidgetProps) {
     <Flex align="center" gap="2" style={{ flex: 1 }}>
       <Checkbox
         size="2"
+        variant="soft"
         checked={checked}
         onCheckedChange={handleCheckedChange}
         disabled={disabled}

@@ -8,7 +8,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       accentColor="blue"
       grayColor="auto"
       material="solid"
-      radius="medium"
+      radius="small"
       fontFamily="sans"
       appearance="light"
     >
