@@ -181,7 +181,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'complex-node-1',
     type: 'default',
-    position: { x: -1000, y: 0 },
+    position: { x: -1500, y: -500 },
     color: 'purple',
     data: { label: 'Image Generator (Complex)' },
     inputs: [
@@ -219,7 +219,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'complex-node-2',
     type: 'default',
-    position: { x: -1000, y: 600 },
+    position: { x: -1200, y: -500 },
     color: 'blue',
     data: { label: 'ControlNet Processor' },
     inputs: [
@@ -253,7 +253,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'complex-node-3',
     type: 'default',
-    position: { x: -1000, y: 1100 },
+    position: { x: -900, y: -500 },
     color: 'orange',
     data: { label: 'Advanced Compositor' },
     inputs: [
@@ -293,7 +293,8 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'complex-node-4',
     type: 'default',
-    position: { x: -1400, y: 300 },
+    position: { x: -600, y: -500 },
+    color: 'teal',
     data: { label: 'Mega Color Grading' },
     inputs: [
       { id: 'cx4-in-0', name: 'Image', type: 'image' },
@@ -324,7 +325,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'complex-node-5',
     type: 'default',
-    position: { x: -1400, y: 900 },
+    position: { x: -300, y: -500 },
     color: 'red',
     data: { label: 'Ultimate AI Upscaler' },
     inputs: [

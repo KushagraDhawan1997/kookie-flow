@@ -140,7 +140,9 @@ const SocketWidget = memo(
     if (nodeColor && ThemeComponent) {
       return (
         <ThemeComponent accentColor={nodeColor} hasBackground={false} asChild>
-          <div style={{ width: '100%', height: '100%' }}>{widget}</div>
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+            {widget}
+          </div>
         </ThemeComponent>
       );
     }
