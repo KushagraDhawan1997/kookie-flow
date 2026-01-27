@@ -160,10 +160,7 @@ const SocketWidget = memo(
 // Cached node height computation to avoid recalculating in hot loop
 const nodeHeightCache = new Map<string, number>();
 
-function getCachedNodeHeight(
-  node: Node,
-  socketLayout: ReturnType<typeof useSocketLayout>
-): number {
+function getCachedNodeHeight(node: Node, socketLayout: ReturnType<typeof useSocketLayout>): number {
   if (node.height !== undefined) return node.height;
 
   const cacheKey = `${node.outputs?.length ?? 0}:${node.inputs?.length ?? 0}`;
@@ -179,22 +176,22 @@ function getCachedNodeHeight(
   return height;
 }
 
-// Pre-allocated style string builder to reduce GC pressure
-// Uses transform scale() instead of CSS zoom for better performance
-// Scale doesn't affect translate, so we position in screen coords
-const buildWidgetStyle = (
-  screenX: number,
-  screenY: number,
-  zoom: number,
-  width: number,
-  height: number,
-  visible: boolean
-): string =>
-  `position:absolute;top:0;left:0;pointer-events:auto;display:flex;align-items:center;` +
-  `visibility:${visible ? 'visible' : 'hidden'};` +
-  `transform:translate3d(${screenX}px,${screenY}px,0) scale(${zoom});` +
-  `transform-origin:0 0;width:${width}px;height:${height}px;` +
-  `contain:layout style;will-change:transform`;
+// Static styles for widget wrappers - set once at mount, never in hot loop
+// PERF: Using direct property updates in updatePositions() instead of cssText
+// avoids 28ms+ style recalculation when dragging nodes (cssText replaces ALL styles)
+const widgetWrapperStyle: CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  pointerEvents: 'auto',
+  display: 'flex',
+  alignItems: 'center',
+  transformOrigin: '0 0',
+  contain: 'layout style', // Isolate layout without clipping overflow (no paint/size)
+  willChange: 'transform',
+  // Start hidden - updatePositions shows after positioning
+  visibility: 'hidden',
+};
 
 /**
  * Widgets layer component.
@@ -354,15 +351,25 @@ export function WidgetsLayer({
       const screenX = widgetX * zoom + vpX;
       const screenY = widgetY * zoom + vpY;
 
-      // Batched style write via cssText
-      el.style.cssText = buildWidgetStyle(
-        screenX,
-        screenY,
-        zoom,
-        widgetWidth,
-        socketLayout.widgetHeight,
-        true
-      );
+      // PERF: Direct property updates (not cssText) to avoid style recalculation
+      // Only update transform (composite) and visibility - no layout properties in hot loop
+      el.style.transform = `translate3d(${screenX}px,${screenY}px,0) scale(${zoom})`;
+      el.style.visibility = 'visible';
+
+      // Width/height: only update if changed (rare - only on node resize, not drag)
+      // Using dataset to cache previous values avoids layout thrashing
+      const cachedWidth = el.dataset.w;
+      const cachedHeight = el.dataset.h;
+      const newWidth = `${widgetWidth}px`;
+      const newHeight = `${socketLayout.widgetHeight}px`;
+      if (cachedWidth !== newWidth) {
+        el.style.width = newWidth;
+        el.dataset.w = newWidth;
+      }
+      if (cachedHeight !== newHeight) {
+        el.style.height = newHeight;
+        el.dataset.h = newHeight;
+      }
     });
   }, [store, socketLayout, minWidgetZoom]);
 
@@ -436,10 +443,7 @@ export function WidgetsLayer({
   }, [widgetConfigs, updatePositions]);
 
   // Collect widgets to render (avoid Array.from in render by using useMemo)
-  const widgetEntries = useMemo(
-    () => Array.from(widgetConfigs.entries()),
-    [widgetConfigs]
-  );
+  const widgetEntries = useMemo(() => Array.from(widgetConfigs.entries()), [widgetConfigs]);
 
   // Stable event handlers (avoid creating new functions in render loop)
   const stopPropagation = useCallback((e: React.SyntheticEvent) => e.stopPropagation(), []);
@@ -463,14 +467,7 @@ export function WidgetsLayer({
             }}
             data-node-id={node.id}
             data-socket-index={inputIndex}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              pointerEvents: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-            }}
+            style={widgetWrapperStyle}
             // Stop propagation to prevent InputHandler from capturing widget interactions
             onPointerDown={stopPropagation}
             onPointerMove={stopPropagation}
