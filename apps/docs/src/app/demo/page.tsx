@@ -232,10 +232,10 @@ function generateEdges(nodeCount: number): Edge[] {
 
         // Add labels to some horizontal edges (spread across graph)
         if (i % 50 === 0) {
-          edge.label = `Flow ${i}`;
+          edge.label = { text: `Flow ${i}`, fontSize: 12 };
           edge.markerEnd = { type: 'arrow', width: 16, height: 16 };
         } else if (i % 50 === 25) {
-          edge.label = 'Transfer';
+          edge.label = { text: 'Transfer', fontSize: 12 };
         }
 
         edges.push(edge);
@@ -257,9 +257,9 @@ function generateEdges(nodeCount: number): Edge[] {
 
         // Add labels to some vertical edges (spread across graph)
         if (i % 64 === 0) {
-          verticalEdge.label = 'Data ↓';
+          verticalEdge.label = { text: 'Data ↓', fontSize: 12 };
         } else if (i % 64 === 32) {
-          verticalEdge.label = 'Sync';
+          verticalEdge.label = { text: 'Sync', fontSize: 12 };
         }
 
         edges.push(verticalEdge);
@@ -282,7 +282,7 @@ function generateEdges(nodeCount: number): Edge[] {
 
         // Add labels to some diagonal edges
         if (i % 99 === 0) {
-          diagEdge.label = { text: 'Bypass', position: 0.6 };
+          diagEdge.label = { text: 'Bypass', fontSize: 12, position: 0.6 };
         }
 
         edges.push(diagEdge);

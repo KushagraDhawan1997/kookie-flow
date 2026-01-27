@@ -384,12 +384,12 @@ export function MultiWeightTextRenderer({
                 socketLayout.marginTop +
                 i * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
-              const textY = socketY - 5;
+              const textY = socketY - 6;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
                 position: [node.position.x + width - 12, textY, 0.1],
-                fontSize: 10,
+                fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'right',
                 fontWeight: 'regular',
@@ -408,12 +408,12 @@ export function MultiWeightTextRenderer({
                 socketLayout.marginTop +
                 rowIndex * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
-              const textY = socketY - 5;
+              const textY = socketY - 6;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
                 text: socket.name,
                 position: [node.position.x + 12, textY, 0.1],
-                fontSize: 10,
+                fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'left',
                 fontWeight: 'regular',
