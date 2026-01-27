@@ -553,6 +553,10 @@ export interface KookieFlowProps {
   onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
+  /** Default node width when node.width is not specified. Default: 240 */
+  defaultNodeWidth?: number;
+  /** Width reserved for socket labels before widget starts. Default: 96 */
+  socketLabelWidth?: number;
   /**
    * Kookie UI Theme component for per-node accent color support.
    * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.

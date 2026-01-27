@@ -143,6 +143,7 @@ export {
   SOCKET_RADIUS,
   SOCKET_SPACING,
   SOCKET_MARGIN_TOP,
+  SOCKET_LABEL_WIDTH,
   MINIMAP_DEFAULTS,
 } from './core/constants';
 

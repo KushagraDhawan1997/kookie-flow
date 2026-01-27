@@ -27,7 +27,7 @@ import { useFlowStoreApi } from './context';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { BUILT_IN_WIDGETS } from './widgets';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { calculateMinNodeHeight } from '../utils/style-resolver';
 import type {
   Node,
@@ -62,6 +62,10 @@ export interface WidgetsLayerProps {
    * When provided, widgets on nodes with `color` prop will use that accent color.
    */
   ThemeComponent?: ThemeComponentType;
+  /** Default node width when node.width is not specified. Default: 240 */
+  defaultNodeWidth?: number;
+  /** Width reserved for socket labels before widget starts. Default: 96 */
+  socketLabelWidth?: number;
 }
 
 // LOD threshold for widgets - match node/label visibility (0.1 = minZoom default)
@@ -204,7 +208,12 @@ export function WidgetsLayer({
   onWidgetChange,
   minWidgetZoom = DEFAULT_MIN_WIDGET_ZOOM,
   ThemeComponent,
+  defaultNodeWidth: defaultNodeWidthProp,
+  socketLabelWidth: socketLabelWidthProp,
 }: WidgetsLayerProps) {
+  // Use prop values with fallback to constants
+  const nodeWidthDefault = defaultNodeWidthProp ?? DEFAULT_NODE_WIDTH;
+  const labelWidth = socketLabelWidthProp ?? SOCKET_LABEL_WIDTH;
   const store = useFlowStoreApi();
   const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -314,7 +323,7 @@ export function WidgetsLayer({
         return;
       }
 
-      const width = node.width ?? DEFAULT_NODE_WIDTH;
+      const width = node.width ?? nodeWidthDefault;
       const height = getCachedNodeHeight(node, socketLayout);
 
       // Frustum culling
@@ -344,9 +353,9 @@ export function WidgetsLayer({
         socketLayout.rowHeight / 2;
 
       // Widget world position
-      const widgetX = node.position.x + socketLayout.padding + 60;
+      const widgetX = node.position.x + socketLayout.padding + labelWidth;
       const widgetY = socketY - socketLayout.widgetHeight / 2;
-      const widgetWidth = width - socketLayout.padding * 2 - 60;
+      const widgetWidth = width - socketLayout.padding * 2 - labelWidth;
 
       // Convert to screen coordinates for transform (scale doesn't affect translate)
       const screenX = widgetX * zoom + vpX;
@@ -372,7 +381,7 @@ export function WidgetsLayer({
         el.dataset.h = newHeight;
       }
     });
-  }, [store, socketLayout, minWidgetZoom]);
+  }, [store, socketLayout, minWidgetZoom, nodeWidthDefault, labelWidth]);
 
   // Selective subscription for position updates
   // Uses positionVersion (increments on node drag) + viewport changes
