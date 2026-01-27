@@ -43,6 +43,7 @@ import { shallow } from 'zustand/shallow';
 type ThemeComponentType = React.ComponentType<{
   accentColor?: AccentColor;
   hasBackground?: boolean;
+  asChild?: boolean;
   children: React.ReactNode;
 }>;
 
@@ -134,8 +135,8 @@ const SocketWidget = memo(
     // Wrap in Theme if node has custom color and ThemeComponent is provided
     if (nodeColor && ThemeComponent) {
       return (
-        <ThemeComponent accentColor={nodeColor} hasBackground={false}>
-          {widget}
+        <ThemeComponent accentColor={nodeColor} hasBackground={false} asChild>
+          <div style={{ width: '100%', height: '100%' }}>{widget}</div>
         </ThemeComponent>
       );
     }

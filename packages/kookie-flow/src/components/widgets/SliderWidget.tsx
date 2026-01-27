@@ -29,7 +29,7 @@ export function SliderWidget({
   );
 
   return (
-    <Box width="100%">
+    <Box width="100%" style={{ flex: 1 }}>
       <Slider
         size="2"
         variant="soft"
@@ -39,6 +39,7 @@ export function SliderWidget({
         max={max}
         step={step}
         disabled={disabled}
+        style={{ width: '100%' }}
       />
     </Box>
   );
