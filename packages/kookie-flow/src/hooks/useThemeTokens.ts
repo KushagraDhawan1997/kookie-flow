@@ -72,17 +72,34 @@ export interface ThemeTokens {
   '--accent-9': RGBColor;
   '--accent-a3': RGBAColor;
 
-  // Radix color palette (for socket types)
-  '--blue-9': RGBColor;
+  // Radix color palette (all 26 AccentColor values at step 9)
+  // Used for socket types and per-node color overrides
+  // Note: --gray-9 is already defined in gray scale above
+  '--gold-9': RGBColor;
+  '--bronze-9': RGBColor;
+  '--brown-9': RGBColor;
+  '--yellow-9': RGBColor;
+  '--amber-9': RGBColor;
+  '--orange-9': RGBColor;
+  '--tomato-9': RGBColor;
+  '--red-9': RGBColor;
+  '--ruby-9': RGBColor;
+  '--crimson-9': RGBColor;
+  '--pink-9': RGBColor;
+  '--plum-9': RGBColor;
   '--purple-9': RGBColor;
   '--violet-9': RGBColor;
-  '--green-9': RGBColor;
-  '--red-9': RGBColor;
-  '--amber-9': RGBColor;
+  '--iris-9': RGBColor;
+  '--indigo-9': RGBColor;
+  '--blue-9': RGBColor;
   '--cyan-9': RGBColor;
-  '--pink-9': RGBColor;
   '--teal-9': RGBColor;
-  '--orange-9': RGBColor;
+  '--jade-9': RGBColor;
+  '--green-9': RGBColor;
+  '--grass-9': RGBColor;
+  '--lime-9': RGBColor;
+  '--mint-9': RGBColor;
+  '--sky-9': RGBColor;
 
   // Surfaces
   '--color-surface-solid': RGBColor;
@@ -160,17 +177,32 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
   '--accent-a3': [0.392, 0.404, 0.961, 0.3],
 
-  // Radix colors for sockets
-  '--blue-9': [0.0, 0.565, 1.0], // #0090ff
+  // Radix colors (all 26 AccentColor values at step 9, dark mode defaults)
+  '--gold-9': [0.906, 0.784, 0.392], // #e7c864
+  '--bronze-9': [0.647, 0.522, 0.392], // #a58564
+  '--brown-9': [0.678, 0.514, 0.388], // #ad8363
+  '--yellow-9': [1.0, 0.878, 0.224], // #ffe039
+  '--amber-9': [1.0, 0.773, 0.239], // #ffc53d
+  '--orange-9': [0.973, 0.522, 0.204], // #f88534
+  '--tomato-9': [0.906, 0.373, 0.322], // #e75f52
+  '--red-9': [0.906, 0.318, 0.365], // #e7515d
+  '--ruby-9': [0.878, 0.318, 0.404], // #e05167
+  '--crimson-9': [0.878, 0.294, 0.467], // #e04b77
+  '--pink-9': [0.878, 0.365, 0.576], // #e05d93
+  '--plum-9': [0.733, 0.365, 0.706], // #bb5db4
   '--purple-9': [0.557, 0.341, 0.969], // #8e57f7
   '--violet-9': [0.431, 0.337, 0.812], // #6e56cf
-  '--green-9': [0.18, 0.71, 0.486], // #2eb77c
-  '--red-9': [0.906, 0.318, 0.365], // #e7515d
-  '--amber-9': [1.0, 0.773, 0.239], // #ffc53d
+  '--iris-9': [0.365, 0.365, 0.878], // #5d5de0
+  '--indigo-9': [0.392, 0.404, 0.961], // #6367f5
+  '--blue-9': [0.0, 0.565, 1.0], // #0090ff
   '--cyan-9': [0.0, 0.647, 0.773], // #00a5c5
-  '--pink-9': [0.878, 0.365, 0.576], // #e05d93
   '--teal-9': [0.133, 0.631, 0.596], // #22a198
-  '--orange-9': [0.973, 0.522, 0.204], // #f88534
+  '--jade-9': [0.133, 0.639, 0.514], // #22a383
+  '--green-9': [0.18, 0.71, 0.486], // #2eb77c
+  '--grass-9': [0.275, 0.678, 0.376], // #46ad60
+  '--lime-9': [0.604, 0.773, 0.196], // #9ac532
+  '--mint-9': [0.522, 0.839, 0.769], // #85d6c4
+  '--sky-9': [0.494, 0.796, 0.988], // #7ecbfc
 
   // Surfaces
   '--color-surface-solid': [0.098, 0.098, 0.098],
@@ -310,17 +342,32 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
     '--accent-a3': getCSSVarRGBA(styles, '--accent-a3', FALLBACK_TOKENS['--accent-a3']),
 
-    // Radix colors for sockets
-    '--blue-9': getCSSVarRGB(styles, '--blue-9', FALLBACK_TOKENS['--blue-9']),
+    // Radix colors (all 26 AccentColor values)
+    '--gold-9': getCSSVarRGB(styles, '--gold-9', FALLBACK_TOKENS['--gold-9']),
+    '--bronze-9': getCSSVarRGB(styles, '--bronze-9', FALLBACK_TOKENS['--bronze-9']),
+    '--brown-9': getCSSVarRGB(styles, '--brown-9', FALLBACK_TOKENS['--brown-9']),
+    '--yellow-9': getCSSVarRGB(styles, '--yellow-9', FALLBACK_TOKENS['--yellow-9']),
+    '--amber-9': getCSSVarRGB(styles, '--amber-9', FALLBACK_TOKENS['--amber-9']),
+    '--orange-9': getCSSVarRGB(styles, '--orange-9', FALLBACK_TOKENS['--orange-9']),
+    '--tomato-9': getCSSVarRGB(styles, '--tomato-9', FALLBACK_TOKENS['--tomato-9']),
+    '--red-9': getCSSVarRGB(styles, '--red-9', FALLBACK_TOKENS['--red-9']),
+    '--ruby-9': getCSSVarRGB(styles, '--ruby-9', FALLBACK_TOKENS['--ruby-9']),
+    '--crimson-9': getCSSVarRGB(styles, '--crimson-9', FALLBACK_TOKENS['--crimson-9']),
+    '--pink-9': getCSSVarRGB(styles, '--pink-9', FALLBACK_TOKENS['--pink-9']),
+    '--plum-9': getCSSVarRGB(styles, '--plum-9', FALLBACK_TOKENS['--plum-9']),
     '--purple-9': getCSSVarRGB(styles, '--purple-9', FALLBACK_TOKENS['--purple-9']),
     '--violet-9': getCSSVarRGB(styles, '--violet-9', FALLBACK_TOKENS['--violet-9']),
-    '--green-9': getCSSVarRGB(styles, '--green-9', FALLBACK_TOKENS['--green-9']),
-    '--red-9': getCSSVarRGB(styles, '--red-9', FALLBACK_TOKENS['--red-9']),
-    '--amber-9': getCSSVarRGB(styles, '--amber-9', FALLBACK_TOKENS['--amber-9']),
+    '--iris-9': getCSSVarRGB(styles, '--iris-9', FALLBACK_TOKENS['--iris-9']),
+    '--indigo-9': getCSSVarRGB(styles, '--indigo-9', FALLBACK_TOKENS['--indigo-9']),
+    '--blue-9': getCSSVarRGB(styles, '--blue-9', FALLBACK_TOKENS['--blue-9']),
     '--cyan-9': getCSSVarRGB(styles, '--cyan-9', FALLBACK_TOKENS['--cyan-9']),
-    '--pink-9': getCSSVarRGB(styles, '--pink-9', FALLBACK_TOKENS['--pink-9']),
     '--teal-9': getCSSVarRGB(styles, '--teal-9', FALLBACK_TOKENS['--teal-9']),
-    '--orange-9': getCSSVarRGB(styles, '--orange-9', FALLBACK_TOKENS['--orange-9']),
+    '--jade-9': getCSSVarRGB(styles, '--jade-9', FALLBACK_TOKENS['--jade-9']),
+    '--green-9': getCSSVarRGB(styles, '--green-9', FALLBACK_TOKENS['--green-9']),
+    '--grass-9': getCSSVarRGB(styles, '--grass-9', FALLBACK_TOKENS['--grass-9']),
+    '--lime-9': getCSSVarRGB(styles, '--lime-9', FALLBACK_TOKENS['--lime-9']),
+    '--mint-9': getCSSVarRGB(styles, '--mint-9', FALLBACK_TOKENS['--mint-9']),
+    '--sky-9': getCSSVarRGB(styles, '--sky-9', FALLBACK_TOKENS['--sky-9']),
 
     // Surfaces
     '--color-surface-solid': getCSSVarRGB(

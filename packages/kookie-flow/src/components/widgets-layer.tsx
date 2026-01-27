@@ -35,8 +35,16 @@ import type {
   SocketType,
   WidgetProps,
   ResolvedWidgetConfig,
+  AccentColor,
 } from '../types';
 import { shallow } from 'zustand/shallow';
+
+/** Theme component type for per-node accent color support */
+type ThemeComponentType = React.ComponentType<{
+  accentColor?: AccentColor;
+  hasBackground?: boolean;
+  children: React.ReactNode;
+}>;
 
 export interface WidgetsLayerProps {
   /** Socket type definitions for widget resolution */
@@ -47,6 +55,12 @@ export interface WidgetsLayerProps {
   onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
   /** Minimum zoom level to show widgets. Default: 0.4 */
   minWidgetZoom?: number;
+  /**
+   * Kookie UI Theme component for per-node accent color support.
+   * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
+   * When provided, widgets on nodes with `color` prop will use that accent color.
+   */
+  ThemeComponent?: ThemeComponentType;
 }
 
 // LOD threshold for widgets - match node/label visibility (0.1 = minZoom default)
@@ -67,6 +81,7 @@ const containerStyle: CSSProperties = {
 /**
  * Individual socket widget wrapper.
  * Handles value state and change callbacks.
+ * Wraps in Theme component when node has custom color (for Kookie UI integration).
  */
 interface SocketWidgetProps {
   nodeId: string;
@@ -76,6 +91,10 @@ interface SocketWidgetProps {
   WidgetComponent: React.ComponentType<WidgetProps>;
   onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
   initialValue: unknown;
+  /** Per-node accent color (changes widget theme) */
+  nodeColor?: AccentColor;
+  /** Theme component for accent color support */
+  ThemeComponent?: ThemeComponentType;
 }
 
 const SocketWidget = memo(
@@ -86,6 +105,8 @@ const SocketWidget = memo(
     WidgetComponent,
     onWidgetChange,
     initialValue,
+    nodeColor,
+    ThemeComponent,
   }: SocketWidgetProps) {
     // Local value state (widget controls its own value, notifies parent on change)
     const [value, setValue] = useState(initialValue ?? config.defaultValue);
@@ -98,7 +119,7 @@ const SocketWidget = memo(
       [nodeId, socketId, onWidgetChange]
     );
 
-    return (
+    const widget = (
       <WidgetComponent
         value={value}
         onChange={handleChange}
@@ -109,6 +130,17 @@ const SocketWidget = memo(
         placeholder={config.placeholder}
       />
     );
+
+    // Wrap in Theme if node has custom color and ThemeComponent is provided
+    if (nodeColor && ThemeComponent) {
+      return (
+        <ThemeComponent accentColor={nodeColor} hasBackground={false}>
+          {widget}
+        </ThemeComponent>
+      );
+    }
+
+    return widget;
   },
   // Custom comparison: only re-render if value-affecting props change
   (prev, next) =>
@@ -117,6 +149,8 @@ const SocketWidget = memo(
     prev.WidgetComponent === next.WidgetComponent &&
     prev.onWidgetChange === next.onWidgetChange &&
     prev.initialValue === next.initialValue &&
+    prev.nodeColor === next.nodeColor &&
+    prev.ThemeComponent === next.ThemeComponent &&
     prev.config.type === next.config.type &&
     prev.config.min === next.config.min &&
     prev.config.max === next.config.max &&
@@ -171,6 +205,7 @@ export function WidgetsLayer({
   widgetTypes = {},
   onWidgetChange,
   minWidgetZoom = DEFAULT_MIN_WIDGET_ZOOM,
+  ThemeComponent,
 }: WidgetsLayerProps) {
   const store = useFlowStoreApi();
   const socketLayout = useSocketLayout();
@@ -449,6 +484,8 @@ export function WidgetsLayer({
               WidgetComponent={WidgetComponent}
               onWidgetChange={onWidgetChange}
               initialValue={initialValue}
+              nodeColor={node.color}
+              ThemeComponent={ThemeComponent}
             />
           </div>
         );

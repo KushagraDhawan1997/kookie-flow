@@ -516,4 +516,20 @@ export interface KookieFlowProps {
   onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
+  /**
+   * Kookie UI Theme component for per-node accent color support.
+   * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
+   * When provided, widgets on nodes with `color` prop will use that accent color.
+   *
+   * @example
+   * ```tsx
+   * import { Theme } from '@kushagradhawan/kookie-ui';
+   * <KookieFlow ThemeComponent={Theme} ... />
+   * ```
+   */
+  ThemeComponent?: React.ComponentType<{
+    accentColor?: AccentColor;
+    hasBackground?: boolean;
+    children: React.ReactNode;
+  }>;
 }

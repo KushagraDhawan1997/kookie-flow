@@ -85,6 +85,7 @@ export function KookieFlow({
   widgetTypes,
   onWidgetChange,
   showWidgets = true,
+  ThemeComponent,
 }: KookieFlowProps) {
   const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
 
@@ -130,6 +131,7 @@ export function KookieFlow({
           widgetTypes={widgetTypes}
           onWidgetChange={onWidgetChange}
           showWidgets={showWidgets}
+          ThemeComponent={ThemeComponent}
         >
           {children}
         </ThemedFlowContainer>
@@ -175,6 +177,7 @@ interface ThemedFlowContainerProps {
   widgetTypes?: KookieFlowProps['widgetTypes'];
   onWidgetChange?: KookieFlowProps['onWidgetChange'];
   showWidgets: boolean;
+  ThemeComponent?: KookieFlowProps['ThemeComponent'];
 }
 
 function ThemedFlowContainer({
@@ -210,6 +213,7 @@ function ThemedFlowContainer({
   widgetTypes,
   onWidgetChange,
   showWidgets,
+  ThemeComponent,
 }: ThemedFlowContainerProps) {
   const tokens = useTheme();
 
@@ -257,6 +261,7 @@ function ThemedFlowContainer({
             socketTypes={resolvedSocketTypes}
             widgetTypes={widgetTypes}
             onWidgetChange={onWidgetChange}
+            ThemeComponent={ThemeComponent}
           />
         )}
         {showMinimap && <Minimap {...minimapProps} />}

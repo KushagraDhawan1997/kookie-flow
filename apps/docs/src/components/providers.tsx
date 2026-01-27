@@ -5,12 +5,12 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <Theme
-      accentColor="gray"
+      accentColor="iris"
       grayColor="auto"
       material="solid"
       radius="small"
       fontFamily="sans"
-      appearance="dark"
+      appearance="light"
     >
       {children}
     </Theme>

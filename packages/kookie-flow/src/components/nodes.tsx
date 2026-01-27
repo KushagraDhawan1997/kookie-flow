@@ -3,7 +3,9 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
+import { useTheme } from '../contexts/ThemeContext';
 import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 
 // Pre-allocated objects to avoid GC
@@ -26,6 +28,7 @@ export function Nodes() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const resolvedStyle = useResolvedStyle();
   const socketLayout = useSocketLayout();
+  const tokens = useTheme();
 
   // Get initial node count for capacity
   const [capacity, setCapacity] = useState(() => {
@@ -66,6 +69,7 @@ export function Nodes() {
         attribute float aSelected;
         attribute float aHovered;
         attribute vec2 aSize;
+        attribute vec3 aAccentColor; // Per-node accent color override (-1 = use global)
 
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
@@ -75,12 +79,14 @@ export function Nodes() {
         varying float vHovered;
         varying vec2 vSize;
         varying vec2 vExpandedSize;
+        varying vec3 vAccentColor;
 
         void main() {
           vUv = uv;
           vSelected = aSelected;
           vHovered = aHovered;
           vSize = aSize;
+          vAccentColor = aAccentColor;
 
           // Expand geometry to include shadow padding
           float shadowPadding = uShadowBlur + abs(uShadowOffsetY);
@@ -120,6 +126,7 @@ export function Nodes() {
         varying float vHovered;
         varying vec2 vSize;
         varying vec2 vExpandedSize;
+        varying vec3 vAccentColor; // Per-node accent color override (-1 = use global)
 
         float roundedBoxSDF(vec2 p, vec2 b, float r) {
           vec2 q = abs(p) - b + r;
@@ -154,6 +161,13 @@ export function Nodes() {
             vSelected
           );
 
+          // Resolve header color: per-node override if r >= 0, else global uniform
+          // For per-node colors, create a subtle tint by mixing with background (like --accent-3)
+          // Global uHeaderColor is already a subtle tint (--accent-3 or --gray-3)
+          vec3 resolvedHeaderColor = vAccentColor.r < 0.0
+            ? uHeaderColor
+            : mix(bgColor, vAccentColor, 0.15); // 15% tint to match subtle -3 variants
+
           // Header region check (top of node) - only for "inside" mode (1.0)
           // "outside" mode (2.0) has no colored header - just floating text above
           if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
@@ -161,13 +175,16 @@ export function Nodes() {
             float headerBottom = halfHeight - uHeaderHeight;
             // Smoothstep for anti-aliased edge between header and body
             float headerMask = smoothstep(headerBottom - 0.5, headerBottom + 0.5, p.y);
-            bgColor = mix(bgColor, uHeaderColor, headerMask);
+            bgColor = mix(bgColor, resolvedHeaderColor, headerMask);
           }
+
+          // Resolve selected border color: per-node override if r >= 0, else global uniform
+          vec3 resolvedSelectedBorderColor = vAccentColor.r < 0.0 ? uSelectedBorderColor : vAccentColor;
 
           // Border: selected > hovered > default
           vec3 borderColor = mix(
             mix(uBorderColor, uHoveredBorderColor, vHovered),
-            uSelectedBorderColor,
+            resolvedSelectedBorderColor,
             vSelected
           );
 
@@ -214,9 +231,11 @@ export function Nodes() {
     selected: new Float32Array(capacity),
     hovered: new Float32Array(capacity),
     sizes: new Float32Array(capacity * 2),
+    accentColor: new Float32Array(capacity * 3), // Per-node accent color (RGB)
     selectedAttr: null as THREE.InstancedBufferAttribute | null,
     hoveredAttr: null as THREE.InstancedBufferAttribute | null,
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
+    accentColorAttr: null as THREE.InstancedBufferAttribute | null,
   }), [capacity]);
 
   // Reset initialized flag when buffers change (mesh will be recreated due to key change)
@@ -238,10 +257,13 @@ export function Nodes() {
     buffers.hoveredAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.sizes, 2);
     buffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.accentColorAttr = new THREE.InstancedBufferAttribute(buffers.accentColor, 3);
+    buffers.accentColorAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('aSelected', buffers.selectedAttr);
     mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
     mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
+    mesh.geometry.setAttribute('aAccentColor', buffers.accentColorAttr);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     initializedRef.current = true;
@@ -343,6 +365,12 @@ export function Nodes() {
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;
 
+      // Per-node accent color override (or sentinel for global)
+      const accentRGB = resolveAccentColorRGB(node.color, tokens);
+      buffers.accentColor[visibleCount * 3] = accentRGB[0];
+      buffers.accentColor[visibleCount * 3 + 1] = accentRGB[1];
+      buffers.accentColor[visibleCount * 3 + 2] = accentRGB[2];
+
       visibleCount++;
     }
 
@@ -350,10 +378,11 @@ export function Nodes() {
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
-    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr) {
+    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr && buffers.accentColorAttr) {
       buffers.selectedAttr.needsUpdate = true;
       buffers.hoveredAttr.needsUpdate = true;
       buffers.sizeAttr.needsUpdate = true;
+      buffers.accentColorAttr.needsUpdate = true;
     }
 
     // Safety: never exceed buffer capacity to prevent WebGL errors

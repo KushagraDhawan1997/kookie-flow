@@ -73,3 +73,9 @@ export {
   isSocketConnected,
   buildConnectedSocketsSet,
 } from './widgets';
+
+// Per-node accent color utilities
+export {
+  NO_OVERRIDE_SENTINEL,
+  resolveAccentColorRGB,
+} from './accent-colors';

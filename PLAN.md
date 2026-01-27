@@ -1875,7 +1875,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Kookie UI theme integration (`useThemeTokens()` hook, `ThemeContext`)
 - [x] Styling props: `size`, `variant`, `radius` (wired to shader)
 - [x] Styling props: `header`, `accentHeader` (wired to shader)
-- [ ] Per-node `color` override (typed but not wired to shader)
+- [x] Per-node `color` override (wired to shader via per-instance attributes)
 - [x] Shadow SDF for `classic` variant (with geometry expansion for unclipped shadows)
 - [x] 26 accent colors support (`AccentColor` type)
 - [x] Style resolution (`resolveNodeStyle()`, `style-resolver.ts`)

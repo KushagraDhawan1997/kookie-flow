@@ -11,6 +11,7 @@ import {
   type NodeVariant,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { Theme } from '@kushagradhawan/kookie-ui';
 
 // Socket type patterns designed to chain together
 // Each pattern's first output matches the next pattern's first input
@@ -711,12 +712,14 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2)
         size="2"
-        variant="surface"
+        variant="classic"
         radius="medium"
-        header="outside"
+        header="inside"
         accentHeader
         // Widget callback (uses DEFAULT_SOCKET_TYPES from package)
         onWidgetChange={handleWidgetChange}
+        // Per-node accent color support for widgets
+        ThemeComponent={Theme}
       >
         <ClipboardDemo />
         <ThemeTokensTest />
