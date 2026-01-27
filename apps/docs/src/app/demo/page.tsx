@@ -81,12 +81,12 @@ const nodeColors = [
   'violet',
 ] as const;
 
-// Widget demo nodes (positioned at top, left of main grid)
+// Widget demo nodes (positioned far left, away from complex nodes)
 const widgetDemoNodes: Node[] = [
   {
     id: 'widget-demo-1',
     type: 'default',
-    position: { x: -600, y: 0 },
+    position: { x: -2000, y: 0 },
     data: { label: 'Slider Demo' },
     inputs: [
       { id: 'w1-in-0', name: 'Amount', type: 'float' },
@@ -103,7 +103,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'widget-demo-2',
     type: 'default',
-    position: { x: -600, y: 240 },
+    position: { x: -2000, y: 300 },
     data: { label: 'Number Demo' },
     inputs: [
       { id: 'w2-in-0', name: 'Width', type: 'int' },
@@ -120,7 +120,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'widget-demo-3',
     type: 'default',
-    position: { x: -600, y: 480 },
+    position: { x: -2000, y: 600 },
     data: { label: 'Select Demo' },
     inputs: [
       { id: 'w3-in-0', name: 'Mode', type: 'enum', options: ['Linear', 'Cubic', 'Nearest'] },
@@ -146,7 +146,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'widget-demo-4',
     type: 'default',
-    position: { x: -600, y: 720 },
+    position: { x: -2000, y: 900 },
     data: { label: 'Mixed Widgets' },
     inputs: [
       { id: 'w4-in-0', name: 'Enabled', type: 'boolean' },
@@ -164,7 +164,7 @@ const widgetDemoNodes: Node[] = [
   {
     id: 'widget-demo-5',
     type: 'default',
-    position: { x: -600, y: 1000 },
+    position: { x: -2000, y: 1250 },
     data: { label: 'No Widget' },
     inputs: [
       { id: 'w5-in-0', name: 'Image', type: 'image' }, // No widget (connection only)
@@ -185,8 +185,18 @@ const widgetDemoNodes: Node[] = [
     color: 'purple',
     data: { label: 'Image Generator (Complex)' },
     inputs: [
-      { id: 'cx1-in-0', name: 'Positive Prompt Input', type: 'string', placeholder: 'Enter prompt...' },
-      { id: 'cx1-in-1', name: 'Negative Prompt Input', type: 'string', placeholder: 'Negative prompt...' },
+      {
+        id: 'cx1-in-0',
+        name: 'Positive Prompt Input',
+        type: 'string',
+        placeholder: 'Enter prompt...',
+      },
+      {
+        id: 'cx1-in-1',
+        name: 'Negative Prompt Input',
+        type: 'string',
+        placeholder: 'Negative prompt...',
+      },
       { id: 'cx1-in-2', name: 'Output Width', type: 'int', min: 64, max: 2048 },
       { id: 'cx1-in-3', name: 'Output Height', type: 'int', min: 64, max: 2048 },
       { id: 'cx1-in-4', name: 'Sampling Steps', type: 'int', min: 1, max: 150 },
@@ -942,7 +952,7 @@ export default function DemoPage() {
         size="2"
         variant="classic"
         radius="medium"
-        header="inside"
+        header="outside"
         accentHeader
         // Widget callback (uses DEFAULT_SOCKET_TYPES from package)
         onWidgetChange={handleWidgetChange}
