@@ -2,9 +2,16 @@
 /**
  * MSDF Font Atlas Generator
  *
- * Generates MSDF font atlases from Google Sans for use in WebGL text rendering.
- * Supports multiple weights (Regular, SemiBold).
- * Run with: pnpm generate:fonts
+ * Generates MSDF font atlases for WebGL text rendering.
+ * Supports multiple font families and weights.
+ *
+ * Usage:
+ *   pnpm generate:fonts              - Generate Google Sans (default)
+ *   pnpm generate:fonts google-sans  - Generate Google Sans
+ *   pnpm generate:fonts inter        - Generate Inter
+ *   pnpm generate:fonts roboto       - Generate Roboto
+ *   pnpm generate:fonts source-serif - Generate Source Serif Pro
+ *   pnpm generate:fonts all          - Generate all fonts
  */
 
 import { execSync } from 'child_process';
@@ -16,11 +23,52 @@ import fs from 'fs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FONTS_DIR = join(__dirname, '..', 'fonts');
 
-// Font weights to generate
-const FONT_WEIGHTS = [
-  { name: 'regular', file: 'GoogleSans-Regular.ttf', output: 'google-sans-regular-msdf' },
-  { name: 'semibold', file: 'GoogleSans-SemiBold.ttf', output: 'google-sans-semibold-msdf' },
-];
+/**
+ * Font family configurations.
+ * Each family has a list of weights with TTF file names and output names.
+ */
+const FONT_FAMILIES = {
+  'google-sans': {
+    displayName: 'Google Sans',
+    weights: [
+      { name: 'regular', file: 'GoogleSans-Regular.ttf', output: 'google-sans-regular-msdf' },
+      { name: 'semibold', file: 'GoogleSans-SemiBold.ttf', output: 'google-sans-semibold-msdf' },
+    ],
+    downloadUrl: 'https://fonts.google.com/specimen/Google+Sans',
+  },
+  'inter': {
+    displayName: 'Inter',
+    weights: [
+      { name: 'regular', file: 'Inter-Regular.ttf', output: 'inter-regular-msdf' },
+      { name: 'semibold', file: 'Inter-SemiBold.ttf', output: 'inter-semibold-msdf' },
+    ],
+    downloadUrl: 'https://fonts.google.com/specimen/Inter',
+  },
+  'roboto': {
+    displayName: 'Roboto',
+    weights: [
+      { name: 'regular', file: 'Roboto-Regular.ttf', output: 'roboto-regular-msdf' },
+      { name: 'medium', file: 'Roboto-Medium.ttf', output: 'roboto-medium-msdf' },
+    ],
+    downloadUrl: 'https://fonts.google.com/specimen/Roboto',
+  },
+  'source-serif': {
+    displayName: 'Source Serif Pro',
+    weights: [
+      { name: 'regular', file: 'SourceSerifPro-Regular.ttf', output: 'source-serif-regular-msdf' },
+      { name: 'semibold', file: 'SourceSerifPro-SemiBold.ttf', output: 'source-serif-semibold-msdf' },
+    ],
+    downloadUrl: 'https://fonts.google.com/specimen/Source+Serif+Pro',
+  },
+};
+
+// Get target font family from command line args
+const targetFamily = process.argv[2] || 'google-sans';
+
+// For backwards compatibility, also support FONT_WEIGHTS format
+const FONT_WEIGHTS = targetFamily === 'all'
+  ? Object.values(FONT_FAMILIES).flatMap(f => f.weights)
+  : (FONT_FAMILIES[targetFamily]?.weights || FONT_FAMILIES['google-sans'].weights);
 
 // Characters to include in atlas (ASCII + common extended)
 const CHARSET =
@@ -71,15 +119,38 @@ function findMetricsFile(outputName, fontFileName) {
 }
 
 async function main() {
-  console.log('MSDF Font Atlas Generator (Google Sans - Multiple Weights)\n');
+  const familyConfig = FONT_FAMILIES[targetFamily];
 
+  if (targetFamily === 'all') {
+    console.log('MSDF Font Atlas Generator (All Fonts)\n');
+    // Generate all font families
+    for (const [familyKey, config] of Object.entries(FONT_FAMILIES)) {
+      console.log(`\n${'='.repeat(50)}`);
+      console.log(`Processing: ${config.displayName}`);
+      console.log('='.repeat(50));
+      await generateFamily(familyKey, config);
+    }
+    return;
+  }
+
+  if (!familyConfig) {
+    console.error(`Unknown font family: ${targetFamily}`);
+    console.log('Available families:', Object.keys(FONT_FAMILIES).join(', '));
+    process.exit(1);
+  }
+
+  console.log(`MSDF Font Atlas Generator (${familyConfig.displayName})\n`);
+  await generateFamily(targetFamily, familyConfig);
+}
+
+async function generateFamily(familyKey, familyConfig) {
   // Ensure fonts directory exists
   if (!existsSync(FONTS_DIR)) {
     mkdirSync(FONTS_DIR, { recursive: true });
   }
 
   // Check which fonts are available
-  const availableFonts = FONT_WEIGHTS.filter(weight => {
+  const availableFonts = familyConfig.weights.filter(weight => {
     const fontPath = join(FONTS_DIR, weight.file);
     if (existsSync(fontPath)) {
       console.log(`Found: ${weight.file}`);
@@ -91,10 +162,13 @@ async function main() {
   });
 
   if (availableFonts.length === 0) {
-    console.error('\nNo Google Sans font files found!');
-    console.log('Please download Google Sans from https://fonts.google.com/specimen/Google+Sans');
+    console.error(`\nNo ${familyConfig.displayName} font files found!`);
+    console.log(`Please download from ${familyConfig.downloadUrl}`);
     console.log(`Place the TTF files in ${FONTS_DIR}`);
-    process.exit(1);
+    if (targetFamily !== 'all') {
+      process.exit(1);
+    }
+    return;
   }
 
   console.log(`\nGenerating atlases for ${availableFonts.length} weight(s)...\n`);
@@ -146,11 +220,25 @@ async function main() {
   console.log('\n========================================');
   console.log('Embedding fonts into TypeScript...');
   console.log('========================================\n');
-  await embedFonts(generatedFonts);
+  await embedFonts(familyKey, familyConfig, generatedFonts);
 }
 
-async function embedFonts(fonts) {
-  const outputPath = join(__dirname, '..', 'src', 'core', 'embedded-font.ts');
+async function embedFonts(familyKey, familyConfig, fonts) {
+  // For Google Sans, use the original path for backwards compatibility
+  // For other fonts, use separate files in embedded-fonts directory
+  const isGoogleSans = familyKey === 'google-sans';
+  const outputDir = join(__dirname, '..', 'src', 'core');
+  const outputPath = isGoogleSans
+    ? join(outputDir, 'embedded-font.ts')
+    : join(outputDir, 'embedded-fonts', `${familyKey}.ts`);
+
+  // Ensure output directory exists
+  if (!isGoogleSans) {
+    const fontsDir = join(outputDir, 'embedded-fonts');
+    if (!existsSync(fontsDir)) {
+      mkdirSync(fontsDir, { recursive: true });
+    }
+  }
 
   const fontExports = [];
   let totalSize = 0;
@@ -183,38 +271,41 @@ async function embedFonts(fonts) {
     console.log(`  ${font.name}: ${metrics.chars?.length || 0} glyphs, ${size.toFixed(1)} KB`);
   }
 
+  // Determine import path for FontMetrics based on file location
+  const importPath = isGoogleSans ? '../utils/text-layout' : '../../utils/text-layout';
+
   // Generate TypeScript file
   let tsContent = `/**
- * Embedded MSDF Font Atlas
+ * Embedded MSDF Font Atlas - ${familyConfig.displayName}
  *
- * This module contains Google Sans MSDF fonts embedded as base64.
+ * This module contains ${familyConfig.displayName} MSDF fonts embedded as base64.
  * This enables zero-config usage of WebGL text rendering.
  *
  * Generated fonts: ${fonts.map(f => f.name).join(', ')}
  */
 
-import type { FontMetrics } from '../utils/text-layout';
+import type { FontMetrics } from '${importPath}';
 
 `;
 
   // Add exports for each font
   for (const font of fontExports) {
     tsContent += `/**
- * Google Sans ${font.name.charAt(0).toUpperCase() + font.name.slice(1)} MSDF font metrics.
+ * ${familyConfig.displayName} ${font.name.charAt(0).toUpperCase() + font.name.slice(1)} MSDF font metrics.
  */
 export const ${font.varNameMetrics}: FontMetrics = ${JSON.stringify(font.metrics, null, 2)};
 
 /**
- * Google Sans ${font.name.charAt(0).toUpperCase() + font.name.slice(1)} MSDF atlas as base64 data URL.
+ * ${familyConfig.displayName} ${font.name.charAt(0).toUpperCase() + font.name.slice(1)} MSDF atlas as base64 data URL.
  */
 export const ${font.varNameAtlas} = '${font.atlasDataUrl}';
 
 `;
   }
 
-  // Add convenience aliases for default font (regular)
+  // Add convenience aliases for default font (regular) - only for Google Sans for backwards compat
   const regularFont = fontExports.find(f => f.name === 'regular');
-  if (regularFont) {
+  if (regularFont && isGoogleSans) {
     tsContent += `/**
  * Default font metrics (Regular weight).
  * @deprecated Use EMBEDDED_FONT_METRICS_REGULAR for explicit weight selection.

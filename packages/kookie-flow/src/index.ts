@@ -22,6 +22,12 @@ export {
   type StyleConfig,
   type StyleContextValue,
 } from './contexts';
+export {
+  FontProvider,
+  useFont,
+  type FontContextValue,
+  type LoadedFontWeight,
+} from './contexts';
 
 // Utilities
 export {
@@ -121,6 +127,11 @@ export type {
   // Minimap types
   MinimapPosition,
   MinimapProps,
+  // Font types
+  FontPreset,
+  FontConfig,
+  FontWeightConfig,
+  FontMetrics,
 } from './types';
 
 // Constants

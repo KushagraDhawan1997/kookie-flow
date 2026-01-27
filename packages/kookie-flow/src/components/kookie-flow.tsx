@@ -21,15 +21,9 @@ import { SelectionBox } from './selection-box';
 import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
 import { WidgetsLayer } from './widgets-layer';
-import { ThemeProvider, StyleProvider, useTheme, useSocketLayout } from '../contexts';
+import { ThemeProvider, StyleProvider, FontProvider, useTheme, useSocketLayout } from '../contexts';
 import { resolveSocketTypes } from '../utils/socket-types';
 import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
-import {
-  EMBEDDED_FONT_METRICS_REGULAR,
-  EMBEDDED_FONT_ATLAS_URL_REGULAR,
-  EMBEDDED_FONT_METRICS_SEMIBOLD,
-  EMBEDDED_FONT_ATLAS_URL_SEMIBOLD,
-} from '../core/embedded-font';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
@@ -64,6 +58,7 @@ export function KookieFlow({
   minimapProps,
   showStats = false,
   textRenderMode = 'dom',
+  font = 'google-sans',
   scaleTextWithZoom = false,
   showSocketLabels = true,
   showEdgeLabels = true,
@@ -99,7 +94,8 @@ export function KookieFlow({
         accentHeader={accentHeader}
         nodeStyle={nodeStyle}
       >
-        <ThemedFlowContainer
+        <FontProvider font={font}>
+          <ThemedFlowContainer
           nodes={nodes}
           edges={edges}
           defaultViewport={defaultViewport}
@@ -134,7 +130,8 @@ export function KookieFlow({
           ThemeComponent={ThemeComponent}
         >
           {children}
-        </ThemedFlowContainer>
+          </ThemedFlowContainer>
+        </FontProvider>
       </StyleProvider>
     </ThemeProvider>
   );
@@ -1279,7 +1276,7 @@ interface FlowCanvasProps {
 
 /**
  * WebGL text rendering layer using MSDF.
- * Loads the embedded font atlas and renders all text in a single draw call.
+ * Uses FontContext to get the appropriate font atlas based on the font prop.
  */
 interface WebGLTextLayerProps {
   showSocketLabels: boolean;
@@ -1288,30 +1285,9 @@ interface WebGLTextLayerProps {
 }
 
 function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: WebGLTextLayerProps) {
-  // Load embedded atlas textures for both weights
-  const regularTexture = useMemo(() => {
-    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL_REGULAR);
-    // CRITICAL: Disable flipY - BMFont atlas coordinates assume no Y-flip
-    texture.flipY = false;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = false;
-    return texture;
-  }, []);
-
-  const semiboldTexture = useMemo(() => {
-    const texture = new THREE.TextureLoader().load(EMBEDDED_FONT_ATLAS_URL_SEMIBOLD);
-    texture.flipY = false;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = false;
-    return texture;
-  }, []);
-
+  // Fonts are provided via FontContext - MultiWeightTextRenderer will use useFont()
   return (
     <MultiWeightTextRenderer
-      regularFont={{ metrics: EMBEDDED_FONT_METRICS_REGULAR, texture: regularTexture }}
-      semiboldFont={{ metrics: EMBEDDED_FONT_METRICS_SEMIBOLD, texture: semiboldTexture }}
       showSocketLabels={showSocketLabels}
       showEdgeLabels={showEdgeLabels}
       defaultEdgeType={defaultEdgeType}

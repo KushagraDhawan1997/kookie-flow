@@ -330,6 +330,36 @@ export interface PasteFromInternalOptions<T extends NodeData = NodeData> {
 export type TextRenderMode = 'dom' | 'webgl';
 
 // ============================================================================
+// Font Types
+// ============================================================================
+
+// Re-export FontMetrics from text-layout for public API
+export type { FontMetrics } from '../utils/text-layout';
+import type { FontMetrics } from '../utils/text-layout';
+
+/** Built-in font presets with pre-generated MSDF atlases */
+export type FontPreset = 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system';
+
+/** Font weight configuration for MSDF rendering */
+export interface FontWeightConfig {
+  /** MSDF font metrics */
+  metrics: FontMetrics;
+  /** MSDF atlas URL or base64 data URL */
+  atlasUrl: string;
+}
+
+/** Custom font configuration */
+export interface FontConfig {
+  /** Font name for identification */
+  name: string;
+  /** Font weights configuration */
+  weights: {
+    regular: FontWeightConfig;
+    semibold?: FontWeightConfig;
+  };
+}
+
+// ============================================================================
 // Styling Types (Milestone 2)
 // ============================================================================
 
@@ -472,6 +502,13 @@ export interface KookieFlowProps {
    * Default: 'dom'
    */
   textRenderMode?: TextRenderMode;
+  /**
+   * Font for WebGL text rendering. DOM mode uses --font-sans CSS variable from Kookie UI.
+   * - Preset name: 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
+   * - Custom config: { name, weights: { regular, semibold? } } with MSDF metrics/atlas
+   * Default: 'google-sans'
+   */
+  font?: FontPreset | FontConfig;
   /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false. Only applies to DOM mode. */
   scaleTextWithZoom?: boolean;
   /** Show socket labels next to sockets. Default: true */

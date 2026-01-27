@@ -7,3 +7,9 @@ export {
   type StyleConfig,
   type StyleContextValue,
 } from './StyleContext';
+export {
+  FontProvider,
+  useFont,
+  type FontContextValue,
+  type LoadedFontWeight,
+} from './FontContext';

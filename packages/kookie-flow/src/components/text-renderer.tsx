@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
+import { useFont } from '../contexts/FontContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -203,9 +204,9 @@ function TextWeightRenderer({
  * Props for the multi-weight text renderer.
  */
 export interface MultiWeightTextRendererProps {
-  /** Font data for regular weight */
-  regularFont: FontWeightData;
-  /** Font data for semibold weight (optional) */
+  /** Font data for regular weight (optional - uses FontContext if not provided) */
+  regularFont?: FontWeightData;
+  /** Font data for semibold weight (optional - uses FontContext if not provided) */
   semiboldFont?: FontWeightData;
   /** Show socket labels */
   showSocketLabels?: boolean;
@@ -228,10 +229,15 @@ function normalizeEdgeLabel(label: string | EdgeLabelConfig): EdgeLabelConfig {
 /**
  * Multi-weight TextRenderer - renders text with multiple font weights.
  * Each weight gets its own InstancedMesh for optimal performance.
+ *
+ * Font resolution priority:
+ * 1. Props (regularFont, semiboldFont) - for explicit control
+ * 2. FontContext - for preset/configured fonts
+ * 3. Returns null if no fonts available
  */
 export function MultiWeightTextRenderer({
-  regularFont,
-  semiboldFont,
+  regularFont: regularFontProp,
+  semiboldFont: semiboldFontProp,
   showSocketLabels = true,
   showEdgeLabels = true,
   defaultEdgeType = 'bezier',
@@ -240,6 +246,16 @@ export function MultiWeightTextRenderer({
   const tokens = useTheme();
   const { resolved: style, config } = useNodeStyle();
   const socketLayout = useSocketLayout();
+  const fontContext = useFont();
+
+  // Resolve fonts: props take precedence, then context
+  const regularFont = regularFontProp ?? fontContext.regular;
+  const semiboldFont = semiboldFontProp ?? fontContext.semibold;
+
+  // If no fonts available, render nothing (graceful degradation to DOM mode)
+  if (!regularFont) {
+    return null;
+  }
 
   // Derive text colors from theme tokens
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
