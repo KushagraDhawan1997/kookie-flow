@@ -271,6 +271,96 @@ export function measureText(
   return width;
 }
 
+// Truncation cache: text:maxWidth:fontSize -> truncated result
+// Using Map for O(1) lookup, with size limit to prevent unbounded growth
+const truncationCache = new Map<string, string>();
+const TRUNCATION_CACHE_MAX_SIZE = 1000;
+
+/**
+ * Clear the truncation cache. Call when font changes.
+ */
+export function clearTruncationCache(): void {
+  truncationCache.clear();
+}
+
+/**
+ * Truncate text to fit within maxWidth, adding ellipsis if needed.
+ * Results are cached for performance.
+ *
+ * @param text - Text to truncate
+ * @param maxWidth - Maximum width in world units
+ * @param fontSize - Font size for scaling
+ * @param baseFontSize - Base font size from metrics
+ * @param glyphMap - Pre-built glyph lookup
+ * @param kerningMap - Pre-built kerning lookup
+ * @returns Truncated text (with "..." if truncated)
+ */
+export function truncateText(
+  text: string,
+  maxWidth: number,
+  fontSize: number,
+  baseFontSize: number,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap
+): string {
+  // Cache key combines text and sizing params
+  const cacheKey = `${text}:${maxWidth}:${fontSize}`;
+  const cached = truncationCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const scale = fontSize / baseFontSize;
+  const textWidth = measureText(text, glyphMap, kerningMap) * scale;
+
+  // No truncation needed
+  if (textWidth <= maxWidth) {
+    // Cache the result (original text)
+    if (truncationCache.size >= TRUNCATION_CACHE_MAX_SIZE) {
+      // Simple eviction: clear half the cache when full
+      const keys = Array.from(truncationCache.keys());
+      for (let i = 0; i < keys.length / 2; i++) {
+        truncationCache.delete(keys[i]);
+      }
+    }
+    truncationCache.set(cacheKey, text);
+    return text;
+  }
+
+  const ellipsis = '…';
+  const ellipsisWidth = measureText(ellipsis, glyphMap, kerningMap) * scale;
+  const availableWidth = maxWidth - ellipsisWidth;
+
+  // Binary search for the right length
+  let low = 0;
+  let high = text.length;
+
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const truncated = text.slice(0, mid);
+    const width = measureText(truncated, glyphMap, kerningMap) * scale;
+
+    if (width <= availableWidth) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const result = low > 0 ? text.slice(0, low) + ellipsis : ellipsis;
+
+  // Cache the result
+  if (truncationCache.size >= TRUNCATION_CACHE_MAX_SIZE) {
+    const keys = Array.from(truncationCache.keys());
+    for (let i = 0; i < keys.length / 2; i++) {
+      truncationCache.delete(keys[i]);
+    }
+  }
+  truncationCache.set(cacheKey, result);
+
+  return result;
+}
+
 /**
  * Layout text entries into glyph instances.
  *

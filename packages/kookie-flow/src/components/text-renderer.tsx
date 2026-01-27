@@ -34,8 +34,9 @@ import {
   buildKerningMap,
   populateGlyphBuffers,
   countGlyphs,
+  truncateText,
 } from '../utils/text-layout';
-import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { calculateMinNodeHeight } from '../utils/style-resolver';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
@@ -261,6 +262,16 @@ export function MultiWeightTextRenderer({
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
   const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
 
+  // Build glyph/kerning maps for text truncation
+  const regularGlyphMap = useMemo<GlyphMap>(
+    () => (regularFont ? buildGlyphMap(regularFont.metrics) : new Map()),
+    [regularFont]
+  );
+  const regularKerningMap = useMemo<KerningMap>(
+    () => (regularFont ? buildKerningMap(regularFont.metrics) : new Map()),
+    [regularFont]
+  );
+
   // Socket index map for edge label positioning
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
@@ -385,9 +396,15 @@ export function MultiWeightTextRenderer({
                 i * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
               const textY = socketY - 6;
+              // Truncate output labels to fit available space (mirror of input label width)
+              const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
+              const truncatedName =
+                regularFont && regularGlyphMap.size > 0
+                  ? truncateText(socket.name, outputLabelMaxWidth, 12, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap)
+                  : socket.name;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
-                text: socket.name,
+                text: truncatedName,
                 position: [node.position.x + width - 12, textY, 0.1],
                 fontSize: 12,
                 color: secondaryTextColor,
@@ -409,9 +426,15 @@ export function MultiWeightTextRenderer({
                 rowIndex * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
               const textY = socketY - 6;
+              // Truncate input labels to fit before widget area
+              const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
+              const truncatedName =
+                regularFont && regularGlyphMap.size > 0
+                  ? truncateText(socket.name, inputLabelMaxWidth, 12, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap)
+                  : socket.name;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
-                text: socket.name,
+                text: truncatedName,
                 position: [node.position.x + 12, textY, 0.1],
                 fontSize: 12,
                 color: secondaryTextColor,
@@ -473,6 +496,9 @@ export function MultiWeightTextRenderer({
       primaryTextColor,
       secondaryTextColor,
       semiboldFont,
+      regularFont,
+      regularGlyphMap,
+      regularKerningMap,
       config,
       style,
       socketLayout,

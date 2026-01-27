@@ -48,6 +48,8 @@ export {
   buildGlyphMap,
   buildKerningMap,
   measureText,
+  truncateText,
+  clearTruncationCache,
   layoutText,
   countGlyphs,
   populateGlyphBuffers,
