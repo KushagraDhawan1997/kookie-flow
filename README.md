@@ -2,6 +2,8 @@
 
 WebGL-native node graph library for React.
 
+> **Status: In Development** — Kookie Flow is not yet published. APIs are actively evolving and breaking changes will occur. Not recommended for production use.
+
 ## Why?
 
 I love WebGL and I love node-based editors. DOM-based solutions like React Flow exist and work great for many use cases, but I wanted to explore what a canvas-first approach could look like.
