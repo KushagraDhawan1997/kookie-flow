@@ -45,6 +45,14 @@ pnpm add @kushagradhawan/kookie-flow
 npm install react react-dom three @react-three/fiber @react-three/drei
 ```
 
+### Optional: Kookie UI Integration
+
+For full theming support with design tokens:
+
+```bash
+npm install @kushagradhawan/kookie-ui
+```
+
 ## Quick Start
 
 ```tsx
@@ -98,6 +106,32 @@ function App() {
 - **Connection validation** — Strict or loose mode for socket type compatibility
 - **Custom validation** — `isValidConnection` callback for custom rules
 
+### Socket Widgets
+
+Input widgets on sockets that auto-hide when connected:
+
+```tsx
+const node = {
+  id: 'processor',
+  inputs: [
+    { id: 'strength', name: 'Strength', type: 'float', min: 0, max: 1 },
+    { id: 'steps', name: 'Steps', type: 'int', min: 1, max: 100 },
+    { id: 'method', name: 'Method', type: 'enum', options: ['nearest', 'bilinear'] },
+    { id: 'enabled', name: 'Enabled', type: 'boolean' },
+    // Stacked layout with multi-line textarea
+    { id: 'prompt', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'textarea', rows: 3 },
+  ],
+};
+```
+
+**Built-in widgets:** slider, number, select, checkbox, text, color, textarea
+
+**Layout modes:**
+- `inline` (default) — Label on left, widget on right
+- `stacked` — Label above widget, widget spans full width
+
+**Variable height:** Use `rows` prop to specify number of rows (e.g., `rows: 3` for 3-line textarea)
+
 ### Edge Rendering
 - **Curve types** — Straight, bezier, step, smoothstep
 - **Mesh-based rendering** — Custom shaders for future effects (glow, animation)
@@ -110,6 +144,7 @@ function App() {
 - **Frustum culling** — Only render visible nodes/edges
 - **Quadtree spatial indexing** — O(log n) hit testing for 10,000+ nodes
 - **Pre-allocated GPU buffers** — Zero GC pressure during pan/zoom
+- **O(1) index lookups** — Node map for instant ID-based access
 - **Dirty flags** — Skip unnecessary updates
 - **Safari optimizations** — MSAA disabled, simplified shaders
 
@@ -120,11 +155,8 @@ function App() {
 - **Selective updates** — Text only rebuilds when nodes/edges/viewport change, not on hover
 
 ### Minimap
-- **Overview navigation** — Canvas 2D minimap showing all nodes
-- **Viewport indicator** — Draggable rectangle showing current view
-- **Click to pan** — Click anywhere to center viewport
-- **Configurable** — Position, size, colors, interactive mode
-- **Zoomable mode** — Optional mode where minimap zooms with main canvas
+
+Overview navigation panel with viewport indicator:
 
 ```tsx
 <KookieFlow
@@ -134,6 +166,36 @@ function App() {
     zoomable: true, // minimap zooms with main canvas
   }}
 />
+```
+
+### Theming & Styling
+
+Full Kookie UI design system integration:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+<Theme accentColor="indigo" grayColor="slate" radius="medium">
+  <KookieFlow
+    size="2"
+    variant="surface"
+    nodes={nodes}
+    edges={edges}
+  />
+</Theme>
+```
+
+**Styling props:**
+- `size` — Node sizing tier ('1' - '5')
+- `variant` — Visual style ('surface', 'outline', 'soft', 'classic', 'ghost')
+- `radius` — Border radius ('none', 'small', 'medium', 'large', 'full')
+
+**Per-node color override:**
+```tsx
+const nodes = [
+  { id: '1', color: 'violet', ... },  // 26 accent colors supported
+  { id: '2', color: 'cyan', ... },
+];
 ```
 
 ### Plugins
@@ -165,21 +227,26 @@ useKeyboardShortcuts({
 | `onConnect` | `function` | - | Callback when connection is made |
 | `onNodeClick` | `function` | - | Callback when node is clicked |
 | `onEdgeClick` | `function` | - | Callback when edge is clicked |
+| `onWidgetChange` | `function` | - | Callback when widget value changes |
 | `showGrid` | `boolean` | `true` | Show background grid |
 | `showMinimap` | `boolean` | `false` | Show minimap overview |
-| `minimapProps` | `MinimapProps` | - | Minimap configuration (position, size, colors, zoomable) |
+| `minimapProps` | `MinimapProps` | - | Minimap configuration |
 | `showStats` | `boolean` | `false` | Show FPS stats |
-| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode (WebGL = MSDF, DOM = traditional) |
+| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |
+| `size` | `'1' - '5'` | `'2'` | Node size tier |
+| `variant` | `string` | `'surface'` | Node visual variant |
+| `radius` | `string` | `'medium'` | Border radius style |
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
 | `maxZoom` | `number` | `4` | Maximum zoom level |
-| `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (true) or keep crisp (false) |
-| `defaultEdgeType` | `'straight' \| 'bezier' \| 'step' \| 'smoothstep'` | `'bezier'` | Default edge curve type |
+| `defaultEdgeType` | `string` | `'bezier'` | Default edge curve type |
 | `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Socket type validation mode |
 | `edgesSelectable` | `boolean` | `true` | Allow edge selection |
 | `snapToGrid` | `boolean` | `false` | Snap nodes to grid when dragging |
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
+| `socketTypes` | `Record<string, SocketType>` | - | Custom socket type definitions |
+| `widgetTypes` | `Record<string, Component>` | - | Custom widget components |
 
 ## Performance
 
@@ -213,6 +280,11 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Socket labels with visibility toggle
 - [x] WebGL text rendering (MSDF)
 - [x] Minimap
+- [x] Kookie UI theme integration
+- [x] Per-node color overrides
+- [x] Socket widgets (slider, number, select, checkbox, text, color, textarea)
+- [x] Configurable socket layouts (inline, stacked)
+- [x] Variable row heights (rows prop)
 - [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews
