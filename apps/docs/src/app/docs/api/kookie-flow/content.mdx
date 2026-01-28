@@ -135,6 +135,85 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 | `className` | `string` | - | Additional CSS class |
 | `children` | `React.ReactNode` | - | Overlay content |
 
+## Imperative API (Ref)
+
+Access viewport and graph methods programmatically via ref:
+
+```tsx
+import { KookieFlow, KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { useRef } from 'react';
+
+function App() {
+  const flowRef = useRef<KookieFlowInstance>(null);
+
+  return (
+    <>
+      <button onClick={() => flowRef.current?.fitView()}>Fit All</button>
+      <KookieFlow ref={flowRef} nodes={nodes} edges={edges} />
+    </>
+  );
+}
+```
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `fitView(options?)` | Fit viewport to show all nodes (or specific nodes) |
+| `getViewport()` | Get current viewport `{ x, y, zoom }` |
+| `setViewport(viewport)` | Set viewport directly |
+| `zoomIn(step?)` | Zoom in by step (default: 0.25) |
+| `zoomOut(step?)` | Zoom out by step (default: 0.25) |
+| `setCenter(x, y, options?)` | Center viewport on a world position |
+| `getNodes()` | Get all nodes |
+| `getEdges()` | Get all edges |
+| `getSelectedNodes()` | Get currently selected nodes |
+| `getSelectedEdges()` | Get currently selected edges |
+
+### FitViewOptions
+
+```tsx
+flowRef.current?.fitView({
+  padding: 50,        // Padding around content (default: 50)
+  nodes: ['a', 'b'],  // Specific node IDs to fit (default: all)
+  minZoom: 0.1,       // Min zoom constraint
+  maxZoom: 1,         // Max zoom constraint (default: 1)
+});
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `padding` | `number` | `50` | Padding around content in pixels |
+| `nodes` | `string[]` | - | Node IDs to fit (fits all if omitted) |
+| `minZoom` | `number` | Component's `minZoom` | Minimum zoom for fit |
+| `maxZoom` | `number` | `1` | Maximum zoom for fit (won't zoom past 100% by default) |
+
+### Examples
+
+**Fit selected nodes:**
+
+```tsx
+const handleFitSelection = () => {
+  const selectedIds = flowRef.current?.getSelectedNodes().map(n => n.id);
+  if (selectedIds?.length) {
+    flowRef.current?.fitView({ nodes: selectedIds, padding: 100 });
+  }
+};
+```
+
+**Reset to origin:**
+
+```tsx
+flowRef.current?.setCenter(0, 0, { zoom: 1 });
+```
+
+**Zoom controls:**
+
+```tsx
+<button onClick={() => flowRef.current?.zoomIn()}>+</button>
+<button onClick={() => flowRef.current?.zoomOut()}>-</button>
+```
+
 ## Examples
 
 ### Basic Flow
