@@ -1,0 +1,358 @@
+---
+title: Context Menu
+description: Right-click context menus with the useContextMenu hook
+---
+
+The `useContextMenu` hook provides state management for context menus, including support for right-click and long-press on touch devices.
+
+## Installation
+
+Import from the plugins subpath:
+
+```tsx
+import { useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+```
+
+## Basic Usage
+
+```tsx
+import { useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+import { screenToWorld, getNodeAtPosition } from '@kushagradhawan/kookie-flow';
+
+function Editor() {
+  const { contextMenu, closeMenu, onContextMenu } = useContextMenu();
+  const store = useFlowStoreApi();
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const { viewport, nodes } = store.getState();
+    const worldPos = screenToWorld({ x: e.clientX, y: e.clientY }, viewport);
+    const node = getNodeAtPosition(nodes, worldPos, viewport);
+
+    if (node) {
+      onContextMenu(e, { type: 'node', node }, worldPos);
+    } else {
+      onContextMenu(e, { type: 'pane' }, worldPos);
+    }
+  };
+
+  return (
+    <div onContextMenu={handleContextMenu}>
+      <KookieFlow {...props} />
+
+      {contextMenu && (
+        <ContextMenu
+          target={contextMenu.target}
+          position={contextMenu.position}
+          onClose={closeMenu}
+        />
+      )}
+    </div>
+  );
+}
+```
+
+## Target Types
+
+The hook supports four context menu targets:
+
+```tsx
+type ContextMenuTarget =
+  | { type: 'node'; node: Node }
+  | { type: 'edge'; edge: Edge }
+  | { type: 'pane' }
+  | { type: 'selection'; nodeIds: string[]; edgeIds: string[] };
+```
+
+### Node Context Menu
+
+```tsx
+const handleContextMenu = (e: React.MouseEvent) => {
+  const node = getNodeAtPosition(nodes, worldPos, viewport);
+  if (node) {
+    onContextMenu(e, { type: 'node', node }, worldPos);
+  }
+};
+```
+
+### Edge Context Menu
+
+```tsx
+const handleContextMenu = (e: React.MouseEvent) => {
+  const edge = getEdgeAtPosition(edges, worldPos, nodes, viewport);
+  if (edge) {
+    onContextMenu(e, { type: 'edge', edge }, worldPos);
+  }
+};
+```
+
+### Selection Context Menu
+
+```tsx
+const handleContextMenu = (e: React.MouseEvent) => {
+  const { selectedNodeIds, selectedEdgeIds } = store.getState();
+
+  if (selectedNodeIds.size > 1 || selectedEdgeIds.size > 0) {
+    onContextMenu(e, {
+      type: 'selection',
+      nodeIds: Array.from(selectedNodeIds),
+      edgeIds: Array.from(selectedEdgeIds),
+    }, worldPos);
+  }
+};
+```
+
+### Pane Context Menu
+
+```tsx
+const handleContextMenu = (e: React.MouseEvent) => {
+  onContextMenu(e, { type: 'pane' }, worldPos);
+};
+```
+
+## Touch Support
+
+The hook provides long-press detection for touch devices:
+
+```tsx
+function TouchEditor() {
+  const { contextMenu, closeMenu, onContextMenu, longPressProps } = useContextMenu({
+    longPressDuration: 500, // ms
+  });
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const worldPos = screenToWorld({ x: touch.clientX, y: touch.clientY }, viewport);
+    const node = getNodeAtPosition(nodes, worldPos, viewport);
+
+    if (node) {
+      longPressProps.onTouchStart(e, { type: 'node', node }, worldPos);
+    } else {
+      longPressProps.onTouchStart(e, { type: 'pane' }, worldPos);
+    }
+  };
+
+  return (
+    <div
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={longPressProps.onTouchEnd}
+      onTouchMove={longPressProps.onTouchMove}
+    >
+      <KookieFlow {...props} />
+    </div>
+  );
+}
+```
+
+## Menu State
+
+The context menu state includes:
+
+```tsx
+interface ContextMenuState {
+  /** The target that was right-clicked */
+  target: ContextMenuTarget;
+  /** Screen position for menu placement */
+  position: XYPosition;
+  /** World position of the click */
+  worldPosition: XYPosition;
+}
+```
+
+Use `position` for placing your menu component, and `worldPosition` for operations like "Add node here".
+
+## Building a Context Menu Component
+
+```tsx
+function ContextMenu({ target, position, onClose }) {
+  const store = useFlowStoreApi();
+
+  const handleDelete = () => {
+    if (target.type === 'node') {
+      store.getState().deleteElements({ nodeIds: [target.node.id] });
+    } else if (target.type === 'edge') {
+      store.getState().deleteElements({ edgeIds: [target.edge.id] });
+    } else if (target.type === 'selection') {
+      store.getState().deleteElements({
+        nodeIds: target.nodeIds,
+        edgeIds: target.edgeIds,
+      });
+    }
+    onClose();
+  };
+
+  const handleDuplicate = () => {
+    if (target.type === 'node') {
+      const { cloneElements, addElements, selectNodes } = store.getState();
+      const result = cloneElements([target.node], [], { offset: { x: 50, y: 50 } });
+      addElements({ nodes: result.nodes });
+      selectNodes(result.nodes.map(n => n.id));
+    }
+    onClose();
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        background: '#1a1a1a',
+        borderRadius: 8,
+        padding: 4,
+        zIndex: 1000,
+      }}
+    >
+      {target.type === 'node' && (
+        <>
+          <MenuItem onClick={handleDuplicate}>Duplicate</MenuItem>
+          <MenuItem onClick={handleDelete}>Delete</MenuItem>
+        </>
+      )}
+      {target.type === 'edge' && (
+        <MenuItem onClick={handleDelete}>Delete Edge</MenuItem>
+      )}
+      {target.type === 'selection' && (
+        <>
+          <MenuItem onClick={() => store.getState().copySelectedToInternal()}>
+            Copy
+          </MenuItem>
+          <MenuItem onClick={handleDelete}>Delete Selected</MenuItem>
+        </>
+      )}
+      {target.type === 'pane' && (
+        <MenuItem onClick={() => {
+          // Add node at click position
+          store.getState().addElements({
+            nodes: [{
+              id: `node-${Date.now()}`,
+              type: 'default',
+              position: position, // Use worldPosition
+              data: { label: 'New Node' },
+            }],
+          });
+          onClose();
+        }}>
+          Add Node
+        </MenuItem>
+      )}
+    </div>
+  );
+}
+```
+
+## Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `longPressDuration` | `number` | `500` | Long-press duration in ms |
+| `enabled` | `boolean` | `true` | Enable/disable context menu |
+
+## Return Value
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `contextMenu` | `ContextMenuState \| null` | Current menu state |
+| `closeMenu` | `() => void` | Close the menu |
+| `openMenu` | `(state: ContextMenuState) => void` | Open menu programmatically |
+| `onContextMenu` | `(event, target, worldPosition) => void` | Handler for contextmenu event |
+| `longPressProps` | `{ onTouchStart, onTouchEnd, onTouchMove }` | Props for touch long-press |
+
+## Auto-close Behavior
+
+The menu automatically closes when:
+- User clicks outside the menu
+- User presses Escape
+- You call `closeMenu()`
+
+## Complete Example
+
+```tsx
+import { KookieFlow, useFlowStoreApi, screenToWorld, getNodeAtPosition } from '@kushagradhawan/kookie-flow';
+import { useContextMenu, useClipboard } from '@kushagradhawan/kookie-flow/plugins';
+
+function FlowEditor() {
+  const store = useFlowStoreApi();
+  const { copy, paste, cut, hasClipboardContent } = useClipboard();
+  const { contextMenu, closeMenu, onContextMenu, longPressProps } = useContextMenu();
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const { viewport, nodes, selectedNodeIds } = store.getState();
+    const worldPos = screenToWorld({ x: e.clientX, y: e.clientY }, viewport);
+
+    // Check if clicking on a node
+    const node = getNodeAtPosition(nodes, worldPos, viewport);
+
+    if (selectedNodeIds.size > 1 && node && selectedNodeIds.has(node.id)) {
+      // Multi-selection menu
+      onContextMenu(e, {
+        type: 'selection',
+        nodeIds: Array.from(selectedNodeIds),
+        edgeIds: [],
+      }, worldPos);
+    } else if (node) {
+      // Single node menu
+      onContextMenu(e, { type: 'node', node }, worldPos);
+    } else {
+      // Pane menu
+      onContextMenu(e, { type: 'pane' }, worldPos);
+    }
+  };
+
+  return (
+    <div onContextMenu={handleContextMenu} style={{ width: '100%', height: '100%' }}>
+      <KookieFlow {...props} />
+
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenu.position.x,
+            top: contextMenu.position.y,
+            background: '#222',
+            borderRadius: 8,
+            padding: 4,
+            minWidth: 150,
+            zIndex: 1000,
+          }}
+        >
+          {contextMenu.target.type === 'node' && (
+            <>
+              <button onClick={() => { copy(); closeMenu(); }}>Copy</button>
+              <button onClick={() => { cut(); closeMenu(); }}>Cut</button>
+              <button onClick={() => {
+                store.getState().deleteElements({ nodeIds: [contextMenu.target.node.id] });
+                closeMenu();
+              }}>Delete</button>
+            </>
+          )}
+          {contextMenu.target.type === 'pane' && (
+            <>
+              <button
+                onClick={() => { paste(); closeMenu(); }}
+                disabled={!hasClipboardContent()}
+              >
+                Paste
+              </button>
+              <button onClick={() => {
+                store.getState().addElements({
+                  nodes: [{
+                    id: `node-${Date.now()}`,
+                    type: 'default',
+                    position: contextMenu.worldPosition,
+                    data: { label: 'New Node' },
+                  }],
+                });
+                closeMenu();
+              }}>
+                Add Node Here
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```

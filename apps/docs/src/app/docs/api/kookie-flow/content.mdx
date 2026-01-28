@@ -1,0 +1,227 @@
+---
+title: KookieFlow
+description: API reference for the KookieFlow component
+---
+
+The main component for rendering a node graph.
+
+## Import
+
+```tsx
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+```
+
+## Usage
+
+```tsx
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  onNodesChange={onNodesChange}
+  onEdgesChange={onEdgesChange}
+  onConnect={onConnect}
+  showGrid
+/>
+```
+
+## Props
+
+### Core Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `nodes` | `Node[]` | Required | Nodes in the graph |
+| `edges` | `Edge[]` | Required | Edges connecting nodes |
+| `nodeTypes` | `Record<string, NodeTypeDefinition>` | `{}` | Custom node type definitions |
+| `socketTypes` | `Record<string, SocketType>` | `DEFAULT_SOCKET_TYPES` | Socket type definitions |
+| `onNodesChange` | `(changes: NodeChange[]) => void` | - | Callback when nodes change |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | - | Callback when edges change |
+| `onConnect` | `(connection: Connection) => void` | - | Callback when a connection is made |
+
+### Event Callbacks
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `onNodeClick` | `(node: Node) => void` | - | Callback when a node is clicked |
+| `onEdgeClick` | `(edge: Edge) => void` | - | Callback when an edge is clicked |
+| `onPaneClick` | `() => void` | - | Callback when empty space is clicked |
+| `onWidgetChange` | `(nodeId: string, socketId: string, value: unknown) => void` | - | Callback when a widget value changes |
+
+### Viewport
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `defaultViewport` | `Viewport` | `{ x: 0, y: 0, zoom: 1 }` | Initial viewport position and zoom |
+| `minZoom` | `number` | `0.1` | Minimum zoom level |
+| `maxZoom` | `number` | `4` | Maximum zoom level |
+
+### Display
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `showGrid` | `boolean` | `false` | Show grid background |
+| `showMinimap` | `boolean` | `false` | Show navigation minimap |
+| `minimapProps` | `MinimapProps` | - | Minimap configuration |
+| `showStats` | `boolean` | `false` | Show FPS counter |
+| `showSocketLabels` | `boolean` | `true` | Show labels next to sockets |
+| `showEdgeLabels` | `boolean` | `true` | Show labels on edges |
+| `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
+
+### Text Rendering
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering method |
+| `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text |
+| `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (DOM mode only) |
+
+**Font Presets:** `'google-sans'`, `'inter'`, `'roboto'`, `'source-serif'`, `'system'`
+
+### Edges
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `defaultEdgeType` | `EdgeType` | `'bezier'` | Default edge rendering type |
+| `edgesSelectable` | `boolean` | `true` | Allow edge selection |
+
+**Edge Types:** `'bezier'`, `'straight'`, `'step'`, `'smoothstep'`
+
+### Connections
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Connection validation mode |
+| `isValidConnection` | `IsValidConnectionFn` | - | Custom validation function |
+
+### Grid Snapping
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `snapToGrid` | `boolean` | `false` | Enable snap to grid |
+| `snapGrid` | `[number, number]` | `[15, 15]` | Grid snap size `[x, y]` |
+
+### Styling
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `size` | `NodeSize` | `'2'` | Node size scale |
+| `variant` | `NodeVariant` | `'surface'` | Node visual variant |
+| `radius` | `NodeRadius` | `'medium'` | Node border radius |
+| `header` | `HeaderPosition` | `'none'` | Header position |
+| `accentHeader` | `boolean` | `false` | Tint header with accent color |
+| `nodeStyle` | `NodeStyleOverrides` | - | Fine-grained style overrides |
+
+**Size:** `'1'`, `'2'`, `'3'`, `'4'`, `'5'`
+
+**Variant:** `'surface'`, `'outline'`, `'soft'`, `'classic'`, `'ghost'`
+
+**Radius:** `'none'`, `'small'`, `'medium'`, `'large'`, `'full'`
+
+**Header:** `'none'`, `'inside'`, `'outside'`
+
+### Widgets
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `widgetTypes` | `Record<string, React.ComponentType<WidgetProps>>` | - | Custom widget components |
+| `defaultNodeWidth` | `number` | `240` | Default node width |
+| `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |
+| `ThemeComponent` | `React.ComponentType` | - | Kookie UI Theme for widget theming |
+
+### Other
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `className` | `string` | - | Additional CSS class |
+| `children` | `React.ReactNode` | - | Overlay content |
+
+## Examples
+
+### Basic Flow
+
+```tsx
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+
+function BasicFlow() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
+      { id: '2', type: 'default', position: { x: 300, y: 0 }, data: { label: 'Node 2' } },
+    ],
+    initialEdges: [],
+  });
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      showGrid
+    />
+  );
+}
+```
+
+### Styled Flow
+
+```tsx
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  onNodesChange={onNodesChange}
+  onEdgesChange={onEdgesChange}
+  onConnect={onConnect}
+  // Display
+  showGrid
+  showMinimap
+  minimapProps={{ position: 'bottom-right', width: 200 }}
+  // Styling
+  size="2"
+  variant="classic"
+  radius="medium"
+  header="outside"
+  accentHeader
+  // Performance
+  textRenderMode="webgl"
+/>
+```
+
+### With Custom Socket Types
+
+```tsx
+const socketTypes = {
+  float: { name: 'Float', color: '#6366f1', widget: 'slider', min: 0, max: 1 },
+  int: { name: 'Integer', color: '#22c55e', widget: 'number' },
+  image: { name: 'Image', color: '#f97316' },
+};
+
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  socketTypes={socketTypes}
+  connectionMode="strict"
+  onWidgetChange={(nodeId, socketId, value) => {
+    console.log(`${nodeId}.${socketId} = ${value}`);
+  }}
+/>
+```
+
+### With Overlays
+
+```tsx
+<KookieFlow nodes={nodes} edges={edges}>
+  <div style={{ position: 'absolute', top: 16, left: 16 }}>
+    <h1>My Flow Editor</h1>
+  </div>
+  <Toolbar />
+</KookieFlow>
+```
+
+## Related
+
+- [useGraph](/docs/api/use-graph) — Hook for managing graph state
+- [useFlowStoreApi](/docs/api/use-flow-store-api) — Access the internal store
+- [Nodes](/docs/nodes) — Node structure and styling
+- [Edges](/docs/edges) — Edge types and connections

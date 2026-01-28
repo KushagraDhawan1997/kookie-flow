@@ -1,0 +1,315 @@
+---
+title: Nodes
+description: Node structure, sockets, widgets, and styling in Kookie Flow
+---
+
+Nodes are the building blocks of your graph. Each node has a position, data, and optional input/output sockets.
+
+## Node Structure
+
+```tsx
+import type { Node } from '@kushagradhawan/kookie-flow';
+
+const node: Node = {
+  id: 'unique-id',
+  type: 'default',
+  position: { x: 100, y: 200 },
+  data: { label: 'My Node' },
+  inputs: [
+    { id: 'in-1', name: 'Input', type: 'float' },
+  ],
+  outputs: [
+    { id: 'out-1', name: 'Output', type: 'float' },
+  ],
+  // Optional
+  width: 240,
+  height: 120,
+  selected: false,
+  color: 'blue', // Accent color
+};
+```
+
+## Sockets
+
+Sockets are connection points on nodes. Input sockets appear on the left, outputs on the right.
+
+### Socket Definition
+
+```tsx
+import type { Socket } from '@kushagradhawan/kookie-flow';
+
+const socket: Socket = {
+  id: 'socket-id',
+  name: 'Value',
+  type: 'float', // References a socket type
+  // Optional widget configuration
+  widget: 'slider', // Override default widget
+  min: 0,
+  max: 100,
+  step: 1,
+  defaultValue: 50,
+};
+```
+
+### Socket Types
+
+Define socket types to control colors, compatibility, and default widgets:
+
+```tsx
+import type { SocketType } from '@kushagradhawan/kookie-flow';
+
+const socketTypes: Record<string, SocketType> = {
+  float: {
+    name: 'Float',
+    color: '#6366f1',
+    widget: 'slider',
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  int: {
+    name: 'Integer',
+    color: '#22c55e',
+    widget: 'number',
+    min: 0,
+    max: 100,
+  },
+  string: {
+    name: 'String',
+    color: '#eab308',
+    widget: 'text',
+  },
+  boolean: {
+    name: 'Boolean',
+    color: '#ef4444',
+    widget: 'checkbox',
+  },
+  enum: {
+    name: 'Enum',
+    color: '#8b5cf6',
+    widget: 'select',
+  },
+  color: {
+    name: 'Color',
+    color: '#ec4899',
+    widget: 'color',
+  },
+  image: {
+    name: 'Image',
+    color: '#f97316',
+    // No widget - connection only
+  },
+};
+```
+
+### Type Compatibility
+
+Control which socket types can connect:
+
+```tsx
+const socketTypes = {
+  float: {
+    name: 'Float',
+    color: '#6366f1',
+    compatibleWith: ['float', 'int'], // Can connect to float or int
+  },
+  any: {
+    name: 'Any',
+    color: '#888888',
+    compatibleWith: '*', // Connects to anything
+  },
+};
+
+// Enable strict validation
+<KookieFlow connectionMode="strict" socketTypes={socketTypes} />
+```
+
+## Widgets
+
+Input sockets can display interactive widgets when unconnected.
+
+### Built-in Widget Types
+
+| Type | Description | Props |
+|------|-------------|-------|
+| `slider` | Horizontal slider | `min`, `max`, `step` |
+| `number` | Numeric input | `min`, `max`, `step` |
+| `text` | Text input | `placeholder` |
+| `textarea` | Multi-line text | `placeholder`, `rows` |
+| `select` | Dropdown | `options` |
+| `checkbox` | Boolean toggle | - |
+| `color` | Color picker | - |
+
+### Widget Configuration
+
+Configure widgets on individual sockets:
+
+```tsx
+const inputs = [
+  // Slider with range
+  { id: 'amount', name: 'Amount', type: 'float', min: 0, max: 10 },
+
+  // Dropdown with options
+  { id: 'mode', name: 'Mode', type: 'enum', options: ['Linear', 'Cubic'] },
+
+  // Text with placeholder
+  { id: 'name', name: 'Name', type: 'string', placeholder: 'Enter name...' },
+
+  // Multi-line textarea
+  { id: 'prompt', name: 'Prompt', type: 'string', widget: 'textarea', rows: 3 },
+
+  // Disable widget (connection only)
+  { id: 'input', name: 'Input', type: 'float', widget: false },
+];
+```
+
+### Widget Layout Modes
+
+Sockets support two layout modes:
+
+**Inline (default):** Label on left, widget on right
+```tsx
+{ id: 'value', name: 'Value', type: 'float' }
+```
+
+**Stacked:** Label above, widget spans full width
+```tsx
+{ id: 'prompt', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'textarea', rows: 3 }
+```
+
+Stacked layout is ideal for textareas and full-width sliders:
+
+```tsx
+const inputs = [
+  // Full-width textarea
+  {
+    id: 'prompt',
+    name: 'Prompt',
+    type: 'string',
+    layout: 'stacked',
+    widget: 'textarea',
+    rows: 4,
+    placeholder: 'Enter your prompt...',
+  },
+  // Full-width slider
+  {
+    id: 'cfg',
+    name: 'CFG Scale',
+    type: 'float',
+    layout: 'stacked',
+    min: 1,
+    max: 20,
+  },
+  // Standard inline
+  { id: 'steps', name: 'Steps', type: 'int', min: 1, max: 150 },
+];
+```
+
+### Handling Widget Changes
+
+```tsx
+<KookieFlow
+  onWidgetChange={(nodeId, socketId, value) => {
+    // Update your application state
+    updateNodeData(nodeId, socketId, value);
+  }}
+/>
+```
+
+## Styling
+
+### Global Styling
+
+Apply consistent styling to all nodes:
+
+```tsx
+<KookieFlow
+  size="2"           // Scale: '1' | '2' | '3' | '4' | '5'
+  variant="classic"  // 'surface' | 'outline' | 'soft' | 'classic' | 'ghost'
+  radius="medium"    // 'none' | 'small' | 'medium' | 'large' | 'full'
+  header="outside"   // 'none' | 'inside' | 'outside'
+  accentHeader       // Tint header with accent color
+/>
+```
+
+### Per-Node Colors
+
+Each node can have its own accent color from Kookie UI's 26-color palette:
+
+```tsx
+const nodes = [
+  { id: '1', color: 'blue', /* ... */ },
+  { id: '2', color: 'purple', /* ... */ },
+  { id: '3', color: 'orange', /* ... */ },
+];
+```
+
+Available colors: `gray`, `gold`, `bronze`, `brown`, `yellow`, `amber`, `orange`, `tomato`, `red`, `ruby`, `crimson`, `pink`, `plum`, `purple`, `violet`, `iris`, `indigo`, `blue`, `cyan`, `teal`, `jade`, `green`, `grass`, `lime`, `mint`, `sky`
+
+### Style Overrides
+
+Fine-grained control over node appearance:
+
+```tsx
+<KookieFlow
+  nodeStyle={{
+    background: '#1a1a2e',
+    borderColor: '#4a4a6a',
+    borderWidth: 1,
+    borderRadius: 12,
+    shadow: '2', // '1' - '6' or 'none'
+  }}
+/>
+```
+
+### Themed Widgets
+
+For per-node widget theming, pass the Kookie UI Theme component:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+<KookieFlow
+  ThemeComponent={Theme}
+  // Widgets on nodes with `color` prop will use that accent color
+/>
+```
+
+## Node Changes
+
+Handle node changes through the `onNodesChange` callback:
+
+```tsx
+import type { NodeChange } from '@kushagradhawan/kookie-flow';
+
+function handleNodesChange(changes: NodeChange[]) {
+  for (const change of changes) {
+    switch (change.type) {
+      case 'position':
+        // Node moved: change.id, change.position
+        break;
+      case 'select':
+        // Selection changed: change.id, change.selected
+        break;
+      case 'remove':
+        // Node deleted: change.id
+        break;
+      case 'add':
+        // Node added: change.node
+        break;
+      case 'dimensions':
+        // Size changed: change.id, change.dimensions
+        break;
+    }
+  }
+}
+```
+
+The `useGraph` hook handles these changes automatically:
+
+```tsx
+const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+  initialNodes,
+  initialEdges,
+});
+```

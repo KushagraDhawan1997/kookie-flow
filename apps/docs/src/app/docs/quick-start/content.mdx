@@ -1,0 +1,202 @@
+---
+title: Quick Start
+description: Build your first node graph with Kookie Flow in minutes
+---
+
+Get a fully functional node graph running in your React app.
+
+## Basic Setup
+
+After [installing](/docs/installation) Kookie Flow, create your first flow:
+
+```tsx
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+
+function App() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [
+      {
+        id: 'input',
+        type: 'default',
+        position: { x: 0, y: 0 },
+        data: { label: 'Input' },
+        outputs: [{ id: 'out', name: 'Value', type: 'float' }],
+      },
+      {
+        id: 'output',
+        type: 'default',
+        position: { x: 300, y: 0 },
+        data: { label: 'Output' },
+        inputs: [{ id: 'in', name: 'Value', type: 'float' }],
+      },
+    ],
+    initialEdges: [],
+  });
+
+  return (
+    <div style={{ width: '100vw', height: '100vh' }}>
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        showGrid
+      />
+    </div>
+  );
+}
+```
+
+This creates two nodes you can connect by dragging from the output socket to the input socket.
+
+## Adding Socket Types
+
+Socket types define what can connect to what. Create a custom type registry:
+
+```tsx
+const socketTypes = {
+  float: {
+    name: 'Float',
+    color: '#6366f1',
+    widget: 'slider',
+    min: 0,
+    max: 1,
+  },
+  int: {
+    name: 'Integer',
+    color: '#22c55e',
+    widget: 'number',
+    min: 0,
+    max: 100,
+  },
+  image: {
+    name: 'Image',
+    color: '#f59e0b',
+    // No widget - connection only
+  },
+};
+
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  socketTypes={socketTypes}
+  connectionMode="strict" // Only allow compatible types
+  // ...
+/>
+```
+
+## Widgets
+
+Input sockets can show widgets when unconnected. The widget type is determined by the socket type:
+
+```tsx
+const nodes = [
+  {
+    id: 'processor',
+    type: 'default',
+    position: { x: 0, y: 0 },
+    data: { label: 'Processor' },
+    inputs: [
+      // Slider widget (from socket type)
+      { id: 'amount', name: 'Amount', type: 'float' },
+      // Number input with custom range
+      { id: 'steps', name: 'Steps', type: 'int', min: 1, max: 50 },
+      // Dropdown select
+      { id: 'mode', name: 'Mode', type: 'enum', options: ['A', 'B', 'C'] },
+      // Checkbox
+      { id: 'enabled', name: 'Enabled', type: 'boolean' },
+      // Text input
+      { id: 'name', name: 'Name', type: 'string', placeholder: 'Enter name...' },
+      // Color picker
+      { id: 'tint', name: 'Tint', type: 'color' },
+    ],
+    outputs: [{ id: 'out', name: 'Result', type: 'image' }],
+  },
+];
+```
+
+Handle widget value changes:
+
+```tsx
+<KookieFlow
+  onWidgetChange={(nodeId, socketId, value) => {
+    console.log(`${nodeId}.${socketId} = ${value}`);
+  }}
+  // ...
+/>
+```
+
+## Styling Nodes
+
+Kookie Flow integrates with Kookie UI's design system:
+
+```tsx
+<KookieFlow
+  // Node size scale (1-5)
+  size="2"
+  // Visual variant
+  variant="classic" // 'surface' | 'outline' | 'soft' | 'classic' | 'ghost'
+  // Border radius
+  radius="medium" // 'none' | 'small' | 'medium' | 'large' | 'full'
+  // Header position
+  header="outside" // 'none' | 'inside' | 'outside'
+  // Tint header with accent color
+  accentHeader
+  // ...
+/>
+```
+
+Individual nodes can have accent colors:
+
+```tsx
+const nodes = [
+  {
+    id: 'math',
+    color: 'blue', // 26 Kookie UI accent colors available
+    // ...
+  },
+  {
+    id: 'image',
+    color: 'orange',
+    // ...
+  },
+];
+```
+
+## Minimap
+
+Add a minimap for navigation:
+
+```tsx
+<KookieFlow
+  showMinimap
+  minimapProps={{
+    position: 'bottom-right',
+    width: 200,
+    height: 150,
+    interactive: true,
+  }}
+  // ...
+/>
+```
+
+## Text Rendering
+
+For large graphs, switch to WebGL text rendering:
+
+```tsx
+<KookieFlow
+  textRenderMode="webgl" // 'dom' (default) | 'webgl'
+  font="google-sans" // Built-in presets: 'google-sans' | 'inter' | 'roboto'
+  // ...
+/>
+```
+
+## Next Steps
+
+- [Nodes](/docs/nodes) — Socket types, widgets, and layouts
+- [Edges](/docs/edges) — Edge types, labels, and markers
+- [Clipboard Plugin](/docs/plugins/clipboard) — Copy, paste, and cut
+- [Keyboard Shortcuts](/docs/plugins/keyboard-shortcuts) — Bind keyboard shortcuts
+- [Demo](/demo) — See a full example with 1000+ nodes
