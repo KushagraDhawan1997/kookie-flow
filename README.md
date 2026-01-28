@@ -2,6 +2,9 @@
 
 WebGL-native node graph library for React.
 
+[![In Development](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/KushagraDhawan1997/kookie-flow)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ## Why?
 
 I love WebGL and I love node-based editors. DOM-based solutions like React Flow exist and work great for many use cases, but I wanted to explore what a canvas-first approach could look like.
