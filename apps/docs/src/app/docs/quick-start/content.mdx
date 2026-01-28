@@ -1,0 +1,186 @@
+---
+title: Quick Start
+description: Build your first node graph with Kookie Flow
+---
+
+This guide walks you through building a simple node graph with connected nodes, sockets, and widgets.
+
+## Create Your First Flow
+
+Start with a basic setup using the `useGraph` hook:
+
+```tsx
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+
+function MyFlow() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [
+      {
+        id: 'input',
+        type: 'default',
+        position: { x: 0, y: 0 },
+        data: { label: 'Input' },
+        outputs: [{ id: 'out', name: 'Value', type: 'float' }],
+      },
+      {
+        id: 'processor',
+        type: 'default',
+        position: { x: 300, y: 0 },
+        data: { label: 'Processor' },
+        inputs: [
+          { id: 'in', name: 'Input', type: 'float' },
+          { id: 'amount', name: 'Amount', type: 'float', min: 0, max: 1 },
+        ],
+        outputs: [{ id: 'out', name: 'Result', type: 'float' }],
+      },
+      {
+        id: 'output',
+        type: 'default',
+        position: { x: 600, y: 0 },
+        data: { label: 'Output' },
+        inputs: [{ id: 'in', name: 'Value', type: 'float' }],
+      },
+    ],
+    initialEdges: [
+      { id: 'e1', source: 'input', target: 'processor', sourceSocket: 'out', targetSocket: 'in' },
+    ],
+  });
+
+  return (
+    <div style={{ width: '100vw', height: '100vh' }}>
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        showGrid
+      />
+    </div>
+  );
+}
+```
+
+## Add Interactivity
+
+Enable selection, dragging, and keyboard shortcuts:
+
+```tsx
+import { KookieFlow, useGraph, useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+function InteractiveFlow() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [...],
+    initialEdges: [...],
+  });
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      showGrid
+      snapToGrid
+      snapGrid={[20, 20]}
+    >
+      <FlowControls />
+    </KookieFlow>
+  );
+}
+
+function FlowControls() {
+  const store = useFlowStoreApi();
+  const { copy, paste, cut } = useClipboard();
+
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+c': copy,
+      'mod+v': () => paste(),
+      'mod+x': cut,
+      'mod+a': () => store.getState().selectAll(),
+      'delete': () => store.getState().deleteSelected(),
+      'escape': () => store.getState().deselectAll(),
+    },
+  });
+
+  return null;
+}
+```
+
+## Widget Callbacks
+
+Track widget value changes:
+
+```tsx
+function FlowWithWidgets() {
+  const [widgetValues, setWidgetValues] = useState({});
+
+  const handleWidgetChange = (nodeId, socketId, value) => {
+    setWidgetValues(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], [socketId]: value },
+    }));
+  };
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onWidgetChange={handleWidgetChange}
+      {...otherProps}
+    />
+  );
+}
+```
+
+## Add Theming
+
+Integrate with Kookie UI for consistent styling:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+
+function ThemedFlow() {
+  return (
+    <Theme accentColor="violet" grayColor="slate" radius="medium">
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        size="2"
+        variant="surface"
+        radius="medium"
+        ThemeComponent={Theme}
+        {...callbacks}
+      />
+    </Theme>
+  );
+}
+```
+
+## Enable Minimap
+
+Add a minimap for navigation in large graphs:
+
+```tsx
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  showMinimap
+  minimapProps={{
+    position: 'bottom-right',
+    zoomable: false,
+  }}
+  {...callbacks}
+/>
+```
+
+## Next Steps
+
+- [Nodes](/docs/nodes) — Learn about sockets, widgets, and per-node styling
+- [Edges](/docs/edges) — Customize edge types, labels, and markers
+- [Theming](/docs/theming) — Deep dive into styling options
+- [Demo](/demo) — See a full-featured example with 1000 nodes

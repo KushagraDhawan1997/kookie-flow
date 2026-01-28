@@ -8,6 +8,7 @@ import {
   Clipboard01Icon,
   Keyboard01Icon,
   ArrowTurnBackwardIcon,
+  PaintBrush01Icon,
 } from '@hugeicons/core-free-icons';
 
 export const docsNavigation: DocsNavigationConfig = {
@@ -39,6 +40,11 @@ export const docsNavigation: DocsNavigationConfig = {
           href: '/docs/edges',
           title: 'Edges',
           icon: Link01Icon,
+        },
+        {
+          href: '/docs/theming',
+          title: 'Theming',
+          icon: PaintBrush01Icon,
         },
       ],
     },

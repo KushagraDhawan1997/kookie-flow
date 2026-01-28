@@ -1,0 +1,246 @@
+---
+title: useFlowStoreApi
+description: Direct access to the internal Zustand store for advanced operations
+---
+
+The `useFlowStoreApi` hook provides direct access to the internal Zustand store, enabling advanced operations like batch updates, clipboard operations, and programmatic control.
+
+## Import
+
+```tsx
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+```
+
+## Basic Usage
+
+```tsx
+function FlowControls() {
+  const store = useFlowStoreApi();
+
+  const selectAll = () => {
+    store.getState().selectAll();
+  };
+
+  const deleteSelected = () => {
+    store.getState().deleteSelected();
+  };
+
+  return (
+    <div>
+      <button onClick={selectAll}>Select All</button>
+      <button onClick={deleteSelected}>Delete</button>
+    </div>
+  );
+}
+```
+
+## Store Methods
+
+### Selection
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `selectAll` | `() => void` | Select all nodes and edges |
+| `deselectAll` | `() => void` | Deselect everything |
+| `selectNodes` | `(ids: string[]) => void` | Select specific nodes |
+| `selectEdges` | `(ids: string[]) => void` | Select specific edges |
+| `getSelectedNodes` | `() => Node[]` | Get selected nodes |
+| `getSelectedEdges` | `() => Edge[]` | Get selected edges |
+
+### Modification
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `setNodes` | `(nodes: Node[]) => void` | Replace all nodes |
+| `setEdges` | `(edges: Edge[]) => void` | Replace all edges |
+| `addElements` | `(batch: ElementsBatch) => void` | Add nodes and/or edges |
+| `deleteElements` | `(batch: DeleteElementsBatch) => void` | Remove nodes and/or edges |
+| `deleteSelected` | `() => void` | Delete selected elements |
+| `updateNodePositions` | `(updates: PositionUpdate[]) => void` | Batch position updates |
+
+### Cloning
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `cloneElements` | `(nodes, edges, options?) => CloneElementsResult` | Clone with new IDs |
+
+### Clipboard
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `copyToInternalClipboard` | `(nodes, edges) => void` | Copy to internal clipboard |
+| `pasteFromInternal` | `(options?) => CloneElementsResult \| null` | Paste from clipboard |
+
+### Edges
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `getConnectedEdges` | `(nodeIds: string[]) => Edge[]` | Get edges connected to nodes |
+
+### Serialization
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `toObject` | `() => FlowObject` | Serialize nodes, edges, viewport |
+
+## Store State
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `nodes` | `Node[]` | All nodes |
+| `edges` | `Edge[]` | All edges |
+| `selectedNodeIds` | `Set<string>` | Selected node IDs |
+| `selectedEdgeIds` | `Set<string>` | Selected edge IDs |
+| `viewport` | `Viewport` | Current viewport state |
+| `internalClipboard` | `InternalClipboard \| null` | Clipboard contents |
+
+## Examples
+
+### Batch Add Elements
+
+```tsx
+function AddBatch() {
+  const store = useFlowStoreApi();
+
+  const addBatch = () => {
+    const newNodes = [
+      { id: 'a', type: 'default', position: { x: 0, y: 0 }, data: { label: 'A' } },
+      { id: 'b', type: 'default', position: { x: 200, y: 0 }, data: { label: 'B' } },
+    ];
+    const newEdges = [
+      { id: 'e-ab', source: 'a', target: 'b' },
+    ];
+
+    store.getState().addElements({ nodes: newNodes, edges: newEdges });
+  };
+
+  return <button onClick={addBatch}>Add Nodes</button>;
+}
+```
+
+### Clone Selected
+
+```tsx
+function CloneSelected() {
+  const store = useFlowStoreApi();
+
+  const clone = () => {
+    const { getSelectedNodes, getConnectedEdges, selectedNodeIds, cloneElements, addElements, selectNodes, selectEdges } = store.getState();
+
+    const nodes = getSelectedNodes();
+    const edges = getConnectedEdges(Array.from(selectedNodeIds));
+
+    const result = cloneElements(nodes, edges, {
+      offset: { x: 50, y: 50 },
+    });
+
+    addElements({ nodes: result.nodes, edges: result.edges });
+    selectNodes(result.nodes.map(n => n.id));
+    selectEdges(result.edges.map(e => e.id));
+  };
+
+  return <button onClick={clone}>Duplicate</button>;
+}
+```
+
+### Save and Load
+
+```tsx
+function SaveLoad() {
+  const store = useFlowStoreApi();
+  const [saved, setSaved] = useState<FlowObject | null>(null);
+
+  const save = () => {
+    const data = store.getState().toObject();
+    setSaved(data);
+    localStorage.setItem('flow', JSON.stringify(data));
+  };
+
+  const load = () => {
+    const data = localStorage.getItem('flow');
+    if (data) {
+      const parsed = JSON.parse(data);
+      store.getState().setNodes(parsed.nodes);
+      store.getState().setEdges(parsed.edges);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={save}>Save</button>
+      <button onClick={load}>Load</button>
+    </>
+  );
+}
+```
+
+### Subscribe to Changes
+
+```tsx
+function ChangeLogger() {
+  const store = useFlowStoreApi();
+
+  useEffect(() => {
+    // Subscribe to specific state slices
+    const unsubscribe = store.subscribe(
+      (state) => state.selectedNodeIds,
+      (selectedIds) => {
+        console.log('Selection changed:', Array.from(selectedIds));
+      }
+    );
+
+    return unsubscribe;
+  }, [store]);
+
+  return null;
+}
+```
+
+### Programmatic Viewport
+
+```tsx
+function ViewportControls() {
+  const store = useFlowStoreApi();
+
+  const fitView = () => {
+    const { nodes, setViewport } = store.getState();
+    if (nodes.length === 0) return;
+
+    // Calculate bounds
+    const xs = nodes.map(n => n.position.x);
+    const ys = nodes.map(n => n.position.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    // Center viewport
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    setViewport({ x: -centerX + 400, y: -centerY + 300, zoom: 1 });
+  };
+
+  return <button onClick={fitView}>Fit View</button>;
+}
+```
+
+## Context
+
+`useFlowStoreApi` must be called within a `KookieFlow` component's subtree:
+
+```tsx
+function App() {
+  return (
+    <KookieFlow nodes={nodes} edges={edges} {...callbacks}>
+      <FlowControls />  {/* Can use useFlowStoreApi here */}
+    </KookieFlow>
+  );
+}
+```
+
+## See Also
+
+- [useGraph](/docs/api/use-graph) — Simplified state management
+- [Clipboard Plugin](/docs/plugins/clipboard) — High-level clipboard operations
+- [Undo/Redo](/docs/plugins/undo-redo) — History implementation patterns

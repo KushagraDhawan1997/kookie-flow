@@ -1,0 +1,205 @@
+---
+title: useGraph
+description: Hook for managing node and edge state with change handlers
+---
+
+The `useGraph` hook provides a convenient way to manage nodes and edges state with built-in change handlers.
+
+## Import
+
+```tsx
+import { useGraph } from '@kushagradhawan/kookie-flow';
+```
+
+## Basic Usage
+
+```tsx
+function MyFlow() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
+      { id: '2', type: 'default', position: { x: 200, y: 0 }, data: { label: 'Node 2' } },
+    ],
+    initialEdges: [
+      { id: 'e1', source: '1', target: '2' },
+    ],
+  });
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+## Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `initialNodes` | `Node[]` | Initial nodes array |
+| `initialEdges` | `Edge[]` | Initial edges array |
+
+## Return Value
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `nodes` | `Node[]` | Current nodes array |
+| `edges` | `Edge[]` | Current edges array |
+| `setNodes` | `(nodes: Node[] \| (prev: Node[]) => Node[]) => void` | Update nodes |
+| `setEdges` | `(edges: Edge[] \| (prev: Edge[]) => Edge[]) => void` | Update edges |
+| `onNodesChange` | `(changes: NodeChange[]) => void` | Handler for node changes |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | Handler for edge changes |
+| `onConnect` | `(connection: Connection) => void` | Handler for new connections |
+
+## NodeChange Types
+
+```tsx
+type NodeChange =
+  | { type: 'position'; id: string; position: { x: number; y: number } }
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
+  | { type: 'add'; node: Node }
+  | { type: 'dimensions'; id: string; dimensions: { width: number; height: number } };
+```
+
+## EdgeChange Types
+
+```tsx
+type EdgeChange =
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
+  | { type: 'add'; edge: Edge };
+```
+
+## Examples
+
+### Adding Nodes Programmatically
+
+```tsx
+function AddNodeButton() {
+  const { nodes, setNodes } = useGraph({ initialNodes: [], initialEdges: [] });
+
+  const addNode = () => {
+    const newNode = {
+      id: `node-${Date.now()}`,
+      type: 'default',
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: { label: 'New Node' },
+    };
+    setNodes((prev) => [...prev, newNode]);
+  };
+
+  return <button onClick={addNode}>Add Node</button>;
+}
+```
+
+### Filtering Nodes
+
+```tsx
+function FilteredFlow() {
+  const { nodes, setNodes, edges, setEdges, ...handlers } = useGraph({
+    initialNodes: [...],
+    initialEdges: [...],
+  });
+
+  const removeSelectedNodes = () => {
+    const selectedIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
+    setNodes((prev) => prev.filter(n => !n.selected));
+    setEdges((prev) => prev.filter(e =>
+      !selectedIds.has(e.source) && !selectedIds.has(e.target)
+    ));
+  };
+
+  return (
+    <>
+      <button onClick={removeSelectedNodes}>Delete Selected</button>
+      <KookieFlow nodes={nodes} edges={edges} {...handlers} />
+    </>
+  );
+}
+```
+
+### Custom Connection Handler
+
+```tsx
+function CustomConnectFlow() {
+  const { nodes, edges, setEdges, onNodesChange, onEdgesChange } = useGraph({
+    initialNodes: [...],
+    initialEdges: [...],
+  });
+
+  const handleConnect = (connection) => {
+    // Add custom edge properties
+    const newEdge = {
+      id: `edge-${Date.now()}`,
+      ...connection,
+      type: 'smoothstep',
+      markerEnd: 'arrow',
+    };
+    setEdges((prev) => [...prev, newEdge]);
+  };
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={handleConnect}
+    />
+  );
+}
+```
+
+### With External State
+
+```tsx
+function ControlledFlow({ nodes, edges, onChange }) {
+  // Use useGraph for change handling, but sync with external state
+  const graph = useGraph({
+    initialNodes: nodes,
+    initialEdges: edges,
+  });
+
+  // Sync external changes
+  useEffect(() => {
+    graph.setNodes(nodes);
+    graph.setEdges(edges);
+  }, [nodes, edges]);
+
+  // Notify parent of changes
+  const handleNodesChange = (changes) => {
+    graph.onNodesChange(changes);
+    onChange({ nodes: graph.nodes, edges: graph.edges });
+  };
+
+  return (
+    <KookieFlow
+      nodes={graph.nodes}
+      edges={graph.edges}
+      onNodesChange={handleNodesChange}
+      onEdgesChange={graph.onEdgesChange}
+      onConnect={graph.onConnect}
+    />
+  );
+}
+```
+
+## When to Use
+
+Use `useGraph` when you need:
+- Simple state management for nodes and edges
+- Automatic handling of position, selection, and connection changes
+- Quick prototyping without custom state logic
+
+For more control, use `useFlowStoreApi` to access the internal Zustand store directly.
+
+## See Also
+
+- [useFlowStoreApi](/docs/api/use-flow-store-api) — Direct store access for advanced operations
+- [KookieFlow](/docs/api/kookie-flow) — Component props reference

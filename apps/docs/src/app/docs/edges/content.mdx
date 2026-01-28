@@ -1,0 +1,275 @@
+---
+title: Edges
+description: Connect nodes with customizable edge types, labels, and markers
+---
+
+Edges connect nodes through their sockets. Kookie Flow supports multiple edge types, labels, and arrow markers.
+
+## Edge Structure
+
+```tsx
+interface Edge {
+  id: string;
+  source: string;          // Source node ID
+  target: string;          // Target node ID
+  sourceSocket?: string;   // Source socket ID
+  targetSocket?: string;   // Target socket ID
+  type?: EdgeType;         // Override default edge type
+  label?: string | EdgeLabelConfig;
+  markerStart?: EdgeMarkerType | EdgeMarker;
+  markerEnd?: EdgeMarkerType | EdgeMarker;
+}
+```
+
+## Basic Edge
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  sourceSocket: 'out-1',
+  targetSocket: 'in-1',
+};
+```
+
+## Edge Types
+
+Four built-in curve types:
+
+| Type | Description |
+|------|-------------|
+| `bezier` | Smooth cubic bezier curve (default) |
+| `straight` | Direct line between sockets |
+| `step` | Right-angle corners |
+| `smoothstep` | Rounded right-angle corners |
+
+### Set Default Type
+
+```tsx
+<KookieFlow defaultEdgeType="smoothstep" {...props} />
+```
+
+### Per-Edge Override
+
+```tsx
+const edges = [
+  { id: 'e1', source: 'a', target: 'b', type: 'bezier' },
+  { id: 'e2', source: 'b', target: 'c', type: 'step' },
+  { id: 'e3', source: 'c', target: 'd', type: 'straight' },
+];
+```
+
+## Edge Labels
+
+Add text labels along edges:
+
+### Simple Label
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  label: 'Data Flow',
+};
+```
+
+### Configured Label
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  label: {
+    text: 'Transfer',
+    position: 0.5,     // 0 = start, 0.5 = middle, 1 = end
+    fontSize: 12,
+    textColor: '#ffffff',
+    bgColor: 'rgba(0, 0, 0, 0.8)',
+  },
+};
+```
+
+### Label Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `text` | `string` | - | Label text |
+| `position` | `number` | `0.5` | Position along edge (0-1) |
+| `fontSize` | `number` | `12` | Font size in pixels |
+| `textColor` | `string` | `#ffffff` | Text color |
+| `bgColor` | `string` | transparent | Background color |
+
+### Toggle Labels
+
+```tsx
+<KookieFlow showEdgeLabels={false} {...props} />
+```
+
+## Edge Markers
+
+Add arrows or other markers at edge endpoints:
+
+### Simple Arrow
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  markerEnd: 'arrow',
+};
+```
+
+### Marker Types
+
+| Type | Description |
+|------|-------------|
+| `arrow` | Open arrow head |
+| `arrowClosed` | Filled arrow head |
+
+### Configured Marker
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  markerEnd: {
+    type: 'arrow',
+    width: 16,
+    height: 16,
+    color: '#ff0000',  // Override edge color
+  },
+};
+```
+
+### Both Ends
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  markerStart: 'arrow',
+  markerEnd: { type: 'arrowClosed', width: 20, height: 20 },
+};
+```
+
+## Edge Selection
+
+Edges can be selected by clicking:
+
+```tsx
+<KookieFlow
+  edgesSelectable={true}  // Default
+  onEdgeClick={(edge) => console.log('Clicked:', edge.id)}
+  {...props}
+/>
+```
+
+## Edge Events
+
+### onConnect
+
+Called when a new connection is made:
+
+```tsx
+<KookieFlow
+  onConnect={(connection) => {
+    console.log('New connection:', {
+      source: connection.source,
+      target: connection.target,
+      sourceSocket: connection.sourceSocket,
+      targetSocket: connection.targetSocket,
+    });
+  }}
+  {...props}
+/>
+```
+
+### onEdgesChange
+
+Called when edges are added, removed, or selected:
+
+```tsx
+<KookieFlow
+  onEdgesChange={(changes) => {
+    changes.forEach((change) => {
+      switch (change.type) {
+        case 'add':
+          console.log('Added:', change.edge);
+          break;
+        case 'remove':
+          console.log('Removed:', change.id);
+          break;
+        case 'select':
+          console.log('Selected:', change.id, change.selected);
+          break;
+      }
+    });
+  }}
+  {...props}
+/>
+```
+
+## Invalid Connections
+
+In loose connection mode, incompatible connections are marked as invalid:
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'a',
+  target: 'b',
+  invalid: true,  // Visual indicator for type mismatch
+};
+```
+
+## Performance
+
+Edges are rendered as GPU geometry for optimal performance:
+
+- **Batched rendering** — All edges in minimal draw calls
+- **Frustum culling** — Only visible edges are rendered
+- **Bezier culling** — Accounts for curve bulge in visibility checks
+
+## Example: Data Pipeline
+
+```tsx
+const nodes = [
+  { id: 'source', position: { x: 0, y: 0 }, data: { label: 'Source' }, outputs: [...] },
+  { id: 'process', position: { x: 300, y: 0 }, data: { label: 'Process' }, inputs: [...], outputs: [...] },
+  { id: 'output', position: { x: 600, y: 0 }, data: { label: 'Output' }, inputs: [...] },
+];
+
+const edges = [
+  {
+    id: 'e1',
+    source: 'source',
+    target: 'process',
+    sourceSocket: 'data-out',
+    targetSocket: 'data-in',
+    label: 'Raw Data',
+    markerEnd: 'arrow',
+  },
+  {
+    id: 'e2',
+    source: 'process',
+    target: 'output',
+    sourceSocket: 'result',
+    targetSocket: 'in',
+    type: 'smoothstep',
+    label: { text: 'Processed', position: 0.6 },
+    markerEnd: { type: 'arrowClosed', width: 14, height: 14 },
+  },
+];
+```
+
+## Next Steps
+
+- [Nodes](/docs/nodes) — Configure node sockets and widgets
+- [Theming](/docs/theming) — Style your flow graph
+- [API Reference](/docs/api/kookie-flow) — Full props documentation

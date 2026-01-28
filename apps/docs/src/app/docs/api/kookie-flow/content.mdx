@@ -1,0 +1,265 @@
+---
+title: KookieFlow
+description: Complete API reference for the KookieFlow component
+---
+
+The main component that renders the node graph.
+
+## Import
+
+```tsx
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+```
+
+## Basic Usage
+
+```tsx
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  onNodesChange={onNodesChange}
+  onEdgesChange={onEdgesChange}
+  onConnect={onConnect}
+/>
+```
+
+## Props
+
+### Data Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `nodes` | `Node[]` | `[]` | Array of node objects |
+| `edges` | `Edge[]` | `[]` | Array of edge objects |
+| `nodeTypes` | `Record<string, NodeTypeDefinition>` | - | Custom node type definitions |
+| `socketTypes` | `Record<string, SocketType>` | Built-in types | Socket type definitions with colors |
+
+### Callback Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `onNodesChange` | `(changes: NodeChange[]) => void` | Called when nodes are moved, selected, added, or removed |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | Called when edges are selected, added, or removed |
+| `onConnect` | `(connection: Connection) => void` | Called when a new connection is created |
+| `onNodeClick` | `(node: Node) => void` | Called when a node is clicked |
+| `onEdgeClick` | `(edge: Edge) => void` | Called when an edge is clicked |
+| `onPaneClick` | `() => void` | Called when empty canvas is clicked |
+| `onWidgetChange` | `(nodeId: string, socketId: string, value: unknown) => void` | Called when a widget value changes |
+
+### Display Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `showGrid` | `boolean` | `true` | Show background grid |
+| `showMinimap` | `boolean` | `false` | Show minimap panel |
+| `minimapProps` | `MinimapProps` | - | Minimap configuration |
+| `showStats` | `boolean` | `false` | Show FPS counter |
+| `showSocketLabels` | `boolean` | `true` | Show labels next to sockets |
+| `showEdgeLabels` | `boolean` | `true` | Show labels on edges |
+| `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
+
+### Text Rendering Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode |
+| `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text |
+| `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (DOM mode only) |
+
+### Styling Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `size` | `'1' \| '2' \| '3' \| '4' \| '5'` | `'2'` | Node size tier |
+| `variant` | `'surface' \| 'outline' \| 'soft' \| 'classic' \| 'ghost'` | `'surface'` | Node visual style |
+| `radius` | `'none' \| 'small' \| 'medium' \| 'large' \| 'full'` | `'medium'` | Border radius |
+| `header` | `'none' \| 'inside' \| 'outside'` | `'none'` | Header position |
+| `accentHeader` | `boolean` | `false` | Tint header with accent color |
+| `nodeStyle` | `NodeStyleOverrides` | - | Fine-grained style overrides |
+
+### Viewport Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `defaultViewport` | `Viewport` | `{ x: 0, y: 0, zoom: 1 }` | Initial viewport |
+| `minZoom` | `number` | `0.1` | Minimum zoom level |
+| `maxZoom` | `number` | `4` | Maximum zoom level |
+
+### Interaction Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `edgesSelectable` | `boolean` | `true` | Allow edge selection |
+| `snapToGrid` | `boolean` | `false` | Snap nodes to grid |
+| `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size |
+| `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Socket type validation |
+| `isValidConnection` | `IsValidConnectionFn` | - | Custom validation function |
+
+### Edge Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `defaultEdgeType` | `'straight' \| 'bezier' \| 'step' \| 'smoothstep'` | `'bezier'` | Default edge curve type |
+
+### Widget Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `widgetTypes` | `Record<string, Component>` | - | Custom widget components |
+| `defaultNodeWidth` | `number` | `240` | Default node width |
+| `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |
+| `ThemeComponent` | `Component` | - | Kookie UI Theme for per-node colors |
+
+### Other Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `className` | `string` | Additional CSS class |
+| `children` | `ReactNode` | Overlay components |
+
+## Types
+
+### Node
+
+```tsx
+interface Node<T extends NodeData = NodeData> {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: T;
+  width?: number;
+  height?: number;
+  selected?: boolean;
+  dragging?: boolean;
+  inputs?: Socket[];
+  outputs?: Socket[];
+  color?: AccentColor;
+}
+```
+
+### Edge
+
+```tsx
+interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  sourceSocket?: string;
+  targetSocket?: string;
+  type?: 'straight' | 'bezier' | 'step' | 'smoothstep';
+  selected?: boolean;
+  animated?: boolean;
+  invalid?: boolean;
+  label?: string | EdgeLabelConfig;
+  markerStart?: EdgeMarkerType | EdgeMarker;
+  markerEnd?: EdgeMarkerType | EdgeMarker;
+}
+```
+
+### Socket
+
+```tsx
+interface Socket {
+  id: string;
+  name: string;
+  type: string;
+  widget?: WidgetType | false | InlineWidgetComponent;
+  layout?: 'inline' | 'stacked';
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+  placeholder?: string;
+  defaultValue?: unknown;
+  rows?: number;
+  height?: number;
+}
+```
+
+### MinimapProps
+
+```tsx
+interface MinimapProps {
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  width?: number;
+  height?: number;
+  backgroundColor?: string;
+  nodeColor?: string | ((node: Node) => string);
+  selectedNodeColor?: string;
+  viewportColor?: string;
+  viewportBorderColor?: string;
+  padding?: number;
+  interactive?: boolean;
+  zoomable?: boolean;
+  className?: string;
+}
+```
+
+### FontPreset
+
+```tsx
+type FontPreset = 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system';
+```
+
+### FontConfig
+
+```tsx
+interface FontConfig {
+  name: string;
+  weights: {
+    regular: { metrics: FontMetrics; atlasUrl: string };
+    semibold?: { metrics: FontMetrics; atlasUrl: string };
+  };
+}
+```
+
+## Example
+
+```tsx
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+function App() {
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [...],
+    initialEdges: [...],
+  });
+
+  return (
+    <Theme accentColor="violet">
+      <KookieFlow
+        // Data
+        nodes={nodes}
+        edges={edges}
+
+        // Callbacks
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onWidgetChange={(nodeId, socketId, value) => {
+          console.log(`${nodeId}.${socketId} = ${value}`);
+        }}
+
+        // Display
+        showGrid
+        showMinimap
+        showSocketLabels
+        textRenderMode="webgl"
+
+        // Styling
+        size="2"
+        variant="surface"
+        radius="medium"
+        header="outside"
+        accentHeader
+        ThemeComponent={Theme}
+
+        // Interaction
+        snapToGrid
+        snapGrid={[20, 20]}
+        connectionMode="strict"
+      />
+    </Theme>
+  );
+}
+```

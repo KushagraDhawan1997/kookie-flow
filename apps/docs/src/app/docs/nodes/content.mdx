@@ -1,0 +1,274 @@
+---
+title: Nodes
+description: Configure nodes with sockets, widgets, and per-node styling
+---
+
+Nodes are the building blocks of your flow graph. Each node can have input/output sockets, interactive widgets, and custom styling.
+
+## Node Structure
+
+```tsx
+interface Node {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: { label?: string; [key: string]: unknown };
+  inputs?: Socket[];
+  outputs?: Socket[];
+  width?: number;
+  height?: number;
+  color?: AccentColor;  // Per-node accent color
+}
+```
+
+## Basic Node
+
+```tsx
+const node = {
+  id: 'node-1',
+  type: 'default',
+  position: { x: 100, y: 100 },
+  data: { label: 'My Node' },
+  inputs: [
+    { id: 'in-1', name: 'Input', type: 'float' },
+  ],
+  outputs: [
+    { id: 'out-1', name: 'Output', type: 'float' },
+  ],
+};
+```
+
+## Sockets
+
+Sockets define the input and output connection points on a node.
+
+### Socket Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `string` | Unique identifier within the node |
+| `name` | `string` | Display label |
+| `type` | `string` | Socket type (for connection validation) |
+| `widget` | `WidgetType \| false` | Widget type or `false` to disable |
+| `layout` | `'inline' \| 'stacked'` | Widget layout mode |
+| `min`, `max`, `step` | `number` | Slider/number widget constraints |
+| `options` | `string[]` | Select widget options |
+| `placeholder` | `string` | Text input placeholder |
+| `rows` | `number` | Textarea row count |
+| `defaultValue` | `unknown` | Initial widget value |
+
+### Socket Types
+
+Define custom socket types with colors and compatibility rules:
+
+```tsx
+const socketTypes = {
+  float: { name: 'Float', color: '#a1a1a1' },
+  int: { name: 'Integer', color: '#7c7c7c', compatibleWith: ['float'] },
+  image: { name: 'Image', color: '#64b5f6' },
+  mask: { name: 'Mask', color: '#fff176', compatibleWith: ['image'] },
+  boolean: { name: 'Boolean', color: '#ce93d8', widget: 'checkbox' },
+  string: { name: 'String', color: '#81c784', widget: 'text' },
+  enum: { name: 'Enum', color: '#ffb74d', widget: 'select' },
+  color: { name: 'Color', color: '#f48fb1', widget: 'color' },
+};
+
+<KookieFlow socketTypes={socketTypes} {...props} />
+```
+
+## Widgets
+
+Input sockets can display interactive widgets that auto-hide when connected.
+
+### Built-in Widgets
+
+| Type | Widget | Properties |
+|------|--------|------------|
+| `float` | Slider | `min`, `max`, `step` |
+| `int` | Number input | `min`, `max`, `step` |
+| `boolean` | Checkbox | - |
+| `string` | Text input | `placeholder` |
+| `enum` | Select dropdown | `options` |
+| `color` | Color picker | - |
+| `textarea` | Multi-line text | `rows`, `placeholder` |
+
+### Widget Examples
+
+```tsx
+const node = {
+  id: 'processor',
+  type: 'default',
+  position: { x: 0, y: 0 },
+  data: { label: 'Image Processor' },
+  inputs: [
+    // Slider (float with range)
+    { id: 'strength', name: 'Strength', type: 'float', min: 0, max: 1 },
+
+    // Number input (integer)
+    { id: 'steps', name: 'Steps', type: 'int', min: 1, max: 100 },
+
+    // Select dropdown
+    { id: 'mode', name: 'Mode', type: 'enum', options: ['Fast', 'Quality', 'Balanced'] },
+
+    // Checkbox
+    { id: 'enabled', name: 'Enabled', type: 'boolean', defaultValue: true },
+
+    // Text input
+    { id: 'name', name: 'Name', type: 'string', placeholder: 'Enter name...' },
+
+    // Color picker
+    { id: 'tint', name: 'Tint', type: 'color', defaultValue: '#ff0000' },
+
+    // Textarea (stacked layout for full width)
+    {
+      id: 'prompt',
+      name: 'Prompt',
+      type: 'string',
+      widget: 'textarea',
+      layout: 'stacked',
+      rows: 3,
+      placeholder: 'Describe the image...',
+    },
+
+    // Disable widget (connection only)
+    { id: 'image', name: 'Image', type: 'image', widget: false },
+  ],
+  outputs: [
+    { id: 'result', name: 'Result', type: 'image' },
+  ],
+};
+```
+
+### Layout Modes
+
+**Inline (default):** Label on left, widget on right.
+
+```tsx
+{ id: 'amount', name: 'Amount', type: 'float', layout: 'inline' }
+```
+
+**Stacked:** Label above widget, widget spans full node width.
+
+```tsx
+{ id: 'prompt', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'textarea', rows: 3 }
+```
+
+### Custom Widgets
+
+Override or add new widget types:
+
+```tsx
+const CustomSlider = ({ value, onChange, min, max, step }) => (
+  <input
+    type="range"
+    value={value ?? 0.5}
+    min={min}
+    max={max}
+    step={step}
+    onChange={(e) => onChange(parseFloat(e.target.value))}
+  />
+);
+
+<KookieFlow
+  widgetTypes={{
+    slider: CustomSlider,  // Override built-in
+    custom: MyCustomWidget, // Add new type
+  }}
+  {...props}
+/>
+```
+
+### Widget Callbacks
+
+```tsx
+<KookieFlow
+  onWidgetChange={(nodeId, socketId, value) => {
+    console.log(`${nodeId}.${socketId} = ${value}`);
+  }}
+  {...props}
+/>
+```
+
+## Per-Node Colors
+
+Override the accent color for individual nodes:
+
+```tsx
+const nodes = [
+  { id: '1', color: 'violet', ... },
+  { id: '2', color: 'cyan', ... },
+  { id: '3', color: 'orange', ... },
+];
+```
+
+### Available Colors
+
+26 accent colors from Kookie UI:
+
+`gray`, `gold`, `bronze`, `brown`, `yellow`, `amber`, `orange`, `tomato`, `red`, `ruby`, `crimson`, `pink`, `plum`, `purple`, `violet`, `iris`, `indigo`, `blue`, `cyan`, `teal`, `jade`, `green`, `grass`, `lime`, `mint`, `sky`
+
+### Per-Node Widget Theming
+
+To apply accent colors to widgets, pass the Kookie UI Theme component:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+<KookieFlow
+  ThemeComponent={Theme}
+  nodes={nodes}
+  {...props}
+/>
+```
+
+## Node Dimensions
+
+Nodes auto-size based on content, but you can set explicit dimensions:
+
+```tsx
+const node = {
+  id: 'fixed-size',
+  width: 300,
+  height: 200,
+  ...
+};
+```
+
+Or configure defaults:
+
+```tsx
+<KookieFlow
+  defaultNodeWidth={240}
+  socketLabelWidth={96}
+  {...props}
+/>
+```
+
+## Connection Validation
+
+### Strict Mode
+
+Only allow connections between compatible socket types:
+
+```tsx
+<KookieFlow connectionMode="strict" {...props} />
+```
+
+### Custom Validation
+
+```tsx
+<KookieFlow
+  isValidConnection={({ source, target, sourceSocketType, targetSocketType }, socketTypes) => {
+    // Custom logic
+    if (targetSocketType === 'any') return true;
+    return sourceSocketType === targetSocketType;
+  }}
+  {...props}
+/>
+```
+
+## Next Steps
+
+- [Edges](/docs/edges) — Configure edge types, labels, and markers
+- [Theming](/docs/theming) — Style nodes with variants, sizes, and radii
+- [API Reference](/docs/api/kookie-flow) — Full props documentation

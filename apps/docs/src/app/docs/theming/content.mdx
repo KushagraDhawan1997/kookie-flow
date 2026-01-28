@@ -1,0 +1,338 @@
+---
+title: Theming
+description: Style your flow graph with Kookie UI design tokens
+---
+
+Kookie Flow integrates with Kookie UI's design system for consistent theming across your application.
+
+## Kookie UI Integration
+
+Wrap your app with the Kookie UI Theme component:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+
+function App() {
+  return (
+    <Theme accentColor="violet" grayColor="slate" radius="medium">
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        {...callbacks}
+      />
+    </Theme>
+  );
+}
+```
+
+## Node Styling Props
+
+### Size
+
+Controls node padding and text size:
+
+```tsx
+<KookieFlow size="2" {...props} />
+```
+
+| Size | Description |
+|------|-------------|
+| `'1'` | Compact |
+| `'2'` | Default |
+| `'3'` | Comfortable |
+| `'4'` | Spacious |
+| `'5'` | Large |
+
+### Variant
+
+Controls visual appearance:
+
+```tsx
+<KookieFlow variant="surface" {...props} />
+```
+
+| Variant | Description |
+|---------|-------------|
+| `'surface'` | Solid background with subtle border (default) |
+| `'outline'` | Transparent with visible border |
+| `'soft'` | Translucent tinted background |
+| `'classic'` | Solid with drop shadow |
+| `'ghost'` | Minimal, no background or border |
+
+### Radius
+
+Controls border radius:
+
+```tsx
+<KookieFlow radius="medium" {...props} />
+```
+
+| Radius | Description |
+|--------|-------------|
+| `'none'` | Sharp corners |
+| `'small'` | Subtle rounding |
+| `'medium'` | Balanced (default) |
+| `'large'` | Prominent rounding |
+| `'full'` | Maximum rounding |
+
+### Header
+
+Controls node header display:
+
+```tsx
+<KookieFlow header="outside" accentHeader {...props} />
+```
+
+| Header | Description |
+|--------|-------------|
+| `'none'` | No header (default) |
+| `'inside'` | Header inside node bounds |
+| `'outside'` | Header above node body |
+
+Set `accentHeader={true}` to tint the header with the node's accent color.
+
+## Per-Node Colors
+
+Override accent colors on individual nodes:
+
+```tsx
+const nodes = [
+  { id: '1', color: 'violet', position: { x: 0, y: 0 }, ... },
+  { id: '2', color: 'cyan', position: { x: 200, y: 0 }, ... },
+  { id: '3', color: 'orange', position: { x: 400, y: 0 }, ... },
+];
+
+<KookieFlow nodes={nodes} {...props} />
+```
+
+### Available Colors
+
+All 26 Kookie UI accent colors:
+
+| Row 1 | Row 2 | Row 3 | Row 4 |
+|-------|-------|-------|-------|
+| `gray` | `tomato` | `violet` | `teal` |
+| `gold` | `red` | `iris` | `jade` |
+| `bronze` | `ruby` | `indigo` | `green` |
+| `brown` | `crimson` | `blue` | `grass` |
+| `yellow` | `pink` | `cyan` | `lime` |
+| `amber` | `plum` | | `mint` |
+| `orange` | `purple` | | `sky` |
+
+## Widget Theming
+
+To apply accent colors to widgets on colored nodes:
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+<KookieFlow
+  ThemeComponent={Theme}
+  nodes={nodes}
+  {...props}
+/>
+```
+
+This wraps each colored node's widgets in a Theme provider with the matching accent color.
+
+## Fine-Grained Style Overrides
+
+For precise control, use the `nodeStyle` prop:
+
+```tsx
+<KookieFlow
+  nodeStyle={{
+    background: 'rgba(20, 20, 30, 0.95)',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+    borderRadius: 12,
+    shadow: '3',
+  }}
+  {...props}
+/>
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `background` | `string` | Background color (CSS color) |
+| `borderColor` | `string` | Border color |
+| `borderWidth` | `number` | Border width in pixels |
+| `borderRadius` | `number` | Override radius in pixels |
+| `shadow` | `'1'-'6' \| 'none'` | Shadow depth |
+
+## Text Rendering
+
+### DOM Mode (Default)
+
+Uses CSS and inherits the `--font-sans` variable from Kookie UI:
+
+```tsx
+<KookieFlow textRenderMode="dom" {...props} />
+```
+
+### WebGL Mode
+
+Uses MSDF (Multi-channel Signed Distance Field) rendering for performance:
+
+```tsx
+<KookieFlow textRenderMode="webgl" {...props} />
+```
+
+Built-in font presets:
+
+```tsx
+<KookieFlow
+  textRenderMode="webgl"
+  font="inter"  // 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
+  {...props}
+/>
+```
+
+Custom fonts require MSDF atlas generation:
+
+```tsx
+<KookieFlow
+  textRenderMode="webgl"
+  font={{
+    name: 'my-font',
+    weights: {
+      regular: { metrics: myMetrics, atlasUrl: '/fonts/my-font.png' },
+      semibold: { metrics: mySemiboldMetrics, atlasUrl: '/fonts/my-font-semibold.png' },
+    },
+  }}
+  {...props}
+/>
+```
+
+## Minimap Styling
+
+Customize the minimap appearance:
+
+```tsx
+<KookieFlow
+  showMinimap
+  minimapProps={{
+    position: 'bottom-right',
+    width: 200,
+    height: 150,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    nodeColor: '#666',
+    selectedNodeColor: '#4ade80',
+    viewportColor: 'rgba(255, 255, 255, 0.2)',
+    viewportBorderColor: '#fff',
+  }}
+  {...props}
+/>
+```
+
+### Dynamic Node Colors
+
+```tsx
+<KookieFlow
+  showMinimap
+  minimapProps={{
+    nodeColor: (node) => {
+      if (node.type === 'input') return '#22c55e';
+      if (node.type === 'output') return '#ef4444';
+      return '#666';
+    },
+  }}
+  {...props}
+/>
+```
+
+## Dark Mode
+
+Kookie Flow automatically adapts to Kookie UI's dark mode:
+
+```tsx
+<Theme appearance="dark" accentColor="violet">
+  <KookieFlow {...props} />
+</Theme>
+```
+
+Or let it follow system preference:
+
+```tsx
+<Theme appearance="inherit" accentColor="violet">
+  <KookieFlow {...props} />
+</Theme>
+```
+
+## Reading Theme Tokens
+
+Access Kookie UI CSS variables programmatically:
+
+```tsx
+import { useThemeTokens } from '@kushagradhawan/kookie-flow';
+
+function MyComponent() {
+  const tokens = useThemeTokens();
+
+  console.log(tokens['--accent-9']);  // [r, g, b] normalized 0-1
+  console.log(tokens['--space-3']);   // number in pixels
+  console.log(tokens['--radius-4']);  // number in pixels
+  console.log(tokens.appearance);     // 'light' | 'dark'
+
+  return null;
+}
+```
+
+## Complete Example
+
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+
+function ThemedFlow() {
+  const { nodes, edges, ...handlers } = useGraph({
+    initialNodes: [
+      { id: '1', color: 'violet', position: { x: 0, y: 0 }, data: { label: 'Input' }, ... },
+      { id: '2', color: 'blue', position: { x: 300, y: 0 }, data: { label: 'Process' }, ... },
+      { id: '3', color: 'green', position: { x: 600, y: 0 }, data: { label: 'Output' }, ... },
+    ],
+    initialEdges: [...],
+  });
+
+  return (
+    <Theme appearance="dark" accentColor="violet" grayColor="slate" radius="medium">
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        {...handlers}
+
+        // Styling
+        size="2"
+        variant="classic"
+        radius="medium"
+        header="outside"
+        accentHeader
+
+        // Widget theming
+        ThemeComponent={Theme}
+
+        // Text
+        textRenderMode="webgl"
+        font="inter"
+
+        // Minimap
+        showMinimap
+        minimapProps={{
+          position: 'bottom-right',
+          nodeColor: (node) => {
+            const colors = { violet: '#8b5cf6', blue: '#3b82f6', green: '#22c55e' };
+            return colors[node.color] || '#666';
+          },
+        }}
+      />
+    </Theme>
+  );
+}
+```
+
+## Next Steps
+
+- [Nodes](/docs/nodes) — Configure sockets and widgets
+- [API Reference](/docs/api/kookie-flow) — Full props documentation
+- [Demo](/demo) — See theming in action
