@@ -132,6 +132,29 @@ const node = {
 
 **Variable height:** Use `rows` prop to specify number of rows (e.g., `rows: 3` for 3-line textarea)
 
+**Widget control props:**
+```tsx
+<KookieFlow
+  showWidgets={true}         // Toggle widget visibility (default: true)
+  defaultNodeWidth={240}     // Default node width when node.width not specified
+  socketLabelWidth={96}      // Width reserved for socket labels before widget
+  onWidgetChange={(nodeId, socketId, value) => {
+    console.log(`Widget changed: ${nodeId}.${socketId} = ${value}`);
+  }}
+/>
+```
+
+**Custom widget components:**
+```tsx
+const CustomSlider = ({ value, onChange, min, max }) => (
+  <input type="range" value={value} onChange={e => onChange(+e.target.value)} min={min} max={max} />
+);
+
+<KookieFlow
+  widgetTypes={{ slider: CustomSlider }}  // Override built-in widgets
+/>
+```
+
 ### Edge Rendering
 - **Curve types** — Straight, bezier, step, smoothstep
 - **Mesh-based rendering** — Custom shaders for future effects (glow, animation)
@@ -153,6 +176,32 @@ const node = {
 - **DOM mode** — Traditional DOM text for maximum compatibility
 - **LOD (Level of Detail)** — Labels hide when zoomed out (configurable thresholds)
 - **Selective updates** — Text only rebuilds when nodes/edges/viewport change, not on hover
+
+### Font Configuration
+
+Built-in font presets for WebGL text rendering:
+
+```tsx
+<KookieFlow
+  textRenderMode="webgl"
+  font="inter"  // 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
+/>
+```
+
+Custom MSDF fonts with your own atlas:
+
+```tsx
+<KookieFlow
+  textRenderMode="webgl"
+  font={{
+    name: 'my-font',
+    weights: {
+      regular: { metrics: myMetrics, atlasUrl: '/fonts/my-font.png' },
+      semibold: { metrics: mySemiboldMetrics, atlasUrl: '/fonts/my-font-semibold.png' },
+    },
+  }}
+/>
+```
 
 ### Minimap
 
@@ -189,6 +238,8 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 - `size` — Node sizing tier ('1' - '5')
 - `variant` — Visual style ('surface', 'outline', 'soft', 'classic', 'ghost')
 - `radius` — Border radius ('none', 'small', 'medium', 'large', 'full')
+- `header` — Header position ('none', 'inside', 'outside')
+- `accentHeader` — Tint header with accent color (boolean)
 
 **Per-node color override:**
 ```tsx
@@ -196,6 +247,17 @@ const nodes = [
   { id: '1', color: 'violet', ... },  // 26 accent colors supported
   { id: '2', color: 'cyan', ... },
 ];
+```
+
+**Widget theming with per-node colors:**
+```tsx
+import { Theme } from '@kushagradhawan/kookie-ui';
+
+<KookieFlow
+  ThemeComponent={Theme}  // Enable per-node accent colors for widgets
+  nodes={nodes}
+  edges={edges}
+/>
 ```
 
 ### Plugins
@@ -233,11 +295,15 @@ useKeyboardShortcuts({
 | `minimapProps` | `MinimapProps` | - | Minimap configuration |
 | `showStats` | `boolean` | `false` | Show FPS stats |
 | `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode |
+| `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text rendering |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |
+| `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
 | `size` | `'1' - '5'` | `'2'` | Node size tier |
 | `variant` | `string` | `'surface'` | Node visual variant |
 | `radius` | `string` | `'medium'` | Border radius style |
+| `header` | `'none' \| 'inside' \| 'outside'` | `'none'` | Header position |
+| `accentHeader` | `boolean` | `false` | Tint header with accent color |
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
 | `maxZoom` | `number` | `4` | Maximum zoom level |
 | `defaultEdgeType` | `string` | `'bezier'` | Default edge curve type |
@@ -247,6 +313,10 @@ useKeyboardShortcuts({
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 | `socketTypes` | `Record<string, SocketType>` | - | Custom socket type definitions |
 | `widgetTypes` | `Record<string, Component>` | - | Custom widget components |
+| `defaultNodeWidth` | `number` | `240` | Default node width when not specified |
+| `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |
+| `ThemeComponent` | `Component` | - | Kookie UI Theme for per-node colors |
+| `isValidConnection` | `function` | - | Custom connection validation |
 
 ## Performance
 
