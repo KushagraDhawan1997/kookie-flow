@@ -1,0 +1,287 @@
+---
+title: Edges
+description: Edge types, labels, markers, and connections in Kookie Flow
+---
+
+Edges connect nodes through their sockets. Kookie Flow renders edges using WebGL for high performance.
+
+## Edge Structure
+
+```tsx
+import type { Edge } from '@kushagradhawan/kookie-flow';
+
+const edge: Edge = {
+  id: 'edge-1',
+  source: 'node-1',      // Source node ID
+  target: 'node-2',      // Target node ID
+  sourceSocket: 'out-1', // Output socket ID
+  targetSocket: 'in-1',  // Input socket ID
+  // Optional
+  type: 'bezier',        // Edge rendering type
+  selected: false,
+  animated: false,
+  label: 'Data Flow',
+  markerEnd: 'arrow',
+};
+```
+
+## Edge Types
+
+Four rendering types are available:
+
+| Type | Description |
+|------|-------------|
+| `bezier` | Smooth curved line (default) |
+| `straight` | Direct line between sockets |
+| `step` | Right-angle path |
+| `smoothstep` | Rounded right-angle path |
+
+Set the default type for all edges:
+
+```tsx
+<KookieFlow defaultEdgeType="bezier" />
+```
+
+Or specify per-edge:
+
+```tsx
+const edges = [
+  { id: 'e1', source: 'a', target: 'b', type: 'straight' },
+  { id: 'e2', source: 'b', target: 'c', type: 'step' },
+];
+```
+
+## Edge Labels
+
+Add labels to edges to describe the connection:
+
+### Simple Label
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  label: 'Data Transfer',
+};
+```
+
+### Label Configuration
+
+```tsx
+import type { EdgeLabelConfig } from '@kushagradhawan/kookie-flow';
+
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  label: {
+    text: 'Flow Data',
+    position: 0.5,      // 0 = start, 0.5 = middle, 1 = end
+    fontSize: 12,
+    textColor: '#ffffff',
+    bgColor: 'rgba(0,0,0,0.5)',
+  },
+};
+```
+
+Control label visibility globally:
+
+```tsx
+<KookieFlow showEdgeLabels={true} />
+```
+
+## Edge Markers
+
+Add arrow markers to indicate direction:
+
+### Simple Markers
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  markerEnd: 'arrow',       // Open arrow
+  // or
+  markerEnd: 'arrowClosed', // Filled arrow
+};
+```
+
+### Marker Configuration
+
+```tsx
+import type { EdgeMarker } from '@kushagradhawan/kookie-flow';
+
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  markerEnd: {
+    type: 'arrow',
+    width: 16,
+    height: 16,
+    color: '#4ade80', // Defaults to edge color
+  },
+  markerStart: {
+    type: 'arrowClosed',
+    width: 12,
+    height: 12,
+  },
+};
+```
+
+## Connections
+
+### Creating Connections
+
+When a user drags from one socket to another, the `onConnect` callback fires:
+
+```tsx
+import type { Connection } from '@kushagradhawan/kookie-flow';
+
+<KookieFlow
+  onConnect={(connection: Connection) => {
+    console.log('Connected:', connection);
+    // {
+    //   source: 'node-1',
+    //   sourceSocket: 'out-1',
+    //   target: 'node-2',
+    //   targetSocket: 'in-1',
+    // }
+  }}
+/>
+```
+
+The `useGraph` hook handles this automatically, creating the edge:
+
+```tsx
+const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+  initialNodes,
+  initialEdges,
+});
+
+<KookieFlow
+  nodes={nodes}
+  edges={edges}
+  onConnect={onConnect}
+/>
+```
+
+### Connection Validation
+
+Control which connections are allowed:
+
+**Loose Mode (default):** All connections allowed, incompatible types marked as `invalid`
+
+```tsx
+<KookieFlow connectionMode="loose" />
+```
+
+**Strict Mode:** Only compatible socket types can connect
+
+```tsx
+<KookieFlow connectionMode="strict" />
+```
+
+**Custom Validation:** Full control over connection rules
+
+```tsx
+import type { IsValidConnectionFn } from '@kushagradhawan/kookie-flow';
+
+const isValidConnection: IsValidConnectionFn = (params, socketTypes) => {
+  const { source, target, sourceSocketType, targetSocketType } = params;
+
+  // Prevent self-connections
+  if (source.nodeId === target.nodeId) return false;
+
+  // Check type compatibility
+  const sourceType = socketTypes[sourceSocketType];
+  if (sourceType?.compatibleWith === '*') return true;
+  if (sourceType?.compatibleWith?.includes(targetSocketType)) return true;
+
+  return sourceSocketType === targetSocketType;
+};
+
+<KookieFlow isValidConnection={isValidConnection} />
+```
+
+## Edge Changes
+
+Handle edge changes through the `onEdgesChange` callback:
+
+```tsx
+import type { EdgeChange } from '@kushagradhawan/kookie-flow';
+
+function handleEdgesChange(changes: EdgeChange[]) {
+  for (const change of changes) {
+    switch (change.type) {
+      case 'select':
+        // Selection changed: change.id, change.selected
+        break;
+      case 'remove':
+        // Edge deleted: change.id
+        break;
+      case 'add':
+        // Edge added: change.edge
+        break;
+    }
+  }
+}
+```
+
+### Edge Selection
+
+Edges can be selected by clicking:
+
+```tsx
+<KookieFlow
+  edgesSelectable={true} // Default: true
+  onEdgeClick={(edge) => {
+    console.log('Clicked edge:', edge.id);
+  }}
+/>
+```
+
+## Edge Colors
+
+Edge colors are determined by the source socket's type color. Define colors in your socket types:
+
+```tsx
+const socketTypes = {
+  float: { name: 'Float', color: '#6366f1' },
+  image: { name: 'Image', color: '#f97316' },
+};
+```
+
+Edges connecting `float` sockets will be purple (`#6366f1`), while edges connecting `image` sockets will be orange (`#f97316`).
+
+## Animation
+
+Mark edges as animated for visual feedback:
+
+```tsx
+const edges = [
+  {
+    id: 'edge-1',
+    source: 'node-1',
+    target: 'node-2',
+    animated: true, // Shows flowing animation
+  },
+];
+```
+
+## Invalid Edges
+
+In loose connection mode, incompatible connections are marked as `invalid`:
+
+```tsx
+const edge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  invalid: true, // Rendered with warning style
+};
+```
+
+This allows the connection while indicating a type mismatch.

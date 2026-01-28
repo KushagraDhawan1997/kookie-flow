@@ -1,0 +1,259 @@
+---
+title: useGraph
+description: API reference for the useGraph hook
+---
+
+A hook for managing graph state with the controlled component pattern.
+
+## Import
+
+```tsx
+import { useGraph } from '@kushagradhawan/kookie-flow';
+```
+
+## Usage
+
+```tsx
+function MyFlow() {
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+  } = useGraph({
+    initialNodes: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
+    ],
+    initialEdges: [],
+  });
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+## Options
+
+```tsx
+interface UseGraphOptions {
+  initialNodes?: Node[];
+  initialEdges?: Edge[];
+}
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `initialNodes` | `Node[]` | `[]` | Initial nodes in the graph |
+| `initialEdges` | `Edge[]` | `[]` | Initial edges connecting nodes |
+
+## Return Value
+
+```tsx
+interface UseGraphReturn {
+  // State
+  nodes: Node[];
+  edges: Edge[];
+  setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
+
+  // Change handlers (pass to KookieFlow)
+  onNodesChange: (changes: NodeChange[]) => void;
+  onEdgesChange: (changes: EdgeChange[]) => void;
+  onConnect: (connection: Connection) => void;
+
+  // Convenience methods
+  addNode: (node: Node) => void;
+  removeNode: (id: string) => void;
+  addEdge: (edge: Edge) => void;
+  removeEdge: (id: string) => void;
+  getNode: (id: string) => Node | undefined;
+  getEdge: (id: string) => Edge | undefined;
+  getConnectedEdges: (nodeId: string) => Edge[];
+}
+```
+
+### State
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `nodes` | `Node[]` | Current nodes in the graph |
+| `edges` | `Edge[]` | Current edges in the graph |
+| `setNodes` | `Dispatch<SetStateAction<Node[]>>` | React state setter for nodes |
+| `setEdges` | `Dispatch<SetStateAction<Edge[]>>` | React state setter for edges |
+
+### Change Handlers
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `onNodesChange` | `(changes: NodeChange[]) => void` | Handles node position, selection, add, remove, dimension changes |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | Handles edge selection, add, remove changes |
+| `onConnect` | `(connection: Connection) => void` | Creates an edge when sockets are connected |
+
+### Convenience Methods
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `addNode` | `(node: Node) => void` | Add a new node |
+| `removeNode` | `(id: string) => void` | Remove a node and its connected edges |
+| `addEdge` | `(edge: Edge) => void` | Add a new edge |
+| `removeEdge` | `(id: string) => void` | Remove an edge |
+| `getNode` | `(id: string) => Node \| undefined` | Find a node by ID |
+| `getEdge` | `(id: string) => Edge \| undefined` | Find an edge by ID |
+| `getConnectedEdges` | `(nodeId: string) => Edge[]` | Get all edges connected to a node |
+
+## Examples
+
+### Adding Nodes Programmatically
+
+```tsx
+function FlowWithToolbar() {
+  const { nodes, edges, addNode, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes: [],
+    initialEdges: [],
+  });
+
+  const handleAddNode = () => {
+    addNode({
+      id: `node-${Date.now()}`,
+      type: 'default',
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: { label: 'New Node' },
+      inputs: [{ id: 'in', name: 'Input', type: 'any' }],
+      outputs: [{ id: 'out', name: 'Output', type: 'any' }],
+    });
+  };
+
+  return (
+    <>
+      <button onClick={handleAddNode}>Add Node</button>
+      <KookieFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
+    </>
+  );
+}
+```
+
+### Updating Node Data
+
+```tsx
+function FlowWithDataUpdates() {
+  const { nodes, edges, setNodes, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes,
+    initialEdges,
+  });
+
+  const updateNodeLabel = (nodeId: string, label: string) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, label } }
+          : node
+      )
+    );
+  };
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onNodeClick={(node) => {
+        const newLabel = prompt('New label:', node.data.label);
+        if (newLabel) updateNodeLabel(node.id, newLabel);
+      }}
+    />
+  );
+}
+```
+
+### Deleting Selected Nodes
+
+```tsx
+function FlowWithDelete() {
+  const { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+    initialNodes,
+    initialEdges,
+  });
+
+  const deleteSelected = () => {
+    const selectedIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id));
+
+    // Remove selected nodes
+    setNodes((nodes) => nodes.filter((n) => !n.selected));
+
+    // Remove edges connected to deleted nodes
+    setEdges((edges) =>
+      edges.filter((e) => !selectedIds.has(e.source) && !selectedIds.has(e.target))
+    );
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteSelected]);
+
+  return (
+    <KookieFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+### Finding Connected Nodes
+
+```tsx
+function FlowWithHighlighting() {
+  const { nodes, edges, getConnectedEdges, getNode } = useGraph({
+    initialNodes,
+    initialEdges,
+  });
+
+  const getConnectedNodes = (nodeId: string): Node[] => {
+    const connectedEdges = getConnectedEdges(nodeId);
+    const connectedIds = new Set<string>();
+
+    for (const edge of connectedEdges) {
+      if (edge.source !== nodeId) connectedIds.add(edge.source);
+      if (edge.target !== nodeId) connectedIds.add(edge.target);
+    }
+
+    return Array.from(connectedIds)
+      .map(getNode)
+      .filter((n): n is Node => n !== undefined);
+  };
+
+  // Use getConnectedNodes for highlighting, validation, etc.
+}
+```
+
+## Related
+
+- [KookieFlow](/docs/api/kookie-flow) — Main component props
+- [useFlowStoreApi](/docs/api/use-flow-store-api) — Access internal store for advanced operations
+- [Nodes](/docs/nodes) — Node structure and types
+- [Edges](/docs/edges) — Edge structure and types

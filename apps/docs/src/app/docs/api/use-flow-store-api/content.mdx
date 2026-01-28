@@ -1,0 +1,301 @@
+---
+title: useFlowStoreApi
+description: API reference for accessing the internal Zustand store
+---
+
+Access the internal Zustand store for advanced operations like clipboard, batch updates, and direct state manipulation.
+
+## Import
+
+```tsx
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+```
+
+## Usage
+
+The hook returns a store API with `getState()` and `subscribe()` methods:
+
+```tsx
+function MyComponent() {
+  const store = useFlowStoreApi();
+
+  const handleCopy = () => {
+    store.getState().copySelectedToInternal();
+  };
+
+  const handlePaste = () => {
+    store.getState().pasteFromInternal();
+  };
+
+  return (
+    <>
+      <button onClick={handleCopy}>Copy</button>
+      <button onClick={handlePaste}>Paste</button>
+    </>
+  );
+}
+```
+
+## Store State
+
+Access current state via `store.getState()`:
+
+```tsx
+interface FlowState {
+  // Data
+  nodes: Node[];
+  edges: Edge[];
+  viewport: Viewport;
+
+  // Selection (O(1) lookup)
+  selectedNodeIds: Set<string>;
+  selectedEdgeIds: Set<string>;
+
+  // Lookup structures
+  nodeMap: Map<string, Node>;          // O(1) node lookup
+  connectedSockets: Set<string>;       // "nodeId:socketId" for connected inputs
+
+  // Interaction state
+  hoveredNodeId: string | null;
+  hoveredSocketId: SocketHandle | null;
+  connectionDraft: ConnectionDraft | null;
+  selectionBox: { start: XYPosition; end: XYPosition } | null;
+
+  // Clipboard
+  internalClipboard: InternalClipboard | null;
+}
+```
+
+## Methods
+
+### Selection
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `selectNode` | `(id: string, additive?: boolean) => void` | Select a node |
+| `selectNodes` | `(ids: string[]) => void` | Replace selection with nodes |
+| `selectEdge` | `(id: string, additive?: boolean) => void` | Select an edge |
+| `selectEdges` | `(ids: string[]) => void` | Replace selection with edges |
+| `selectAll` | `() => void` | Select all nodes |
+| `deselectAll` | `() => void` | Clear all selection |
+| `isNodeSelected` | `(id: string) => boolean` | Check if node is selected |
+| `isEdgeSelected` | `(id: string) => boolean` | Check if edge is selected |
+| `getSelectedNodes` | `() => Node[]` | Get selected nodes |
+
+### Viewport
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `pan` | `(delta: XYPosition) => void` | Pan the viewport |
+| `zoom` | `(delta: number, center?: XYPosition) => void` | Zoom the viewport |
+| `fitView` | `(padding?: number) => void` | Fit all nodes in view |
+| `setViewport` | `(viewport: Viewport) => void` | Set viewport directly |
+
+### Batch Operations
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `addElements` | `(batch: ElementsBatch) => void` | Add multiple nodes/edges |
+| `deleteElements` | `(batch: DeleteElementsBatch) => void` | Delete by IDs |
+| `deleteSelected` | `() => void` | Delete selected elements |
+| `cloneElements` | `(nodes, edges, options?) => CloneElementsResult` | Clone with new IDs |
+
+### Clipboard
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `copySelectedToInternal` | `() => void` | Copy selection to clipboard |
+| `pasteFromInternal` | `(options?) => CloneElementsResult \| null` | Paste from clipboard |
+| `cutSelectedToInternal` | `() => void` | Cut selection to clipboard |
+
+### Queries
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `getConnectedEdges` | `(nodeIds: string[]) => Edge[]` | Get edges connected to nodes |
+| `toObject` | `() => FlowObject` | Serialize state |
+
+### Low-level Setters
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `setNodes` | `(nodes: Node[]) => void` | Replace all nodes |
+| `setEdges` | `(edges: Edge[]) => void` | Replace all edges |
+| `applyNodeChanges` | `(changes: NodeChange[]) => void` | Apply node changes |
+| `applyEdgeChanges` | `(changes: EdgeChange[]) => void` | Apply edge changes |
+| `updateNodePositions` | `(updates: Array<{id, position}>) => void` | Batch position update |
+
+## Subscribing to State
+
+Use `store.subscribe()` with selectors for fine-grained updates:
+
+```tsx
+import { useEffect } from 'react';
+
+function SelectionCounter() {
+  const store = useFlowStoreApi();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    // Subscribe to selection changes only
+    const unsubscribe = store.subscribe(
+      (state) => state.selectedNodeIds.size,
+      (size) => setCount(size)
+    );
+    return unsubscribe;
+  }, [store]);
+
+  return <span>{count} selected</span>;
+}
+```
+
+## Examples
+
+### Keyboard Shortcuts
+
+```tsx
+function FlowWithShortcuts() {
+  const store = useFlowStoreApi();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const { selectAll, deselectAll, deleteSelected } = store.getState();
+
+      if (e.key === 'a' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        selectAll();
+      }
+      if (e.key === 'Escape') {
+        deselectAll();
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [store]);
+
+  return <KookieFlow {...props} />;
+}
+```
+
+### Copy/Paste Implementation
+
+```tsx
+function ClipboardControls() {
+  const store = useFlowStoreApi();
+  const [hasContent, setHasContent] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = store.subscribe(
+      (state) => state.internalClipboard,
+      (clipboard) => setHasContent(clipboard?.nodes.length > 0)
+    );
+    return unsubscribe;
+  }, [store]);
+
+  return (
+    <div>
+      <button onClick={() => store.getState().copySelectedToInternal()}>
+        Copy
+      </button>
+      <button
+        onClick={() => store.getState().pasteFromInternal()}
+        disabled={!hasContent}
+      >
+        Paste
+      </button>
+      <button onClick={() => store.getState().cutSelectedToInternal()}>
+        Cut
+      </button>
+    </div>
+  );
+}
+```
+
+### Programmatic Node Addition
+
+```tsx
+function AddNodeButton() {
+  const store = useFlowStoreApi();
+
+  const addNode = () => {
+    store.getState().addElements({
+      nodes: [{
+        id: `node-${Date.now()}`,
+        type: 'default',
+        position: { x: 100, y: 100 },
+        data: { label: 'New Node' },
+        inputs: [{ id: 'in', name: 'Input', type: 'any' }],
+        outputs: [{ id: 'out', name: 'Output', type: 'any' }],
+      }],
+    });
+  };
+
+  return <button onClick={addNode}>Add Node</button>;
+}
+```
+
+### Batch Position Updates (Dragging)
+
+```tsx
+function DragHandler() {
+  const store = useFlowStoreApi();
+
+  const handleDrag = (nodeIds: string[], delta: XYPosition) => {
+    const { nodes } = store.getState();
+
+    const updates = nodeIds.map((id) => {
+      const node = nodes.find((n) => n.id === id);
+      return {
+        id,
+        position: {
+          x: node!.position.x + delta.x,
+          y: node!.position.y + delta.y,
+        },
+      };
+    });
+
+    // Single efficient update
+    store.getState().updateNodePositions(updates);
+  };
+}
+```
+
+### Serialization
+
+```tsx
+function SaveLoadButtons() {
+  const store = useFlowStoreApi();
+
+  const save = () => {
+    const data = store.getState().toObject();
+    localStorage.setItem('flow', JSON.stringify(data));
+  };
+
+  const load = () => {
+    const json = localStorage.getItem('flow');
+    if (json) {
+      const data = JSON.parse(json);
+      store.getState().setNodes(data.nodes);
+      store.getState().setEdges(data.edges);
+      store.getState().setViewport(data.viewport);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={save}>Save</button>
+      <button onClick={load}>Load</button>
+    </>
+  );
+}
+```
+
+## Related
+
+- [useGraph](/docs/api/use-graph) — Simpler state management for controlled components
+- [Clipboard Plugin](/docs/plugins/clipboard) — Higher-level clipboard hook
+- [Keyboard Shortcuts](/docs/plugins/keyboard-shortcuts) — Bind keyboard shortcuts
