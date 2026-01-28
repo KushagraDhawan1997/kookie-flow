@@ -5,8 +5,11 @@ import {
   useCallback,
   useState,
   useMemo,
+  forwardRef,
+  useImperativeHandle,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ForwardedRef,
 } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
@@ -27,7 +30,7 @@ import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUT
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
-import type { KookieFlowProps, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType, TextRenderMode } from '../types';
+import type { KookieFlowProps, KookieFlowInstance, FitViewOptions, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType, TextRenderMode } from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
@@ -37,109 +40,117 @@ const isSafari = typeof navigator !== 'undefined' &&
 /**
  * Main KookieFlow component.
  * Renders a WebGL canvas with an optional DOM overlay.
+ *
+ * Supports ref for imperative API access (fitView, getViewport, etc.)
  */
-export function KookieFlow({
-  nodes,
-  edges,
-  nodeTypes = {},
-  socketTypes = {},
-  onNodesChange,
-  onEdgesChange,
-  onConnect,
-  onNodeClick,
-  onEdgeClick,
-  onPaneClick,
-  edgesSelectable = true,
-  defaultViewport = DEFAULT_VIEWPORT,
-  minZoom = 0.1,
-  maxZoom = 4,
-  showGrid = true,
-  showMinimap = false,
-  minimapProps,
-  showStats = false,
-  textRenderMode = 'dom',
-  font = 'google-sans',
-  scaleTextWithZoom = false,
-  showSocketLabels = true,
-  showEdgeLabels = true,
-  snapToGrid = false,
-  snapGrid = [20, 20],
-  defaultEdgeType = 'bezier',
-  connectionMode = 'loose',
-  isValidConnection,
-  className,
-  children,
-  // Styling props (Milestone 2)
-  size = '2',
-  variant = 'surface',
-  radius,
-  header = 'none',
-  accentHeader = false,
-  nodeStyle,
-  // Widget props (Phase 7D)
-  widgetTypes,
-  onWidgetChange,
-  showWidgets = true,
-  ThemeComponent,
-  defaultNodeWidth,
-  socketLabelWidth,
-}: KookieFlowProps) {
-  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
+export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(
+  function KookieFlow(
+    {
+      nodes,
+      edges,
+      nodeTypes = {},
+      socketTypes = {},
+      onNodesChange,
+      onEdgesChange,
+      onConnect,
+      onNodeClick,
+      onEdgeClick,
+      onPaneClick,
+      edgesSelectable = true,
+      defaultViewport = DEFAULT_VIEWPORT,
+      minZoom = 0.1,
+      maxZoom = 4,
+      showGrid = true,
+      showMinimap = false,
+      minimapProps,
+      showStats = false,
+      textRenderMode = 'dom',
+      font = 'google-sans',
+      scaleTextWithZoom = false,
+      showSocketLabels = true,
+      showEdgeLabels = true,
+      snapToGrid = false,
+      snapGrid = [20, 20],
+      defaultEdgeType = 'bezier',
+      connectionMode = 'loose',
+      isValidConnection,
+      className,
+      children,
+      // Styling props (Milestone 2)
+      size = '2',
+      variant = 'surface',
+      radius,
+      header = 'none',
+      accentHeader = false,
+      nodeStyle,
+      // Widget props (Phase 7D)
+      widgetTypes,
+      onWidgetChange,
+      showWidgets = true,
+      ThemeComponent,
+      defaultNodeWidth,
+      socketLabelWidth,
+    },
+    ref
+  ) {
+    const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
 
-  return (
-    <ThemeProvider>
-      <StyleProvider
-        size={size}
-        variant={variant}
-        radius={radius}
-        header={header}
-        accentHeader={accentHeader}
-        nodeStyle={nodeStyle}
-      >
-        <FontProvider font={font}>
-          <ThemedFlowContainer
-          nodes={nodes}
-          edges={edges}
-          defaultViewport={defaultViewport}
-          className={className}
-          minZoom={minZoom}
-          maxZoom={maxZoom}
-          snapToGrid={snapToGrid}
-          snapGrid={snapGrid}
-          socketTypes={resolvedSocketTypes}
-          connectionMode={connectionMode}
-          isValidConnection={isValidConnection}
-          defaultEdgeType={defaultEdgeType}
-          edgesSelectable={edgesSelectable}
-          onNodeClick={onNodeClick}
-          onEdgeClick={onEdgeClick}
-          onPaneClick={onPaneClick}
-          onConnect={onConnect}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          showGrid={showGrid}
-          showStats={showStats}
-          textRenderMode={textRenderMode}
-          showSocketLabels={showSocketLabels}
-          showEdgeLabels={showEdgeLabels}
-          nodeTypes={nodeTypes}
-          scaleTextWithZoom={scaleTextWithZoom}
-          showMinimap={showMinimap}
-          minimapProps={minimapProps}
-          widgetTypes={widgetTypes}
-          onWidgetChange={onWidgetChange}
-          showWidgets={showWidgets}
-          ThemeComponent={ThemeComponent}
-          defaultNodeWidth={defaultNodeWidth}
-          socketLabelWidth={socketLabelWidth}
+    return (
+      <ThemeProvider>
+        <StyleProvider
+          size={size}
+          variant={variant}
+          radius={radius}
+          header={header}
+          accentHeader={accentHeader}
+          nodeStyle={nodeStyle}
         >
-          {children}
-          </ThemedFlowContainer>
-        </FontProvider>
-      </StyleProvider>
-    </ThemeProvider>
-  );
-}
+          <FontProvider font={font}>
+            <ThemedFlowContainer
+              ref={ref}
+              nodes={nodes}
+              edges={edges}
+              defaultViewport={defaultViewport}
+              className={className}
+              minZoom={minZoom}
+              maxZoom={maxZoom}
+              snapToGrid={snapToGrid}
+              snapGrid={snapGrid}
+              socketTypes={resolvedSocketTypes}
+              connectionMode={connectionMode}
+              isValidConnection={isValidConnection}
+              defaultEdgeType={defaultEdgeType}
+              edgesSelectable={edgesSelectable}
+              onNodeClick={onNodeClick}
+              onEdgeClick={onEdgeClick}
+              onPaneClick={onPaneClick}
+              onConnect={onConnect}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              showGrid={showGrid}
+              showStats={showStats}
+              textRenderMode={textRenderMode}
+              showSocketLabels={showSocketLabels}
+              showEdgeLabels={showEdgeLabels}
+              nodeTypes={nodeTypes}
+              scaleTextWithZoom={scaleTextWithZoom}
+              showMinimap={showMinimap}
+              minimapProps={minimapProps}
+              widgetTypes={widgetTypes}
+              onWidgetChange={onWidgetChange}
+              showWidgets={showWidgets}
+              ThemeComponent={ThemeComponent}
+              defaultNodeWidth={defaultNodeWidth}
+              socketLabelWidth={socketLabelWidth}
+            >
+              {children}
+            </ThemedFlowContainer>
+          </FontProvider>
+        </StyleProvider>
+      </ThemeProvider>
+    );
+  }
+);
 
 /**
  * Inner container that has access to theme tokens for styling.
@@ -183,106 +194,198 @@ interface ThemedFlowContainerProps {
   socketLabelWidth?: number;
 }
 
-function ThemedFlowContainer({
-  nodes,
-  edges,
-  defaultViewport,
-  className,
-  minZoom,
-  maxZoom,
-  snapToGrid,
-  snapGrid,
-  socketTypes,
-  connectionMode,
-  isValidConnection,
-  defaultEdgeType,
-  edgesSelectable,
-  onNodeClick,
-  onEdgeClick,
-  onPaneClick,
-  onConnect,
-  onNodesChange,
-  onEdgesChange,
-  showGrid,
-  showStats,
-  textRenderMode,
-  showSocketLabels,
-  showEdgeLabels,
-  nodeTypes,
-  scaleTextWithZoom,
-  showMinimap,
-  minimapProps,
-  children,
-  widgetTypes,
-  onWidgetChange,
-  showWidgets,
-  ThemeComponent,
-  defaultNodeWidth,
-  socketLabelWidth,
-}: ThemedFlowContainerProps) {
-  const tokens = useTheme();
+const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerProps>(
+  function ThemedFlowContainer(
+    {
+      nodes,
+      edges,
+      defaultViewport,
+      className,
+      minZoom,
+      maxZoom,
+      snapToGrid,
+      snapGrid,
+      socketTypes,
+      connectionMode,
+      isValidConnection,
+      defaultEdgeType,
+      edgesSelectable,
+      onNodeClick,
+      onEdgeClick,
+      onPaneClick,
+      onConnect,
+      onNodesChange,
+      onEdgesChange,
+      showGrid,
+      showStats,
+      textRenderMode,
+      showSocketLabels,
+      showEdgeLabels,
+      nodeTypes,
+      scaleTextWithZoom,
+      showMinimap,
+      minimapProps,
+      children,
+      widgetTypes,
+      onWidgetChange,
+      showWidgets,
+      ThemeComponent,
+      defaultNodeWidth,
+      socketLabelWidth,
+    },
+    ref
+  ) {
+    const tokens = useTheme();
+    const containerRef = useRef<HTMLDivElement>(null);
 
-  // Resolve socket type colors from theme tokens (memoized)
-  const resolvedSocketTypes = useMemo(
-    () => resolveSocketTypes(socketTypes, tokens),
-    [socketTypes, tokens]
-  );
+    // Resolve socket type colors from theme tokens (memoized)
+    const resolvedSocketTypes = useMemo(
+      () => resolveSocketTypes(socketTypes, tokens),
+      [socketTypes, tokens]
+    );
 
-  // Use CSS variable with fallback for standalone mode (no Kookie UI)
-  // This avoids hydration mismatch since server and client render the same string
-  const containerStyle: CSSProperties = {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
-    backgroundColor: 'var(--gray-2, #191919)',
-  };
+    // Use CSS variable with fallback for standalone mode (no Kookie UI)
+    // This avoids hydration mismatch since server and client render the same string
+    const containerStyle: CSSProperties = {
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
+      backgroundColor: 'var(--gray-2, #191919)',
+    };
 
-  return (
-    <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
-      <InputHandler
-        className={className}
-        style={containerStyle}
-        minZoom={minZoom}
-        maxZoom={maxZoom}
-        snapToGrid={snapToGrid}
-        snapGrid={snapGrid}
-        socketTypes={resolvedSocketTypes}
-        connectionMode={connectionMode}
-        isValidConnection={isValidConnection}
-        defaultEdgeType={defaultEdgeType}
-        edgesSelectable={edgesSelectable}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onConnect={onConnect}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-      >
-        <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
-        <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
-        {showWidgets && (
-          <WidgetsLayer
+    return (
+      <div ref={containerRef} className={className} style={containerStyle}>
+        <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
+          <FlowInstanceHandle ref={ref} containerRef={containerRef} minZoom={minZoom} maxZoom={maxZoom} />
+          <InputHandler
+            minZoom={minZoom}
+            maxZoom={maxZoom}
+            snapToGrid={snapToGrid}
+            snapGrid={snapGrid}
             socketTypes={resolvedSocketTypes}
-            widgetTypes={widgetTypes}
-            onWidgetChange={onWidgetChange}
-            ThemeComponent={ThemeComponent}
-            defaultNodeWidth={defaultNodeWidth}
-            socketLabelWidth={socketLabelWidth}
-          />
-        )}
-        {showMinimap && <Minimap {...minimapProps} />}
-        <FlowSync
-          nodes={nodes}
-          edges={edges}
-          socketTypes={resolvedSocketTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-        />
-      </InputHandler>
-    </FlowProvider>
-  );
+            connectionMode={connectionMode}
+            isValidConnection={isValidConnection}
+            defaultEdgeType={defaultEdgeType}
+            edgesSelectable={edgesSelectable}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            onConnect={onConnect}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+          >
+            <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
+            <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
+            {showWidgets && (
+              <WidgetsLayer
+                socketTypes={resolvedSocketTypes}
+                widgetTypes={widgetTypes}
+                onWidgetChange={onWidgetChange}
+                ThemeComponent={ThemeComponent}
+                defaultNodeWidth={defaultNodeWidth}
+                socketLabelWidth={socketLabelWidth}
+              />
+            )}
+            {showMinimap && <Minimap {...minimapProps} />}
+            <FlowSync
+              nodes={nodes}
+              edges={edges}
+              socketTypes={resolvedSocketTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+            />
+          </InputHandler>
+        </FlowProvider>
+      </div>
+    );
+  }
+);
+
+/**
+ * Component that exposes the imperative API via ref.
+ * Lives inside FlowProvider to access the store.
+ */
+interface FlowInstanceHandleProps {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  minZoom: number;
+  maxZoom: number;
 }
+
+const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProps>(
+  function FlowInstanceHandle({ containerRef, minZoom, maxZoom }, ref) {
+    const store = useFlowStoreApi();
+
+    useImperativeHandle(ref, () => ({
+      fitView: (options?: FitViewOptions) => {
+        const container = containerRef.current;
+        const width = container?.clientWidth ?? window.innerWidth;
+        const height = container?.clientHeight ?? window.innerHeight;
+
+        // Merge user options with component-level zoom constraints
+        const mergedOptions: FitViewOptions = {
+          ...options,
+          minZoom: options?.minZoom ?? minZoom,
+          maxZoom: options?.maxZoom ?? 1, // Default to not zooming in past 100%
+        };
+
+        store.getState().fitView(mergedOptions, width, height);
+      },
+
+      getViewport: () => {
+        return store.getState().viewport;
+      },
+
+      setViewport: (viewport) => {
+        store.getState().setViewport(viewport);
+      },
+
+      zoomIn: (step = 0.25) => {
+        const state = store.getState();
+        state.zoom(step);
+      },
+
+      zoomOut: (step = 0.25) => {
+        const state = store.getState();
+        state.zoom(-step);
+      },
+
+      getNodes: () => {
+        return store.getState().nodes;
+      },
+
+      getEdges: () => {
+        return store.getState().edges;
+      },
+
+      getSelectedNodes: () => {
+        const state = store.getState();
+        return state.nodes.filter(n => state.selectedNodeIds.has(n.id));
+      },
+
+      getSelectedEdges: () => {
+        const state = store.getState();
+        return state.edges.filter(e => state.selectedEdgeIds.has(e.id));
+      },
+
+      setCenter: (x, y, options) => {
+        const container = containerRef.current;
+        const width = container?.clientWidth ?? window.innerWidth;
+        const height = container?.clientHeight ?? window.innerHeight;
+        const state = store.getState();
+        const zoom = options?.zoom ?? state.viewport.zoom;
+
+        // Calculate offset to center the point (x, y) in the viewport
+        const offsetX = width / 2 - x * zoom;
+        const offsetY = height / 2 - y * zoom;
+
+        state.setViewport({ x: offsetX, y: offsetY, zoom });
+      },
+    }), [store, containerRef, minZoom, maxZoom]);
+
+    return null;
+  }
+);
 
 /**
  * Input handler for pan/zoom controls and selection.
@@ -291,8 +394,6 @@ function ThemedFlowContainer({
  */
 interface InputHandlerProps {
   children: React.ReactNode;
-  className?: string;
-  style?: CSSProperties;
   minZoom: number;
   maxZoom: number;
   snapToGrid: boolean;
@@ -313,7 +414,7 @@ interface InputHandlerProps {
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
-function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
+function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
@@ -1258,9 +1359,9 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   return (
     <div
       ref={containerRef}
-      className={className}
       style={{
-        ...style,
+        position: 'absolute',
+        inset: 0,
         cursor: isPanning || isDragging ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : isConnecting ? 'crosshair' : 'default',
         touchAction: 'none',
       }}

@@ -526,17 +526,18 @@ flowRef.current.deleteElements({ nodes: ['1'], edges: ['e1'] });
 - [ ] **TODO:** Test and fix shaders
 - [ ] **TODO:** Verify instancing works correctly
 
-### Phase 2: Camera Controls
+### Phase 2: Camera Controls ✅ COMPLETE
 
 **Goal:** Pan and zoom
 
-- [ ] Pointer event handling on canvas
-- [ ] Pan: middle-click drag or space+drag
-- [ ] Zoom: scroll wheel with center point
-- [ ] Touch support: pinch-to-zoom, two-finger pan
-- [ ] `fitView()` implementation
-- [ ] Zoom limits (min/max)
-- [ ] Smooth animated transitions (optional)
+- [x] Pointer event handling on canvas
+- [x] Pan: middle-click drag or space+drag
+- [x] Zoom: scroll wheel with center point
+- [x] Touch support: pinch-to-zoom, two-finger pan
+- [x] `fitView()` implementation (with options: padding, nodes filter, zoom constraints)
+- [x] Zoom limits (min/max)
+- [x] Imperative API via ref (`fitView`, `getViewport`, `setViewport`, `zoomIn`, `zoomOut`, `setCenter`, etc.)
+- [ ] Smooth animated transitions (optional, deferred)
 
 ### Phase 3: Selection ✅ COMPLETE
 
@@ -1887,6 +1888,10 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `calculateMinNodeHeight()` for automatic node height calculation
 - [x] Socket widgets infrastructure (types, built-in widgets, WidgetsLayer)
 - [x] Built-in widgets: SliderWidget, NumberWidget, SelectWidget, CheckboxWidget, TextWidget, ColorWidget
+- [x] Imperative API via ref (`KookieFlowInstance` type)
+- [x] `fitView()` with options (padding, nodes filter, minZoom, maxZoom)
+- [x] `getViewport()`, `setViewport()`, `zoomIn()`, `zoomOut()`, `setCenter()`
+- [x] `getNodes()`, `getEdges()`, `getSelectedNodes()`, `getSelectedEdges()`
 
 > **Note:** Full styling plan and remaining tasks tracked in [STYLING.md](./STYLING.md)
 

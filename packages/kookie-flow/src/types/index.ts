@@ -599,3 +599,47 @@ export interface KookieFlowProps {
     children: React.ReactNode;
   }>;
 }
+
+// ============================================================================
+// Imperative API Types
+// ============================================================================
+
+/** Options for fitView() */
+export interface FitViewOptions {
+  /** Padding around the content in pixels. Default: 50 */
+  padding?: number;
+  /** Whether to include hidden nodes in the bounds calculation. Default: true */
+  includeHiddenNodes?: boolean;
+  /** Minimum zoom level for the fit. Default: uses component's minZoom */
+  minZoom?: number;
+  /** Maximum zoom level for the fit. Default: 1 (won't zoom in past 100%) */
+  maxZoom?: number;
+  /** Specific nodes to fit (by ID). If not provided, fits all nodes. */
+  nodes?: string[];
+  /** Animation duration in ms. 0 = instant. Default: 0 */
+  duration?: number;
+}
+
+/** Imperative handle exposed via ref */
+export interface KookieFlowInstance {
+  /** Fit the viewport to show all nodes (or specific nodes) */
+  fitView: (options?: FitViewOptions) => void;
+  /** Get the current viewport */
+  getViewport: () => Viewport;
+  /** Set the viewport directly */
+  setViewport: (viewport: Viewport) => void;
+  /** Zoom in by a step */
+  zoomIn: (step?: number) => void;
+  /** Zoom out by a step */
+  zoomOut: (step?: number) => void;
+  /** Get all nodes */
+  getNodes: () => Node[];
+  /** Get all edges */
+  getEdges: () => Edge[];
+  /** Get currently selected nodes */
+  getSelectedNodes: () => Node[];
+  /** Get currently selected edges */
+  getSelectedEdges: () => Edge[];
+  /** Center the viewport on a specific position */
+  setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
+}

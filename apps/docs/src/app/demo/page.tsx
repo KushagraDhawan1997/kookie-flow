@@ -9,6 +9,7 @@ import {
   type Node,
   type Edge,
   type NodeVariant,
+  type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
 import { Theme } from '@kushagradhawan/kookie-ui';
@@ -863,6 +864,86 @@ function WidgetValuesPanel({ values }: { values: Record<string, Record<string, u
   );
 }
 
+// Viewport controls component
+function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInstance | null> }) {
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+
+  // Update viewport display periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (flowRef.current) {
+        setViewport(flowRef.current.getViewport());
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [flowRef]);
+
+  const buttonStyle = {
+    padding: '6px 12px',
+    background: '#333',
+    border: '1px solid #555',
+    borderRadius: 4,
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 12,
+  };
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 100,
+        left: 16,
+        zIndex: 10,
+        background: 'rgba(0,0,0,0.8)',
+        padding: '12px 16px',
+        borderRadius: 8,
+        fontSize: 12,
+        minWidth: 200,
+        pointerEvents: 'auto',
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <h3 style={{ fontSize: 13, marginBottom: 10 }}>Viewport Controls</h3>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button style={buttonStyle} onClick={() => flowRef.current?.fitView()}>
+          Fit All
+        </button>
+        <button
+          style={buttonStyle}
+          onClick={() => {
+            const selected = flowRef.current?.getSelectedNodes().map(n => n.id);
+            if (selected && selected.length > 0) {
+              flowRef.current?.fitView({ nodes: selected, padding: 100 });
+            }
+          }}
+        >
+          Fit Selection
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button style={buttonStyle} onClick={() => flowRef.current?.zoomIn()}>
+          Zoom +
+        </button>
+        <button style={buttonStyle} onClick={() => flowRef.current?.zoomOut()}>
+          Zoom −
+        </button>
+        <button style={buttonStyle} onClick={() => flowRef.current?.setCenter(0, 0, { zoom: 1 })}>
+          Reset
+        </button>
+      </div>
+
+      <div style={{ color: '#666', fontSize: 11 }}>
+        <div>x: {viewport.x.toFixed(0)}</div>
+        <div>y: {viewport.y.toFixed(0)}</div>
+        <div>zoom: {(viewport.zoom * 100).toFixed(0)}%</div>
+      </div>
+    </div>
+  );
+}
+
 // All available node variants
 const VARIANTS: NodeVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
 
@@ -936,6 +1017,7 @@ export default function DemoPage() {
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
   const [variant, setVariant] = useState<NodeVariant>('surface');
   const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
+  const flowRef = useRef<KookieFlowInstance>(null);
 
   // Use ref to accumulate changes without triggering re-renders
   const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
@@ -989,6 +1071,7 @@ export default function DemoPage() {
       </div>
 
       <KookieFlow
+        ref={flowRef}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -1012,6 +1095,7 @@ export default function DemoPage() {
         ThemeComponent={Theme}
       >
         <ClipboardDemo />
+        <ViewportControls flowRef={flowRef} />
         <ThemeTokensTest />
         <VariantShowcase variant={variant} setVariant={setVariant} />
         <WidgetValuesPanel values={widgetValues} />

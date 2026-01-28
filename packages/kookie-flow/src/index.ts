@@ -133,6 +133,9 @@ export type {
   FontConfig,
   FontWeightConfig,
   FontMetrics,
+  // Imperative API types
+  FitViewOptions,
+  KookieFlowInstance,
 } from './types';
 
 // Constants

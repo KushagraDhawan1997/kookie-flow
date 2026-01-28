@@ -17,6 +17,7 @@ import type {
   InternalClipboard,
   PasteFromInternalOptions,
   NodeData,
+  FitViewOptions,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING } from './constants';
 import { Quadtree, SocketQuadtree, getNodeBounds, type SocketEntry } from './spatial';
@@ -110,7 +111,7 @@ export interface FlowState {
   /** Viewport controls */
   pan: (delta: XYPosition) => void;
   zoom: (delta: number, center?: XYPosition) => void;
-  fitView: (padding?: number) => void;
+  fitView: (options?: FitViewOptions, canvasWidth?: number, canvasHeight?: number) => void;
 
   /** Efficient batch position update for dragging */
   updateNodePositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
@@ -520,9 +521,30 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
       },
 
-      fitView: (padding = 50, canvasWidth?: number, canvasHeight?: number) => {
-        const { nodes } = get();
-        if (nodes.length === 0) return;
+      fitView: (options: FitViewOptions = {}, canvasWidth?: number, canvasHeight?: number) => {
+        const { nodes: allNodes } = get();
+
+        const {
+          padding = 50,
+          // includeHiddenNodes - reserved for future use when hidden nodes are supported
+          minZoom: optMinZoom = MIN_ZOOM,
+          maxZoom: optMaxZoom = 1, // Default: don't zoom in past 100%
+          nodes: nodeIds,
+          // duration - reserved for future animation support
+        } = options;
+
+        // Determine which nodes to fit
+        let nodesToFit: Node[];
+        if (nodeIds && nodeIds.length > 0) {
+          // Fit specific nodes by ID
+          const nodeIdSet = new Set(nodeIds);
+          nodesToFit = allNodes.filter(n => nodeIdSet.has(n.id));
+        } else {
+          // Fit all nodes
+          nodesToFit = allNodes;
+        }
+
+        if (nodesToFit.length === 0) return;
 
         // Use provided dimensions or fallback to window size
         const containerWidth = canvasWidth ?? window.innerWidth;
@@ -534,7 +556,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           maxX = -Infinity,
           maxY = -Infinity;
 
-        for (const node of nodes) {
+        for (const node of nodesToFit) {
           minX = Math.min(minX, node.position.x);
           minY = Math.min(minY, node.position.y);
           maxX = Math.max(maxX, node.position.x + (node.width ?? 200));
@@ -550,19 +572,23 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Calculate zoom to fit content in container
         const contentWidth = maxX - minX;
         const contentHeight = maxY - minY;
-        const zoom = Math.min(1, Math.min(containerWidth / contentWidth, containerHeight / contentHeight));
+
+        // Clamp zoom between optMinZoom and optMaxZoom, then also clamp to global limits
+        const rawZoom = Math.min(containerWidth / contentWidth, containerHeight / contentHeight);
+        const clampedZoom = Math.max(optMinZoom, Math.min(optMaxZoom, rawZoom));
+        const finalZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, clampedZoom));
 
         // Center the content
-        const scaledWidth = contentWidth * zoom;
-        const scaledHeight = contentHeight * zoom;
-        const offsetX = (containerWidth - scaledWidth) / 2 - minX * zoom;
-        const offsetY = (containerHeight - scaledHeight) / 2 - minY * zoom;
+        const scaledWidth = contentWidth * finalZoom;
+        const scaledHeight = contentHeight * finalZoom;
+        const offsetX = (containerWidth - scaledWidth) / 2 - minX * finalZoom;
+        const offsetY = (containerHeight - scaledHeight) / 2 - minY * finalZoom;
 
         set({
           viewport: {
             x: offsetX,
             y: offsetY,
-            zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
+            zoom: finalZoom,
           },
         });
       },
