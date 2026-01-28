@@ -72,11 +72,7 @@ interface TextWeightRendererProps {
 /**
  * Renders text for a single font weight using instanced MSDF.
  */
-function TextWeightRenderer({
-  fontMetrics,
-  atlasTexture,
-  entriesRef,
-}: TextWeightRendererProps) {
+function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeightRendererProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const initializedRef = useRef(false);
@@ -395,12 +391,19 @@ export function MultiWeightTextRenderer({
                 socketLayout.marginTop +
                 i * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
-              const textY = socketY - 6;
+              const textY = socketY - 7; // adjust for visual centering
               // Truncate output labels to fit available space (mirror of input label width)
               const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
               const truncatedName =
                 regularFont && regularGlyphMap.size > 0
-                  ? truncateText(socket.name, outputLabelMaxWidth, 12, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap)
+                  ? truncateText(
+                      socket.name,
+                      outputLabelMaxWidth,
+                      12,
+                      regularFont.metrics.info.size,
+                      regularGlyphMap,
+                      regularKerningMap
+                    )
                   : socket.name;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
@@ -425,12 +428,19 @@ export function MultiWeightTextRenderer({
                 socketLayout.marginTop +
                 rowIndex * socketLayout.rowHeight +
                 socketLayout.rowHeight / 2;
-              const textY = socketY - 6;
+              const textY = socketY - 7; // adjust for visual centering
               // Truncate input labels to fit before widget area
               const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
               const truncatedName =
                 regularFont && regularGlyphMap.size > 0
-                  ? truncateText(socket.name, inputLabelMaxWidth, 12, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap)
+                  ? truncateText(
+                      socket.name,
+                      inputLabelMaxWidth,
+                      12,
+                      regularFont.metrics.info.size,
+                      regularGlyphMap,
+                      regularKerningMap
+                    )
                   : socket.name;
               regular.push({
                 id: `socket-${node.id}-${socket.id}`,
