@@ -29,7 +29,7 @@ export function SliderWidget({
   );
 
   return (
-    <Box width="100%" style={{ flex: 1 }}>
+    <Box width="100%" style={{ flex: 1, alignSelf: 'center' }}>
       <Slider
         size="2"
         variant="soft"

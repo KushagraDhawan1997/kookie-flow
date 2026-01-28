@@ -177,6 +177,58 @@ const widgetDemoNodes: Node[] = [
       { id: 'w5-out-1', name: 'Debug', type: 'signal' },
     ],
   },
+  // Stacked layout demo - textarea and full-width widgets
+  {
+    id: 'widget-demo-stacked',
+    type: 'default',
+    position: { x: -2500, y: 0 },
+    color: 'violet',
+    data: { label: 'Stacked Layout Demo' },
+    inputs: [
+      // Stacked textarea (label above, widget spans full width)
+      {
+        id: 'ws-in-0',
+        name: 'Prompt',
+        type: 'string',
+        layout: 'stacked',
+        widget: 'textarea',
+        rows: 3,
+        placeholder: 'Enter your prompt here...',
+      },
+      // Stacked slider (full-width slider)
+      {
+        id: 'ws-in-1',
+        name: 'CFG Scale',
+        type: 'float',
+        layout: 'stacked',
+        min: 1,
+        max: 20,
+      },
+      // Inline textarea with 3 rows height
+      {
+        id: 'ws-in-2',
+        name: 'Note',
+        type: 'string',
+        widget: 'textarea',
+        rows: 3,
+        placeholder: 'Inline textarea...',
+      },
+      // Standard inline widget for comparison
+      { id: 'ws-in-3', name: 'Steps', type: 'int', min: 1, max: 150 },
+      // Inline with more rows
+      {
+        id: 'ws-in-4',
+        name: 'Code',
+        type: 'string',
+        widget: 'textarea',
+        rows: 2,
+        placeholder: 'Multi-row inline...',
+      },
+    ],
+    outputs: [
+      { id: 'ws-out-0', name: 'Image', type: 'image' },
+    ],
+  },
   // Extremely complex nodes with many widgets
   {
     id: 'complex-node-1',

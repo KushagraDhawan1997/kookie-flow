@@ -59,6 +59,7 @@ export function resolveWidgetConfig(
       placeholder: socket.placeholder,
       defaultValue: socket.defaultValue,
       customComponent: socket.widget.component,
+      rows: socket.rows,
     };
   }
 
@@ -81,6 +82,7 @@ export function resolveWidgetConfig(
     options: socket.options,
     placeholder: socket.placeholder,
     defaultValue: socket.defaultValue,
+    rows: socket.rows,
   };
 }
 

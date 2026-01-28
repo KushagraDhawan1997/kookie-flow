@@ -18,7 +18,7 @@ export function ColorWidget({ value, onChange, disabled }: WidgetProps) {
   );
 
   return (
-    <Flex align="center" gap="2" style={{ flex: 1 }}>
+    <Flex align="center" gap="2" style={{ flex: 1, alignSelf: 'center' }}>
       <input
         type="color"
         value={colorValue}

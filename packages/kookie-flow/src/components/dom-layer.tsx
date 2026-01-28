@@ -10,7 +10,7 @@ import { useFlowStoreApi } from './context';
 import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
 import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig } from '../types';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
 export interface DOMLayerProps {
@@ -140,9 +140,8 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       }
 
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const outputCount = node.outputs?.length ?? 0;
-      const inputCount = node.inputs?.length ?? 0;
-      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      const nodeLayout = getNodeSocketLayout(node, socketLayout);
+      const height = node.height ?? nodeLayout.computedHeight;
 
       // Frustum culling
       const nodeRight = node.position.x + width;
@@ -749,9 +748,8 @@ function SocketLabelsContainer() {
       }
 
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const outputCount = node.outputs?.length ?? 0;
-      const inputCount = node.inputs?.length ?? 0;
-      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      const nodeLayout = getNodeSocketLayout(node, socketLayout);
+      const height = node.height ?? nodeLayout.computedHeight;
 
       // Frustum culling
       const nodeRight = node.position.x + width;
@@ -777,10 +775,11 @@ function SocketLabelsContainer() {
       // Get socket index from data attribute
       const socketIndex = parseInt(el.dataset.socketIndex ?? '0', 10);
 
-      // Calculate socket position in world space using socket layout
-      // Layout order: outputs first, then inputs
-      const rowIndex = side === 'input' ? outputCount + socketIndex : socketIndex;
-      const socketY = node.position.y + socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+      // Get cached socket position (supports variable heights and stacked layouts)
+      const cachedPos = side === 'input'
+        ? nodeLayout.inputs[socketIndex]
+        : nodeLayout.outputs[socketIndex];
+      const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
       const socketX = side === 'input' ? node.position.x : node.position.x + width;
 
       // Label offset from socket (in world space)

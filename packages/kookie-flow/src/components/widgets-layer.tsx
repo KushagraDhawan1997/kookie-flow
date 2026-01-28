@@ -28,7 +28,7 @@ import { useSocketLayout } from '../contexts/StyleContext';
 import { BUILT_IN_WIDGETS } from './widgets';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import type {
   Node,
   Socket,
@@ -133,6 +133,7 @@ const SocketWidget = memo(
         step={config.step}
         options={config.options}
         placeholder={config.placeholder}
+        rows={config.rows}
       />
     );
 
@@ -140,7 +141,7 @@ const SocketWidget = memo(
     if (nodeColor && ThemeComponent) {
       return (
         <ThemeComponent accentColor={nodeColor} hasBackground={false} asChild>
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'stretch' }}>
             {widget}
           </div>
         </ThemeComponent>
@@ -161,26 +162,14 @@ const SocketWidget = memo(
     prev.config.type === next.config.type &&
     prev.config.min === next.config.min &&
     prev.config.max === next.config.max &&
-    prev.config.step === next.config.step
+    prev.config.step === next.config.step &&
+    prev.config.rows === next.config.rows
 );
 
-// Cached node height computation to avoid recalculating in hot loop
-const nodeHeightCache = new Map<string, number>();
-
+// Helper to get node height from cache (supports variable socket heights)
 function getCachedNodeHeight(node: Node, socketLayout: ReturnType<typeof useSocketLayout>): number {
   if (node.height !== undefined) return node.height;
-
-  const cacheKey = `${node.outputs?.length ?? 0}:${node.inputs?.length ?? 0}`;
-  let height = nodeHeightCache.get(cacheKey);
-  if (height === undefined) {
-    height = calculateMinNodeHeight(
-      node.outputs?.length ?? 0,
-      node.inputs?.length ?? 0,
-      socketLayout
-    );
-    nodeHeightCache.set(cacheKey, height);
-  }
-  return height;
+  return getNodeSocketLayout(node, socketLayout).computedHeight;
 }
 
 // Static styles for widget wrappers - set once at mount, never in hot loop
@@ -192,7 +181,7 @@ const widgetWrapperStyle: CSSProperties = {
   left: 0,
   pointerEvents: 'auto',
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'stretch', // Allow widgets to fill height (for textarea rows)
   transformOrigin: '0 0',
   contain: 'layout style', // Isolate layout without clipping overflow (no paint/size)
   willChange: 'transform',
@@ -344,20 +333,23 @@ export function WidgetsLayer({
 
       // Get socket index from data attribute (pre-parsed as number)
       const socketIndex = Number(el.dataset.socketIndex) || 0;
-      const outputCount = node.outputs?.length ?? 0;
 
-      // Calculate socket row Y position (world coords)
-      const rowIndex = outputCount + socketIndex;
-      const socketY =
-        node.position.y +
-        socketLayout.marginTop +
-        rowIndex * socketLayout.rowHeight +
-        socketLayout.rowHeight / 2;
+      // Get cached socket position (supports variable heights and stacked layouts)
+      const nodeLayout = getNodeSocketLayout(node, socketLayout);
+      const cachedPos = nodeLayout.inputs[socketIndex];
+      if (!cachedPos) {
+        el.style.visibility = 'hidden';
+        return;
+      }
 
-      // Widget world position
-      const widgetX = node.position.x + socketLayout.padding + labelWidth;
-      const widgetY = socketY - socketLayout.widgetHeight / 2;
-      const widgetWidth = width - socketLayout.padding * 2 - labelWidth;
+      // Widget world position from cache
+      const widgetX = cachedPos.layout === 'stacked'
+        ? node.position.x + socketLayout.padding // Full width for stacked
+        : node.position.x + socketLayout.padding + labelWidth;
+      const widgetY = node.position.y + cachedPos.widgetY;
+      const widgetWidth = cachedPos.layout === 'stacked'
+        ? width - socketLayout.padding * 2 // Full width for stacked
+        : width - socketLayout.padding * 2 - labelWidth;
 
       // Convert to screen coordinates for transform (scale doesn't affect translate)
       const screenX = widgetX * zoom + vpX;
@@ -373,7 +365,7 @@ export function WidgetsLayer({
       const cachedWidth = el.dataset.w;
       const cachedHeight = el.dataset.h;
       const newWidth = `${widgetWidth}px`;
-      const newHeight = `${socketLayout.widgetHeight}px`;
+      const newHeight = `${cachedPos.widgetHeight}px`; // Use cached height (supports rows prop)
       if (cachedWidth !== newWidth) {
         el.style.width = newWidth;
         el.dataset.w = newWidth;

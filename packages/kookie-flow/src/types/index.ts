@@ -53,7 +53,10 @@ export interface EdgeLabelConfig {
 // ============================================================================
 
 /** Built-in widget types for socket inputs */
-export type WidgetType = 'slider' | 'number' | 'select' | 'checkbox' | 'text' | 'color';
+export type WidgetType = 'slider' | 'number' | 'select' | 'checkbox' | 'text' | 'color' | 'textarea';
+
+/** Socket layout mode for widget positioning */
+export type SocketLayoutMode = 'inline' | 'stacked';
 
 /** Props passed to widget components */
 export interface WidgetProps {
@@ -73,6 +76,8 @@ export interface WidgetProps {
   options?: string[];
   /** Placeholder text (for text input) */
   placeholder?: string;
+  /** Number of visible text lines (for textarea) */
+  rows?: number;
 }
 
 /** Inline widget component definition */
@@ -98,6 +103,8 @@ export interface ResolvedWidgetConfig {
   defaultValue?: unknown;
   /** Custom component (if provided inline on socket) */
   customComponent?: React.ComponentType<WidgetProps>;
+  /** Number of visible text lines (for textarea) */
+  rows?: number;
 }
 
 /** Socket type definition */
@@ -137,6 +144,24 @@ export interface Socket {
   placeholder?: string;
   /** Default value when unconnected */
   defaultValue?: unknown;
+  /**
+   * Layout mode for this socket's widget.
+   * - 'inline' (default): Label on left, widget on right
+   * - 'stacked': Label above widget, widget spans full node width
+   */
+  layout?: SocketLayoutMode;
+  /**
+   * Number of rows this socket occupies.
+   * For textarea: rows: 3 gives 3x widget height.
+   * Works with both inline and stacked layouts.
+   * Default: 1
+   */
+  rows?: number;
+  /**
+   * Explicit height override in pixels.
+   * Takes precedence over `rows` calculation.
+   */
+  height?: number;
 }
 
 /** Socket handle for identifying a specific socket on a node */

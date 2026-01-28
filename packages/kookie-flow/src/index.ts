@@ -116,6 +116,7 @@ export type {
   WidgetProps,
   InlineWidgetComponent,
   ResolvedWidgetConfig,
+  SocketLayoutMode,
   // Phase 6 types
   CloneElementsOptions,
   CloneElementsResult,
@@ -145,7 +146,17 @@ export {
   SOCKET_MARGIN_TOP,
   SOCKET_LABEL_WIDTH,
   MINIMAP_DEFAULTS,
+  STACKED_LABEL_HEIGHT,
+  STACKED_GAP,
 } from './core/constants';
+
+// Socket layout cache (for custom renderers)
+export {
+  getNodeSocketLayout,
+  clearNodeLayoutCache,
+  type ComputedSocketPosition,
+  type NodeSocketLayoutCache,
+} from './utils/socket-layout-cache';
 
 // Semantic theme colors
 export { THEME_COLORS, resolveColor, type ColorTokenKey } from './core/theme-colors';

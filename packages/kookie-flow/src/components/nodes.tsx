@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 
@@ -332,10 +332,9 @@ export function Nodes() {
     for (let i = 0; i < nodes.length && visibleCount < maxVisible; i++) {
       const node = nodes[i];
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      // Calculate height based on socket count if not explicitly set
-      const outputCount = node.outputs?.length ?? 0;
-      const inputCount = node.inputs?.length ?? 0;
-      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      // Calculate height from cached socket layout (supports variable heights)
+      const nodeLayout = getNodeSocketLayout(node, socketLayout);
+      const height = node.height ?? nodeLayout.computedHeight;
 
       // Frustum culling - skip nodes outside viewport
       const nodeRight = node.position.x + width;

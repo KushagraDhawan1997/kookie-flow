@@ -37,7 +37,7 @@ import {
   truncateText,
 } from '../utils/text-layout';
 import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
@@ -318,9 +318,8 @@ export function MultiWeightTextRenderer({
       // Node headers (semibold)
       for (const node of nodes) {
         const width = node.width ?? DEFAULT_NODE_WIDTH;
-        const outputCount = node.outputs?.length ?? 0;
-        const inputCount = node.inputs?.length ?? 0;
-        const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+        const nodeLayout = getNodeSocketLayout(node, socketLayout);
+        const height = node.height ?? nodeLayout.computedHeight;
 
         const nodeRight = node.position.x + width;
         const nodeBottom = node.position.y + height;
@@ -365,10 +364,8 @@ export function MultiWeightTextRenderer({
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
         for (const node of nodes) {
           const width = node.width ?? DEFAULT_NODE_WIDTH;
-          const outputCount = node.outputs?.length ?? 0;
-          const inputCount = node.inputs?.length ?? 0;
-          const height =
-            node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+          const nodeLayout = getNodeSocketLayout(node, socketLayout);
+          const height = node.height ?? nodeLayout.computedHeight;
 
           const nodeRight = node.position.x + width;
           const nodeBottom = node.position.y + height;
@@ -385,12 +382,9 @@ export function MultiWeightTextRenderer({
           if (node.outputs) {
             for (let i = 0; i < node.outputs.length; i++) {
               const socket = node.outputs[i];
-              // Output rowIndex = i
-              const socketY =
-                node.position.y +
-                socketLayout.marginTop +
-                i * socketLayout.rowHeight +
-                socketLayout.rowHeight / 2;
+              // Use cached position (supports variable row heights and stacked layouts)
+              const cachedPos = nodeLayout.outputs[i];
+              const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
               const textY = socketY - 7; // adjust for visual centering
               // Truncate output labels to fit available space (mirror of input label width)
               const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
@@ -421,13 +415,9 @@ export function MultiWeightTextRenderer({
           if (node.inputs) {
             for (let i = 0; i < node.inputs.length; i++) {
               const socket = node.inputs[i];
-              // Input rowIndex = outputCount + i
-              const rowIndex = outputCount + i;
-              const socketY =
-                node.position.y +
-                socketLayout.marginTop +
-                rowIndex * socketLayout.rowHeight +
-                socketLayout.rowHeight / 2;
+              // Use cached position (supports variable row heights and stacked layouts)
+              const cachedPos = nodeLayout.inputs[i];
+              const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
               const textY = socketY - 7; // adjust for visual centering
               // Truncate input labels to fit before widget area
               const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding

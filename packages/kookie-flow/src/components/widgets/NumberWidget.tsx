@@ -62,7 +62,7 @@ export function NumberWidget({
       onBlur={handleBlur}
       disabled={disabled}
       placeholder={placeholder ?? 'Enter number...'}
-      style={{ flex: 1 }}
+      style={{ flex: 1, alignSelf: 'center' }}
     />
   );
 }

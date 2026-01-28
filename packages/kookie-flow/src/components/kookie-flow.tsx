@@ -1058,6 +1058,16 @@ function InputHandler({ children, className, style, minZoom, maxZoom, snapToGrid
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if typing in an input field
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
       // Space: enable pan mode
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();

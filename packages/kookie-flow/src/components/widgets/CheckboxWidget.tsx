@@ -18,7 +18,7 @@ export function CheckboxWidget({ value, onChange, disabled }: WidgetProps) {
   );
 
   return (
-    <Flex align="center" gap="2" style={{ flex: 1 }}>
+    <Flex align="center" gap="2" style={{ flex: 1, alignSelf: 'center' }}>
       <Checkbox
         size="2"
         variant="soft"

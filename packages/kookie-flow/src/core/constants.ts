@@ -26,6 +26,10 @@ export const SOCKET_SPACING = 24;
 export const SOCKET_MARGIN_TOP = 30;
 export const SOCKET_HIT_TOLERANCE = 4;
 
+/** Stacked socket layout settings */
+export const STACKED_LABEL_HEIGHT = 20; // Label text height in stacked mode
+export const STACKED_GAP = 4; // Gap between label and widget in stacked mode
+
 /**
  * Default socket types with colors using theme token keys.
  * Colors starting with '--' are resolved from Kookie UI theme tokens.

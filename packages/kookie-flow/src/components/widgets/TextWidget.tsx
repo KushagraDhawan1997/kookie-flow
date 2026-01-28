@@ -30,7 +30,7 @@ export function TextWidget({
       onChange={handleChange}
       disabled={disabled}
       placeholder={placeholder ?? 'Enter text...'}
-      style={{ flex: 1 }}
+      style={{ flex: 1, alignSelf: 'center' }}
     />
   );
 }

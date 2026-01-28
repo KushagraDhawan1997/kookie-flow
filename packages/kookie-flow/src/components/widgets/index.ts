@@ -11,6 +11,7 @@ export { SelectWidget } from './SelectWidget';
 export { CheckboxWidget } from './CheckboxWidget';
 export { TextWidget } from './TextWidget';
 export { ColorWidget } from './ColorWidget';
+export { TextareaWidget } from './TextareaWidget';
 
 import type { WidgetType, WidgetProps } from '../../types';
 import { SliderWidget } from './SliderWidget';
@@ -19,6 +20,7 @@ import { SelectWidget } from './SelectWidget';
 import { CheckboxWidget } from './CheckboxWidget';
 import { TextWidget } from './TextWidget';
 import { ColorWidget } from './ColorWidget';
+import { TextareaWidget } from './TextareaWidget';
 
 /**
  * Map of built-in widget types to their components.
@@ -31,4 +33,5 @@ export const BUILT_IN_WIDGETS: Record<WidgetType, React.ComponentType<WidgetProp
   checkbox: CheckboxWidget,
   text: TextWidget,
   color: ColorWidget,
+  textarea: TextareaWidget,
 };

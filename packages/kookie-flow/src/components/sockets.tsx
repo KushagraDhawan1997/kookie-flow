@@ -9,7 +9,7 @@ import {
   DEFAULT_NODE_WIDTH,
   SOCKET_RADIUS,
 } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
@@ -326,9 +326,9 @@ export function Sockets({
 
     for (const node of nodes) {
       const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const outputCount = node.outputs?.length ?? 0;
-      const inputCount = node.inputs?.length ?? 0;
-      const height = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      // Get cached socket layout (supports variable heights)
+      const nodeLayout = getNodeSocketLayout(node, socketLayout);
+      const height = node.height ?? nodeLayout.computedHeight;
 
       // Render input sockets (after outputs in layout order)
       if (node.inputs) {
@@ -336,13 +336,12 @@ export function Sockets({
           if (visibleCount >= capacity) break;
 
           const socket = node.inputs[i];
-          // Layout: outputs first, then inputs
-          // rowIndex = outputCount + inputIndex
-          const rowIndex = outputCount + i;
+          // Use cached position (supports variable row heights and stacked layouts)
+          const cachedPos = nodeLayout.inputs[i];
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
-              : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+              : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
 
           // Position matrix
           tempMatrix.identity();
@@ -405,11 +404,12 @@ export function Sockets({
           if (visibleCount >= capacity) break;
 
           const socket = node.outputs[i];
-          // Layout: outputs are first, rowIndex = outputIndex
+          // Use cached position (supports variable row heights and stacked layouts)
+          const cachedPos = nodeLayout.outputs[i];
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
-              : socketLayout.marginTop + i * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+              : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
 
           tempMatrix.identity();
           tempMatrix.setPosition(
