@@ -337,6 +337,10 @@ export function Edges({
     nodeMapRef.current = nodeMap;
     rebuildSocketIndexMap(nodes);
 
+    // Mark dirty to ensure edges render on first frame after initialization
+    geometryDirtyRef.current = true;
+    colorDirtyRef.current = true;
+
     return () => {
       unsubNodesLength();
       unsubPositions();
