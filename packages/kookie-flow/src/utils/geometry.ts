@@ -8,6 +8,7 @@ import {
   SOCKET_HIT_TOLERANCE,
 } from '../core/constants';
 import type { ResolvedSocketLayout } from './style-resolver';
+import type { SocketQuadtree, SocketEntry } from '../core/spatial';
 
 /**
  * Convert screen coordinates to world coordinates.
@@ -243,6 +244,45 @@ export function getSocketAtPosition(
         }
       }
     }
+  }
+
+  return null;
+}
+
+/** Pre-allocated array for socket quadtree queries */
+const socketQueryResults: SocketEntry[] = [];
+
+/**
+ * Find socket at a world position using spatial index.
+ * O(log n) via SocketQuadtree instead of brute force.
+ *
+ * @param worldPos - World position to test
+ * @param socketQuadtree - Spatial index of all sockets
+ * @param layout - Optional resolved socket layout for hit radius calculation
+ */
+export function getSocketAtPositionFast(
+  worldPos: XYPosition,
+  socketQuadtree: SocketQuadtree,
+  layout?: ResolvedSocketLayout
+): SocketHandle | null {
+  const socketSize = layout?.socketSize ?? SOCKET_RADIUS;
+  const hitRadius = socketSize + SOCKET_HIT_TOLERANCE;
+
+  // Clear reusable results array
+  socketQueryResults.length = 0;
+
+  // O(log n) query
+  const results = socketQuadtree.queryPoint(worldPos.x, worldPos.y, hitRadius, socketQueryResults);
+
+  // Results are in reverse insertion order (topmost first)
+  // Return the first (closest z-order) match
+  if (results.length > 0) {
+    const socket = results[0];
+    return {
+      nodeId: socket.nodeId,
+      socketId: socket.socketId,
+      isInput: socket.isInput,
+    };
   }
 
   return null;

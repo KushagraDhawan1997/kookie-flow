@@ -1,5 +1,5 @@
-import type { Node } from '../types';
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from './constants';
+import type { Node, Socket } from '../types';
+import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT, SOCKET_RADIUS } from './constants';
 
 /** Axis-aligned bounding box */
 export interface Bounds {
@@ -15,11 +15,23 @@ interface QuadtreeEntry {
   bounds: Bounds;
 }
 
+/** Socket entry for socket spatial index */
+export interface SocketEntry {
+  nodeId: string;
+  socketId: string;
+  isInput: boolean;
+  x: number;
+  y: number;
+}
+
 /** Default quadtree capacity per node before subdivision */
 const DEFAULT_CAPACITY = 8;
 
 /** Maximum depth to prevent infinite subdivision */
 const MAX_DEPTH = 10;
+
+/** Default socket quadtree capacity (sockets are smaller, need finer granularity) */
+const SOCKET_CAPACITY = 16;
 
 /**
  * Quadtree for O(log n) spatial queries on node bounding boxes.
@@ -260,6 +272,52 @@ export class Quadtree {
     this.insert(id, bounds);
   }
 
+  /**
+   * Batch insert multiple nodes.
+   * More efficient than individual inserts for bulk operations.
+   * O(k log n) where k = number of nodes to insert
+   */
+  batchInsert(entries: Array<{ id: string; bounds: Bounds }>): void {
+    for (const { id, bounds } of entries) {
+      this.insert(id, bounds);
+    }
+  }
+
+  /**
+   * Batch remove multiple nodes.
+   * O(k log n) where k = number of nodes to remove
+   */
+  batchRemove(ids: string[]): void {
+    for (const id of ids) {
+      this.remove(id);
+    }
+  }
+
+  /**
+   * Incrementally add nodes without full rebuild.
+   * Uses large fixed bounds so expansion is rarely needed.
+   * O(k log n) where k = number of nodes to add
+   */
+  incrementalAdd(nodes: Node[]): void {
+    if (nodes.length === 0) return;
+
+    // Fast path: insert new nodes individually
+    // Our initial bounds are large (-10000 to 10000) so most nodes will fit
+    for (const node of nodes) {
+      this.insert(node.id, getNodeBounds(node));
+    }
+  }
+
+  /**
+   * Incrementally remove nodes without full rebuild.
+   * O(k log n) where k = number of nodes to remove
+   */
+  incrementalRemove(nodeIds: string[]): void {
+    for (const id of nodeIds) {
+      this.remove(id);
+    }
+  }
+
   private subdivide(): void {
     const { x, y, width, height } = this.bounds;
     const halfW = width / 2;
@@ -359,4 +417,228 @@ export function boundsFromCorners(
     width: Math.abs(x2 - x1),
     height: Math.abs(y2 - y1),
   };
+}
+
+/**
+ * SocketQuadtree for O(log n) socket hit testing.
+ * Optimized for point queries on small circular sockets.
+ */
+export class SocketQuadtree {
+  private bounds: Bounds;
+  private capacity: number;
+  private entries: SocketEntry[] = [];
+  private divided = false;
+  private depth: number;
+
+  // Child quadrants
+  private nw: SocketQuadtree | null = null;
+  private ne: SocketQuadtree | null = null;
+  private sw: SocketQuadtree | null = null;
+  private se: SocketQuadtree | null = null;
+
+  // Key to entry mapping for O(1) removal
+  private keyToEntry: Map<string, SocketEntry> = new Map();
+
+  constructor(bounds: Bounds, capacity = SOCKET_CAPACITY, depth = 0) {
+    this.bounds = bounds;
+    this.capacity = capacity;
+    this.depth = depth;
+  }
+
+  /**
+   * Generate a unique key for a socket.
+   */
+  private static getKey(nodeId: string, socketId: string, isInput: boolean): string {
+    return `${nodeId}:${socketId}:${isInput ? 'i' : 'o'}`;
+  }
+
+  /**
+   * Insert a socket into the quadtree.
+   */
+  insert(entry: SocketEntry): boolean {
+    // Check if point is within bounds
+    if (!this.containsPoint(entry.x, entry.y)) {
+      return false;
+    }
+
+    const key = SocketQuadtree.getKey(entry.nodeId, entry.socketId, entry.isInput);
+
+    // If we have capacity and haven't subdivided, store here
+    if (this.entries.length < this.capacity && !this.divided) {
+      this.entries.push(entry);
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+
+    // Subdivide if we haven't already and aren't at max depth
+    if (!this.divided && this.depth < MAX_DEPTH) {
+      this.subdivide();
+    }
+
+    // If at max depth, just store here
+    if (this.depth >= MAX_DEPTH) {
+      this.entries.push(entry);
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+
+    // Insert into appropriate child
+    if (this.nw!.insert(entry)) {
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+    if (this.ne!.insert(entry)) {
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+    if (this.sw!.insert(entry)) {
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+    if (this.se!.insert(entry)) {
+      this.keyToEntry.set(key, entry);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Remove a socket from the quadtree.
+   */
+  remove(nodeId: string, socketId: string, isInput: boolean): boolean {
+    const key = SocketQuadtree.getKey(nodeId, socketId, isInput);
+    if (!this.keyToEntry.has(key)) {
+      return false;
+    }
+
+    // Remove from local entries
+    const idx = this.entries.findIndex(
+      (e) => e.nodeId === nodeId && e.socketId === socketId && e.isInput === isInput
+    );
+    if (idx !== -1) {
+      this.entries.splice(idx, 1);
+    }
+
+    // Remove from children
+    if (this.divided) {
+      this.nw!.remove(nodeId, socketId, isInput);
+      this.ne!.remove(nodeId, socketId, isInput);
+      this.sw!.remove(nodeId, socketId, isInput);
+      this.se!.remove(nodeId, socketId, isInput);
+    }
+
+    this.keyToEntry.delete(key);
+    return true;
+  }
+
+  /**
+   * Query sockets near a point within a given radius.
+   * Returns sockets in reverse insertion order (topmost first).
+   *
+   * @param x - X coordinate
+   * @param y - Y coordinate
+   * @param radius - Search radius
+   * @param results - Optional pre-allocated array
+   */
+  queryPoint(x: number, y: number, radius: number, results?: SocketEntry[]): SocketEntry[] {
+    const output = results ?? [];
+
+    // Check if query circle could intersect this quadrant
+    if (!this.circleIntersectsBounds(x, y, radius)) {
+      return output;
+    }
+
+    // Check local entries (reverse order for z-ordering)
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const entry = this.entries[i];
+      const dx = x - entry.x;
+      const dy = y - entry.y;
+      if (dx * dx + dy * dy <= radius * radius) {
+        output.push(entry);
+      }
+    }
+
+    // Check children
+    if (this.divided) {
+      this.nw!.queryPoint(x, y, radius, output);
+      this.ne!.queryPoint(x, y, radius, output);
+      this.sw!.queryPoint(x, y, radius, output);
+      this.se!.queryPoint(x, y, radius, output);
+    }
+
+    return output;
+  }
+
+  /**
+   * Update a socket's position.
+   */
+  update(nodeId: string, socketId: string, isInput: boolean, x: number, y: number): void {
+    this.remove(nodeId, socketId, isInput);
+    this.insert({ nodeId, socketId, isInput, x, y });
+  }
+
+  /**
+   * Clear the quadtree.
+   */
+  clear(): void {
+    this.entries = [];
+    this.keyToEntry.clear();
+    this.divided = false;
+    this.nw = null;
+    this.ne = null;
+    this.sw = null;
+    this.se = null;
+  }
+
+  /**
+   * Get total socket count.
+   */
+  get size(): number {
+    return this.keyToEntry.size;
+  }
+
+  private subdivide(): void {
+    const { x, y, width, height } = this.bounds;
+    const halfW = width / 2;
+    const halfH = height / 2;
+
+    this.nw = new SocketQuadtree({ x, y, width: halfW, height: halfH }, this.capacity, this.depth + 1);
+    this.ne = new SocketQuadtree({ x: x + halfW, y, width: halfW, height: halfH }, this.capacity, this.depth + 1);
+    this.sw = new SocketQuadtree({ x, y: y + halfH, width: halfW, height: halfH }, this.capacity, this.depth + 1);
+    this.se = new SocketQuadtree({ x: x + halfW, y: y + halfH, width: halfW, height: halfH }, this.capacity, this.depth + 1);
+
+    this.divided = true;
+
+    // Re-insert existing entries into children
+    const oldEntries = this.entries;
+    this.entries = [];
+
+    for (const entry of oldEntries) {
+      this.nw.insert(entry) ||
+        this.ne.insert(entry) ||
+        this.sw.insert(entry) ||
+        this.se.insert(entry);
+    }
+  }
+
+  private containsPoint(x: number, y: number): boolean {
+    return (
+      x >= this.bounds.x &&
+      x < this.bounds.x + this.bounds.width &&
+      y >= this.bounds.y &&
+      y < this.bounds.y + this.bounds.height
+    );
+  }
+
+  private circleIntersectsBounds(cx: number, cy: number, r: number): boolean {
+    // Find closest point on bounds to circle center
+    const closestX = Math.max(this.bounds.x, Math.min(cx, this.bounds.x + this.bounds.width));
+    const closestY = Math.max(this.bounds.y, Math.min(cy, this.bounds.y + this.bounds.height));
+
+    const dx = cx - closestX;
+    const dy = cy - closestY;
+
+    return dx * dx + dy * dy <= r * r;
+  }
 }

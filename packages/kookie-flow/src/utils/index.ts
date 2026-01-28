@@ -7,6 +7,7 @@ export {
   getNodesInBox,
   getSocketPosition,
   getSocketAtPosition,
+  getSocketAtPositionFast,
   getEdgeAtPosition,
   getEdgePointAtT,
   getEdgeEndpoints,

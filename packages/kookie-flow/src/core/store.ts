@@ -18,8 +18,8 @@ import type {
   PasteFromInternalOptions,
   NodeData,
 } from '../types';
-import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
-import { Quadtree, getNodeBounds } from './spatial';
+import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING } from './constants';
+import { Quadtree, SocketQuadtree, getNodeBounds, type SocketEntry } from './spatial';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -57,6 +57,9 @@ export interface FlowState {
 
   /** Quadtree for O(log n) spatial queries */
   quadtree: Quadtree;
+
+  /** Socket quadtree for O(log n) socket hit testing during connection draft */
+  socketQuadtree: SocketQuadtree;
 
   /**
    * Connected sockets cache - O(1) lookup for widget visibility.
@@ -183,18 +186,57 @@ export interface FlowState {
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
 
+// Helper to calculate socket Y offset (without layout param - uses legacy constants)
+function getSocketYOffset(node: Node, socketIndex: number, isInput: boolean): number {
+  const nodeHeight = node.height ?? 100;
+  const outputCount = node.outputs?.length ?? 0;
+  // Layout: outputs first, then inputs
+  const rowIndex = isInput ? outputCount + socketIndex : socketIndex;
+  return SOCKET_MARGIN_TOP + rowIndex * SOCKET_SPACING;
+}
+
 // Helper to rebuild derived state from nodes
 function rebuildDerivedState(nodes: Node[]) {
   const nodeMap = new Map<string, Node>();
   const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
+  const socketQuadtree = new SocketQuadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
 
   for (const node of nodes) {
     nodeMap.set(node.id, node);
+
+    // Insert sockets into socket quadtree
+    const nodeWidth = node.width ?? 200;
+    if (node.inputs) {
+      for (let i = 0; i < node.inputs.length; i++) {
+        const socket = node.inputs[i];
+        const yOffset = getSocketYOffset(node, i, true);
+        socketQuadtree.insert({
+          nodeId: node.id,
+          socketId: socket.id,
+          isInput: true,
+          x: node.position.x,
+          y: node.position.y + yOffset,
+        });
+      }
+    }
+    if (node.outputs) {
+      for (let i = 0; i < node.outputs.length; i++) {
+        const socket = node.outputs[i];
+        const yOffset = getSocketYOffset(node, i, false);
+        socketQuadtree.insert({
+          nodeId: node.id,
+          socketId: socket.id,
+          isInput: false,
+          x: node.position.x + nodeWidth,
+          y: node.position.y + yOffset,
+        });
+      }
+    }
   }
 
   quadtree.rebuild(nodes);
 
-  return { nodeMap, quadtree };
+  return { nodeMap, quadtree, socketQuadtree };
 }
 
 // Helper to rebuild connected sockets set from edges
@@ -212,7 +254,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial nodes and edges
   const initialNodes = initialState?.nodes ?? [];
   const initialEdges = initialState?.edges ?? [];
-  const { nodeMap, quadtree } = rebuildDerivedState(initialNodes);
+  const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(initialNodes);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
 
   return create<FlowState>()(
@@ -234,6 +276,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Derived state for O(1) lookups
       nodeMap,
       quadtree,
+      socketQuadtree,
       connectedSockets,
 
       // Position version for tracking position changes
@@ -244,8 +287,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
-        const { nodeMap, quadtree } = rebuildDerivedState(nodes);
-        set({ nodes, nodeMap, quadtree });
+        const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(nodes);
+        set({ nodes, nodeMap, quadtree, socketQuadtree });
       },
       setEdges: (edges) => set({ edges, connectedSockets: rebuildConnectedSockets(edges) }),
       setViewport: (viewport) => set({ viewport }),
@@ -336,9 +379,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        // Rebuild derived state (nodeMap, quadtree) to stay in sync
-        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
-        set({ nodes: nextNodes, nodeMap, quadtree });
+        // Rebuild derived state (nodeMap, quadtree, socketQuadtree) to stay in sync
+        const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(nextNodes);
+        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree });
       },
 
       applyEdgeChanges: (changes) => {
@@ -528,7 +571,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Updates positions and quadtree incrementally without full rebuild
       // O(n+k) where n=nodes, k=updates (builds index map once, then O(1) per update)
       updateNodePositions: (updates) => {
-        const { nodes, nodeMap, quadtree, positionVersion } = get();
+        const { nodes, nodeMap, quadtree, socketQuadtree, positionVersion } = get();
         const nextNodes = [...nodes];
 
         // Build id->index map once: O(n)
@@ -545,6 +588,23 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             nextNodes[index] = node;
             nodeMap.set(id, node);
             quadtree.update(id, getNodeBounds(node));
+
+            // Update socket positions in socketQuadtree
+            const nodeWidth = node.width ?? 200;
+            if (node.inputs) {
+              for (let i = 0; i < node.inputs.length; i++) {
+                const socket = node.inputs[i];
+                const yOffset = getSocketYOffset(node, i, true);
+                socketQuadtree.update(id, socket.id, true, position.x, position.y + yOffset);
+              }
+            }
+            if (node.outputs) {
+              for (let i = 0; i < node.outputs.length; i++) {
+                const socket = node.outputs[i];
+                const yOffset = getSocketYOffset(node, i, false);
+                socketQuadtree.update(id, socket.id, false, position.x + nodeWidth, position.y + yOffset);
+              }
+            }
           }
         }
 
@@ -639,7 +699,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       addElements: (batch) => {
-        const { nodes: currentNodes, edges: currentEdges } = get();
+        const { nodes: currentNodes, edges: currentEdges, nodeMap, quadtree, socketQuadtree } = get();
         const { nodes: newNodes = [], edges: newEdges = [] } = batch;
 
         if (newNodes.length === 0 && newEdges.length === 0) return;
@@ -648,19 +708,53 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextNodes = [...currentNodes, ...newNodes];
         const nextEdges = [...currentEdges, ...newEdges];
 
-        // Rebuild derived state once
-        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
+        // Incremental update: add new nodes to existing data structures
+        // O(k log n) instead of O(n log n) full rebuild
+        for (const node of newNodes) {
+          nodeMap.set(node.id, node);
+        }
+        quadtree.incrementalAdd(newNodes);
+
+        // Add new sockets to socket quadtree
+        for (const node of newNodes) {
+          const nodeWidth = node.width ?? 200;
+          if (node.inputs) {
+            for (let i = 0; i < node.inputs.length; i++) {
+              const socket = node.inputs[i];
+              const yOffset = getSocketYOffset(node, i, true);
+              socketQuadtree.insert({
+                nodeId: node.id,
+                socketId: socket.id,
+                isInput: true,
+                x: node.position.x,
+                y: node.position.y + yOffset,
+              });
+            }
+          }
+          if (node.outputs) {
+            for (let i = 0; i < node.outputs.length; i++) {
+              const socket = node.outputs[i];
+              const yOffset = getSocketYOffset(node, i, false);
+              socketQuadtree.insert({
+                nodeId: node.id,
+                socketId: socket.id,
+                isInput: false,
+                x: node.position.x + nodeWidth,
+                y: node.position.y + yOffset,
+              });
+            }
+          }
+        }
+
         set({
           nodes: nextNodes,
           edges: nextEdges,
-          nodeMap,
-          quadtree,
           connectedSockets: rebuildConnectedSockets(nextEdges),
         });
       },
 
       deleteElements: (batch) => {
-        const { nodes, edges, selectedNodeIds, selectedEdgeIds } = get();
+        const { nodes, edges, selectedNodeIds, selectedEdgeIds, nodeMap, quadtree, socketQuadtree } = get();
         const { nodeIds = [], edgeIds = [] } = batch;
 
         if (nodeIds.length === 0 && edgeIds.length === 0) return;
@@ -676,6 +770,26 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
+        // Incremental removal from spatial structures O(k log n)
+        // Remove sockets first, then nodes
+        for (const nodeId of nodeIdsToDelete) {
+          const node = nodeMap.get(nodeId);
+          if (node) {
+            if (node.inputs) {
+              for (const socket of node.inputs) {
+                socketQuadtree.remove(nodeId, socket.id, true);
+              }
+            }
+            if (node.outputs) {
+              for (const socket of node.outputs) {
+                socketQuadtree.remove(nodeId, socket.id, false);
+              }
+            }
+          }
+          nodeMap.delete(nodeId);
+        }
+        quadtree.incrementalRemove(Array.from(nodeIdsToDelete));
+
         // Filter out deleted elements
         const nextNodes = nodes.filter((n) => !nodeIdsToDelete.has(n.id));
         const nextEdges = edges.filter((e) => !edgeIdsToDelete.has(e.id));
@@ -690,13 +804,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           nextSelectedEdgeIds.delete(id);
         }
 
-        // Rebuild derived state
-        const { nodeMap, quadtree } = rebuildDerivedState(nextNodes);
         set({
           nodes: nextNodes,
           edges: nextEdges,
-          nodeMap,
-          quadtree,
           connectedSockets: rebuildConnectedSockets(nextEdges),
           selectedNodeIds: nextSelectedNodeIds,
           selectedEdgeIds: nextSelectedEdgeIds,

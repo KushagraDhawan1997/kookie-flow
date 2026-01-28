@@ -141,6 +141,16 @@ export function Edges({
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
+  // Edge position cache for dirty tracking
+  // Key: edgeId, Value: hash of endpoint positions (x0,y0,x1,y1 packed)
+  const edgePositionCacheRef = useRef<Map<string, number>>(new Map());
+
+  // Track which edges need re-tessellation (empty = all dirty or first render)
+  const dirtyEdgesRef = useRef<Set<string> | null>(null);
+
+  // Track last selection state for per-edge color updates
+  const lastSelectedEdgesRef = useRef<Set<string>>(new Set());
+
   // Node map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
   const nodeMapRef = useRef<Map<string, Node>>(new Map());
 
@@ -150,8 +160,12 @@ export function Edges({
     Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
   >(new Map());
 
-  // Dirty flag
-  const dirtyRef = useRef(true);
+  // Dirty flags - separate geometry vs color-only updates
+  const geometryDirtyRef = useRef(true);
+  const colorDirtyRef = useRef(true);
+
+  // Track last position version to detect actual position changes
+  const lastPositionVersionRef = useRef(-1);
 
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
@@ -172,9 +186,9 @@ export function Edges({
   // Temp color for socket type lookups (avoids GC in hot path)
   const tempColor = useMemo(() => new THREE.Color(), []);
 
-  // Mark dirty when theme colors change
+  // Mark color dirty when theme colors change
   useEffect(() => {
-    dirtyRef.current = true;
+    colorDirtyRef.current = true;
   }, [tokens]);
 
   // Shader material
@@ -292,28 +306,29 @@ export function Edges({
         const { nodes, nodeMap } = store.getState();
         nodeMapRef.current = nodeMap;
         rebuildSocketIndexMap(nodes);
-        dirtyRef.current = true;
+        geometryDirtyRef.current = true;
+        colorDirtyRef.current = true;
       }
     );
-    // Nodes reference change = position changed, just set dirty flag
-    // nodeMapRef doesn't need sync - store mutates same Map object during drag
-    const unsubNodesDirty = store.subscribe(
-      (state) => state.nodes,
+    // Position version change = positions changed, need geometry rebuild
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
       () => {
-        dirtyRef.current = true;
+        geometryDirtyRef.current = true;
       }
     );
     const unsubEdges = store.subscribe(
       (state) => state.edges,
       () => {
-        dirtyRef.current = true;
+        geometryDirtyRef.current = true;
+        colorDirtyRef.current = true;
       }
     );
-    // Note: viewport changes no longer trigger dirty - zoom is handled via shader uniform
+    // Selection changes only require color update, not geometry rebuild
     const unsubSelection = store.subscribe(
       (state) => state.selectedEdgeIds,
       () => {
-        dirtyRef.current = true;
+        colorDirtyRef.current = true;
       }
     );
 
@@ -324,7 +339,7 @@ export function Edges({
 
     return () => {
       unsubNodesLength();
-      unsubNodesDirty();
+      unsubPositions();
       unsubEdges();
       unsubSelection();
       material.dispose();
@@ -335,7 +350,7 @@ export function Edges({
   useFrame(({ size }) => {
     if (!meshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds } = store.getState();
+    const { edges, viewport, selectedEdgeIds, positionVersion } = store.getState();
     const nodeMap = nodeMapRef.current;
 
     // Always update zoom uniform (cheap operation)
@@ -345,27 +360,111 @@ export function Edges({
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
       lastSizeRef.current.width = size.width;
       lastSizeRef.current.height = size.height;
-      dirtyRef.current = true;
+      geometryDirtyRef.current = true;
     }
 
-    // Skip geometry rebuild if not dirty
-    if (!dirtyRef.current) return;
+    // Check if position version changed (triggers geometry rebuild)
+    if (positionVersion !== lastPositionVersionRef.current) {
+      lastPositionVersionRef.current = positionVersion;
+      geometryDirtyRef.current = true;
+    }
+
+    // Skip if nothing is dirty
+    if (!geometryDirtyRef.current && !colorDirtyRef.current) return;
+
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
     const mesh = meshRef.current;
 
     if (edges.length === 0 || nodeMap.size === 0) {
       mesh.geometry.setDrawRange(0, 0);
-      dirtyRef.current = false;
+      geometryDirtyRef.current = false;
+      colorDirtyRef.current = false;
       return;
     }
 
     // Ensure capacity
     ensureCapacity(edges.length, mesh);
 
-    // Note: CPU-side frustum culling removed - GPU handles clipping efficiently
-    // This allows zoom/pan without geometry rebuilds
+    // Fast path: color-only update (selection changed but positions didn't)
+    // Only update colors without re-tessellating geometry
+    if (!geometryDirtyRef.current && colorDirtyRef.current) {
+      // Update colors for all edges based on current selection state
+      let vertexOffset = 0;
+      for (let i = 0; i < edges.length; i++) {
+        const edge = edges[i];
+        const sourceNode = nodeMap.get(edge.source);
+        const targetNode = nodeMap.get(edge.target);
+        if (!sourceNode || !targetNode) continue;
 
+        // Determine color
+        let cr: number, cg: number, cb: number;
+        if (selectedEdgeIds.has(edge.id)) {
+          cr = selectedColor.r;
+          cg = selectedColor.g;
+          cb = selectedColor.b;
+        } else if (edge.invalid) {
+          cr = invalidColor.r;
+          cg = invalidColor.g;
+          cb = invalidColor.b;
+        } else {
+          let foundColor = false;
+          if (edge.sourceSocket) {
+            const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+            if (socketInfo) {
+              const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
+              if (typeConfig) {
+                tempColor.set(typeConfig.color);
+                foundColor = true;
+              }
+            }
+          }
+          if (!foundColor) {
+            cr = defaultColor.r;
+            cg = defaultColor.g;
+            cb = defaultColor.b;
+          } else {
+            cr = tempColor.r;
+            cg = tempColor.g;
+            cb = tempColor.b;
+          }
+        }
+
+        // Calculate vertex count for this edge (same logic as tessellation)
+        const edgeType = edge.type ?? defaultEdgeType;
+        const markerStart = normalizeMarker(edge.markerStart);
+        const markerEnd = normalizeMarker(edge.markerEnd);
+        let segmentCount: number;
+        if (edgeType === 'step') {
+          segmentCount = 3;
+        } else if (edgeType === 'straight') {
+          segmentCount = 1;
+        } else {
+          segmentCount = SEGMENTS_PER_EDGE;
+        }
+        let edgeVertexCount = segmentCount * 6; // 6 vertices per segment (2 triangles)
+        if (markerEnd) edgeVertexCount += 3;
+        if (markerStart) edgeVertexCount += 3;
+
+        // Update colors for all vertices of this edge
+        for (let v = 0; v < edgeVertexCount; v++) {
+          const colIdx = (vertexOffset + v) * 3;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+        }
+        vertexOffset += edgeVertexCount;
+      }
+
+      // Mark color attribute for update
+      if (buffers.colorAttr) {
+        buffers.colorAttr.needsUpdate = true;
+      }
+      colorDirtyRef.current = false;
+      return;
+    }
+
+    // Full geometry rebuild path
     let vertexIndex = 0;
 
     for (let i = 0; i < edges.length; i++) {
@@ -867,7 +966,8 @@ export function Edges({
     // Set draw range
     mesh.geometry.setDrawRange(0, vertexIndex);
     buffers.lastVertexCount = vertexIndex;
-    dirtyRef.current = false;
+    geometryDirtyRef.current = false;
+    colorDirtyRef.current = false;
   });
 
   return (
