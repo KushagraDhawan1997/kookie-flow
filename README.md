@@ -2,7 +2,8 @@
 
 WebGL-native node graph library for React.
 
-> **Status: In Development** — Kookie Flow is not yet published. APIs are actively evolving and breaking changes will occur. Not recommended for production use.
+[![In Development](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/KushagraDhawan1997/kookie-flow)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why?
 
