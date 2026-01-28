@@ -93,6 +93,59 @@ function App() {
 - **Pinch-to-zoom** — Touch gesture support
 - **Two-finger pan** — Touch gesture support
 
+### Imperative API (Ref)
+
+Access viewport and selection methods via ref:
+
+```tsx
+import { KookieFlow, KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { useRef } from 'react';
+
+function App() {
+  const flowRef = useRef<KookieFlowInstance>(null);
+
+  return (
+    <>
+      <button onClick={() => flowRef.current?.fitView()}>Fit All</button>
+      <button onClick={() => {
+        const selected = flowRef.current?.getSelectedNodes().map(n => n.id);
+        flowRef.current?.fitView({ nodes: selected, padding: 100 });
+      }}>Fit Selection</button>
+      <button onClick={() => flowRef.current?.zoomIn()}>Zoom In</button>
+      <button onClick={() => flowRef.current?.setCenter(0, 0, { zoom: 1 })}>Reset</button>
+
+      <KookieFlow ref={flowRef} nodes={nodes} edges={edges} />
+    </>
+  );
+}
+```
+
+**Available methods:**
+
+| Method | Description |
+|--------|-------------|
+| `fitView(options?)` | Fit viewport to show all/specific nodes |
+| `getViewport()` | Get current `{ x, y, zoom }` |
+| `setViewport(viewport)` | Set viewport directly |
+| `zoomIn(step?)` | Zoom in (default step: 0.25) |
+| `zoomOut(step?)` | Zoom out (default step: 0.25) |
+| `setCenter(x, y, options?)` | Center on a world position |
+| `getNodes()` | Get all nodes |
+| `getEdges()` | Get all edges |
+| `getSelectedNodes()` | Get selected nodes |
+| `getSelectedEdges()` | Get selected edges |
+
+**fitView options:**
+
+```tsx
+flowRef.current?.fitView({
+  padding: 50,        // Padding around content (default: 50)
+  nodes: ['a', 'b'],  // Specific node IDs to fit (default: all)
+  minZoom: 0.1,       // Min zoom constraint
+  maxZoom: 1,         // Max zoom constraint (default: 1, won't zoom past 100%)
+});
+```
+
 ### Selection & Interaction
 - **Click to select** — Single node selection
 - **Ctrl+click** — Add to selection
@@ -355,6 +408,7 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Socket widgets (slider, number, select, checkbox, text, color, textarea)
 - [x] Configurable socket layouts (inline, stacked)
 - [x] Variable row heights (rows prop)
+- [x] Imperative API via ref (fitView, viewport controls)
 - [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews
