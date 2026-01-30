@@ -27,16 +27,33 @@ import { Minimap } from './minimap';
 import { WidgetsLayer } from './widgets-layer';
 import { ThemeProvider, StyleProvider, FontProvider, useTheme, useSocketLayout } from '../contexts';
 import { resolveSocketTypes } from '../utils/socket-types';
-import { DEFAULT_VIEWPORT, DEFAULT_SOCKET_TYPES, AUTO_SCROLL_EDGE_THRESHOLD, AUTO_SCROLL_MAX_SPEED } from '../core/constants';
+import {
+  DEFAULT_VIEWPORT,
+  DEFAULT_SOCKET_TYPES,
+  AUTO_SCROLL_EDGE_THRESHOLD,
+  AUTO_SCROLL_MAX_SPEED,
+} from '../core/constants';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
-import type { KookieFlowProps, KookieFlowInstance, FitViewOptions, Node, Edge, SocketType, Connection, ConnectionMode, IsValidConnectionFn, EdgeType, TextRenderMode } from '../types';
+import type {
+  KookieFlowProps,
+  KookieFlowInstance,
+  FitViewOptions,
+  Node,
+  Edge,
+  SocketType,
+  Connection,
+  ConnectionMode,
+  IsValidConnectionFn,
+  EdgeType,
+  TextRenderMode,
+} from '../types';
 import * as THREE from 'three';
 
 // Detect Safari for specific optimizations
-const isSafari = typeof navigator !== 'undefined' &&
-  /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isSafari =
+  typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 /**
  * Main KookieFlow component.
@@ -44,114 +61,112 @@ const isSafari = typeof navigator !== 'undefined' &&
  *
  * Supports ref for imperative API access (fitView, getViewport, etc.)
  */
-export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(
-  function KookieFlow(
-    {
-      nodes,
-      edges,
-      nodeTypes = {},
-      socketTypes = {},
-      onNodesChange,
-      onEdgesChange,
-      onConnect,
-      onNodeClick,
-      onEdgeClick,
-      onPaneClick,
-      edgesSelectable = true,
-      defaultViewport = DEFAULT_VIEWPORT,
-      minZoom = 0.1,
-      maxZoom = 4,
-      showGrid = true,
-      showMinimap = false,
-      minimapProps,
-      showStats = false,
-      textRenderMode = 'dom',
-      font = 'google-sans',
-      scaleTextWithZoom = false,
-      showSocketLabels = true,
-      showEdgeLabels = true,
-      snapToGrid = false,
-      snapGrid = [20, 20],
-      defaultEdgeType = 'bezier',
-      connectionMode = 'loose',
-      isValidConnection,
-      className,
-      children,
-      // Styling props (Milestone 2)
-      size = '2',
-      variant = 'surface',
-      radius,
-      header = 'none',
-      accentHeader = false,
-      nodeStyle,
-      // Widget props (Phase 7D)
-      widgetTypes,
-      onWidgetChange,
-      showWidgets = true,
-      ThemeComponent,
-      defaultNodeWidth,
-      socketLabelWidth,
-    },
-    ref
-  ) {
-    const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
+export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(function KookieFlow(
+  {
+    nodes,
+    edges,
+    nodeTypes = {},
+    socketTypes = {},
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onNodeClick,
+    onEdgeClick,
+    onPaneClick,
+    edgesSelectable = true,
+    defaultViewport = DEFAULT_VIEWPORT,
+    minZoom = 0.1,
+    maxZoom = 4,
+    showGrid = true,
+    showMinimap = false,
+    minimapProps,
+    showStats = false,
+    textRenderMode = 'dom',
+    font = 'google-sans',
+    scaleTextWithZoom = false,
+    showSocketLabels = true,
+    showEdgeLabels = true,
+    snapToGrid = false,
+    snapGrid = [20, 20],
+    defaultEdgeType = 'bezier',
+    connectionMode = 'loose',
+    isValidConnection,
+    className,
+    children,
+    // Styling props (Milestone 2)
+    size = '2',
+    variant = 'surface',
+    radius,
+    header = 'none',
+    accentHeader = false,
+    nodeStyle,
+    // Widget props (Phase 7D)
+    widgetTypes,
+    onWidgetChange,
+    showWidgets = true,
+    ThemeComponent,
+    defaultNodeWidth,
+    socketLabelWidth,
+  },
+  ref
+) {
+  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
 
-    return (
-      <ThemeProvider>
-        <StyleProvider
-          size={size}
-          variant={variant}
-          radius={radius}
-          header={header}
-          accentHeader={accentHeader}
-          nodeStyle={nodeStyle}
-        >
-          <FontProvider font={font}>
-            <ThemedFlowContainer
-              ref={ref}
-              nodes={nodes}
-              edges={edges}
-              defaultViewport={defaultViewport}
-              className={className}
-              minZoom={minZoom}
-              maxZoom={maxZoom}
-              snapToGrid={snapToGrid}
-              snapGrid={snapGrid}
-              socketTypes={resolvedSocketTypes}
-              connectionMode={connectionMode}
-              isValidConnection={isValidConnection}
-              defaultEdgeType={defaultEdgeType}
-              edgesSelectable={edgesSelectable}
-              onNodeClick={onNodeClick}
-              onEdgeClick={onEdgeClick}
-              onPaneClick={onPaneClick}
-              onConnect={onConnect}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              showGrid={showGrid}
-              showStats={showStats}
-              textRenderMode={textRenderMode}
-              showSocketLabels={showSocketLabels}
-              showEdgeLabels={showEdgeLabels}
-              nodeTypes={nodeTypes}
-              scaleTextWithZoom={scaleTextWithZoom}
-              showMinimap={showMinimap}
-              minimapProps={minimapProps}
-              widgetTypes={widgetTypes}
-              onWidgetChange={onWidgetChange}
-              showWidgets={showWidgets}
-              ThemeComponent={ThemeComponent}
-              defaultNodeWidth={defaultNodeWidth}
-              socketLabelWidth={socketLabelWidth}
-            >
-              {children}
-            </ThemedFlowContainer>
-          </FontProvider>
-        </StyleProvider>
-      </ThemeProvider>
-    );
-  }
-);
+  return (
+    <ThemeProvider>
+      <StyleProvider
+        size={size}
+        variant={variant}
+        radius={radius}
+        header={header}
+        accentHeader={accentHeader}
+        nodeStyle={nodeStyle}
+      >
+        <FontProvider font={font}>
+          <ThemedFlowContainer
+            ref={ref}
+            nodes={nodes}
+            edges={edges}
+            defaultViewport={defaultViewport}
+            className={className}
+            minZoom={minZoom}
+            maxZoom={maxZoom}
+            snapToGrid={snapToGrid}
+            snapGrid={snapGrid}
+            socketTypes={resolvedSocketTypes}
+            connectionMode={connectionMode}
+            isValidConnection={isValidConnection}
+            defaultEdgeType={defaultEdgeType}
+            edgesSelectable={edgesSelectable}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            onConnect={onConnect}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            showGrid={showGrid}
+            showStats={showStats}
+            textRenderMode={textRenderMode}
+            showSocketLabels={showSocketLabels}
+            showEdgeLabels={showEdgeLabels}
+            nodeTypes={nodeTypes}
+            scaleTextWithZoom={scaleTextWithZoom}
+            showMinimap={showMinimap}
+            minimapProps={minimapProps}
+            widgetTypes={widgetTypes}
+            onWidgetChange={onWidgetChange}
+            showWidgets={showWidgets}
+            ThemeComponent={ThemeComponent}
+            defaultNodeWidth={defaultNodeWidth}
+            socketLabelWidth={socketLabelWidth}
+          >
+            {children}
+          </ThemedFlowContainer>
+        </FontProvider>
+      </StyleProvider>
+    </ThemeProvider>
+  );
+});
 
 /**
  * Inner container that has access to theme tokens for styling.
@@ -258,7 +273,12 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
     return (
       <div ref={containerRef} className={className} style={containerStyle}>
         <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
-          <FlowInstanceHandle ref={ref} containerRef={containerRef} minZoom={minZoom} maxZoom={maxZoom} />
+          <FlowInstanceHandle
+            ref={ref}
+            containerRef={containerRef}
+            minZoom={minZoom}
+            maxZoom={maxZoom}
+          />
           <InputHandler
             minZoom={minZoom}
             maxZoom={maxZoom}
@@ -276,8 +296,25 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
           >
-            <FlowCanvas showGrid={showGrid} showStats={showStats} defaultEdgeType={defaultEdgeType} socketTypes={resolvedSocketTypes} textRenderMode={textRenderMode} showSocketLabels={showSocketLabels} showEdgeLabels={showEdgeLabels} />
-            <DOMLayer nodeTypes={nodeTypes} scaleTextWithZoom={scaleTextWithZoom} defaultEdgeType={defaultEdgeType} showNodeLabels={textRenderMode === 'dom'} showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false} showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}>{children}</DOMLayer>
+            <FlowCanvas
+              showGrid={showGrid}
+              showStats={showStats}
+              defaultEdgeType={defaultEdgeType}
+              socketTypes={resolvedSocketTypes}
+              textRenderMode={textRenderMode}
+              showSocketLabels={showSocketLabels}
+              showEdgeLabels={showEdgeLabels}
+            />
+            <DOMLayer
+              nodeTypes={nodeTypes}
+              scaleTextWithZoom={scaleTextWithZoom}
+              defaultEdgeType={defaultEdgeType}
+              showNodeLabels={textRenderMode === 'dom'}
+              showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false}
+              showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}
+            >
+              {children}
+            </DOMLayer>
             {showWidgets && (
               <WidgetsLayer
                 socketTypes={resolvedSocketTypes}
@@ -317,72 +354,105 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
   function FlowInstanceHandle({ containerRef, minZoom, maxZoom }, ref) {
     const store = useFlowStoreApi();
 
-    useImperativeHandle(ref, () => ({
-      fitView: (options?: FitViewOptions) => {
-        const container = containerRef.current;
-        const width = container?.clientWidth ?? window.innerWidth;
-        const height = container?.clientHeight ?? window.innerHeight;
+    useImperativeHandle(
+      ref,
+      () => ({
+        fitView: (options?: FitViewOptions) => {
+          const container = containerRef.current;
+          const width = container?.clientWidth ?? window.innerWidth;
+          const height = container?.clientHeight ?? window.innerHeight;
 
-        // Merge user options with component-level zoom constraints
-        const mergedOptions: FitViewOptions = {
-          ...options,
-          minZoom: options?.minZoom ?? minZoom,
-          maxZoom: options?.maxZoom ?? 1, // Default to not zooming in past 100%
-        };
+          // Merge user options with component-level zoom constraints
+          const mergedOptions: FitViewOptions = {
+            ...options,
+            minZoom: options?.minZoom ?? minZoom,
+            maxZoom: options?.maxZoom ?? 1, // Default to not zooming in past 100%
+          };
 
-        store.getState().fitView(mergedOptions, width, height);
-      },
+          store.getState().fitView(mergedOptions, width, height);
+        },
 
-      getViewport: () => {
-        return store.getState().viewport;
-      },
+        getViewport: () => {
+          return store.getState().viewport;
+        },
 
-      setViewport: (viewport) => {
-        store.getState().setViewport(viewport);
-      },
+        setViewport: (viewport) => {
+          store.getState().setViewport(viewport);
+        },
 
-      zoomIn: (step = 0.25) => {
-        const state = store.getState();
-        state.zoom(step);
-      },
+        zoomIn: (step = 0.25) => {
+          const state = store.getState();
+          state.zoom(step);
+        },
 
-      zoomOut: (step = 0.25) => {
-        const state = store.getState();
-        state.zoom(-step);
-      },
+        zoomOut: (step = 0.25) => {
+          const state = store.getState();
+          state.zoom(-step);
+        },
 
-      getNodes: () => {
-        return store.getState().nodes;
-      },
+        getNodes: () => {
+          return store.getState().nodes;
+        },
 
-      getEdges: () => {
-        return store.getState().edges;
-      },
+        getEdges: () => {
+          return store.getState().edges;
+        },
 
-      getSelectedNodes: () => {
-        const state = store.getState();
-        return state.nodes.filter(n => state.selectedNodeIds.has(n.id));
-      },
+        getSelectedNodes: () => {
+          const state = store.getState();
+          return state.nodes.filter((n) => state.selectedNodeIds.has(n.id));
+        },
 
-      getSelectedEdges: () => {
-        const state = store.getState();
-        return state.edges.filter(e => state.selectedEdgeIds.has(e.id));
-      },
+        getSelectedEdges: () => {
+          const state = store.getState();
+          return state.edges.filter((e) => state.selectedEdgeIds.has(e.id));
+        },
 
-      setCenter: (x, y, options) => {
-        const container = containerRef.current;
-        const width = container?.clientWidth ?? window.innerWidth;
-        const height = container?.clientHeight ?? window.innerHeight;
-        const state = store.getState();
-        const zoom = options?.zoom ?? state.viewport.zoom;
+        setCenter: (x, y, options) => {
+          const container = containerRef.current;
+          const width = container?.clientWidth ?? window.innerWidth;
+          const height = container?.clientHeight ?? window.innerHeight;
+          const state = store.getState();
+          const zoom = options?.zoom ?? state.viewport.zoom;
 
-        // Calculate offset to center the point (x, y) in the viewport
-        const offsetX = width / 2 - x * zoom;
-        const offsetY = height / 2 - y * zoom;
+          // Calculate offset to center the point (x, y) in the viewport
+          const offsetX = width / 2 - x * zoom;
+          const offsetY = height / 2 - y * zoom;
 
-        state.setViewport({ x: offsetX, y: offsetY, zoom });
-      },
-    }), [store, containerRef, minZoom, maxZoom]);
+          state.setViewport({ x: offsetX, y: offsetY, zoom });
+        },
+
+        // Grouping API (Phase 7C)
+        getGroupChildren: (groupId) => {
+          return store.getState().getGroupChildren(groupId);
+        },
+
+        getGroupDescendants: (groupId) => {
+          return store.getState().getGroupDescendants(groupId);
+        },
+
+        toggleGroupCollapse: (groupId) => {
+          store.getState().toggleGroupCollapse(groupId);
+        },
+
+        expandGroup: (groupId) => {
+          store.getState().expandGroup(groupId);
+        },
+
+        collapseGroup: (groupId) => {
+          store.getState().collapseGroup(groupId);
+        },
+
+        isGroupCollapsed: (groupId) => {
+          return store.getState().isGroupCollapsed(groupId);
+        },
+
+        getGroupBounds: (groupId) => {
+          return store.getState().getGroupBounds(groupId);
+        },
+      }),
+      [store, containerRef, minZoom, maxZoom]
+    );
 
     return null;
   }
@@ -415,7 +485,24 @@ interface InputHandlerProps {
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
-function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, onNodeClick, onEdgeClick, onPaneClick, onConnect, onNodesChange, onEdgesChange }: InputHandlerProps) {
+function InputHandler({
+  children,
+  minZoom,
+  maxZoom,
+  snapToGrid,
+  snapGrid,
+  socketTypes,
+  connectionMode,
+  isValidConnection,
+  defaultEdgeType,
+  edgesSelectable,
+  onNodeClick,
+  onEdgeClick,
+  onPaneClick,
+  onConnect,
+  onNodesChange,
+  onEdgesChange,
+}: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
 
@@ -438,7 +525,9 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
   const lastPointerPos = useRef<{ x: number; y: number } | null>(null);
 
   // Track pointer down position to detect clicks vs drags
-  const pointerDownPos = useRef<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+  const pointerDownPos = useRef<{ x: number; y: number; screenX: number; screenY: number } | null>(
+    null
+  );
   const hasDragged = useRef(false);
 
   // Track drag state for node dragging
@@ -467,9 +556,12 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
 
   // Update viewport immediately for responsive input (no RAF batching)
   // Rendering components handle their own batching via dirty flags
-  const updateViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => {
-    store.getState().setViewport(viewport);
-  }, [store]);
+  const updateViewport = useCallback(
+    (viewport: { x: number; y: number; zoom: number }) => {
+      store.getState().setViewport(viewport);
+    },
+    [store]
+  );
 
   // Auto-scroll when dragging near viewport edges
   const runAutoScroll = useCallback(() => {
@@ -491,7 +583,12 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
     const bottomProximity = Math.max(0, 1 - (height - screenY) / AUTO_SCROLL_EDGE_THRESHOLD);
 
     // No edge proximity = stop scrolling
-    if (leftProximity === 0 && rightProximity === 0 && topProximity === 0 && bottomProximity === 0) {
+    if (
+      leftProximity === 0 &&
+      rightProximity === 0 &&
+      topProximity === 0 &&
+      bottomProximity === 0
+    ) {
       autoScrollRef.current.active = false;
       return;
     }
@@ -511,10 +608,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
 
     // 2. Update node positions based on new viewport
     // Use cursor offset approach (same as main drag handler)
-    const currentWorldPos = screenToWorld(
-      { x: screenX, y: screenY },
-      store.getState().viewport
-    );
+    const currentWorldPos = screenToWorld({ x: screenX, y: screenY }, store.getState().viewport);
 
     // Calculate primary node position using cursor offset
     let primaryX = currentWorldPos.x - dragState.current.cursorOffset.x;
@@ -684,14 +778,20 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
         }
 
         // Store the pointer down position
-        pointerDownPos.current = { x: worldPos.x, y: worldPos.y, screenX: e.clientX, screenY: e.clientY };
+        pointerDownPos.current = {
+          x: worldPos.x,
+          y: worldPos.y,
+          screenX: e.clientX,
+          screenY: e.clientY,
+        };
         hasDragged.current = false;
 
         // Check if clicking on a node - capture offset for smooth dragging
         const { quadtree, nodeMap } = store.getState();
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
-        const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+        const clickedNode =
+          queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedNode) {
           // Store cursor offset from node position (React Flow style)
@@ -724,7 +824,13 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
       // Safety cleanup: if button was released but we missed the pointerup event
       // (can happen if released outside container), clean up any active state
       if (!primaryButtonDown && e.buttons === 0) {
-        if (dragState.current || selectionBox || connectionDraft || pointerDownPos.current || lastPointerPos.current) {
+        if (
+          dragState.current ||
+          selectionBox ||
+          connectionDraft ||
+          pointerDownPos.current ||
+          lastPointerPos.current
+        ) {
           // Cancel any active operations
           if (autoScrollRef.current.rafId) {
             cancelAnimationFrame(autoScrollRef.current.rafId);
@@ -832,7 +938,8 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
             pointerDownPos.current.y,
             queryResultsRef.current
           );
-          const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+          const clickedNode =
+            queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
           if (clickedNode) {
             // Start node dragging
@@ -841,7 +948,10 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
             if (selectedNodeIds.has(clickedNode.id)) {
               // Drag all selected nodes - put clicked node FIRST so cursor offset calculation works
               // (cursorOffset was captured relative to clicked node, not arbitrary first selected node)
-              dragNodeIds = [clickedNode.id, ...[...selectedNodeIds].filter(id => id !== clickedNode.id)];
+              dragNodeIds = [
+                clickedNode.id,
+                ...[...selectedNodeIds].filter((id) => id !== clickedNode.id),
+              ];
             } else {
               // Select and drag just this node
               store.getState().selectNode(clickedNode.id);
@@ -864,7 +974,10 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
               nodeIds: dragNodeIds,
               startPositions,
               cursorOffset,
-              containerRect: { width: cachedRectRef.current.width, height: cachedRectRef.current.height },
+              containerRect: {
+                width: cachedRectRef.current.width,
+                height: cachedRectRef.current.height,
+              },
             };
             setIsDragging(true);
           } else {
@@ -881,7 +994,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
       // Update node dragging
       // Use ref check (dragState.current) instead of React state (isDragging)
       // Also verify primary button is still held (e.buttons & 1)
-      if (dragState.current && (e.buttons & 1)) {
+      if (dragState.current && e.buttons & 1) {
         // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
         const rect = cachedRectRef.current;
 
@@ -935,7 +1048,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
 
       // Update box selection (check store state, not React state)
       // Also verify primary button is still held (e.buttons & 1)
-      if (selectionBox && (e.buttons & 1)) {
+      if (selectionBox && e.buttons & 1) {
         // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
         const rect = cachedRectRef.current;
 
@@ -1030,9 +1143,13 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
             const isSourceInput = connectionDraft.source.isInput;
             const connection: Connection = {
               source: isSourceInput ? hoveredSocketId.nodeId : connectionDraft.source.nodeId,
-              sourceSocket: isSourceInput ? hoveredSocketId.socketId : connectionDraft.source.socketId,
+              sourceSocket: isSourceInput
+                ? hoveredSocketId.socketId
+                : connectionDraft.source.socketId,
               target: isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId,
-              targetSocket: isSourceInput ? connectionDraft.source.socketId : hoveredSocketId.socketId,
+              targetSocket: isSourceInput
+                ? connectionDraft.source.socketId
+                : hoveredSocketId.socketId,
               invalid: !isTypeCompatible,
             };
 
@@ -1114,7 +1231,8 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
         const clickPos = { x: pointerDownPos.current.x, y: pointerDownPos.current.y };
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(clickPos.x, clickPos.y, queryResultsRef.current);
-        const clickedNode = queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+        const clickedNode =
+          queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedNode) {
           // Click on node: select it
@@ -1123,7 +1241,15 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
           onNodeClick?.(clickedNode);
         } else if (edgesSelectable) {
           // Check for edge click
-          const clickedEdge = getEdgeAtPosition(clickPos, edges, nodeMap, defaultEdgeType, viewport, undefined, socketLayout);
+          const clickedEdge = getEdgeAtPosition(
+            clickPos,
+            edges,
+            nodeMap,
+            defaultEdgeType,
+            viewport,
+            undefined,
+            socketLayout
+          );
           if (clickedEdge) {
             const additive = e.ctrlKey || e.metaKey;
             store.getState().selectEdge(clickedEdge.id, additive);
@@ -1145,7 +1271,19 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
       pointerDownPos.current = null;
       pendingDragRef.current = null;
     },
-    [socketTypes, connectionMode, isValidConnection, defaultEdgeType, edgesSelectable, store, onNodeClick, onEdgeClick, onPaneClick, onConnect, socketLayout]
+    [
+      socketTypes,
+      connectionMode,
+      isValidConnection,
+      defaultEdgeType,
+      edgesSelectable,
+      store,
+      onNodeClick,
+      onEdgeClick,
+      onPaneClick,
+      onConnect,
+      socketLayout,
+    ]
   );
 
   // Cleanup auto-scroll RAF on unmount
@@ -1162,11 +1300,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
     const handleKeyDown = (e: KeyboardEvent) => {
       // Skip if typing in an input field
       const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
 
@@ -1211,7 +1345,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
 
         // Delete edges (selected + dangling)
         if (edgeIdsToDelete.size > 0) {
-          const edgeChanges = Array.from(edgeIdsToDelete).map(id => ({
+          const edgeChanges = Array.from(edgeIdsToDelete).map((id) => ({
             type: 'remove' as const,
             id,
           }));
@@ -1221,7 +1355,7 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
 
         // Delete selected nodes
         if (selectedNodeIds.size > 0) {
-          const nodeChanges = Array.from(selectedNodeIds).map(id => ({
+          const nodeChanges = Array.from(selectedNodeIds).map((id) => ({
             type: 'remove' as const,
             id,
           }));
@@ -1363,7 +1497,16 @@ function InputHandler({ children, minZoom, maxZoom, snapToGrid, snapGrid, socket
       style={{
         position: 'absolute',
         inset: 0,
-        cursor: isPanning || isDragging ? 'grabbing' : isSpaceDown ? 'grab' : isBoxSelecting ? 'crosshair' : isConnecting ? 'crosshair' : 'default',
+        cursor:
+          isPanning || isDragging
+            ? 'grabbing'
+            : isSpaceDown
+              ? 'grab'
+              : isBoxSelecting
+                ? 'crosshair'
+                : isConnecting
+                  ? 'crosshair'
+                  : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -1406,7 +1549,11 @@ interface WebGLTextLayerProps {
   defaultEdgeType: EdgeType;
 }
 
-function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: WebGLTextLayerProps) {
+function WebGLTextLayer({
+  showSocketLabels,
+  showEdgeLabels,
+  defaultEdgeType,
+}: WebGLTextLayerProps) {
   // Fonts are provided via FontContext - MultiWeightTextRenderer will use useFont()
   return (
     <MultiWeightTextRenderer
@@ -1417,22 +1564,33 @@ function WebGLTextLayer({ showSocketLabels, showEdgeLabels, defaultEdgeType }: W
   );
 }
 
-function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes, textRenderMode, showSocketLabels, showEdgeLabels }: FlowCanvasProps) {
+function FlowCanvas({
+  showGrid,
+  showStats,
+  defaultEdgeType,
+  socketTypes,
+  textRenderMode,
+  showSocketLabels,
+  showEdgeLabels,
+}: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
-  const glConfig = useMemo(() => ({
-    // Disable MSAA on Safari - it's expensive and often causes issues
-    antialias: !isSafari,
-    alpha: true,
-    // Request high-performance GPU
-    powerPreference: 'high-performance' as const,
-    // These help Safari performance
-    stencil: false,
-    depth: false,
-    // Preserve drawing buffer can help with some Safari rendering issues
-    preserveDrawingBuffer: false,
-    // Fail if performance is poor
-    failIfMajorPerformanceCaveat: false,
-  }), []);
+  const glConfig = useMemo(
+    () => ({
+      // Disable MSAA on Safari - it's expensive and often causes issues
+      antialias: !isSafari,
+      alpha: true,
+      // Request high-performance GPU
+      powerPreference: 'high-performance' as const,
+      // These help Safari performance
+      stencil: false,
+      depth: false,
+      // Preserve drawing buffer can help with some Safari rendering issues
+      preserveDrawingBuffer: false,
+      // Fail if performance is poor
+      failIfMajorPerformanceCaveat: false,
+    }),
+    []
+  );
 
   return (
     <Canvas
