@@ -211,6 +211,50 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 />
 ```
 
+### Grouping & Annotations
+- **Node groups** — Parent-child relationships with collapsible frames
+- **Comments** — Sticky note nodes for annotations (DOM-rendered text)
+- **Reroute nodes** — Edge waypoints for cleaner routing (WebGL circles)
+
+```tsx
+// Group node with children
+const nodes = [
+  {
+    id: 'group-1',
+    type: 'group',
+    position: { x: 0, y: 0 },
+    data: { label: 'My Group' },
+    collapsed: false, // Toggle to hide children
+  },
+  {
+    id: 'child-1',
+    parentId: 'group-1', // Child of the group
+    position: { x: 20, y: 40 },
+    data: { label: 'Child Node' },
+  },
+];
+
+// Comment node
+const comment = {
+  id: 'note-1',
+  type: 'comment',
+  position: { x: 300, y: 0 },
+  data: {
+    content: 'This is a sticky note',
+    backgroundColor: '#FFF9C4',
+    textColor: '#424242',
+  },
+};
+
+// Reroute node (edge waypoint)
+const reroute = {
+  id: 'reroute-1',
+  type: 'reroute',
+  position: { x: 150, y: 100 },
+  data: {},
+};
+```
+
 ### Edge Rendering
 - **Curve types** — Straight, bezier, step, smoothstep
 - **Mesh-based rendering** — Custom shaders for future effects (glow, animation)
@@ -412,6 +456,9 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Configurable socket layouts (inline, stacked)
 - [x] Variable row heights (rows prop)
 - [x] Imperative API via ref (fitView, viewport controls)
+- [x] Node grouping with collapsible frames
+- [x] Comment/sticky note nodes
+- [x] Reroute nodes (edge waypoints)
 - [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews
