@@ -4,6 +4,7 @@ export { Grid } from './grid';
 export { Nodes } from './nodes';
 export { Edges } from './edges';
 export { Sockets } from './sockets';
+export { RerouteNodes } from './reroute-nodes';
 export { ConnectionLine } from './connection-line';
 export { DOMLayer } from './dom-layer';
 export { SelectionBox } from './selection-box';

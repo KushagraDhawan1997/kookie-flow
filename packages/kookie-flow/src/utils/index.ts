@@ -82,3 +82,23 @@ export {
   NO_OVERRIDE_SENTINEL,
   resolveAccentColorRGB,
 } from './accent-colors';
+
+// Grouping utilities (Phase 7C)
+export {
+  GROUP_PADDING,
+  MIN_GROUP_WIDTH,
+  MIN_GROUP_HEIGHT,
+  type Bounds,
+  getGroupChildren,
+  getGroupDescendants,
+  isNodeHidden,
+  getVisibleNodes,
+  calculateGroupBounds,
+  getParentChain,
+  isDescendantOf,
+  calculateDescendantPositions,
+  getAncestorGroups,
+  wouldCreateCycle,
+  getTopLevelNodes,
+  sortByDepth,
+} from './grouping';

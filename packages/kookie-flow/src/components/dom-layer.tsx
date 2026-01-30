@@ -8,10 +8,11 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
-import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig } from '../types';
+import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig, CommentNodeData } from '../types';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
+import { isNodeHidden } from '../utils/grouping';
 
 export interface DOMLayerProps {
   nodeTypes?: Record<string, NodeTypeDefinition>;
@@ -25,6 +26,8 @@ export interface DOMLayerProps {
   showSocketLabels?: boolean;
   /** Show edge labels. Default: true */
   showEdgeLabels?: boolean;
+  /** Show comment nodes. Default: true */
+  showComments?: boolean;
   children?: ReactNode;
 }
 
@@ -59,6 +62,7 @@ export function DOMLayer({
   showNodeLabels = true,
   showSocketLabels = true,
   showEdgeLabels = true,
+  showComments = true,
   children,
 }: DOMLayerProps) {
   if (scaleTextWithZoom) {
@@ -67,6 +71,7 @@ export function DOMLayer({
         {showNodeLabels && <ScaledContainer nodeTypes={nodeTypes} />}
         {showSocketLabels && <SocketLabelsContainer />}
         {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
+        {showComments && <CommentsContainer />}
         {children}
       </div>
     );
@@ -77,6 +82,7 @@ export function DOMLayer({
       {showNodeLabels && <CrispLabelsContainer nodeTypes={nodeTypes} />}
       {showSocketLabels && <SocketLabelsContainer />}
       {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
+      {showComments && <CommentsContainer />}
       {children}
     </div>
   );
@@ -932,4 +938,221 @@ const socketLabelStyle: CSSProperties = {
   // Vertically center on socket
   lineHeight: '1',
   marginTop: '-5px',
+};
+
+// ============================================================================
+// Comments Container (Phase 7C)
+// ============================================================================
+
+/** Default comment node dimensions */
+const DEFAULT_COMMENT_WIDTH = 200;
+const DEFAULT_COMMENT_HEIGHT = 100;
+
+/** Default comment styling */
+const DEFAULT_COMMENT_BG = '#FFF9C4'; // Light yellow sticky note
+const DEFAULT_COMMENT_TEXT_COLOR = '#424242';
+const DEFAULT_COMMENT_FONT_SIZE = 14;
+
+/**
+ * Container for comment/sticky note nodes.
+ * Comments are fully DOM-rendered (text content, no sockets).
+ * Uses ref-based updates for same-frame positioning without React re-renders.
+ */
+function CommentsContainer() {
+  const store = useFlowStoreApi();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const commentsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pendingRef = useRef(false);
+
+  // Track comment nodes for React element creation
+  const [commentNodes, setCommentNodes] = useState<Node<CommentNodeData>[]>(() =>
+    store.getState().nodes.filter((n): n is Node<CommentNodeData> => n.type === 'comment')
+  );
+
+  // Cached container size
+  const cachedSizeRef = useRef({ width: 0, height: 0 });
+
+  // Update function - positions all comments
+  const updateComments = useCallback(() => {
+    pendingRef.current = false;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const { viewport, nodeMap, collapsedGroupIds, selectedNodeIds } = store.getState();
+    const comments = commentsRef.current;
+
+    // LOD: Hide entire container if zoomed out too far
+    if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
+      container.style.visibility = 'hidden';
+      return;
+    }
+    container.style.visibility = 'visible';
+
+    // Viewport bounds for culling
+    const viewWidth = cachedSizeRef.current.width;
+    const viewHeight = cachedSizeRef.current.height;
+    const invZoom = 1 / viewport.zoom;
+    const viewLeft = -viewport.x * invZoom;
+    const viewRight = (viewWidth - viewport.x) * invZoom;
+    const viewTop = -viewport.y * invZoom;
+    const viewBottom = (viewHeight - viewport.y) * invZoom;
+    const cullPadding = 100;
+
+    comments.forEach((el, nodeId) => {
+      const node = nodeMap.get(nodeId);
+      if (!node || node.type !== 'comment') {
+        el.style.visibility = 'hidden';
+        return;
+      }
+
+      // Skip if inside collapsed group
+      if (isNodeHidden(node, nodeMap, collapsedGroupIds)) {
+        el.style.visibility = 'hidden';
+        return;
+      }
+
+      const width = node.width ?? DEFAULT_COMMENT_WIDTH;
+      const height = node.height ?? DEFAULT_COMMENT_HEIGHT;
+
+      // Frustum culling
+      const nodeRight = node.position.x + width;
+      const nodeBottom = node.position.y + height;
+
+      if (
+        nodeRight < viewLeft - cullPadding ||
+        node.position.x > viewRight + cullPadding ||
+        nodeBottom < viewTop - cullPadding ||
+        node.position.y > viewBottom + cullPadding
+      ) {
+        el.style.visibility = 'hidden';
+        return;
+      }
+
+      // Position in screen space
+      const screenX = node.position.x * viewport.zoom + viewport.x;
+      const screenY = node.position.y * viewport.zoom + viewport.y;
+      const screenWidth = width * viewport.zoom;
+      const screenHeight = height * viewport.zoom;
+
+      // Apply selection border
+      const isSelected = selectedNodeIds.has(nodeId);
+
+      el.style.visibility = 'visible';
+      el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+      el.style.width = `${screenWidth}px`;
+      el.style.height = `${screenHeight}px`;
+      el.style.boxShadow = isSelected
+        ? '0 0 0 2px var(--indigo-9, #5c5ce0), 0 2px 8px rgba(0,0,0,0.15)'
+        : '0 2px 8px rgba(0,0,0,0.15)';
+    });
+  }, [store]);
+
+  // Schedule update using microtask
+  const scheduleUpdate = useCallback(() => {
+    if (!pendingRef.current) {
+      pendingRef.current = true;
+      queueMicrotask(updateComments);
+    }
+  }, [updateComments]);
+
+  // Setup subscriptions
+  useLayoutEffect(() => {
+    updateComments();
+
+    const unsub = store.subscribe((state) => {
+      // Re-render if comment nodes changed
+      const currentComments = state.nodes.filter(
+        (n): n is Node<CommentNodeData> => n.type === 'comment'
+      );
+      if (currentComments.length !== commentNodes.length) {
+        setCommentNodes(currentComments);
+      }
+      scheduleUpdate();
+    });
+
+    // Resize observer
+    const parent = containerRef.current?.parentElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (parent) {
+      resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+          cachedSizeRef.current.width = entry.contentRect.width;
+          cachedSizeRef.current.height = entry.contentRect.height;
+        }
+        updateComments();
+      });
+      resizeObserver.observe(parent);
+    }
+
+    return () => {
+      unsub();
+      resizeObserver?.disconnect();
+    };
+  }, [store, updateComments, scheduleUpdate, commentNodes.length]);
+
+  // Ref callback for comment elements
+  const setCommentRef = useCallback(
+    (nodeId: string) => (el: HTMLDivElement | null) => {
+      if (el) {
+        commentsRef.current.set(nodeId, el);
+      } else {
+        commentsRef.current.delete(nodeId);
+      }
+    },
+    []
+  );
+
+  if (commentNodes.length === 0) {
+    return null;
+  }
+
+  return (
+    <div ref={containerRef}>
+      {commentNodes.map((node) => {
+        const data = node.data as CommentNodeData;
+        const bgColor = data.backgroundColor ?? DEFAULT_COMMENT_BG;
+        const textColor = data.textColor ?? DEFAULT_COMMENT_TEXT_COLOR;
+        const fontSize = data.fontSize ?? DEFAULT_COMMENT_FONT_SIZE;
+
+        return (
+          <div
+            key={node.id}
+            ref={setCommentRef(node.id)}
+            style={{
+              ...commentStyle,
+              backgroundColor: bgColor,
+              color: textColor,
+              fontSize: `${fontSize}px`,
+            }}
+          >
+            {data.content}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const commentStyle: CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  visibility: 'hidden',
+  padding: '12px',
+  borderRadius: '4px',
+  boxSizing: 'border-box',
+  overflow: 'hidden',
+  fontFamily: 'var(--font-sans, system-ui, -apple-system, sans-serif)',
+  lineHeight: '1.4',
+  whiteSpace: 'pre-wrap',
+  wordWrap: 'break-word',
+  // Allow interaction with comments (for editing in the future)
+  pointerEvents: 'auto',
+  cursor: 'default',
+  userSelect: 'text',
+  willChange: 'transform',
+  backfaceVisibility: 'hidden',
+  WebkitBackfaceVisibility: 'hidden',
 };

@@ -82,6 +82,118 @@ const nodeColors = [
   'violet',
 ] as const;
 
+// ============================================================================
+// Phase 7C: Grouping Demo Nodes
+// ============================================================================
+
+// Group node with children - demonstrates parent-child relationships
+const groupingDemoNodes: Node[] = [
+  // A group node
+  {
+    id: 'group-1',
+    type: 'group',
+    position: { x: -3500, y: 0 },
+    width: 500,
+    height: 400,
+    data: {
+      label: 'Processing Pipeline',
+      description: 'Image processing nodes',
+    },
+    color: 'violet',
+  },
+  // Child nodes (inside the group)
+  {
+    id: 'child-1',
+    type: 'default',
+    position: { x: -3450, y: 80 },
+    parentId: 'group-1',
+    data: { label: 'Input' },
+    inputs: [],
+    outputs: [{ id: 'child-1-out-0', name: 'Image', type: 'image' }],
+    color: 'blue',
+  },
+  {
+    id: 'child-2',
+    type: 'default',
+    position: { x: -3250, y: 80 },
+    parentId: 'group-1',
+    data: { label: 'Filter' },
+    inputs: [{ id: 'child-2-in-0', name: 'In', type: 'image' }],
+    outputs: [{ id: 'child-2-out-0', name: 'Out', type: 'image' }],
+    color: 'green',
+  },
+  {
+    id: 'child-3',
+    type: 'default',
+    position: { x: -3250, y: 220 },
+    parentId: 'group-1',
+    data: { label: 'Output' },
+    inputs: [{ id: 'child-3-in-0', name: 'In', type: 'image' }],
+    outputs: [],
+    color: 'orange',
+  },
+
+  // Comment/sticky note nodes - visual annotations
+  {
+    id: 'comment-1',
+    type: 'comment',
+    position: { x: -3500, y: 450 },
+    width: 250,
+    height: 100,
+    data: {
+      content: 'This group contains the main image processing pipeline. Try dragging the group!',
+      backgroundColor: '#FFF9C4',
+      textColor: '#424242',
+      fontSize: 14,
+    },
+  },
+  {
+    id: 'comment-2',
+    type: 'comment',
+    position: { x: -3200, y: 450 },
+    width: 200,
+    height: 80,
+    data: {
+      content: 'Reroute nodes let you create custom edge paths.',
+      backgroundColor: '#E1BEE7',
+      textColor: '#424242',
+      fontSize: 13,
+    },
+  },
+
+  // Reroute node - edge waypoint
+  {
+    id: 'reroute-1',
+    type: 'reroute',
+    position: { x: -3350, y: 150 },
+    data: {},
+  },
+  {
+    id: 'reroute-2',
+    type: 'reroute',
+    position: { x: -3100, y: 300 },
+    data: {},
+  },
+];
+
+// Edges for the grouping demo
+const groupingDemoEdges: Edge[] = [
+  {
+    id: 'group-edge-1',
+    source: 'child-1',
+    target: 'child-2',
+    sourceSocket: 'child-1-out-0',
+    targetSocket: 'child-2-in-0',
+  },
+  {
+    id: 'group-edge-2',
+    source: 'child-2',
+    target: 'child-3',
+    sourceSocket: 'child-2-out-0',
+    targetSocket: 'child-3-in-0',
+  },
+];
+
 // Widget demo nodes (positioned far left, away from complex nodes)
 const widgetDemoNodes: Node[] = [
   {
@@ -470,7 +582,7 @@ function generateNodes(count: number): Node[] {
     return node;
   });
 
-  return [...widgetDemoNodes, ...gridNodes];
+  return [...groupingDemoNodes, ...widgetDemoNodes, ...gridNodes];
 }
 
 // Find compatible socket pair between two nodes
@@ -498,7 +610,8 @@ function findCompatibleSockets(
 
 // Generate demo edges with more interlinking (type-aware)
 function generateEdges(nodeCount: number): Edge[] {
-  const edges: Edge[] = [];
+  // Start with grouping demo edges
+  const edges: Edge[] = [...groupingDemoEdges];
   const cols = Math.ceil(Math.sqrt(nodeCount));
 
   for (let i = 0; i < nodeCount; i++) {

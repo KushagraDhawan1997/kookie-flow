@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { isNodeHidden } from '../utils/grouping';
 
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
@@ -294,12 +295,18 @@ export function Nodes() {
       (state) => state.selectedNodeIds,
       () => { dirtyRef.current = true; }
     );
+    // Subscribe to collapsed group changes (Phase 7C)
+    const unsubCollapsed = store.subscribe(
+      (state) => state.collapsedGroupIds,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubNodes();
       unsubViewport();
       unsubHovered();
       unsubSelection();
+      unsubCollapsed();
     };
   }, [store, capacity]);
 
@@ -309,7 +316,7 @@ export function Nodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId, selectedNodeIds } = store.getState();
+    const { nodes, viewport, hoveredNodeId, selectedNodeIds, nodeMap, collapsedGroupIds } = store.getState();
     if (nodes.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -331,6 +338,17 @@ export function Nodes() {
 
     for (let i = 0; i < nodes.length && visibleCount < maxVisible; i++) {
       const node = nodes[i];
+
+      // Skip special node types (handled by separate renderers)
+      if (node.type === 'comment' || node.type === 'reroute') {
+        continue;
+      }
+
+      // Skip nodes inside collapsed groups (Phase 7C)
+      if (isNodeHidden(node, nodeMap, collapsedGroupIds)) {
+        continue;
+      }
+
       const width = node.width ?? DEFAULT_NODE_WIDTH;
       // Calculate height from cached socket layout (supports variable heights)
       const nodeLayout = getNodeSocketLayout(node, socketLayout);

@@ -136,7 +136,41 @@ export type {
   // Imperative API types
   FitViewOptions,
   KookieFlowInstance,
+  // Phase 7C: Grouping types
+  BuiltInNodeType,
+  GroupNodeData,
+  CommentNodeData,
+  RerouteNodeData,
+  GroupNode,
+  CommentNode,
+  RerouteNode,
 } from './types';
+
+// Phase 7C: Grouping utilities & type guards
+export {
+  isGroupNode,
+  isCommentNode,
+  isRerouteNode,
+} from './types';
+
+export {
+  GROUP_PADDING,
+  MIN_GROUP_WIDTH,
+  MIN_GROUP_HEIGHT,
+  getGroupChildren,
+  getGroupDescendants,
+  isNodeHidden,
+  getVisibleNodes,
+  calculateGroupBounds,
+  getParentChain,
+  isDescendantOf,
+  calculateDescendantPositions,
+  getAncestorGroups,
+  wouldCreateCycle,
+  getTopLevelNodes,
+  sortByDepth,
+  type Bounds,
+} from './utils/grouping';
 
 // Constants
 export {

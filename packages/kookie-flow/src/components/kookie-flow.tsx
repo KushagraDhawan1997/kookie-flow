@@ -18,6 +18,7 @@ import { Grid } from './grid';
 import { Nodes } from './nodes';
 import { Edges } from './edges';
 import { Sockets } from './sockets';
+import { RerouteNodes } from './reroute-nodes';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
@@ -1459,6 +1460,7 @@ function FlowCanvas({ showGrid, showStats, defaultEdgeType, socketTypes, textRen
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Nodes />
+      <RerouteNodes />
       <SelectionBox />
       <ConnectionLine socketTypes={socketTypes} />
       {textRenderMode === 'webgl' && (
