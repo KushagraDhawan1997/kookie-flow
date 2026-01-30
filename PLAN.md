@@ -1081,7 +1081,7 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 8 (Visual Previews) next.
+**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) next.
 
 ### Phase 7C: Grouping & Annotations ✅
 
@@ -1604,6 +1604,110 @@ This ensures widgets fit naturally in socket rows and scale properly.
 - [x] Docs: Widget usage examples (added to demo page)
 - [x] Docs: Custom widget component guide (demo shows all widget types + inline override)
 
+### Phase 7E: Connection Events
+
+**Goal:** Callbacks for connection lifecycle (enables "add node on edge drop" pattern)
+
+Currently `onConnect` only fires when a connection succeeds. Users need events for:
+1. When connection drag starts (to show UI hints, prepare node creation)
+2. When connection drag ends (regardless of success, to create nodes on empty drop)
+
+**New Callbacks:**
+
+```typescript
+interface KookieFlowProps {
+  // Existing
+  onConnect?: (connection: Connection) => void;
+
+  // NEW: Connection lifecycle
+  onConnectStart?: (
+    event: PointerEvent,
+    params: {
+      nodeId: string;
+      socketId: string;
+      isInput: boolean;
+    }
+  ) => void;
+
+  onConnectEnd?: (
+    event: PointerEvent,
+    connectionState: {
+      isValid: boolean;           // Did it land on a valid socket?
+      source: {                   // Where the drag started
+        nodeId: string;
+        socketId: string;
+        isInput: boolean;
+      };
+      position: XYPosition;       // World coordinates of drop point
+    }
+  ) => void;
+}
+```
+
+**Use Case: Add Node on Edge Drop**
+
+```tsx
+<KookieFlow
+  onConnectEnd={(event, state) => {
+    // Only act when dropped on empty canvas (not a valid connection)
+    if (!state.isValid) {
+      const id = `node-${Date.now()}`;
+
+      // Add new node at drop position
+      setNodes(nodes => [...nodes, {
+        id,
+        position: state.position,
+        data: { label: 'New Node' },
+        inputs: [{ id: 'in', name: 'Input', type: 'any' }],
+      }]);
+
+      // Connect source to new node
+      const edge = state.source.isInput
+        ? { source: id, sourceSocket: 'out', target: state.source.nodeId, targetSocket: state.source.socketId }
+        : { source: state.source.nodeId, sourceSocket: state.source.socketId, target: id, targetSocket: 'in' };
+
+      setEdges(edges => [...edges, { id: `edge-${Date.now()}`, ...edge }]);
+    }
+  }}
+/>
+```
+
+**Implementation:**
+
+1. **Types (`src/types/index.ts`):**
+   - Add `OnConnectStartParams` interface
+   - Add `ConnectionState` interface for `onConnectEnd`
+   - Add `onConnectStart` and `onConnectEnd` to `KookieFlowProps`
+
+2. **Store (`src/core/store.ts`):**
+   - Add `screenToWorld(screenX, screenY): XYPosition` helper (already have inverse)
+
+3. **InputHandler (`src/components/kookie-flow.tsx`):**
+   - Fire `onConnectStart` when `connectionDraft` is created (in `handlePointerDown`)
+   - Fire `onConnectEnd` in `handlePointerUp` before canceling draft, with:
+     - `isValid`: whether connection succeeded
+     - `source`: the original socket info from `connectionDraft`
+     - `position`: world coords from pointer position
+
+4. **Props threading:**
+   - Thread `onConnectStart` and `onConnectEnd` through component layers
+
+**Performance Notes:**
+- No hot path impact - callbacks only fire on pointer up/down
+- `screenToWorld` is O(1) - simple math with viewport
+- No new store state needed - uses existing `connectionDraft`
+
+**Tasks:**
+
+- [ ] Types: Add `OnConnectStartParams`, `ConnectionState` interfaces
+- [ ] Types: Add `onConnectStart`, `onConnectEnd` to `KookieFlowProps`
+- [ ] Store: Add `screenToWorld()` helper function
+- [ ] InputHandler: Fire `onConnectStart` when connection begins
+- [ ] InputHandler: Fire `onConnectEnd` with position and validity
+- [ ] Props: Thread callbacks through component layers
+- [ ] Demo: Add "add node on edge drop" example
+- [ ] Docs: Update README with connection events
+
 ### Phase 8: Visual Previews
 
 **Goal:** The differentiator
@@ -1941,6 +2045,11 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 ### Next Immediate Tasks
 
 **Phase 7C (complete):** Grouping & Annotations - Node groups, comments, reroutes
+
+**Phase 7E: Connection Events**
+- `onConnectStart` callback when connection drag begins
+- `onConnectEnd` callback with drop position and validity
+- Enables "add node on edge drop" pattern (like React Flow)
 
 **Phase 8: Visual Previews**
 - Image preview thumbnails on nodes
