@@ -7,7 +7,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
-import { isNodeHidden } from '../utils/grouping';
 
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
@@ -295,9 +294,9 @@ export function Nodes() {
       (state) => state.selectedNodeIds,
       () => { dirtyRef.current = true; }
     );
-    // Subscribe to collapsed group changes (Phase 7C)
-    const unsubCollapsed = store.subscribe(
-      (state) => state.collapsedGroupIds,
+    // Subscribe to hidden node changes (Phase 7C) - O(1) lookup in hot path
+    const unsubHidden = store.subscribe(
+      (state) => state.hiddenNodeIds,
       () => { dirtyRef.current = true; }
     );
 
@@ -306,7 +305,7 @@ export function Nodes() {
       unsubViewport();
       unsubHovered();
       unsubSelection();
-      unsubCollapsed();
+      unsubHidden();
     };
   }, [store, capacity]);
 
@@ -316,7 +315,7 @@ export function Nodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId, selectedNodeIds, nodeMap, collapsedGroupIds } = store.getState();
+    const { nodes, viewport, hoveredNodeId, selectedNodeIds, hiddenNodeIds } = store.getState();
     if (nodes.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -344,8 +343,8 @@ export function Nodes() {
         continue;
       }
 
-      // Skip nodes inside collapsed groups (Phase 7C)
-      if (isNodeHidden(node, nodeMap, collapsedGroupIds)) {
+      // Skip nodes inside collapsed groups (Phase 7C) - O(1) lookup
+      if (hiddenNodeIds.has(node.id)) {
         continue;
       }
 
