@@ -12,7 +12,6 @@ import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig, Comment
 import { DEFAULT_NODE_WIDTH } from '../core/constants';
 import { getNodeSocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
-import { isNodeHidden } from '../utils/grouping';
 
 export interface DOMLayerProps {
   nodeTypes?: Record<string, NodeTypeDefinition>;
@@ -979,7 +978,7 @@ function CommentsContainer() {
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap, collapsedGroupIds, selectedNodeIds } = store.getState();
+    const { viewport, nodeMap, hiddenNodeIds, selectedNodeIds } = store.getState();
     const comments = commentsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -1006,8 +1005,8 @@ function CommentsContainer() {
         return;
       }
 
-      // Skip if inside collapsed group
-      if (isNodeHidden(node, nodeMap, collapsedGroupIds)) {
+      // Skip if inside collapsed group - O(1) lookup
+      if (hiddenNodeIds.has(node.id)) {
         el.style.visibility = 'hidden';
         return;
       }

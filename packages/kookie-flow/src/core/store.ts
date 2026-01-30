@@ -94,6 +94,12 @@ export interface FlowState {
   /** Set of collapsed group node IDs (O(1) lookup for visibility checks) */
   collapsedGroupIds: Set<string>;
 
+  /**
+   * Pre-computed set of hidden node IDs (nodes inside collapsed groups).
+   * Rebuilt when collapsedGroupIds changes. Used for O(1) visibility checks in hot paths.
+   */
+  hiddenNodeIds: Set<string>;
+
   /** Internal actions */
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
@@ -290,10 +296,19 @@ function rebuildDerivedState(nodes: Node[], collapsedGroupIds?: Set<string>) {
   // Build collapsed set if not provided (e.g., during initialization)
   const collapsed = collapsedGroupIds ?? buildCollapsedGroupIds(nodes);
 
+  // Pre-compute hidden node IDs for O(1) lookup in hot paths
+  // This is O(n*d) but only runs when nodes/collapsed state changes, not every frame
+  const hiddenNodeIds = new Set<string>();
+  for (const node of nodes) {
+    if (isNodeHidden(node, nodeMap, collapsed)) {
+      hiddenNodeIds.add(node.id);
+    }
+  }
+
   // Determine which nodes are visible (not inside collapsed groups)
   const visibleNodes: Node[] = [];
   for (const node of nodes) {
-    if (!isNodeHidden(node, nodeMap, collapsed)) {
+    if (!hiddenNodeIds.has(node.id)) {
       visibleNodes.push(node);
     }
   }
@@ -332,7 +347,7 @@ function rebuildDerivedState(nodes: Node[], collapsedGroupIds?: Set<string>) {
 
   quadtree.rebuild(visibleNodes);
 
-  return { nodeMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed };
+  return { nodeMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenNodeIds };
 }
 
 // Helper to rebuild connected sockets set from edges
@@ -350,7 +365,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial nodes and edges
   const initialNodes = initialState?.nodes ?? [];
   const initialEdges = initialState?.edges ?? [];
-  const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(initialNodes);
+  const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(initialNodes);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
 
   return create<FlowState>()(
@@ -383,11 +398,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Grouping state (Phase 7C)
       collapsedGroupIds,
+      hiddenNodeIds,
 
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
-        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(nodes);
-        set({ nodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds });
+        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(nodes);
+        set({ nodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds });
       },
       setEdges: (edges) => set({ edges, connectedSockets: rebuildConnectedSockets(edges) }),
       setViewport: (viewport) => set({ viewport }),
@@ -515,8 +531,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Rebuild derived state (nodeMap, quadtree, socketQuadtree) to stay in sync
         const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
-        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(nextNodes, finalCollapsed);
-        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds });
+        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(nextNodes, finalCollapsed);
+        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds });
       },
 
       applyEdgeChanges: (changes) => {

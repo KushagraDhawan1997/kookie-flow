@@ -12,7 +12,6 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { THEME_COLORS } from '../core/theme-colors';
-import { isNodeHidden } from '../utils/grouping';
 
 const tempMatrix = new THREE.Matrix4();
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -194,8 +193,8 @@ export function RerouteNodes() {
         dirtyRef.current = true;
       }
     );
-    const unsubCollapsed = store.subscribe(
-      (state) => state.collapsedGroupIds,
+    const unsubHidden = store.subscribe(
+      (state) => state.hiddenNodeIds,
       () => {
         dirtyRef.current = true;
       }
@@ -206,7 +205,7 @@ export function RerouteNodes() {
       unsubViewport();
       unsubHovered();
       unsubSelection();
-      unsubCollapsed();
+      unsubHidden();
     };
   }, [store, capacity]);
 
@@ -216,7 +215,7 @@ export function RerouteNodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId, selectedNodeIds, nodeMap, collapsedGroupIds } = store.getState();
+    const { nodes, viewport, hoveredNodeId, selectedNodeIds, hiddenNodeIds } = store.getState();
 
     // Mark dirty on canvas resize
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -247,8 +246,8 @@ export function RerouteNodes() {
     for (let i = 0; i < rerouteNodes.length && visibleCount < maxVisible; i++) {
       const node = rerouteNodes[i];
 
-      // Skip if inside collapsed group
-      if (isNodeHidden(node, nodeMap, collapsedGroupIds)) {
+      // Skip if inside collapsed group - O(1) lookup
+      if (hiddenNodeIds.has(node.id)) {
         continue;
       }
 
