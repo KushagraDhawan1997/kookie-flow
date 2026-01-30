@@ -1081,16 +1081,48 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Milestones 1-3.5 complete. Milestone 4-5 in progress.
+**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 8 (Visual Previews) next.
 
-### Phase 7C: Grouping & Annotations
+### Phase 7C: Grouping & Annotations ✅
 
 **Goal:** Organizational features
 
-- [ ] Node grouping/frames (parent-child relationship)
-- [ ] Collapsed groups (hide children, show summary)
-- [ ] Comments/sticky notes (text-only nodes)
-- [ ] Reroute nodes (edge waypoints)
+- [x] Node grouping/frames (parent-child relationship)
+- [x] Collapsed groups (hide children, show summary)
+- [x] Comments/sticky notes (text-only nodes)
+- [x] Reroute nodes (edge waypoints)
+
+**Implementation Summary:**
+
+1. **Types (`src/types/index.ts`):**
+   - Added `parentId?: string` and `collapsed?: boolean` to `Node` interface
+   - Added `GroupNodeData`, `CommentNodeData`, `RerouteNodeData` types
+   - Added `GroupNode`, `CommentNode`, `RerouteNode` type aliases
+   - Added `isGroupNode()`, `isCommentNode()`, `isRerouteNode()` type guards
+   - Added `reroutes?: string[]` to `Edge` interface for waypoint support
+   - Added `collapse` and `parent` node change types
+
+2. **Store (`src/core/store.ts`):**
+   - Added `collapsedGroupIds: Set<string>` for O(1) collapse state lookup
+   - Added group actions: `getGroupChildren`, `getGroupDescendants`, `toggleGroupCollapse`, `expandGroup`, `collapseGroup`, `isGroupCollapsed`, `getGroupBounds`, `setNodeParent`, `moveGroup`
+   - Updated `rebuildDerivedState` to filter collapsed children from quadtrees
+
+3. **Grouping Utilities (`src/utils/grouping.ts`):**
+   - `getGroupChildren()`, `getGroupDescendants()` - hierarchy traversal
+   - `isNodeHidden()`, `getVisibleNodes()` - visibility checks
+   - `calculateGroupBounds()` - auto-size from children
+   - `getParentChain()`, `isDescendantOf()` - relationship queries
+   - `calculateDescendantPositions()` - batch move support
+   - `wouldCreateCycle()` - cycle detection for parent assignment
+   - `sortByDepth()` - topological ordering
+
+4. **Rendering:**
+   - `Nodes.tsx`: Skip comment/reroute types and collapsed children
+   - `RerouteNodes.tsx`: New component for waypoint circles (InstancedMesh)
+   - `DOMLayer.tsx`: `CommentsContainer` for sticky note rendering
+
+5. **Imperative API:**
+   - Extended `KookieFlowInstance` with group methods: `getGroupChildren`, `getGroupDescendants`, `toggleGroupCollapse`, `expandGroup`, `collapseGroup`, `isGroupCollapsed`, `getGroupBounds`
 
 ### Phase 7D: Socket Widgets
 
@@ -1893,17 +1925,32 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `getViewport()`, `setViewport()`, `zoomIn()`, `zoomOut()`, `setCenter()`
 - [x] `getNodes()`, `getEdges()`, `getSelectedNodes()`, `getSelectedEdges()`
 
+**Phase 7C: Grouping & Annotations**
+- [x] Node grouping/frames (`parentId`, `collapsed` on Node interface)
+- [x] Group types: `GroupNode`, `CommentNode`, `RerouteNode` with type guards
+- [x] Store: `collapsedGroupIds: Set<string>`, group actions (`toggleGroupCollapse`, `expandGroup`, `collapseGroup`, etc.)
+- [x] Grouping utilities (`getGroupChildren`, `getGroupDescendants`, `isNodeHidden`, `calculateGroupBounds`)
+- [x] `Nodes.tsx`: Skip collapsed children, comment, and reroute nodes
+- [x] `RerouteNodes.tsx`: InstancedMesh renderer for waypoint circles
+- [x] `CommentsContainer`: DOM-based sticky note rendering in DOMLayer
+- [x] Edge interface: `reroutes?: string[]` for waypoint support
+- [x] Imperative API: Group methods on `KookieFlowInstance`
+
 > **Note:** Full styling plan and remaining tasks tracked in [STYLING.md](./STYLING.md)
 
 ### Next Immediate Tasks
 
-**Styling (in progress):** See [STYLING.md](./STYLING.md) for detailed tracking
+**Phase 7C (complete):** Grouping & Annotations - Node groups, comments, reroutes
 
-- Milestone 3: Node shader updates (shadow SDF for classic variant, header color region)
-- Milestone 4: Socket type theming (user-configurable via CSS vars)
-- Milestone 5: Polish & testing (dark/light mode, standalone mode)
+**Phase 8: Visual Previews**
+- Image preview thumbnails on nodes
+- Preview caching and LOD
+- Async image loading
 
-**Phase 7D (complete):** Socket widgets
+**Phase 9: Polish & Production**
+- Error boundaries
+- Accessibility improvements
+- Documentation updates
 
 All tasks done including:
 - Connected sockets tracking in store

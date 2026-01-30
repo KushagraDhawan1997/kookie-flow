@@ -21,6 +21,14 @@ import type {
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING } from './constants';
 import { Quadtree, SocketQuadtree, getNodeBounds, type SocketEntry } from './spatial';
+import {
+  getGroupChildren as utilGetGroupChildren,
+  getGroupDescendants as utilGetGroupDescendants,
+  isNodeHidden,
+  calculateGroupBounds as utilCalculateGroupBounds,
+  calculateDescendantPositions,
+  type Bounds,
+} from '../utils/grouping';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -78,6 +86,13 @@ export interface FlowState {
 
   /** Internal clipboard (holds references, no serialization) */
   internalClipboard: InternalClipboard | null;
+
+  // ============================================================================
+  // Grouping State (Phase 7C)
+  // ============================================================================
+
+  /** Set of collapsed group node IDs (O(1) lookup for visibility checks) */
+  collapsedGroupIds: Set<string>;
 
   /** Internal actions */
   setNodes: (nodes: Node[]) => void;
@@ -183,6 +198,59 @@ export interface FlowState {
    * Get edges connected to the given node IDs.
    */
   getConnectedEdges: (nodeIds: string[]) => Edge[];
+
+  // ========================================
+  // Phase 7C: Grouping Actions
+  // ========================================
+
+  /**
+   * Get direct children of a group node.
+   */
+  getGroupChildren: (groupId: string) => Node[];
+
+  /**
+   * Get all descendants of a group node (recursive).
+   */
+  getGroupDescendants: (groupId: string) => Node[];
+
+  /**
+   * Toggle a group's collapsed state.
+   * Fires a 'collapse' node change event.
+   */
+  toggleGroupCollapse: (groupId: string) => void;
+
+  /**
+   * Expand a collapsed group.
+   */
+  expandGroup: (groupId: string) => void;
+
+  /**
+   * Collapse an expanded group.
+   */
+  collapseGroup: (groupId: string) => void;
+
+  /**
+   * Check if a group is collapsed.
+   */
+  isGroupCollapsed: (groupId: string) => boolean;
+
+  /**
+   * Get the bounds of a group (calculated from children).
+   * Returns null if group has no children.
+   */
+  getGroupBounds: (groupId: string) => Bounds | null;
+
+  /**
+   * Set the parent of a node (for grouping).
+   * Validates that the operation doesn't create cycles.
+   */
+  setNodeParent: (nodeId: string, parentId: string | null) => boolean;
+
+  /**
+   * Move a group and all its descendants.
+   * Updates positions in a single batch for performance.
+   */
+  moveGroup: (groupId: string, delta: XYPosition) => void;
 }
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
@@ -196,15 +264,42 @@ function getSocketYOffset(node: Node, socketIndex: number, isInput: boolean): nu
   return SOCKET_MARGIN_TOP + rowIndex * SOCKET_SPACING;
 }
 
+// Helper to build collapsedGroupIds set from nodes
+function buildCollapsedGroupIds(nodes: Node[]): Set<string> {
+  const collapsed = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === 'group' && node.collapsed) {
+      collapsed.add(node.id);
+    }
+  }
+  return collapsed;
+}
+
 // Helper to rebuild derived state from nodes
-function rebuildDerivedState(nodes: Node[]) {
+// collapsedGroupIds is used to filter children of collapsed groups from quadtrees
+function rebuildDerivedState(nodes: Node[], collapsedGroupIds?: Set<string>) {
   const nodeMap = new Map<string, Node>();
   const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
   const socketQuadtree = new SocketQuadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
 
+  // Build nodeMap first (all nodes, for O(1) lookup)
   for (const node of nodes) {
     nodeMap.set(node.id, node);
+  }
 
+  // Build collapsed set if not provided (e.g., during initialization)
+  const collapsed = collapsedGroupIds ?? buildCollapsedGroupIds(nodes);
+
+  // Determine which nodes are visible (not inside collapsed groups)
+  const visibleNodes: Node[] = [];
+  for (const node of nodes) {
+    if (!isNodeHidden(node, nodeMap, collapsed)) {
+      visibleNodes.push(node);
+    }
+  }
+
+  // Only add visible nodes to quadtrees
+  for (const node of visibleNodes) {
     // Insert sockets into socket quadtree
     const nodeWidth = node.width ?? 200;
     if (node.inputs) {
@@ -235,9 +330,9 @@ function rebuildDerivedState(nodes: Node[]) {
     }
   }
 
-  quadtree.rebuild(nodes);
+  quadtree.rebuild(visibleNodes);
 
-  return { nodeMap, quadtree, socketQuadtree };
+  return { nodeMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed };
 }
 
 // Helper to rebuild connected sockets set from edges
@@ -255,7 +350,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial nodes and edges
   const initialNodes = initialState?.nodes ?? [];
   const initialEdges = initialState?.edges ?? [];
-  const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(initialNodes);
+  const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(initialNodes);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
 
   return create<FlowState>()(
@@ -286,10 +381,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Internal clipboard
       internalClipboard: null,
 
+      // Grouping state (Phase 7C)
+      collapsedGroupIds,
+
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
-        const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(nodes);
-        set({ nodes, nodeMap, quadtree, socketQuadtree });
+        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(nodes);
+        set({ nodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds });
       },
       setEdges: (edges) => set({ edges, connectedSockets: rebuildConnectedSockets(edges) }),
       setViewport: (viewport) => set({ viewport }),
@@ -324,8 +422,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Apply changes
       applyNodeChanges: (changes) => {
-        const { nodes } = get();
+        const { nodes, collapsedGroupIds: currentCollapsed } = get();
         const nextNodes = [...nodes];
+        let collapsedChanged = false;
+        const nextCollapsed = new Set(currentCollapsed);
 
         // Build id->index map once for O(1) lookups: O(n)
         const idToIndex = new Map<string, number>();
@@ -358,12 +458,22 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 for (let i = index; i < nextNodes.length; i++) {
                   idToIndex.set(nextNodes[i].id, i);
                 }
+                // Also remove from collapsed set if it was a group
+                if (nextCollapsed.has(change.id)) {
+                  nextCollapsed.delete(change.id);
+                  collapsedChanged = true;
+                }
               }
               break;
             }
             case 'add': {
               idToIndex.set(change.node.id, nextNodes.length);
               nextNodes.push(change.node);
+              // If adding a collapsed group, add to collapsed set
+              if (change.node.type === 'group' && change.node.collapsed) {
+                nextCollapsed.add(change.node.id);
+                collapsedChanged = true;
+              }
               break;
             }
             case 'dimensions': {
@@ -377,12 +487,36 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               }
               break;
             }
+            case 'collapse': {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
+                nextNodes[index] = { ...nextNodes[index], collapsed: change.collapsed };
+                if (change.collapsed) {
+                  nextCollapsed.add(change.id);
+                } else {
+                  nextCollapsed.delete(change.id);
+                }
+                collapsedChanged = true;
+              }
+              break;
+            }
+            case 'parent': {
+              const index = idToIndex.get(change.id);
+              if (index !== undefined) {
+                nextNodes[index] = {
+                  ...nextNodes[index],
+                  parentId: change.parentId ?? undefined,
+                };
+              }
+              break;
+            }
           }
         }
 
         // Rebuild derived state (nodeMap, quadtree, socketQuadtree) to stay in sync
-        const { nodeMap, quadtree, socketQuadtree } = rebuildDerivedState(nextNodes);
-        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree });
+        const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
+        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds } = rebuildDerivedState(nextNodes, finalCollapsed);
+        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds });
       },
 
       applyEdgeChanges: (changes) => {
@@ -932,6 +1066,99 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         const nodeIdSet = new Set(nodeIds);
         return edges.filter((e) => nodeIdSet.has(e.source) || nodeIdSet.has(e.target));
+      },
+
+      // ========================================
+      // Phase 7C: Grouping Actions Implementation
+      // ========================================
+
+      getGroupChildren: (groupId: string): Node[] => {
+        const { nodes } = get();
+        return utilGetGroupChildren(nodes, groupId);
+      },
+
+      getGroupDescendants: (groupId: string): Node[] => {
+        const { nodes } = get();
+        return utilGetGroupDescendants(nodes, groupId);
+      },
+
+      toggleGroupCollapse: (groupId: string): void => {
+        const { nodeMap, collapsedGroupIds, applyNodeChanges } = get();
+        const group = nodeMap.get(groupId);
+        if (!group || group.type !== 'group') return;
+
+        const newCollapsed = !collapsedGroupIds.has(groupId);
+        applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: newCollapsed }]);
+      },
+
+      expandGroup: (groupId: string): void => {
+        const { collapsedGroupIds, applyNodeChanges } = get();
+        if (collapsedGroupIds.has(groupId)) {
+          applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: false }]);
+        }
+      },
+
+      collapseGroup: (groupId: string): void => {
+        const { collapsedGroupIds, applyNodeChanges } = get();
+        if (!collapsedGroupIds.has(groupId)) {
+          applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: true }]);
+        }
+      },
+
+      isGroupCollapsed: (groupId: string): boolean => {
+        const { collapsedGroupIds } = get();
+        return collapsedGroupIds.has(groupId);
+      },
+
+      getGroupBounds: (groupId: string): Bounds | null => {
+        const { nodes } = get();
+        return utilCalculateGroupBounds(nodes, groupId);
+      },
+
+      setNodeParent: (nodeId: string, parentId: string | null): boolean => {
+        const { nodeMap, applyNodeChanges } = get();
+        const node = nodeMap.get(nodeId);
+        if (!node) return false;
+
+        // Validate: can't parent to self
+        if (parentId === nodeId) return false;
+
+        // Validate: can't create cycle (if proposedParent is a descendant of node)
+        if (parentId) {
+          const parent = nodeMap.get(parentId);
+          if (!parent) return false;
+
+          // Check if parentId is a descendant of nodeId
+          let current: string | undefined = parent.parentId;
+          while (current) {
+            if (current === nodeId) return false; // Would create cycle
+            const currentNode = nodeMap.get(current);
+            current = currentNode?.parentId;
+          }
+        }
+
+        applyNodeChanges([{ type: 'parent', id: nodeId, parentId }]);
+        return true;
+      },
+
+      moveGroup: (groupId: string, delta: XYPosition): void => {
+        const { nodes, nodeMap, updateNodePositions } = get();
+        const group = nodeMap.get(groupId);
+        if (!group) return;
+
+        // Get positions for group and all descendants
+        const descendantPositions = calculateDescendantPositions(nodes, groupId, delta);
+
+        // Build updates array
+        const updates: Array<{ id: string; position: XYPosition }> = [
+          { id: groupId, position: { x: group.position.x + delta.x, y: group.position.y + delta.y } },
+        ];
+
+        for (const [id, position] of descendantPositions) {
+          updates.push({ id, position });
+        }
+
+        updateNodePositions(updates);
       },
     }))
   );

@@ -177,6 +177,75 @@ export interface NodeData {
   [key: string]: unknown;
 }
 
+// ============================================================================
+// Special Node Types (Phase 7C)
+// ============================================================================
+
+/** Built-in special node types */
+export type BuiltInNodeType = 'group' | 'comment' | 'reroute';
+
+/** Data for group nodes */
+export interface GroupNodeData extends NodeData {
+  /** Group title shown in header */
+  label?: string;
+  /** Optional description shown below title when expanded */
+  description?: string;
+  /** Background color for the group frame */
+  backgroundColor?: string;
+  /** Border color for the group frame */
+  borderColor?: string;
+}
+
+/** Data for comment/sticky note nodes */
+export interface CommentNodeData extends NodeData {
+  /** Comment text content */
+  content: string;
+  /** Background color (CSS color). Default: yellow-ish sticky note */
+  backgroundColor?: string;
+  /** Text color. Default: dark gray */
+  textColor?: string;
+  /** Font size in pixels. Default: 14 */
+  fontSize?: number;
+}
+
+/** Data for reroute/waypoint nodes */
+export interface RerouteNodeData extends NodeData {
+  /** Optional label (rarely used, mostly for debugging) */
+  label?: string;
+}
+
+/** Group node type */
+export type GroupNode = Node<GroupNodeData> & {
+  type: 'group';
+  collapsed?: boolean;
+  extent?: 'auto' | 'fixed';
+};
+
+/** Comment node type */
+export type CommentNode = Node<CommentNodeData> & {
+  type: 'comment';
+};
+
+/** Reroute node type */
+export type RerouteNode = Node<RerouteNodeData> & {
+  type: 'reroute';
+};
+
+/** Helper type guard for group nodes */
+export function isGroupNode(node: Node): node is GroupNode {
+  return node.type === 'group';
+}
+
+/** Helper type guard for comment nodes */
+export function isCommentNode(node: Node): node is CommentNode {
+  return node.type === 'comment';
+}
+
+/** Helper type guard for reroute nodes */
+export function isRerouteNode(node: Node): node is RerouteNode {
+  return node.type === 'reroute';
+}
+
 /** Node in the graph */
 export interface Node<T extends NodeData = NodeData> {
   id: string;
@@ -191,6 +260,27 @@ export interface Node<T extends NodeData = NodeData> {
   outputs?: Socket[];
   /** Per-node accent color override (matches Kookie UI accent colors) */
   color?: AccentColor;
+
+  // ============================================================================
+  // Grouping (Phase 7C)
+  // ============================================================================
+
+  /**
+   * Parent group node ID. When set, this node is a child of the group.
+   * Child nodes move with their parent and are hidden when the group is collapsed.
+   */
+  parentId?: string;
+  /**
+   * Whether this group node is collapsed (only applies to group nodes).
+   * When collapsed, child nodes are hidden and edges are rerouted through the group.
+   */
+  collapsed?: boolean;
+  /**
+   * Extent mode for group nodes. Determines if the group auto-sizes to fit children.
+   * - 'auto': Group resizes to fit children with padding (default)
+   * - 'fixed': Group uses explicit width/height
+   */
+  extent?: 'auto' | 'fixed';
 }
 
 /** Edge connecting two nodes */
@@ -212,6 +302,17 @@ export interface Edge {
   markerStart?: EdgeMarkerType | EdgeMarker;
   /** Marker at the end of the edge (target side) */
   markerEnd?: EdgeMarkerType | EdgeMarker;
+
+  // ============================================================================
+  // Reroute Support (Phase 7C)
+  // ============================================================================
+
+  /**
+   * IDs of reroute nodes that this edge passes through.
+   * Edge is rendered as segments: source → reroute1 → reroute2 → ... → target
+   * Order matters - first reroute is closest to source.
+   */
+  reroutes?: string[];
 }
 
 /** Connection in progress */
@@ -247,7 +348,9 @@ export type NodeChange =
   | { type: 'select'; id: string; selected: boolean }
   | { type: 'remove'; id: string }
   | { type: 'add'; node: Node }
-  | { type: 'dimensions'; id: string; dimensions: Dimensions };
+  | { type: 'dimensions'; id: string; dimensions: Dimensions }
+  | { type: 'collapse'; id: string; collapsed: boolean }
+  | { type: 'parent'; id: string; parentId: string | null };
 
 /** Edge change event */
 export type EdgeChange =
@@ -642,4 +745,23 @@ export interface KookieFlowInstance {
   getSelectedEdges: () => Edge[];
   /** Center the viewport on a specific position */
   setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
+
+  // ============================================================================
+  // Grouping API (Phase 7C)
+  // ============================================================================
+
+  /** Get all child nodes of a group (non-recursive) */
+  getGroupChildren: (groupId: string) => Node[];
+  /** Get all descendant nodes of a group (recursive) */
+  getGroupDescendants: (groupId: string) => Node[];
+  /** Toggle a group's collapsed state */
+  toggleGroupCollapse: (groupId: string) => void;
+  /** Expand a collapsed group */
+  expandGroup: (groupId: string) => void;
+  /** Collapse an expanded group */
+  collapseGroup: (groupId: string) => void;
+  /** Check if a group is collapsed */
+  isGroupCollapsed: (groupId: string) => boolean;
+  /** Get the bounds of a group (calculated from children) */
+  getGroupBounds: (groupId: string) => { x: number; y: number; width: number; height: number } | null;
 }
