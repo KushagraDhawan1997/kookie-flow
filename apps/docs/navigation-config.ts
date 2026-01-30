@@ -9,6 +9,7 @@ import {
   Keyboard01Icon,
   ArrowTurnBackwardIcon,
   Menu01Icon,
+  Folder01Icon,
 } from '@hugeicons/core-free-icons';
 
 export const docsNavigation: DocsNavigationConfig = {
@@ -40,6 +41,11 @@ export const docsNavigation: DocsNavigationConfig = {
           href: '/docs/edges',
           title: 'Edges',
           icon: Link01Icon,
+        },
+        {
+          href: '/docs/grouping',
+          title: 'Grouping',
+          icon: Folder01Icon,
         },
       ],
     },
