@@ -956,6 +956,9 @@ const DEFAULT_COMMENT_FONT_SIZE = 14;
  * Container for comment/sticky note nodes.
  * Comments are fully DOM-rendered (text content, no sockets).
  * Uses ref-based updates for same-frame positioning without React re-renders.
+ *
+ * Note: Comment text always scales with zoom since comments are visual canvas
+ * elements (like sticky notes), not labels/annotations.
  */
 function CommentsContainer() {
   const store = useFlowStoreApi();
@@ -1037,10 +1040,16 @@ function CommentsContainer() {
       // Apply selection border
       const isSelected = selectedNodeIds.has(nodeId);
 
+      // Get base font size from data attribute
+      // Comments always scale text with zoom since they're visual canvas elements (not labels)
+      const baseFontSize = parseFloat(el.dataset.baseFontSize ?? String(DEFAULT_COMMENT_FONT_SIZE));
+      const scaledFontSize = baseFontSize * viewport.zoom;
+
       el.style.visibility = 'visible';
       el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
       el.style.width = `${screenWidth}px`;
       el.style.height = `${screenHeight}px`;
+      el.style.fontSize = `${scaledFontSize}px`;
       el.style.boxShadow = isSelected
         ? '0 0 0 2px var(--indigo-9, #5c5ce0), 0 2px 8px rgba(0,0,0,0.15)'
         : '0 2px 8px rgba(0,0,0,0.15)';
@@ -1119,11 +1128,11 @@ function CommentsContainer() {
           <div
             key={node.id}
             ref={setCommentRef(node.id)}
+            data-base-font-size={fontSize}
             style={{
               ...commentStyle,
               backgroundColor: bgColor,
               color: textColor,
-              fontSize: `${fontSize}px`,
             }}
           >
             {data.content}

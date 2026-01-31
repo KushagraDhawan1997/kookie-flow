@@ -338,9 +338,7 @@ const widgetDemoNodes: Node[] = [
         placeholder: 'Multi-row inline...',
       },
     ],
-    outputs: [
-      { id: 'ws-out-0', name: 'Image', type: 'image' },
-    ],
+    outputs: [{ id: 'ws-out-0', name: 'Image', type: 'image' }],
   },
   // Extremely complex nodes with many widgets
   {
@@ -1026,7 +1024,7 @@ function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInst
         <button
           style={buttonStyle}
           onClick={() => {
-            const selected = flowRef.current?.getSelectedNodes().map(n => n.id);
+            const selected = flowRef.current?.getSelectedNodes().map((n) => n.id);
             if (selected && selected.length > 0) {
               flowRef.current?.fitView({ nodes: selected, padding: 100 });
             }
