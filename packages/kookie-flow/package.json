@@ -53,6 +53,8 @@
     "dev": "tsup --watch",
     "build": "tsup",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist .turbo",
     "generate:fonts": "node scripts/generate-fonts.js"
   },
@@ -84,6 +86,7 @@
     "react-dom": "^19.0.0",
     "three": "^0.182.0",
     "tsup": "^8.3.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.18"
   }
 }
