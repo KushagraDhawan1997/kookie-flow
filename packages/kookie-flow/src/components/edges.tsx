@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { getMovedEntityIds } from '../core/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
@@ -176,6 +177,9 @@ export function Edges({
 
   // Position-only dirty flag (enables partial update path, avoids full rebuild)
   const positionDirtyRef = useRef(false);
+
+  // Reverse index: entityId → edge array indices (for O(K) partial updates)
+  const entityToEdgeIndicesRef = useRef<Map<string, number[]>>(new Map());
 
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
@@ -499,10 +503,32 @@ export function Edges({
     let dirtyRangeMin = Infinity;
     let dirtyRangeMax = 0;
 
+    // Pre-compute affected edge indices for O(K) partial update
+    let affectedEdgeIndices: Set<number> | null = null;
+    if (isPartialUpdate) {
+      const movedIds = getMovedEntityIds();
+      const entityEdgeMap = entityToEdgeIndicesRef.current;
+      if (movedIds.size > 0 && entityEdgeMap.size > 0) {
+        affectedEdgeIndices = new Set<number>();
+        for (const entityId of movedIds) {
+          const edgeIndices = entityEdgeMap.get(entityId);
+          if (edgeIndices) {
+            for (const idx of edgeIndices) affectedEdgeIndices.add(idx);
+          }
+        }
+      }
+    }
+
     // Full geometry rebuild or partial position update path
     let vertexIndex = 0;
 
     for (let i = 0; i < edges.length; i++) {
+      // O(K) fast skip: non-affected edges during partial update
+      if (affectedEdgeIndices !== null && !affectedEdgeIndices.has(i)) {
+        vertexIndex += evCounts[i];
+        continue;
+      }
+
       const edge = edges[i];
       const sourceEntity = entityMap.get(edge.source);
       const targetEntity = entityMap.get(edge.target);
@@ -559,13 +585,16 @@ export function Edges({
       // Partial update: check if this edge's endpoints changed
       if (isPartialUpdate) {
         const epBase = i * 4;
-        if (epCache[epBase] === x0 && epCache[epBase + 1] === y0 &&
-            epCache[epBase + 2] === x1 && epCache[epBase + 3] === y1) {
-          // Endpoints unchanged — skip tessellation, advance by cached vertex count
-          vertexIndex += evCounts[i];
-          continue;
+        // When using affectedEdgeIndices, we already know this edge is affected — skip comparison
+        if (affectedEdgeIndices === null) {
+          // Fallback: compare endpoints when reverse index isn't available
+          if (epCache[epBase] === x0 && epCache[epBase + 1] === y0 &&
+              epCache[epBase + 2] === x1 && epCache[epBase + 3] === y1) {
+            vertexIndex += evCounts[i];
+            continue;
+          }
         }
-        // Endpoints changed — update cache and mark dirty range
+        // Update cache and mark dirty range
         epCache[epBase] = x0;
         epCache[epBase + 1] = y0;
         epCache[epBase + 2] = x1;
@@ -1029,6 +1058,21 @@ export function Edges({
       // Track dirty range end for partial GPU upload
       if (isPartialUpdate) {
         dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
+      }
+    }
+
+    // Build reverse index: entityId → edge array indices (during full rebuild only)
+    if (!isPartialUpdate) {
+      const entityEdgeMap = entityToEdgeIndicesRef.current;
+      entityEdgeMap.clear();
+      for (let i = 0; i < edges.length; i++) {
+        const edge = edges[i];
+        let arr = entityEdgeMap.get(edge.source);
+        if (!arr) { arr = []; entityEdgeMap.set(edge.source, arr); }
+        arr.push(i);
+        arr = entityEdgeMap.get(edge.target);
+        if (!arr) { arr = []; entityEdgeMap.set(edge.target, arr); }
+        arr.push(i);
       }
     }
 

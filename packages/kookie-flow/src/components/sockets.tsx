@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
+import { getMovedEntityIds } from '../core/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
@@ -37,6 +38,9 @@ export function Sockets({
   const positionDirtyRef = useRef(false);
   const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
+
+  // Reverse index: entityId → { instanceStart, instanceCount } for O(K) position updates
+  const entitySocketRangesRef = useRef<Map<string, { start: number; count: number }>>(new Map());
 
   // Derive colors from semantic theme config
   const invalidColor = tokens[THEME_COLORS.socket.invalid];
@@ -293,58 +297,68 @@ export function Sockets({
       dirtyRef.current = true;
     }
 
-    // Position-only fast path: only update instance matrices (skip color/hover/state)
+    // Position-only fast path: only update instance matrices for moved entities
     if (!dirtyRef.current && positionDirtyRef.current) {
-      const { entities } = store.getState();
-      let visibleCount = 0;
-      tempMatrix.identity();
+      const movedIds = getMovedEntityIds();
+      const socketRanges = entitySocketRangesRef.current;
 
-      for (const entity of entities) {
-        const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-        const entityLayout = getEntitySocketLayout(entity, socketLayout);
-        const height = entity.height ?? entityLayout.computedHeight;
+      if (movedIds.size > 0 && socketRanges.size > 0) {
+        const { entityMap } = store.getState();
+        tempMatrix.identity();
 
-        if (entity.inputs) {
-          for (let i = 0; i < entity.inputs.length; i++) {
-            if (visibleCount >= capacity) break;
-            const socket = entity.inputs[i];
-            const cachedPos = entityLayout.inputs[i];
-            const yOffset =
-              socket.position !== undefined
-                ? socket.position * height
-                : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
-            tempMatrix.setPosition(
-              entity.position.x,
-              -(entity.position.y + yOffset),
-              0.5
-            );
-            mesh.setMatrixAt(visibleCount, tempMatrix);
-            visibleCount++;
+        for (const entityId of movedIds) {
+          const range = socketRanges.get(entityId);
+          if (!range) continue;
+
+          const entity = entityMap.get(entityId);
+          if (!entity) continue;
+
+          const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+          const entityLayout = getEntitySocketLayout(entity, socketLayout);
+          const height = entity.height ?? entityLayout.computedHeight;
+
+          let instanceIdx = range.start;
+
+          if (entity.inputs) {
+            for (let i = 0; i < entity.inputs.length; i++) {
+              const socket = entity.inputs[i];
+              const cachedPos = entityLayout.inputs[i];
+              const yOffset =
+                socket.position !== undefined
+                  ? socket.position * height
+                  : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+              tempMatrix.setPosition(
+                entity.position.x,
+                -(entity.position.y + yOffset),
+                0.5
+              );
+              mesh.setMatrixAt(instanceIdx, tempMatrix);
+              instanceIdx++;
+            }
+          }
+
+          if (entity.outputs) {
+            for (let i = 0; i < entity.outputs.length; i++) {
+              const socket = entity.outputs[i];
+              const cachedPos = entityLayout.outputs[i];
+              const yOffset =
+                socket.position !== undefined
+                  ? socket.position * height
+                  : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+              tempMatrix.setPosition(
+                entity.position.x + width,
+                -(entity.position.y + yOffset),
+                0.5
+              );
+              mesh.setMatrixAt(instanceIdx, tempMatrix);
+              instanceIdx++;
+            }
           }
         }
 
-        if (entity.outputs) {
-          for (let i = 0; i < entity.outputs.length; i++) {
-            if (visibleCount >= capacity) break;
-            const socket = entity.outputs[i];
-            const cachedPos = entityLayout.outputs[i];
-            const yOffset =
-              socket.position !== undefined
-                ? socket.position * height
-                : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
-            tempMatrix.setPosition(
-              entity.position.x + width,
-              -(entity.position.y + yOffset),
-              0.5
-            );
-            mesh.setMatrixAt(visibleCount, tempMatrix);
-            visibleCount++;
-          }
-        }
+        mesh.instanceMatrix.needsUpdate = true;
       }
 
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.count = Math.min(visibleCount, capacity);
       positionDirtyRef.current = false;
       return;
     }
@@ -389,8 +403,11 @@ export function Sockets({
     // This allows zoom/pan without geometry rebuilds
 
     let visibleCount = 0;
+    const socketRanges = entitySocketRangesRef.current;
+    socketRanges.clear();
 
     for (const entity of entities) {
+      const entitySocketStart = visibleCount;
       const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
       // Get cached socket layout (supports variable heights)
       const entityLayout = getEntitySocketLayout(entity, socketLayout);
@@ -527,6 +544,9 @@ export function Sockets({
           visibleCount++;
         }
       }
+
+      // Record entity → socket instance range for O(K) position updates
+      socketRanges.set(entity.id, { start: entitySocketStart, count: visibleCount - entitySocketStart });
     }
 
     // Check capacity - defer state update to avoid React re-render inside useFrame

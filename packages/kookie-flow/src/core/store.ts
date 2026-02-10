@@ -36,6 +36,16 @@ import type { AdjacencyIndex, CachedAnalysis } from './graph';
 let idCounter = 0;
 const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
 
+/**
+ * Side-channel for communicating moved entity IDs to renderers.
+ * Avoids adding to Zustand state (no GC from new Set per frame).
+ * Set by updateEntityPositions, read by Edges/Sockets useFrame.
+ */
+const _movedEntityIds = new Set<string>();
+export function getMovedEntityIds(): ReadonlySet<string> {
+  return _movedEntityIds;
+}
+
 export interface FlowState {
   /** Entities in the graph */
   entities: Entity[];
@@ -880,6 +890,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const idToIndex = new Map<string, number>();
         for (let i = 0; i < entities.length; i++) {
           idToIndex.set(entities[i].id, i);
+        }
+
+        // Populate moved entity IDs side-channel for renderers
+        _movedEntityIds.clear();
+        for (const { id } of updates) {
+          _movedEntityIds.add(id);
         }
 
         // Update each entity: O(k)
