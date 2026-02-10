@@ -1240,7 +1240,7 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) next.
+**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) core implemented (demo/docs remaining).
 
 ### Phase 7C: Grouping & Annotations ✅
 
@@ -1858,12 +1858,12 @@ interface KookieFlowProps {
 
 **Tasks:**
 
-- [ ] Types: Add `OnConnectStartParams`, `ConnectionState` interfaces
-- [ ] Types: Add `onConnectStart`, `onConnectEnd` to `KookieFlowProps`
-- [ ] Store: Add `screenToWorld()` helper function
-- [ ] InputHandler: Fire `onConnectStart` when connection begins
-- [ ] InputHandler: Fire `onConnectEnd` with position and validity
-- [ ] Props: Thread callbacks through component layers
+- [x] Types: Add `OnConnectStartParams`, `ConnectionEndState` interfaces
+- [x] Types: Add `onConnectStart`, `onConnectEnd` to `KookieFlowProps`
+- [x] Store: `screenToWorld()` already exists as utility (no new store method needed)
+- [x] InputHandler: Fire `onConnectStart` when connection begins
+- [x] InputHandler: Fire `onConnectEnd` with position and validity
+- [x] Props: Thread callbacks through component layers
 - [ ] Demo: Add "add node on edge drop" example
 - [ ] Docs: Update README with connection events
 
@@ -2413,10 +2413,11 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 ### Next Immediate Tasks
 
-**Phase 7E: Connection Events** (next up)
-- `onConnectStart` callback when connection drag begins
-- `onConnectEnd` callback with drop position and validity
+**Phase 7E: Connection Events** (core implemented, demo/docs remaining)
+- [x] `onConnectStart` callback when connection drag begins
+- [x] `onConnectEnd` callback with drop position and validity
 - Enables "add node on edge drop" pattern
+- Remaining: demo example, README docs
 
 **Phase 8: Graph Engine** (first major new work)
 - Adjacency index, topo sort, execution levels, cycle detection
