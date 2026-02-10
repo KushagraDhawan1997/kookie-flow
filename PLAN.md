@@ -1240,7 +1240,7 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Phases 1-7D complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) core implemented (demo/docs remaining).
+**Current status:** Phases 1-8 complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) core implemented (demo/docs remaining). Phase 8 (Graph Engine) complete.
 
 ### Phase 7C: Grouping & Annotations ✅
 
@@ -1867,7 +1867,7 @@ interface KookieFlowProps {
 - [ ] Demo: Add "add node on edge drop" example
 - [ ] Docs: Update README with connection events
 
-### Phase 8: Graph Engine
+### Phase 8: Graph Engine ✅ COMPLETE
 
 **Goal:** Make Kookie Flow understand graph topology — who connects to whom, what order to traverse, where the cycles are.
 
@@ -1970,19 +1970,19 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 
 **Tasks:**
 
-- [ ] Adjacency index (incremental, maintained alongside store)
-- [ ] Graph queries (getIncomers, getOutgoers, walkUpstream, walkDownstream)
-- [ ] Edge queries (getConnectedEdges, getInputEdges, getOutputEdges)
-- [ ] Structural queries (getRoots, getLeaves, getConnectedComponents via Union-Find)
-- [ ] Topological sort + execution levels (Kahn's algorithm, cached)
-- [ ] Cycle detection + `wouldCreateCycle` for connection validation
-- [ ] `allowCycles` prop with automatic prevention
-- [ ] Dirty propagation (getAffectedEntities)
-- [ ] Node muting/bypass (muteEntity, unmuteEntity, isMuted)
-- [ ] Graph mutations (insertOnEdge, bypassEntity, collapseToSubgraph, expandSubgraph)
-- [ ] Graph validation (validate, isGraphComplete, getCompatiblePorts)
-- [ ] `getReadyEntities` for parallel execution scheduling
-- [ ] Tests for all graph operations
+- [x] Adjacency index (incremental, maintained alongside store)
+- [x] Graph queries (getIncomers, getOutgoers, walkUpstream, walkDownstream)
+- [x] Edge queries (getConnectedEdges, getInputEdges, getOutputEdges)
+- [x] Structural queries (getRoots, getLeaves, getConnectedComponents via Union-Find)
+- [x] Topological sort + execution levels (Kahn's algorithm, cached)
+- [x] Cycle detection + `wouldCreateCycle` for connection validation
+- [x] `allowCycles` prop with automatic prevention
+- [x] Dirty propagation (getAffectedEntities)
+- [x] Node muting/bypass (muteEntity, unmuteEntity, isMuted)
+- [x] Graph mutations (insertOnEdge, bypassEntity, collapseToSubgraph, expandSubgraph)
+- [x] Graph validation (validate, isGraphComplete, getCompatiblePorts)
+- [x] `getReadyEntities` for parallel execution scheduling
+- [x] Tests for all graph operations
 
 ### Phase 9: Entity Model Refactor
 
@@ -2398,6 +2398,22 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `getViewport()`, `setViewport()`, `zoomIn()`, `zoomOut()`, `setCenter()`
 - [x] `getNodes()`, `getEdges()`, `getSelectedNodes()`, `getSelectedEdges()`
 
+**Phase 8: Graph Engine**
+- [x] Adjacency index with incremental O(1) updates, maintained alongside store
+- [x] Graph queries: `getIncomers`, `getOutgoers`, `getNodeEdges`, `getInputEdges`, `getOutputEdges`, `getEdgesBetween`
+- [x] Traversal: `walkUpstream`, `walkDownstream` (iterator-based, O(k))
+- [x] Structural queries: `getRoots`, `getLeaves`, `getConnectedComponents` (Union-Find), `areConnected`
+- [x] Topological sort + execution levels (Kahn's algorithm, cached against `topologyVersion`)
+- [x] Cycle detection: `hasCycles`, `cycleNodeIds`, `wouldCreateCycle()` (O(k) DFS)
+- [x] `allowCycles` prop on `<KookieFlow>` with automatic prevention during connection drag
+- [x] Dirty propagation: `getAffectedEntities()` returns downstream in topo order
+- [x] Node muting: `muteEntity()`, `unmuteEntity()`, `isMuted()` — muted nodes skipped in topo sort
+- [x] Graph mutations: `insertOnEdge()`, `bypassEntity()`, `collapseToSubgraph()`, `expandSubgraph()`
+- [x] Graph validation: `validate()`, `isGraphComplete()`, `getCompatiblePorts()`
+- [x] `getReadyEntities()` for parallel execution scheduling
+- [x] `getExecutionOrder()` for single-node subgraph
+- [x] Comprehensive test suite (71+ tests) in `graph.test.ts`
+
 **Phase 7C: Grouping & Annotations**
 - [x] Node grouping/frames (`parentId`, `collapsed` on Node interface)
 - [x] Group types: `GroupNode`, `CommentNode`, `RerouteNode` with type guards
@@ -2419,12 +2435,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - Enables "add node on edge drop" pattern
 - Remaining: demo example, README docs
 
-**Phase 8: Graph Engine** (first major new work)
-- Adjacency index, topo sort, execution levels, cycle detection
-- Pure data structure work, zero rendering changes
-- See Phase 8 section for full spec
-
-**Phase 9+: Entity pivot** (after graph engine)
+**Phase 9+: Entity pivot** (next major work)
 - Entity model refactor → Text → Image → 3D Mesh → Video → Draw → Preview System → Customization
 - Each entity type done well before moving to the next
 

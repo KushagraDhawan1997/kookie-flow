@@ -727,3 +727,464 @@ export function computeBypass(
 
   return { removeEdgeIds, removeNodeId: nodeId, newEdges };
 }
+
+// ============================================================================
+// Graph Validation
+// ============================================================================
+
+/**
+ * Validate the graph structure. Returns a list of issues found.
+ *
+ * Checks:
+ * - Cycles (if the graph has them)
+ * - Unconnected required input ports (inputs with no incoming edge and no default value)
+ * - Type mismatches on edges (source/target socket types incompatible)
+ *
+ * @param nodes - All nodes in the graph
+ * @param edges - All edges in the graph
+ * @param index - Adjacency index
+ * @param socketTypes - Socket type definitions for compatibility checking
+ * @param isTypeCompatible - Optional custom type compatibility function
+ */
+export function validate(
+  nodes: Node[],
+  edges: Edge[],
+  index: AdjacencyIndex,
+  socketTypes?: Record<string, { compatibleWith?: string[] | '*' }>,
+  isTypeCompatible?: (typeA: string, typeB: string) => boolean
+): GraphValidationIssue[] {
+  const issues: GraphValidationIssue[] = [];
+  const nodeIds = nodes.map((n) => n.id);
+
+  // Check for cycles
+  const analysis = computeAnalysis(nodeIds, index);
+  if (analysis.hasCycles) {
+    issues.push({ type: 'cycle', nodeIds: analysis.cycleNodeIds });
+  }
+
+  // Check for unconnected required inputs
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  for (const node of nodes) {
+    if (!node.inputs) continue;
+    for (const input of node.inputs) {
+      // Check if this input has any incoming edge
+      const ports = index.incoming.get(node.id);
+      let hasConnection = false;
+      if (ports) {
+        const socketEdges = ports.get(input.id);
+        if (socketEdges && socketEdges.length > 0) {
+          hasConnection = true;
+        }
+        // Also check default socket
+        if (!hasConnection) {
+          const defaultEdges = ports.get(DEFAULT_SOCKET);
+          if (defaultEdges && defaultEdges.length > 0) {
+            hasConnection = true;
+          }
+        }
+      }
+
+      if (!hasConnection && input.defaultValue === undefined) {
+        issues.push({
+          type: 'unconnected-required',
+          nodeId: node.id,
+          portId: input.id,
+          portName: input.name,
+        });
+      }
+    }
+  }
+
+  // Check for type mismatches on edges
+  if (socketTypes || isTypeCompatible) {
+    for (const edge of edges) {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      if (!sourceNode || !targetNode) continue;
+
+      const sourceSocket = sourceNode.outputs?.find(
+        (s) => s.id === (edge.sourceSocket ?? DEFAULT_SOCKET)
+      );
+      const targetSocket = targetNode.inputs?.find(
+        (s) => s.id === (edge.targetSocket ?? DEFAULT_SOCKET)
+      );
+      if (!sourceSocket || !targetSocket) continue;
+
+      let compatible = true;
+      if (isTypeCompatible) {
+        compatible = isTypeCompatible(sourceSocket.type, targetSocket.type);
+      } else if (socketTypes) {
+        compatible = defaultTypeCompatible(
+          sourceSocket.type,
+          targetSocket.type,
+          socketTypes
+        );
+      }
+
+      if (!compatible) {
+        issues.push({
+          type: 'type-mismatch',
+          edgeId: edge.id,
+          sourceType: sourceSocket.type,
+          targetType: targetSocket.type,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+/** Default type compatibility check (same type, 'any', or explicit compatibleWith). */
+function defaultTypeCompatible(
+  typeA: string,
+  typeB: string,
+  socketTypes: Record<string, { compatibleWith?: string[] | '*' }>
+): boolean {
+  if (typeA === typeB) return true;
+  if (typeA === 'any' || typeB === 'any') return true;
+
+  const configA = socketTypes[typeA];
+  const configB = socketTypes[typeB];
+
+  if (configA?.compatibleWith === '*' || configB?.compatibleWith === '*') return true;
+  if (Array.isArray(configA?.compatibleWith) && configA.compatibleWith.includes(typeB)) return true;
+  if (Array.isArray(configB?.compatibleWith) && configB.compatibleWith.includes(typeA)) return true;
+
+  return false;
+}
+
+/**
+ * Check if the graph is "complete" — all input ports that have no default value are connected.
+ * Simpler boolean version of validate().
+ */
+export function isGraphComplete(
+  nodes: Node[],
+  index: AdjacencyIndex
+): boolean {
+  for (const node of nodes) {
+    if (!node.inputs) continue;
+    for (const input of node.inputs) {
+      if (input.defaultValue !== undefined) continue;
+
+      const ports = index.incoming.get(node.id);
+      let hasConnection = false;
+      if (ports) {
+        const socketEdges = ports.get(input.id);
+        if (socketEdges && socketEdges.length > 0) {
+          hasConnection = true;
+        }
+        if (!hasConnection) {
+          const defaultEdges = ports.get(DEFAULT_SOCKET);
+          if (defaultEdges && defaultEdges.length > 0) {
+            hasConnection = true;
+          }
+        }
+      }
+
+      if (!hasConnection) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Get compatible target ports for a given source socket during connection drag.
+ * Returns port entries that the source can connect to based on type compatibility.
+ *
+ * @param sourceNodeId - The node where the drag started
+ * @param sourceSocketId - The socket where the drag started
+ * @param isSourceInput - Whether the source socket is an input
+ * @param nodes - All nodes
+ * @param socketTypes - Socket type definitions
+ * @param index - Adjacency index (for cycle checking)
+ * @param allowCycles - Whether cycles are permitted
+ */
+export function getCompatiblePorts(
+  sourceNodeId: string,
+  sourceSocketId: string,
+  isSourceInput: boolean,
+  nodes: Node[],
+  socketTypes: Record<string, { compatibleWith?: string[] | '*' }>,
+  index?: AdjacencyIndex,
+  allowCycles?: boolean
+): Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }> {
+  // Find source socket type
+  const sourceNode = nodes.find((n) => n.id === sourceNodeId);
+  if (!sourceNode) return [];
+
+  const sourceSockets = isSourceInput ? sourceNode.inputs : sourceNode.outputs;
+  const sourceSocket = sourceSockets?.find((s) => s.id === sourceSocketId);
+  if (!sourceSocket) return [];
+
+  const result: Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }> = [];
+
+  for (const node of nodes) {
+    if (node.id === sourceNodeId) continue; // Can't connect to self
+
+    // If source is output, look at target inputs; if source is input, look at target outputs
+    const targetSockets = isSourceInput ? node.outputs : node.inputs;
+    if (!targetSockets) continue;
+
+    // Check cycle prevention
+    if (!allowCycles && index) {
+      if (isSourceInput) {
+        // Source is input, target is output → edge goes target→source
+        if (wouldCreateCycle(index, node.id, sourceNodeId)) continue;
+      } else {
+        // Source is output, target is input → edge goes source→target
+        if (wouldCreateCycle(index, sourceNodeId, node.id)) continue;
+      }
+    }
+
+    for (const socket of targetSockets) {
+      if (defaultTypeCompatible(sourceSocket.type, socket.type, socketTypes)) {
+        result.push({
+          nodeId: node.id,
+          socketId: socket.id,
+          socketName: socket.name,
+          socketType: socket.type,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+// ============================================================================
+// Subgraph Mutations
+// ============================================================================
+
+/**
+ * Compute the changes needed to collapse a set of nodes into a single compound/group node.
+ *
+ * Creates a group node that replaces the selected nodes. External edges (edges
+ * crossing the boundary) are reconnected to the group node's auto-generated ports.
+ *
+ * @param nodeIds - Nodes to collapse into a group
+ * @param groupId - ID for the new group node
+ * @param nodes - All nodes
+ * @param index - Adjacency index
+ */
+export function computeCollapseToSubgraph(
+  nodeIds: string[],
+  groupId: string,
+  nodes: Node[],
+  index: AdjacencyIndex
+): {
+  groupNode: {
+    id: string;
+    position: { x: number; y: number };
+    width: number;
+    height: number;
+    childIds: string[];
+  };
+  /** Edges to remove (internal edges + boundary edges) */
+  removeEdgeIds: string[];
+  /** New edges reconnecting external connections to the group */
+  newEdges: Edge[];
+  /** Port definitions for the group node */
+  groupInputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }>;
+  groupOutputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }>;
+} {
+  const nodeIdSet = new Set(nodeIds);
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+  // Calculate group bounds from contained nodes
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const id of nodeIds) {
+    const node = nodeMap.get(id);
+    if (!node) continue;
+    const w = node.width ?? 200;
+    const h = node.height ?? 100;
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + w);
+    maxY = Math.max(maxY, node.position.y + h);
+  }
+
+  const padding = 40;
+  const groupPosition = { x: minX - padding, y: minY - padding };
+  const groupWidth = maxX - minX + padding * 2;
+  const groupHeight = maxY - minY + padding * 2;
+
+  // Categorize edges
+  const removeEdgeIds: string[] = [];
+  const boundaryIncoming: Edge[] = []; // external → inside
+  const boundaryOutgoing: Edge[] = []; // inside → external
+
+  for (const id of nodeIds) {
+    const edges = index.byNode.get(id);
+    if (!edges) continue;
+    for (const edge of edges) {
+      const srcInside = nodeIdSet.has(edge.source);
+      const tgtInside = nodeIdSet.has(edge.target);
+      if (srcInside && tgtInside) {
+        // Fully internal
+        removeEdgeIds.push(edge.id);
+      } else if (!srcInside && tgtInside) {
+        // Boundary incoming
+        boundaryIncoming.push(edge);
+        removeEdgeIds.push(edge.id);
+      } else if (srcInside && !tgtInside) {
+        // Boundary outgoing
+        boundaryOutgoing.push(edge);
+        removeEdgeIds.push(edge.id);
+      }
+    }
+  }
+
+  // Deduplicate edge IDs
+  const removeEdgeIdSet = new Set(removeEdgeIds);
+
+  // Generate group ports from boundary edges
+  const groupInputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }> = [];
+  const groupOutputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }> = [];
+  const newEdges: Edge[] = [];
+
+  // Create group input ports for boundary incoming edges
+  const seenInputs = new Map<string, string>(); // "nodeId:socketId" → groupPortId
+  for (const edge of boundaryIncoming) {
+    const key = `${edge.target}:${edge.targetSocket ?? DEFAULT_SOCKET}`;
+    let groupPortId = seenInputs.get(key);
+    if (!groupPortId) {
+      groupPortId = `gin-${groupInputs.length}`;
+      const targetNode = nodeMap.get(edge.target);
+      const targetSocket = targetNode?.inputs?.find((s) => s.id === (edge.targetSocket ?? DEFAULT_SOCKET));
+      groupInputs.push({
+        id: groupPortId,
+        name: targetSocket?.name ?? `Input ${groupInputs.length}`,
+        type: targetSocket?.type ?? 'any',
+        originalNodeId: edge.target,
+        originalSocketId: edge.targetSocket ?? DEFAULT_SOCKET,
+      });
+      seenInputs.set(key, groupPortId);
+    }
+    // Reconnect: external source → group input
+    newEdges.push({
+      id: `${groupId}-in-${newEdges.length}`,
+      source: edge.source,
+      sourceSocket: edge.sourceSocket,
+      target: groupId,
+      targetSocket: groupPortId,
+    });
+  }
+
+  // Create group output ports for boundary outgoing edges
+  const seenOutputs = new Map<string, string>(); // "nodeId:socketId" → groupPortId
+  for (const edge of boundaryOutgoing) {
+    const key = `${edge.source}:${edge.sourceSocket ?? DEFAULT_SOCKET}`;
+    let groupPortId = seenOutputs.get(key);
+    if (!groupPortId) {
+      groupPortId = `gout-${groupOutputs.length}`;
+      const sourceNode = nodeMap.get(edge.source);
+      const sourceSocket = sourceNode?.outputs?.find((s) => s.id === (edge.sourceSocket ?? DEFAULT_SOCKET));
+      groupOutputs.push({
+        id: groupPortId,
+        name: sourceSocket?.name ?? `Output ${groupOutputs.length}`,
+        type: sourceSocket?.type ?? 'any',
+        originalNodeId: edge.source,
+        originalSocketId: edge.sourceSocket ?? DEFAULT_SOCKET,
+      });
+      seenOutputs.set(key, groupPortId);
+    }
+    // Reconnect: group output → external target
+    newEdges.push({
+      id: `${groupId}-out-${newEdges.length}`,
+      source: groupId,
+      sourceSocket: groupPortId,
+      target: edge.target,
+      targetSocket: edge.targetSocket,
+    });
+  }
+
+  return {
+    groupNode: {
+      id: groupId,
+      position: groupPosition,
+      width: groupWidth,
+      height: groupHeight,
+      childIds: nodeIds,
+    },
+    removeEdgeIds: Array.from(removeEdgeIdSet),
+    newEdges,
+    groupInputs,
+    groupOutputs,
+  };
+}
+
+/**
+ * Compute the changes needed to expand a compound/group node back to its children.
+ * Inverse of collapseToSubgraph.
+ *
+ * @param groupId - The group node to expand
+ * @param childNodes - The nodes inside the group (restored from storage)
+ * @param internalEdges - Edges between children (restored from storage)
+ * @param nodes - All current nodes
+ * @param index - Current adjacency index
+ */
+export function computeExpandSubgraph(
+  groupId: string,
+  childNodes: Node[],
+  internalEdges: Edge[],
+  nodes: Node[],
+  index: AdjacencyIndex,
+  portMapping: {
+    inputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+    outputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+  }
+): {
+  removeNodeId: string;
+  removeEdgeIds: string[];
+  restoreNodes: Node[];
+  restoreEdges: Edge[];
+  reconnectEdges: Edge[];
+} {
+  // Edges connected to the group node
+  const groupEdges = getNodeEdges(index, groupId);
+  const removeEdgeIds = groupEdges.map((e) => e.id);
+
+  // Build port mapping lookups
+  const inputMap = new Map(portMapping.inputs.map((p) => [p.groupPortId, p]));
+  const outputMap = new Map(portMapping.outputs.map((p) => [p.groupPortId, p]));
+
+  // Reconnect external edges to original internal nodes
+  const reconnectEdges: Edge[] = [];
+
+  for (const edge of groupEdges) {
+    if (edge.target === groupId) {
+      // Incoming edge → reconnect to original internal input
+      const mapping = inputMap.get(edge.targetSocket ?? DEFAULT_SOCKET);
+      if (mapping) {
+        reconnectEdges.push({
+          id: `expand-${groupId}-${reconnectEdges.length}`,
+          source: edge.source,
+          sourceSocket: edge.sourceSocket,
+          target: mapping.originalNodeId,
+          targetSocket: mapping.originalSocketId,
+        });
+      }
+    } else if (edge.source === groupId) {
+      // Outgoing edge → reconnect from original internal output
+      const mapping = outputMap.get(edge.sourceSocket ?? DEFAULT_SOCKET);
+      if (mapping) {
+        reconnectEdges.push({
+          id: `expand-${groupId}-${reconnectEdges.length}`,
+          source: mapping.originalNodeId,
+          sourceSocket: mapping.originalSocketId,
+          target: edge.target,
+          targetSocket: edge.targetSocket,
+        });
+      }
+    }
+  }
+
+  return {
+    removeNodeId: groupId,
+    removeEdgeIds,
+    restoreNodes: childNodes,
+    restoreEdges: internalEdges,
+    reconnectEdges,
+  };
+}

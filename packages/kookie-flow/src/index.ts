@@ -80,8 +80,33 @@ export {
 // Store types
 export type { FlowState, FlowStore } from './core/store';
 
-// Graph engine types (Phase 8)
+// Graph engine (Phase 8)
 export type { AdjacencyIndex, CachedAnalysis, GraphValidationIssue } from './core/graph';
+export {
+  buildAdjacencyIndex,
+  getIncomers,
+  getOutgoers,
+  getNodeEdges,
+  getInputEdges,
+  getOutputEdges,
+  getEdgesBetween,
+  walkUpstream,
+  walkDownstream,
+  computeAnalysis,
+  wouldCreateCycle as wouldCreateGraphCycle,
+  getAffectedEntities,
+  getConnectedComponents,
+  areConnected,
+  getExecutionOrder,
+  getReadyEntities,
+  computeInsertOnEdge,
+  computeBypass,
+  validate as validateGraph,
+  isGraphComplete,
+  getCompatiblePorts,
+  computeCollapseToSubgraph,
+  computeExpandSubgraph,
+} from './core/graph';
 
 // Types
 export type {

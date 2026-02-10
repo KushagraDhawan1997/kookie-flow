@@ -315,6 +315,37 @@ export interface FlowState {
   muteEntity: (nodeId: string) => void;
   /** Remove muted status from a node. */
   unmuteEntity: (nodeId: string) => void;
+  /** Check if a node is muted. */
+  isMuted: (nodeId: string) => boolean;
+
+  // ========================================
+  // Phase 8: Graph Validation & Subgraph Mutations
+  // ========================================
+
+  /** Validate the graph structure. Returns a list of issues. */
+  validate: (socketTypes?: Record<string, { compatibleWith?: string[] | '*' }>) => import('./graph').GraphValidationIssue[];
+  /** Check if all required input ports are connected. */
+  isGraphComplete: () => boolean;
+  /** Get compatible ports for a source socket (for connection drag UI). */
+  getCompatiblePorts: (
+    sourceNodeId: string,
+    sourceSocketId: string,
+    isSourceInput: boolean,
+    socketTypes: Record<string, { compatibleWith?: string[] | '*' }>,
+    allowCycles?: boolean
+  ) => Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }>;
+  /** Collapse a set of nodes into a compound group node. */
+  collapseToSubgraph: (nodeIds: string[], groupId: string) => void;
+  /** Expand a compound group node back to its children. */
+  expandSubgraph: (
+    groupId: string,
+    childNodes: Node[],
+    internalEdges: Edge[],
+    portMapping: {
+      inputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+      outputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+    }
+  ) => void;
 }
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
@@ -1448,6 +1479,131 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         next.delete(nodeId);
         cachedAnalysis = null;
         set({ mutedNodeIds: next, topologyVersion: topologyVersion + 1 });
+      },
+
+      isMuted: (nodeId: string): boolean => {
+        return get().mutedNodeIds.has(nodeId);
+      },
+
+      // ========================================
+      // Phase 8: Graph Validation & Subgraph Mutations
+      // ========================================
+
+      validate: (socketTypes) => {
+        const { nodes, edges, adjacencyIndex } = get();
+        return graphEngine.validate(nodes, edges, adjacencyIndex, socketTypes);
+      },
+
+      isGraphComplete: () => {
+        const { nodes, adjacencyIndex } = get();
+        return graphEngine.isGraphComplete(nodes, adjacencyIndex);
+      },
+
+      getCompatiblePorts: (sourceNodeId, sourceSocketId, isSourceInput, socketTypes, allowCycles) => {
+        const { nodes, adjacencyIndex } = get();
+        return graphEngine.getCompatiblePorts(
+          sourceNodeId,
+          sourceSocketId,
+          isSourceInput,
+          nodes,
+          socketTypes,
+          adjacencyIndex,
+          allowCycles
+        );
+      },
+
+      collapseToSubgraph: (nodeIds: string[], groupId: string): void => {
+        const state = get();
+        const result = graphEngine.computeCollapseToSubgraph(
+          nodeIds,
+          groupId,
+          state.nodes,
+          state.adjacencyIndex
+        );
+
+        // Create the group node
+        const groupNode: Node = {
+          id: result.groupNode.id,
+          type: 'group',
+          position: result.groupNode.position,
+          width: result.groupNode.width,
+          height: result.groupNode.height,
+          data: { label: 'Group' },
+          inputs: result.groupInputs.map((p) => ({
+            id: p.id,
+            name: p.name,
+            type: p.type,
+          })),
+          outputs: result.groupOutputs.map((p) => ({
+            id: p.id,
+            name: p.name,
+            type: p.type,
+          })),
+        };
+
+        // Set children's parentId to the group
+        const childIdSet = new Set(nodeIds);
+        const removeEdgeIdSet = new Set(result.removeEdgeIds);
+        const nextNodes = state.nodes
+          .map((n) => (childIdSet.has(n.id) ? { ...n, parentId: groupId } : n))
+          .concat(groupNode);
+        const nextEdges = state.edges
+          .filter((e) => !removeEdgeIdSet.has(e.id))
+          .concat(result.newEdges);
+
+        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        cachedAnalysis = null;
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: state.topologyVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+          ...derived,
+        });
+      },
+
+      expandSubgraph: (groupId, childNodes, internalEdges, portMapping): void => {
+        const state = get();
+        const result = graphEngine.computeExpandSubgraph(
+          groupId,
+          childNodes,
+          internalEdges,
+          state.nodes,
+          state.adjacencyIndex,
+          portMapping
+        );
+
+        const removeEdgeIdSet = new Set(result.removeEdgeIds);
+        // Remove group node, restore children (clear parentId), add reconnect edges
+        const nextNodes = state.nodes
+          .filter((n) => n.id !== result.removeNodeId)
+          .map((n) => (n.parentId === groupId ? { ...n, parentId: undefined } : n))
+          .concat(result.restoreNodes.map((n) => ({ ...n, parentId: undefined })));
+        const nextEdges = state.edges
+          .filter((e) => !removeEdgeIdSet.has(e.id))
+          .concat(result.restoreEdges)
+          .concat(result.reconnectEdges);
+
+        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        cachedAnalysis = null;
+
+        // Update selection
+        const nextSelectedNodeIds = new Set(state.selectedNodeIds);
+        nextSelectedNodeIds.delete(groupId);
+        const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
+        for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
+
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: state.topologyVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+          selectedNodeIds: nextSelectedNodeIds,
+          selectedEdgeIds: nextSelectedEdgeIds,
+          ...derived,
+        });
       },
     }))
   );

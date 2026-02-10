@@ -93,6 +93,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     defaultEdgeType = 'bezier',
     connectionMode = 'loose',
     isValidConnection,
+    allowCycles = true,
     className,
     children,
     // Styling props (Milestone 2)
@@ -138,6 +139,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             socketTypes={resolvedSocketTypes}
             connectionMode={connectionMode}
             isValidConnection={isValidConnection}
+            allowCycles={allowCycles}
             defaultEdgeType={defaultEdgeType}
             edgesSelectable={edgesSelectable}
             onNodeClick={onNodeClick}
@@ -187,6 +189,7 @@ interface ThemedFlowContainerProps {
   socketTypes: Record<string, SocketType>;
   connectionMode: ConnectionMode;
   isValidConnection?: IsValidConnectionFn;
+  allowCycles: boolean;
   defaultEdgeType: EdgeType;
   edgesSelectable: boolean;
   onNodeClick?: (node: Node) => void;
@@ -230,6 +233,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       socketTypes,
       connectionMode,
       isValidConnection,
+      allowCycles,
       defaultEdgeType,
       edgesSelectable,
       onNodeClick,
@@ -295,6 +299,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             socketTypes={resolvedSocketTypes}
             connectionMode={connectionMode}
             isValidConnection={isValidConnection}
+            allowCycles={allowCycles}
             defaultEdgeType={defaultEdgeType}
             edgesSelectable={edgesSelectable}
             onNodeClick={onNodeClick}
@@ -482,6 +487,7 @@ interface InputHandlerProps {
   socketTypes: Record<string, SocketType>;
   connectionMode: ConnectionMode;
   isValidConnection?: IsValidConnectionFn;
+  allowCycles: boolean;
   defaultEdgeType: EdgeType;
   edgesSelectable: boolean;
   onNodeClick?: (node: Node) => void;
@@ -506,6 +512,7 @@ function InputHandler({
   socketTypes,
   connectionMode,
   isValidConnection,
+  allowCycles,
   defaultEdgeType,
   edgesSelectable,
   onNodeClick,
@@ -932,6 +939,16 @@ function InputHandler({
             nodeMap,
             socketTypes
           );
+
+          // Also check cycle prevention for visual feedback
+          if (isTypeCompatible && !allowCycles) {
+            const isSourceInput = connectionDraft.source.isInput;
+            const sourceNodeId = isSourceInput ? hoveredSocket.nodeId : connectionDraft.source.nodeId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.nodeId : hoveredSocket.nodeId;
+            if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) {
+              isTypeCompatible = false;
+            }
+          }
         }
 
         // Update connection draft position and validity (for visual feedback)
@@ -1124,7 +1141,7 @@ function InputHandler({
         }
       }
     },
-    [snapToGrid, snapGrid, socketTypes, store, updateViewport, runAutoScroll, socketLayout]
+    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout]
   );
 
   // Handle pointer up
@@ -1142,7 +1159,7 @@ function InputHandler({
 
         if (hoveredSocketId) {
           // Check if connection is valid (use nodeMap for O(1))
-          const isValid = validateConnection(
+          let isValid = validateConnection(
             connectionDraft.source,
             hoveredSocketId,
             nodeMap,
@@ -1150,6 +1167,16 @@ function InputHandler({
             connectionMode,
             isValidConnection
           );
+
+          // Check cycle prevention when allowCycles is false
+          if (isValid && !allowCycles) {
+            const isSourceInput = connectionDraft.source.isInput;
+            const sourceNodeId = isSourceInput ? hoveredSocketId.nodeId : connectionDraft.source.nodeId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId;
+            if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) {
+              isValid = false;
+            }
+          }
 
           if (isValid) {
             connectionSucceeded = true;
@@ -1319,6 +1346,7 @@ function InputHandler({
       socketTypes,
       connectionMode,
       isValidConnection,
+      allowCycles,
       defaultEdgeType,
       edgesSelectable,
       store,

@@ -634,6 +634,13 @@ export interface KookieFlowProps {
   connectionMode?: ConnectionMode;
   /** Custom connection validation function. Overrides connectionMode when provided. */
   isValidConnection?: IsValidConnectionFn;
+  /**
+   * Whether to allow cycles in the graph.
+   * When false (default), connections that would create a cycle are rejected automatically.
+   * Uses `wouldCreateCycle()` from the graph engine for O(k) cycle detection.
+   * Default: true (cycles allowed — no automatic prevention)
+   */
+  allowCycles?: boolean;
   /** Initial viewport */
   defaultViewport?: Viewport;
   /** Minimum zoom level */
