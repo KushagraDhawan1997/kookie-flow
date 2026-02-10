@@ -167,6 +167,16 @@ export function Edges({
   // Track last position version to detect actual position changes
   const lastPositionVersionRef = useRef(-1);
 
+  // Per-edge vertex layout in buffer: parallel arrays for start offset and vertex count
+  const edgeVertexStartsRef = useRef<Int32Array>(new Int32Array(0));
+  const edgeVertexCountsRef = useRef<Int32Array>(new Int32Array(0));
+
+  // Cached endpoint positions for dirty detection: flat [x0, y0, x1, y1] per edge
+  const endpointCacheRef = useRef<Float64Array>(new Float64Array(0));
+
+  // Position-only dirty flag (enables partial update path, avoids full rebuild)
+  const positionDirtyRef = useRef(false);
+
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
@@ -310,11 +320,11 @@ export function Edges({
         colorDirtyRef.current = true;
       }
     );
-    // Position version change = positions changed, need geometry rebuild
+    // Position version change = positions changed, prefer partial update
     const unsubPositions = store.subscribe(
       (state) => state.positionVersion,
       () => {
-        geometryDirtyRef.current = true;
+        positionDirtyRef.current = true;
       }
     );
     const unsubEdges = store.subscribe(
@@ -367,14 +377,8 @@ export function Edges({
       geometryDirtyRef.current = true;
     }
 
-    // Check if position version changed (triggers geometry rebuild)
-    if (positionVersion !== lastPositionVersionRef.current) {
-      lastPositionVersionRef.current = positionVersion;
-      geometryDirtyRef.current = true;
-    }
-
     // Skip if nothing is dirty
-    if (!geometryDirtyRef.current && !colorDirtyRef.current) return;
+    if (!geometryDirtyRef.current && !positionDirtyRef.current && !colorDirtyRef.current) return;
 
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
@@ -383,6 +387,7 @@ export function Edges({
     if (edges.length === 0 || entityMap.size === 0) {
       mesh.geometry.setDrawRange(0, 0);
       geometryDirtyRef.current = false;
+      positionDirtyRef.current = false;
       colorDirtyRef.current = false;
       return;
     }
@@ -392,7 +397,7 @@ export function Edges({
 
     // Fast path: color-only update (selection changed but positions didn't)
     // Only update colors without re-tessellating geometry
-    if (!geometryDirtyRef.current && colorDirtyRef.current) {
+    if (!geometryDirtyRef.current && !positionDirtyRef.current && colorDirtyRef.current) {
       // Update colors for all edges based on current selection state
       let vertexOffset = 0;
       for (let i = 0; i < edges.length; i++) {
@@ -468,7 +473,33 @@ export function Edges({
       return;
     }
 
-    // Full geometry rebuild path
+    // Determine update mode: partial (position-only) vs full rebuild
+    const isPartialUpdate = positionDirtyRef.current && !geometryDirtyRef.current;
+
+    // Ensure endpoint cache and layout arrays have capacity
+    const neededCacheSize = edges.length * 4;
+    if (endpointCacheRef.current.length < neededCacheSize) {
+      const newCache = new Float64Array(Math.ceil(neededCacheSize * BUFFER_GROWTH_FACTOR));
+      newCache.set(endpointCacheRef.current);
+      endpointCacheRef.current = newCache;
+    }
+    if (edgeVertexStartsRef.current.length < edges.length) {
+      const newStarts = new Int32Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
+      newStarts.set(edgeVertexStartsRef.current);
+      edgeVertexStartsRef.current = newStarts;
+      const newCounts = new Int32Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
+      newCounts.set(edgeVertexCountsRef.current);
+      edgeVertexCountsRef.current = newCounts;
+    }
+    const epCache = endpointCacheRef.current;
+    const evStarts = edgeVertexStartsRef.current;
+    const evCounts = edgeVertexCountsRef.current;
+
+    // Track dirty vertex range for partial GPU upload
+    let dirtyRangeMin = Infinity;
+    let dirtyRangeMax = 0;
+
+    // Full geometry rebuild or partial position update path
     let vertexIndex = 0;
 
     for (let i = 0; i < edges.length; i++) {
@@ -476,7 +507,12 @@ export function Edges({
       const sourceEntity = entityMap.get(edge.source);
       const targetEntity = entityMap.get(edge.target);
 
-      if (!sourceEntity || !targetEntity) continue;
+      if (!sourceEntity || !targetEntity) {
+        // Record zero-vertex layout for this edge
+        evStarts[i] = vertexIndex;
+        evCounts[i] = 0;
+        continue;
+      }
 
       const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
       const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
@@ -519,6 +555,25 @@ export function Edges({
       const y0 = sourceEntity.position.y + sourceYOffset;
       const x1 = targetEntity.position.x;
       const y1 = targetEntity.position.y + targetYOffset;
+
+      // Partial update: check if this edge's endpoints changed
+      if (isPartialUpdate) {
+        const epBase = i * 4;
+        if (epCache[epBase] === x0 && epCache[epBase + 1] === y0 &&
+            epCache[epBase + 2] === x1 && epCache[epBase + 3] === y1) {
+          // Endpoints unchanged — skip tessellation, advance by cached vertex count
+          vertexIndex += evCounts[i];
+          continue;
+        }
+        // Endpoints changed — update cache and mark dirty range
+        epCache[epBase] = x0;
+        epCache[epBase + 1] = y0;
+        epCache[epBase + 2] = x1;
+        epCache[epBase + 3] = y1;
+        dirtyRangeMin = Math.min(dirtyRangeMin, vertexIndex);
+      }
+
+      const edgeVertexStart = vertexIndex;
 
       // Get edge type early - needed for control point calculation before culling
       const edgeType = edge.type ?? defaultEdgeType;
@@ -957,20 +1012,56 @@ export function Edges({
         buffers.perpendiculars[perpIdx + 1] = 0;
         vertexIndex++;
       }
+
+      // Record edge vertex layout for partial updates
+      evStarts[i] = edgeVertexStart;
+      evCounts[i] = vertexIndex - edgeVertexStart;
+
+      // Cache endpoints (full rebuild only — partial update caches above)
+      if (!isPartialUpdate) {
+        const epBase = i * 4;
+        epCache[epBase] = x0;
+        epCache[epBase + 1] = y0;
+        epCache[epBase + 2] = x1;
+        epCache[epBase + 3] = y1;
+      }
+
+      // Track dirty range end for partial GPU upload
+      if (isPartialUpdate) {
+        dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
+      }
     }
 
-    // Update attributes
-    if (buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
-      buffers.positionAttr.needsUpdate = true;
-      buffers.uvAttr.needsUpdate = true;
-      buffers.colorAttr.needsUpdate = true;
-      buffers.perpAttr.needsUpdate = true;
+    // GPU buffer upload
+    if (isPartialUpdate) {
+      // Partial upload: only upload the vertex range containing dirty edges
+      if (dirtyRangeMin < dirtyRangeMax && buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
+        const start = dirtyRangeMin;
+        const count = dirtyRangeMax - dirtyRangeMin;
+        buffers.positionAttr.addUpdateRange(start * 3, count * 3);
+        buffers.positionAttr.needsUpdate = true;
+        buffers.uvAttr.addUpdateRange(start * 2, count * 2);
+        buffers.uvAttr.needsUpdate = true;
+        buffers.colorAttr.addUpdateRange(start * 3, count * 3);
+        buffers.colorAttr.needsUpdate = true;
+        buffers.perpAttr.addUpdateRange(start * 2, count * 2);
+        buffers.perpAttr.needsUpdate = true;
+      }
+    } else {
+      // Full upload (existing behavior)
+      if (buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
+        buffers.positionAttr.needsUpdate = true;
+        buffers.uvAttr.needsUpdate = true;
+        buffers.colorAttr.needsUpdate = true;
+        buffers.perpAttr.needsUpdate = true;
+      }
     }
 
     // Set draw range
     mesh.geometry.setDrawRange(0, vertexIndex);
     buffers.lastVertexCount = vertexIndex;
     geometryDirtyRef.current = false;
+    positionDirtyRef.current = false;
     colorDirtyRef.current = false;
   });
 

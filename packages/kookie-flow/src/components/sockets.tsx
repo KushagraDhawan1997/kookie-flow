@@ -34,6 +34,8 @@ export function Sockets({
 
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
+  const positionDirtyRef = useRef(false);
+  const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
 
   // Derive colors from semantic theme config
@@ -217,7 +219,15 @@ export function Sockets({
     const unsubEntities = store.subscribe(
       (state) => state.entities,
       () => {
-        dirtyRef.current = true;
+        // Check if this is a position-only change (from updateEntityPositions)
+        // vs a structural change (add/remove/dimensions)
+        const currentPosVersion = store.getState().positionVersion;
+        if (currentPosVersion !== lastPosVersionRef.current) {
+          lastPosVersionRef.current = currentPosVersion;
+          positionDirtyRef.current = true;
+        } else {
+          dirtyRef.current = true;
+        }
       }
     );
     // Note: viewport changes no longer trigger dirty - GPU handles clipping efficiently
@@ -281,6 +291,62 @@ export function Sockets({
       lastSizeRef.current.width = size.width;
       lastSizeRef.current.height = size.height;
       dirtyRef.current = true;
+    }
+
+    // Position-only fast path: only update instance matrices (skip color/hover/state)
+    if (!dirtyRef.current && positionDirtyRef.current) {
+      const { entities } = store.getState();
+      let visibleCount = 0;
+      tempMatrix.identity();
+
+      for (const entity of entities) {
+        const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const entityLayout = getEntitySocketLayout(entity, socketLayout);
+        const height = entity.height ?? entityLayout.computedHeight;
+
+        if (entity.inputs) {
+          for (let i = 0; i < entity.inputs.length; i++) {
+            if (visibleCount >= capacity) break;
+            const socket = entity.inputs[i];
+            const cachedPos = entityLayout.inputs[i];
+            const yOffset =
+              socket.position !== undefined
+                ? socket.position * height
+                : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+            tempMatrix.setPosition(
+              entity.position.x,
+              -(entity.position.y + yOffset),
+              0.5
+            );
+            mesh.setMatrixAt(visibleCount, tempMatrix);
+            visibleCount++;
+          }
+        }
+
+        if (entity.outputs) {
+          for (let i = 0; i < entity.outputs.length; i++) {
+            if (visibleCount >= capacity) break;
+            const socket = entity.outputs[i];
+            const cachedPos = entityLayout.outputs[i];
+            const yOffset =
+              socket.position !== undefined
+                ? socket.position * height
+                : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+            tempMatrix.setPosition(
+              entity.position.x + width,
+              -(entity.position.y + yOffset),
+              0.5
+            );
+            mesh.setMatrixAt(visibleCount, tempMatrix);
+            visibleCount++;
+          }
+        }
+      }
+
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.count = Math.min(visibleCount, capacity);
+      positionDirtyRef.current = false;
+      return;
     }
 
     if (!dirtyRef.current) return;
@@ -493,6 +559,7 @@ export function Sockets({
     // Safety: never exceed buffer capacity to prevent WebGL errors
     mesh.count = Math.min(visibleCount, capacity);
     dirtyRef.current = false;
+    positionDirtyRef.current = false;
   });
 
   return (
