@@ -10,6 +10,7 @@ import {
   type Edge,
   type NodeVariant,
   type KookieFlowInstance,
+  type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
 import { Theme } from '@kushagradhawan/kookie-ui';
@@ -1153,10 +1154,53 @@ export default function DemoPage() {
     }, 150);
   }, []);
 
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addEdge } = useGraph({
     initialNodes,
     initialEdges,
   });
+
+  // Phase 7E: Add node on edge drop — when a connection drag ends on empty canvas,
+  // create a new node at the drop position and connect it to the source socket.
+  const handleConnectEnd = useCallback(
+    (_event: PointerEvent, state: ConnectionEndState) => {
+      if (state.isValid) return; // Connection succeeded, nothing to do
+
+      const id = `drop-node-${Date.now()}`;
+      const { isInput } = state.source;
+
+      // Create a new node with a matching socket
+      const newNode: Node = {
+        id,
+        type: 'default',
+        position: state.position,
+        data: { label: 'New Node' },
+        inputs: isInput ? [] : [{ id: `${id}-in-0`, name: 'Input', type: 'any' }],
+        outputs: isInput ? [{ id: `${id}-out-0`, name: 'Output', type: 'any' }] : [],
+        color: 'cyan',
+      };
+
+      // Build the edge from source to new node (or vice versa)
+      const newEdge: Edge = isInput
+        ? {
+            id: `${id}-edge`,
+            source: id,
+            sourceSocket: `${id}-out-0`,
+            target: state.source.nodeId,
+            targetSocket: state.source.socketId,
+          }
+        : {
+            id: `${id}-edge`,
+            source: state.source.nodeId,
+            sourceSocket: state.source.socketId,
+            target: id,
+            targetSocket: `${id}-in-0`,
+          };
+
+      addNode(newNode);
+      addEdge(newEdge);
+    },
+    [addNode, addEdge]
+  );
 
   return (
     <main style={{ width: '100vw', height: '100vh' }}>
@@ -1188,6 +1232,7 @@ export default function DemoPage() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectEnd={handleConnectEnd}
         showGrid
         showMinimap
         minimapProps={{ zoomable: false }}

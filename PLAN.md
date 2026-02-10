@@ -1240,7 +1240,7 @@ See **[STYLING.md](./STYLING.md)** for full implementation plan and milestone tr
 - Theme token reading via `useThemeTokens()` hook
 - Fallback tokens for standalone mode (no Kookie UI dependency)
 
-**Current status:** Phases 1-8 complete. Phase 7C (Grouping & Annotations) complete. Phase 7E (Connection Events) core implemented (demo/docs remaining). Phase 8 (Graph Engine) complete.
+**Current status:** Phases 1-8 complete. All sub-phases complete including Phase 7E (Connection Events) with demo and docs.
 
 ### Phase 7C: Grouping & Annotations ✅
 
@@ -1864,8 +1864,8 @@ interface KookieFlowProps {
 - [x] InputHandler: Fire `onConnectStart` when connection begins
 - [x] InputHandler: Fire `onConnectEnd` with position and validity
 - [x] Props: Thread callbacks through component layers
-- [ ] Demo: Add "add node on edge drop" example
-- [ ] Docs: Update README with connection events
+- [x] Demo: Add "add node on edge drop" example
+- [x] Docs: Update README with connection events
 
 ### Phase 8: Graph Engine ✅ COMPLETE
 

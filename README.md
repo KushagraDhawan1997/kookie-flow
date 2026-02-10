@@ -162,6 +162,44 @@ flowRef.current?.fitView({
 - **Connection validation** — Strict or loose mode for socket type compatibility
 - **Custom validation** — `isValidConnection` callback for custom rules
 
+### Connection Events
+
+Track the full connection lifecycle with `onConnectStart` and `onConnectEnd`:
+
+```tsx
+import type { ConnectionEndState } from '@kushagradhawan/kookie-flow';
+
+<KookieFlow
+  onConnectStart={(event, params) => {
+    // params: { nodeId, socketId, isInput }
+    console.log('Drag started from', params.socketId);
+  }}
+  onConnectEnd={(event, state) => {
+    // state: { isValid, source: { nodeId, socketId, isInput }, position: { x, y } }
+    if (!state.isValid) {
+      // Dropped on empty canvas — create a node at the drop position
+      const id = `node-${Date.now()}`;
+      addNode({
+        id,
+        type: 'default',
+        position: state.position,
+        data: { label: 'New Node' },
+        inputs: [{ id: 'in', name: 'Input', type: 'any' }],
+      });
+      addEdge({
+        id: `edge-${id}`,
+        source: state.source.nodeId,
+        sourceSocket: state.source.socketId,
+        target: id,
+        targetSocket: 'in',
+      });
+    }
+  }}
+/>
+```
+
+`onConnect` fires only on successful connections. `onConnectEnd` fires every time (success or fail), giving you the drop position in world coordinates — useful for "add node on edge drop" patterns.
+
 ### Socket Widgets
 
 Input widgets on sockets that auto-hide when connected:
@@ -387,6 +425,8 @@ useKeyboardShortcuts({
 | `onNodesChange` | `function` | - | Callback when nodes change |
 | `onEdgesChange` | `function` | - | Callback when edges change |
 | `onConnect` | `function` | - | Callback when connection is made |
+| `onConnectStart` | `function` | - | Callback when connection drag starts |
+| `onConnectEnd` | `function` | - | Callback when connection drag ends (success or fail) |
 | `onNodeClick` | `function` | - | Callback when node is clicked |
 | `onEdgeClick` | `function` | - | Callback when edge is clicked |
 | `onWidgetChange` | `function` | - | Callback when widget value changes |
@@ -459,6 +499,8 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Node grouping with collapsible frames
 - [x] Comment/sticky note nodes
 - [x] Reroute nodes (edge waypoints)
+- [x] Connection events (onConnectStart, onConnectEnd)
+- [x] Graph engine (topology, cycles, execution levels)
 - [ ] Hybrid node portals
 - [ ] Image texture previews
 - [ ] 3D mesh previews

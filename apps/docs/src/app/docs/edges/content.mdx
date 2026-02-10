@@ -206,6 +206,73 @@ const isValidConnection: IsValidConnectionFn = (params, socketTypes) => {
 <KookieFlow isValidConnection={isValidConnection} />
 ```
 
+## Connection Events
+
+Track the full connection drag lifecycle:
+
+### onConnectStart
+
+Fires when the user begins dragging from a socket:
+
+```tsx
+import type { OnConnectStartParams } from '@kushagradhawan/kookie-flow';
+
+<KookieFlow
+  onConnectStart={(event: PointerEvent, params: OnConnectStartParams) => {
+    console.log('Connection started from', params);
+    // { nodeId: 'node-1', socketId: 'out-1', isInput: false }
+  }}
+/>
+```
+
+### onConnectEnd
+
+Fires when the user releases the drag, whether or not a connection was made. Provides the drop position in world coordinates:
+
+```tsx
+import type { ConnectionEndState } from '@kushagradhawan/kookie-flow';
+
+<KookieFlow
+  onConnectEnd={(event: PointerEvent, state: ConnectionEndState) => {
+    // state.isValid — true if the drop landed on a compatible socket
+    // state.source — { nodeId, socketId, isInput } of the drag origin
+    // state.position — { x, y } world coordinates of the drop point
+  }}
+/>
+```
+
+### Add Node on Edge Drop
+
+A common pattern is creating a new node when the user drops a connection on empty canvas:
+
+```tsx
+<KookieFlow
+  onConnectEnd={(event, state) => {
+    if (state.isValid) return; // Successful connection, nothing extra to do
+
+    const id = `node-${Date.now()}`;
+    const { isInput } = state.source;
+
+    // Create a node at the drop position with a compatible socket
+    addNode({
+      id,
+      type: 'default',
+      position: state.position,
+      data: { label: 'New Node' },
+      inputs: isInput ? [] : [{ id: `${id}-in`, name: 'Input', type: 'any' }],
+      outputs: isInput ? [{ id: `${id}-out`, name: 'Output', type: 'any' }] : [],
+    });
+
+    // Connect the source to the new node
+    const edge = isInput
+      ? { id: `${id}-edge`, source: id, sourceSocket: `${id}-out`, target: state.source.nodeId, targetSocket: state.source.socketId }
+      : { id: `${id}-edge`, source: state.source.nodeId, sourceSocket: state.source.socketId, target: id, targetSocket: `${id}-in` };
+
+    addEdge(edge);
+  }}
+/>
+```
+
 ## Edge Changes
 
 Handle edge changes through the `onEdgesChange` callback:
