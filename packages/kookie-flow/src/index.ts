@@ -80,6 +80,9 @@ export {
 // Store types
 export type { FlowState, FlowStore } from './core/store';
 
+// Graph engine types (Phase 8)
+export type { AdjacencyIndex, CachedAnalysis, GraphValidationIssue } from './core/graph';
+
 // Types
 export type {
   XYPosition,

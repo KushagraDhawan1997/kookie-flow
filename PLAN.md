@@ -1,6 +1,6 @@
 # Kookie Flow — Implementation Plan
 
-> WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.
+> Open Canvas with Native Node Abilities. Figma-like freeform canvas merged with a native graph engine. GPU-rendered for performance at scale.
 
 This document is the source of truth for building Kookie Flow. It is written for LLM consumption—structured, explicit, and unambiguous.
 
@@ -164,6 +164,165 @@ Render geometry in WebGL. Keep text/widgets in DOM.
 - **Screen space:** Pixels from viewport top-left
 - **Camera:** Orthographic, looking at Z=0 plane
 - **Transform:** `screenPos = (worldPos + viewport.offset) * viewport.zoom`
+
+---
+
+## Core Concept: The Entity Model
+
+One primitive: **Entity**. Spatial presence and graph participation are orthogonal, composable traits.
+
+```
+Entity
+├── position, size, rotation     (always — everything lives on the canvas)
+├── ports[]                      (optional — graph participation)
+├── parentId                     (optional — spatial hierarchy)
+├── type                         (determines rendering + behavior)
+├── data                         (type-specific payload)
+│   ├── status                   (optional — 'error' | 'warning' | 'running' | 'success')
+│   └── statusMessage            (optional — human-readable status text)
+└── preview                      (optional — data visualization config)
+```
+
+### Two Independent Layers
+
+| Layer                 | Controls                           | Example                              |
+| --------------------- | ---------------------------------- | ------------------------------------ |
+| **Spatial hierarchy** | Parent/child, containment, z-order | A Frame contains nodes visually      |
+| **Graph topology**    | Ports, edges, data resolution      | Node A's output feeds Node B's input |
+
+These coexist but don't implicitly affect each other. Dragging a node out of a frame doesn't disconnect its edges. Deleting an edge doesn't move the node.
+
+### What a Connection Means
+
+At the Kookie Flow level, an edge is **purely structural metadata**:
+
+> "Port A on Entity X is linked to Port B on Entity Y."
+
+Kookie Flow:
+- **Stores** the edge: `{ source, sourcePort, target, targetPort }`
+- **Renders** the visual curve between the two ports
+- **Validates** compatibility (if `connectionMode="strict"` or `isValidConnection` provided)
+- **Notifies** via `onConnect`, `onEdgesChange`
+
+Kookie Flow does **not**: evaluate what the connection means, move data through it, trigger computation, or resolve values. The consumer's resolution engine walks the graph and decides.
+
+### Entity Status
+
+The consumer sets status, Kookie Flow renders it:
+
+```tsx
+entity.data.status = 'error' | 'warning' | 'running' | 'success' | undefined;
+entity.data.statusMessage = 'Missing required input: Model';
+```
+
+| Status      | Visual                            |
+| ----------- | --------------------------------- |
+| `undefined` | Normal rendering                  |
+| `error`     | Red border + status message bar   |
+| `warning`   | Amber border + status message bar |
+| `running`   | Pulse/spinner indicator           |
+| `success`   | Green flash (transient)           |
+
+### Built-in Entity Types
+
+| Type      | What It Renders                                      | Ports?               | Notes                              |
+| --------- | ---------------------------------------------------- | -------------------- | ---------------------------------- |
+| `default` | Standard node (header + sockets + widgets + preview) | Yes (inputs/outputs) | The classic node graph node        |
+| `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Contains shapes as `data.shapes[]` |
+| `text`    | Rich text block                                      | Optional             | MSDF for display, DOM for editing  |
+| `image`   | Image on canvas                                      | Optional             | Three.js texture on quad           |
+| `video`   | Video on canvas                                      | Optional             | DOM overlay, lazy-loaded           |
+| `mesh`    | 3D object on canvas                                  | Optional             | Three.js scene-in-scene            |
+| `frame`   | Spatial container / group                            | Optional             | Parent for other entities          |
+| `comment` | Sticky note annotation                               | No                   | Annotation only                    |
+| `reroute` | Edge waypoint                                        | Yes (passthrough)    | Graph routing                      |
+
+`image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that *produce* visual output.
+
+### Entity Type Customization (Three Levels)
+
+**Level 1: Pure Declaration (80% of nodes).** Consumer declares ports, widgets, and preview. Kookie Flow renders everything.
+
+```tsx
+const Gen3DNode = {
+  inputs: [
+    { id: 'prompt', name: 'Prompt', type: 'string' },
+    { id: 'model', name: 'Model', type: 'enum', options: ['shap-e', 'point-e', 'meshy'] },
+  ],
+  outputs: [{ id: 'mesh', name: 'Mesh', type: 'mesh' }],
+  preview: { source: 'mesh', type: '3d' },
+};
+```
+
+**Level 2: Slots (15% of nodes).** Consumer injects custom UI between Kookie Flow's building blocks.
+
+```tsx
+const Gen3DNode = {
+  inputs: [...],
+  outputs: [...],
+  preview: { source: 'mesh', type: '3d' },
+  Content: ({ entity, slots }) => (
+    <>
+      {slots.preview}
+      <button onClick={() => generate(entity)}>Generate</button>
+      <ProgressBar value={entity.data.progress} />
+      {slots.widgets}
+    </>
+  ),
+};
+```
+
+Available slots: `slots.preview`, `slots.widgets`, `slots.outputs`, `slots.inputs`. Consumer controls layout. Kookie Flow still owns preview lifecycle, widget rendering, port positioning, hit testing.
+
+**Level 3: Full Escape Hatch (5% of nodes).** Consumer owns the interior.
+
+```tsx
+const WildNode = {
+  inputs: [{ id: 'in', name: 'In', type: 'any' }],
+  outputs: [{ id: 'out', name: 'Out', type: 'any' }],
+  render: 'custom',
+  Component: ({ entity, ports }) => (
+    <div className="my-wild-layout">
+      {ports.input('in')}
+      <MyEntirelyCustomThing />
+      {ports.output('out')}
+    </div>
+  ),
+};
+```
+
+Kookie Flow still handles: entity frame/border, port hit testing, edge connections, selection, dragging, status rendering. Consumer controls what's inside.
+
+### Preview System
+
+Every `default` node can visualize data on its output ports. The preview system is **built-in**.
+
+| `preview.type` | Renderer                    | How              | Loaded              |
+| -------------- | --------------------------- | ---------------- | ------------------- |
+| `image`        | Three.js CanvasTexture      | Textured quad    | Always              |
+| `3d`           | Three.js scene-in-scene     | DOM overlay      | Lazy (on first use) |
+| `video`        | `<video>` element           | DOM overlay      | Lazy (on first use) |
+
+Display mode (zoomed out / idle): thumbnail drawn in WebGL (nearly free). Interactive mode (zoomed in / active): live renderer mounted as DOM overlay. 200 video entities = ~5 live `<video>` elements.
+
+Consumers can register additional preview renderers:
+
+```tsx
+<KookieFlow
+  previewRenderers={{
+    audio: AudioPreviewRenderer,
+    chart: ChartPreviewRenderer,
+  }}
+/>
+```
+
+### What Kookie Flow Does NOT Do
+
+- **No execution engine** — provides topo sort, execution levels, dirty propagation, but does NOT evaluate nodes or run computations
+- **No data flow** — edges are structural. What flows through them is the consumer's responsibility
+- **No persistence** — serialization via `toObject()`. Storage is the consumer's responsibility
+- **No AI integration** — Kookie AI builds on top of Kookie Flow, not inside it
+- **No heavy media embeds** — PDF, spreadsheet, iframe are consumer entity types via `entityTypes`
 
 ---
 
@@ -1708,17 +1867,227 @@ interface KookieFlowProps {
 - [ ] Demo: Add "add node on edge drop" example
 - [ ] Docs: Update README with connection events
 
-### Phase 8: Visual Previews
+### Phase 8: Graph Engine
 
-**Goal:** The differentiator
+**Goal:** Make Kookie Flow understand graph topology — who connects to whom, what order to traverse, where the cycles are.
 
-- [ ] Image texture previews in nodes
-- [ ] Texture atlas for multiple images
-- [ ] 3D mesh previews (same WebGL context)
-- [ ] Video/animation previews
-- [ ] Preview caching
+**Core Data Structure: Adjacency Index**
 
-### Phase 9: Polish & Production
+Maintained incrementally alongside the entity/edge arrays in the Zustand store:
+
+```typescript
+interface AdjacencyIndex {
+  outgoing: Map<string, Map<string, Edge[]>>;   // entityId → portId → edges leaving
+  incoming: Map<string, Map<string, Edge[]>>;   // entityId → portId → edges arriving
+  byEntity: Map<string, Edge[]>;                // all edges touching an entity
+  topologyVersion: number;                       // incremented ONLY on edge/entity add/remove
+}
+```
+
+**Key invariant:** Pan, zoom, drag, widget change = 0 graph recomputation. Only adding/removing edges or entities changes topology. Update cost: 3 Map ops per edge add/remove.
+
+**Graph Queries** (all use adjacency index, no iteration over all edges):
+
+```typescript
+// Direct neighbors — O(1)
+flow.getIncomers('node-5')
+flow.getOutgoers('node-5')
+
+// Recursive traversal — O(k), iterator-based, consumer can break early
+for (const id of flow.walkUpstream('node-5')) { ... }
+for (const id of flow.walkDownstream('node-5')) { ... }
+
+// Edge queries — O(1)
+flow.getConnectedEdges('node-5')
+flow.getInputEdges('node-5')
+flow.getOutputEdges('node-5')
+
+// Structural queries
+flow.getRoots()                      // entities with no incoming edges
+flow.getLeaves()                     // entities with no outgoing edges
+flow.getConnectedComponents()        // independent subgraphs (Union-Find)
+```
+
+**Topological Sort & Execution Levels** (Kahn's algorithm, cached against topologyVersion):
+
+```typescript
+flow.topologicalSort()               // flat execution order — O(V+E), cached
+flow.executionLevels()               // grouped by level (parallel execution) — O(V+E), cached
+flow.getReadyEntities(completed)     // what can start next given completed set — O(k)
+flow.getExecutionOrder('output-1')   // subgraph needed for one specific node
+```
+
+**Cycle Detection & Prevention:**
+
+```typescript
+flow.hasCycles()                     // O(1) if topo sort cached
+flow.findCycles()                    // string[][] (node IDs per cycle)
+flow.wouldCreateCycle(src, tgt)      // O(k) DFS, called every pointer move during connection drag
+// Automatic prevention: <KookieFlow allowCycles={false} /> rejects cycle-creating connections
+```
+
+**Dirty Propagation:**
+
+```typescript
+flow.getAffectedEntities('node-3')   // downstream in topo order — O(k)
+flow.getAffectedEntities(['node-3', 'node-7']) // batch, deduplicated
+```
+
+**Node Muting/Bypass:**
+
+```typescript
+flow.muteEntity('filter-1')          // logically bypass, inputs pass through to outputs
+flow.unmuteEntity('filter-1')
+// Visual: dimmed, dashed edges. Topo sort skips muted nodes.
+```
+
+**Graph Mutations:**
+
+```typescript
+flow.insertOnEdge('edge-5', newNode) // A→B becomes A→new→B
+flow.bypassEntity('filter-1')       // A→filter→B becomes A→B
+flow.collapseToSubgraph([...ids])    // create compound node
+flow.expandSubgraph('group-1')      // inverse
+```
+
+**Graph Validation:**
+
+```typescript
+flow.validate()                      // all structural issues
+flow.isGraphComplete()               // all required ports connected?
+flow.getCompatiblePorts(src, port)   // valid targets during connection drag
+```
+
+**Performance:**
+
+| Operation | When | Cost |
+| --- | --- | --- |
+| Add/remove edge | User connects/disconnects | 3 Map ops + version++ |
+| `getIncomers`/`getOutgoers` | Connection drag, validation | O(1) |
+| `topologicalSort()` | Consumer evaluates graph | O(V+E), cached |
+| `wouldCreateCycle()` | Every pointer move during drag | O(k), early termination |
+| `getAffectedEntities()` | Consumer re-evaluates | O(k), uses cached topo sort |
+
+**Tasks:**
+
+- [ ] Adjacency index (incremental, maintained alongside store)
+- [ ] Graph queries (getIncomers, getOutgoers, walkUpstream, walkDownstream)
+- [ ] Edge queries (getConnectedEdges, getInputEdges, getOutputEdges)
+- [ ] Structural queries (getRoots, getLeaves, getConnectedComponents via Union-Find)
+- [ ] Topological sort + execution levels (Kahn's algorithm, cached)
+- [ ] Cycle detection + `wouldCreateCycle` for connection validation
+- [ ] `allowCycles` prop with automatic prevention
+- [ ] Dirty propagation (getAffectedEntities)
+- [ ] Node muting/bypass (muteEntity, unmuteEntity, isMuted)
+- [ ] Graph mutations (insertOnEdge, bypassEntity, collapseToSubgraph, expandSubgraph)
+- [ ] Graph validation (validate, isGraphComplete, getCompatiblePorts)
+- [ ] `getReadyEntities` for parallel execution scheduling
+- [ ] Tests for all graph operations
+
+### Phase 9: Entity Model Refactor
+
+**Goal:** Rename nodes→entities in API, make ports optional, add entity status rendering.
+
+- [ ] Rename `nodes` → `entities` in all types, store, components, props
+- [ ] Rename `onNodesChange` → `onEntitiesChange`
+- [ ] Rename `nodeTypes` → `entityTypes`
+- [ ] Make `inputs`/`outputs` (ports) optional on all entity types
+- [ ] Add `data.status` and `data.statusMessage` to entity data
+- [ ] Status rendering: red/amber border, pulse indicator, green flash
+- [ ] Add `frame` as proper built-in type (upgrade from current `group`)
+- [ ] Ensure draw, text, image, video, mesh entity types are structurally supported
+
+### Phase 10: Text Entity
+
+**Goal:** Rich text block entity done really well. Accessibility, keyboard navigation, screen reader support.
+
+- [ ] Text entity type: rich text blocks on canvas
+- [ ] MSDF rendering for display mode (read-only, GPU-rendered)
+- [ ] DOM contenteditable overlay for edit mode (on double-click / focus)
+- [ ] Keyboard navigation: Tab between entities, Enter to edit, Escape to exit
+- [ ] Screen reader: ARIA labels, live regions for status changes
+- [ ] Copy/paste text content
+- [ ] Text as shape type inside draw entities (`data.shapes[]`)
+- [ ] Font selection (within supported MSDF fonts)
+
+### Phase 11: Image Entity
+
+**Goal:** Image on canvas done really well. Proper loading, resolution management, LOD.
+
+- [ ] Image entity type: image rendered as Three.js textured quad
+- [ ] Async image loading with placeholder/skeleton
+- [ ] Resolution management: thumbnail at zoom-out, full res when zoomed in
+- [ ] Drag-and-drop from filesystem
+- [ ] Paste from clipboard
+- [ ] Image resize handles
+- [ ] Optional ports for graph participation (source node with image output)
+- [ ] Memory management: dispose textures when off-screen
+
+### Phase 12: 3D Mesh Entity
+
+**Goal:** 3D object on canvas. Orbit controls, proper lighting.
+
+- [ ] Mesh entity type: Three.js scene-in-scene
+- [ ] Orbit controls (rotate, zoom, pan within the entity bounds)
+- [ ] Default lighting setup (ambient + directional)
+- [ ] Display mode: static thumbnail (rendered to texture)
+- [ ] Interactive mode: live Three.js scene as DOM overlay
+- [ ] glTF/GLB loading
+- [ ] Optional ports for graph participation
+- [ ] Lazy loading: Three.js scene only mounted when needed
+
+### Phase 13: Video Entity
+
+**Goal:** Video on canvas. Playback controls, lazy loading.
+
+- [ ] Video entity type: `<video>` element as DOM overlay
+- [ ] Display mode: poster frame / thumbnail in WebGL
+- [ ] Interactive mode: live `<video>` with playback controls
+- [ ] Lazy loading: video element mounted only when visible + active
+- [ ] Multiple video entities: only ~5 live `<video>` elements at a time
+- [ ] Optional ports for graph participation
+- [ ] Seek, play/pause, volume controls
+
+### Phase 14: Draw Entity
+
+**Goal:** Shapes, SVG paths, freeform drawing. The most complex rendering work.
+
+- [ ] Draw entity type: contains shapes as `data.shapes[]`
+- [ ] Shape primitives: rect, ellipse, path (Three.js ShapeGeometry + SDF shaders)
+- [ ] SVG path support (THREE.SVGLoader → ShapePath → ShapeGeometry)
+- [ ] Text as shape type within draw entities
+- [ ] Freeform drawing (capture points → line geometry)
+- [ ] Boolean path operations via CSG library (three-csg-ts or three-bvh-csg)
+- [ ] Shape manipulation: resize handles, rotation
+- [ ] Optional ports for graph participation
+- [ ] Fill, stroke, gradients, opacity per shape
+
+### Phase 15: Preview System
+
+**Goal:** Built-in preview renderers for default nodes and consumer entity types.
+
+- [ ] `PreviewRenderer` interface: `thumbnail()` + `mount()`
+- [ ] Image preview renderer (Three.js CanvasTexture on quad)
+- [ ] 3D preview renderer (Three.js scene-in-scene, lazy-loaded)
+- [ ] Video preview renderer (`<video>` DOM overlay, lazy-loaded)
+- [ ] Display/interactive mode switching (thumbnail when idle, live when active)
+- [ ] `previewRenderers` extension point for consumer-provided renderers
+- [ ] Preview caching (thumbnail textures cached, regenerated on data change)
+- [ ] `usePreview()` hook for Level 3 customization escape hatch
+- [ ] `slots.preview` for Level 2 customization
+
+### Phase 16: Entity Type Customization
+
+**Goal:** Three-level customization system for consumer entity types.
+
+- [ ] Level 1: Pure declaration rendering (ports + widgets + preview from config)
+- [ ] Level 2: Slots system (`slots.preview`, `slots.widgets`, `slots.outputs`, `slots.inputs`)
+- [ ] Level 3: Full escape hatch (`render: 'custom'`, `Component` prop)
+- [ ] `usePreview()` hook for Level 3
+- [ ] Auto-generated widgets from input declarations (Level 1)
+- [ ] Preview ownership: always Kookie Flow's responsibility regardless of level
+
+### Phase 17: Polish & Production
 
 **Goal:** Production ready
 
@@ -1726,7 +2095,7 @@ interface KookieFlowProps {
 - [ ] Virtual DOM pooling for labels (if DOM becomes bottleneck)
 - [ ] Memory management (dispose textures)
 - [ ] Performance profiling & benchmarks
-- [ ] Accessibility (keyboard navigation, ARIA)
+- [ ] Accessibility (keyboard navigation, ARIA) — started in Phase 10
 - [ ] Documentation site
 - [ ] Examples gallery
 
@@ -2044,34 +2413,19 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 ### Next Immediate Tasks
 
-**Phase 7C (complete):** Grouping & Annotations - Node groups, comments, reroutes
-
-**Phase 7E: Connection Events**
+**Phase 7E: Connection Events** (next up)
 - `onConnectStart` callback when connection drag begins
 - `onConnectEnd` callback with drop position and validity
-- Enables "add node on edge drop" pattern (like React Flow)
+- Enables "add node on edge drop" pattern
 
-**Phase 8: Visual Previews**
-- Image preview thumbnails on nodes
-- Preview caching and LOD
-- Async image loading
+**Phase 8: Graph Engine** (first major new work)
+- Adjacency index, topo sort, execution levels, cycle detection
+- Pure data structure work, zero rendering changes
+- See Phase 8 section for full spec
 
-**Phase 9: Polish & Production**
-- Error boundaries
-- Accessibility improvements
-- Documentation updates
-
-All tasks done including:
-- Connected sockets tracking in store
-- Value storage in `node.data.values`
-- Widget demo page with all 6 widget types
-
-**Phase 7C: Grouping & Annotations**
-
-1. Node grouping/frames (parent-child relationship)
-2. Collapsed groups (hide children, show summary)
-3. Comments/sticky notes (text-only nodes)
-4. Reroute nodes (edge waypoints)
+**Phase 9+: Entity pivot** (after graph engine)
+- Entity model refactor → Text → Image → 3D Mesh → Video → Draw → Preview System → Customization
+- Each entity type done well before moving to the next
 
 ---
 
@@ -2137,4 +2491,4 @@ All tasks done including:
 
 ---
 
-_Last updated: January 2026_
+_Last updated: February 2026_

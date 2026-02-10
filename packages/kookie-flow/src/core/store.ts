@@ -29,6 +29,8 @@ import {
   calculateDescendantPositions,
   type Bounds,
 } from '../utils/grouping';
+import * as graphEngine from './graph';
+import type { AdjacencyIndex, CachedAnalysis } from './graph';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -99,6 +101,19 @@ export interface FlowState {
    * Rebuilt when collapsedGroupIds changes. Used for O(1) visibility checks in hot paths.
    */
   hiddenNodeIds: Set<string>;
+
+  // ============================================================================
+  // Graph Engine State (Phase 8)
+  // ============================================================================
+
+  /** Pre-computed adjacency index for O(1) neighbor lookups. Rebuilt on edge changes. */
+  adjacencyIndex: AdjacencyIndex;
+
+  /** Topology version counter. Increments on node/edge add/remove only. */
+  topologyVersion: number;
+
+  /** Node IDs excluded from execution (treated as pass-through). */
+  mutedNodeIds: Set<string>;
 
   /** Internal actions */
   setNodes: (nodes: Node[]) => void;
@@ -257,6 +272,49 @@ export interface FlowState {
    * Updates positions in a single batch for performance.
    */
   moveGroup: (groupId: string, delta: XYPosition) => void;
+
+  // ============================================================================
+  // Graph Engine Queries (Phase 8)
+  // ============================================================================
+
+  /** Get node IDs that directly feed into this node. */
+  getIncomers: (nodeId: string) => string[];
+  /** Get node IDs that this node directly feeds into. */
+  getOutgoers: (nodeId: string) => string[];
+  /** Get all edges touching a node via adjacency index. */
+  getNodeEdges: (nodeId: string) => Edge[];
+  /** Get edges arriving at a node (inputs). */
+  getInputEdges: (nodeId: string) => Edge[];
+  /** Get edges leaving a node (outputs). */
+  getOutputEdges: (nodeId: string) => Edge[];
+  /** Get direct edges between two nodes. */
+  getEdgesBetween: (nodeA: string, nodeB: string) => Edge[];
+  /** Walk upstream from a node, yielding all ancestor node IDs. */
+  walkUpstream: (startNodeId: string) => Generator<string>;
+  /** Walk downstream from a node, yielding all dependent node IDs. */
+  walkDownstream: (startNodeId: string) => Generator<string>;
+  /** Get cached graph analysis (topo sort, execution levels, cycles, roots, leaves). */
+  getAnalysis: () => CachedAnalysis;
+  /** Would adding an edge from source to target create a cycle? */
+  wouldCreateCycle: (sourceNodeId: string, targetNodeId: string) => boolean;
+  /** Get all nodes downstream of changed nodes, in topological order. */
+  getAffectedEntities: (changedNodeIds: string | string[]) => string[];
+  /** Find connected components. Returns Map<componentId, nodeIds[]>. */
+  getConnectedComponents: () => Map<string, string[]>;
+  /** Check if two nodes are in the same connected component. */
+  areConnected: (nodeA: string, nodeB: string) => boolean;
+  /** Get execution order for evaluating a specific node (upstream subgraph). */
+  getExecutionOrder: (targetNodeId: string) => string[];
+  /** Get nodes ready to execute given completed set. */
+  getReadyEntities: (nodeIds: string[], completed: ReadonlySet<string>) => string[];
+  /** Insert a node onto an existing edge (A→B becomes A→new→B). */
+  insertOnEdge: (edgeId: string, newNode: Node) => void;
+  /** Remove a node and reconnect its inputs to outputs. */
+  bypassEntity: (nodeId: string) => void;
+  /** Mark a node as muted (skipped in execution). */
+  muteEntity: (nodeId: string) => void;
+  /** Remove muted status from a node. */
+  unmuteEntity: (nodeId: string) => void;
 }
 
 export type FlowStore = ReturnType<typeof createFlowStore>;
@@ -367,6 +425,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   const initialEdges = initialState?.edges ?? [];
   const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(initialNodes);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
+  const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
+
+  // Lazy cached analysis — closure-scoped, not in Zustand state (avoids re-render on compute)
+  let cachedAnalysis: CachedAnalysis | null = null;
 
   return create<FlowState>()(
     subscribeWithSelector((set, get) => ({
@@ -400,12 +462,26 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       collapsedGroupIds,
       hiddenNodeIds,
 
+      // Graph engine state (Phase 8)
+      adjacencyIndex: initialAdjacencyIndex,
+      topologyVersion: 0,
+      mutedNodeIds: new Set<string>(),
+
       // Setters - rebuild derived state when nodes change
       setNodes: (nodes) => {
-        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(nodes);
-        set({ nodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds });
+        const derived = rebuildDerivedState(nodes);
+        cachedAnalysis = null;
+        set({ nodes, ...derived, topologyVersion: get().topologyVersion + 1 });
       },
-      setEdges: (edges) => set({ edges, connectedSockets: rebuildConnectedSockets(edges) }),
+      setEdges: (edges) => {
+        cachedAnalysis = null;
+        set({
+          edges,
+          connectedSockets: rebuildConnectedSockets(edges),
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
+          topologyVersion: get().topologyVersion + 1,
+        });
+      },
       setViewport: (viewport) => set({ viewport }),
       setHoveredNodeId: (hoveredNodeId) => set({ hoveredNodeId }),
       setHoveredSocketId: (hoveredSocketId) => set({ hoveredSocketId }),
@@ -441,6 +517,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const { nodes, collapsedGroupIds: currentCollapsed } = get();
         const nextNodes = [...nodes];
         let collapsedChanged = false;
+        let topologyChanged = false;
         const nextCollapsed = new Set(currentCollapsed);
 
         // Build id->index map once for O(1) lookups: O(n)
@@ -469,6 +546,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
                 nextNodes.splice(index, 1);
+                topologyChanged = true;
                 // Update indices for subsequent removals (shift down)
                 idToIndex.delete(change.id);
                 for (let i = index; i < nextNodes.length; i++) {
@@ -485,6 +563,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'add': {
               idToIndex.set(change.node.id, nextNodes.length);
               nextNodes.push(change.node);
+              topologyChanged = true;
               // If adding a collapsed group, add to collapsed set
               if (change.node.type === 'group' && change.node.collapsed) {
                 nextCollapsed.add(change.node.id);
@@ -531,8 +610,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Rebuild derived state (nodeMap, quadtree, socketQuadtree) to stay in sync
         const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
-        const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(nextNodes, finalCollapsed);
-        set({ nodes: nextNodes, nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds });
+        const derived = rebuildDerivedState(nextNodes, finalCollapsed);
+        if (topologyChanged) cachedAnalysis = null;
+        set({
+          nodes: nextNodes,
+          ...derived,
+          ...(topologyChanged ? { topologyVersion: get().topologyVersion + 1 } : {}),
+        });
       },
 
       applyEdgeChanges: (changes) => {
@@ -545,6 +629,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           idToIndex.set(nextEdges[i].id, i);
         }
 
+        let topologyChanged = false;
         for (const change of changes) {
           switch (change.type) {
             case 'select': {
@@ -557,6 +642,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'remove': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
+                topologyChanged = true;
                 nextEdges.splice(index, 1);
                 // Update indices for subsequent removals (shift down)
                 idToIndex.delete(change.id);
@@ -567,6 +653,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               break;
             }
             case 'add': {
+              topologyChanged = true;
               idToIndex.set(change.edge.id, nextEdges.length);
               nextEdges.push(change.edge);
               break;
@@ -574,7 +661,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        set({ edges: nextEdges, connectedSockets: rebuildConnectedSockets(nextEdges) });
+        if (topologyChanged) cachedAnalysis = null;
+        set({
+          edges: nextEdges,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+          ...(topologyChanged ? {
+            adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+            topologyVersion: get().topologyVersion + 1,
+          } : {}),
+        });
       },
 
       // Selection - O(1) operations using Sets
@@ -922,10 +1017,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
+        cachedAnalysis = null;
         set({
           nodes: nextNodes,
           edges: nextEdges,
           connectedSockets: rebuildConnectedSockets(nextEdges),
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: get().topologyVersion + 1,
         });
       },
 
@@ -980,10 +1078,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           nextSelectedEdgeIds.delete(id);
         }
 
+        cachedAnalysis = null;
         set({
           nodes: nextNodes,
           edges: nextEdges,
           connectedSockets: rebuildConnectedSockets(nextEdges),
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: get().topologyVersion + 1,
           selectedNodeIds: nextSelectedNodeIds,
           selectedEdgeIds: nextSelectedEdgeIds,
         });
@@ -1077,11 +1178,22 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       getConnectedEdges: (nodeIds: string[]): Edge[] => {
-        const { edges } = get();
         if (nodeIds.length === 0) return [];
-
-        const nodeIdSet = new Set(nodeIds);
-        return edges.filter((e) => nodeIdSet.has(e.source) || nodeIdSet.has(e.target));
+        const { adjacencyIndex } = get();
+        const seen = new Set<string>();
+        const result: Edge[] = [];
+        for (const nodeId of nodeIds) {
+          const edges = adjacencyIndex.byNode.get(nodeId);
+          if (edges) {
+            for (const edge of edges) {
+              if (!seen.has(edge.id)) {
+                seen.add(edge.id);
+                result.push(edge);
+              }
+            }
+          }
+        }
+        return result;
       },
 
       // ========================================
@@ -1175,6 +1287,167 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         updateNodePositions(updates);
+      },
+
+      // ========================================
+      // Phase 8: Graph Engine Implementation
+      // ========================================
+
+      getIncomers: (nodeId: string): string[] => {
+        return graphEngine.getIncomers(get().adjacencyIndex, nodeId);
+      },
+
+      getOutgoers: (nodeId: string): string[] => {
+        return graphEngine.getOutgoers(get().adjacencyIndex, nodeId);
+      },
+
+      getNodeEdges: (nodeId: string): Edge[] => {
+        return graphEngine.getNodeEdges(get().adjacencyIndex, nodeId);
+      },
+
+      getInputEdges: (nodeId: string): Edge[] => {
+        return graphEngine.getInputEdges(get().adjacencyIndex, nodeId);
+      },
+
+      getOutputEdges: (nodeId: string): Edge[] => {
+        return graphEngine.getOutputEdges(get().adjacencyIndex, nodeId);
+      },
+
+      getEdgesBetween: (nodeA: string, nodeB: string): Edge[] => {
+        return graphEngine.getEdgesBetween(get().adjacencyIndex, nodeA, nodeB);
+      },
+
+      walkUpstream: (startNodeId: string): Generator<string> => {
+        return graphEngine.walkUpstream(get().adjacencyIndex, startNodeId);
+      },
+
+      walkDownstream: (startNodeId: string): Generator<string> => {
+        return graphEngine.walkDownstream(get().adjacencyIndex, startNodeId);
+      },
+
+      getAnalysis: (): CachedAnalysis => {
+        const { nodes, adjacencyIndex, topologyVersion, mutedNodeIds } = get();
+        if (cachedAnalysis && cachedAnalysis.topologyVersion === topologyVersion) {
+          return cachedAnalysis;
+        }
+        const nodeIds = nodes.map((n) => n.id);
+        const result = graphEngine.computeAnalysis(nodeIds, adjacencyIndex, mutedNodeIds);
+        cachedAnalysis = { ...result, topologyVersion };
+        return cachedAnalysis;
+      },
+
+      wouldCreateCycle: (sourceNodeId: string, targetNodeId: string): boolean => {
+        return graphEngine.wouldCreateCycle(get().adjacencyIndex, sourceNodeId, targetNodeId);
+      },
+
+      getAffectedEntities: (changedNodeIds: string | string[]): string[] => {
+        const { adjacencyIndex, mutedNodeIds } = get();
+        const analysis = get().getAnalysis();
+        return graphEngine.getAffectedEntities(
+          changedNodeIds,
+          adjacencyIndex,
+          analysis.topologicalOrder,
+          mutedNodeIds
+        );
+      },
+
+      getConnectedComponents: (): Map<string, string[]> => {
+        const { nodes, adjacencyIndex } = get();
+        return graphEngine.getConnectedComponents(
+          nodes.map((n) => n.id),
+          adjacencyIndex
+        );
+      },
+
+      areConnected: (nodeA: string, nodeB: string): boolean => {
+        return graphEngine.areConnected(get().adjacencyIndex, nodeA, nodeB);
+      },
+
+      getExecutionOrder: (targetNodeId: string): string[] => {
+        return graphEngine.getExecutionOrder(get().adjacencyIndex, targetNodeId);
+      },
+
+      getReadyEntities: (nodeIds: string[], completed: ReadonlySet<string>): string[] => {
+        return graphEngine.getReadyEntities(nodeIds, get().adjacencyIndex, completed);
+      },
+
+      insertOnEdge: (edgeId: string, newNode: Node): void => {
+        const state = get();
+        const edge = state.edges.find((e) => e.id === edgeId);
+        if (!edge) return;
+
+        const changes = graphEngine.computeInsertOnEdge(
+          edge,
+          newNode,
+          state.nodeMap.get(edge.source),
+          state.nodeMap.get(edge.target)
+        );
+
+        const positionedNode = { ...newNode, position: changes.nodePosition };
+        const nextNodes = [...state.nodes, positionedNode];
+        const nextEdges = state.edges
+          .filter((e) => e.id !== changes.removeEdgeId)
+          .concat(changes.newEdges);
+
+        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        cachedAnalysis = null;
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: state.topologyVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+          ...derived,
+        });
+      },
+
+      bypassEntity: (nodeId: string): void => {
+        const state = get();
+        const changes = graphEngine.computeBypass(nodeId, state.adjacencyIndex);
+
+        const removeEdgeIdSet = new Set(changes.removeEdgeIds);
+        const nextEdges = state.edges
+          .filter((e) => !removeEdgeIdSet.has(e.id))
+          .concat(changes.newEdges);
+        const nextNodes = state.nodes.filter((n) => n.id !== changes.removeNodeId);
+
+        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        cachedAnalysis = null;
+
+        // Update selection
+        const nextSelectedNodeIds = new Set(state.selectedNodeIds);
+        nextSelectedNodeIds.delete(nodeId);
+        const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
+        for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
+
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+          topologyVersion: state.topologyVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges),
+          selectedNodeIds: nextSelectedNodeIds,
+          selectedEdgeIds: nextSelectedEdgeIds,
+          ...derived,
+        });
+      },
+
+      muteEntity: (nodeId: string): void => {
+        const { mutedNodeIds, topologyVersion } = get();
+        if (mutedNodeIds.has(nodeId)) return;
+        const next = new Set(mutedNodeIds);
+        next.add(nodeId);
+        cachedAnalysis = null;
+        set({ mutedNodeIds: next, topologyVersion: topologyVersion + 1 });
+      },
+
+      unmuteEntity: (nodeId: string): void => {
+        const { mutedNodeIds, topologyVersion } = get();
+        if (!mutedNodeIds.has(nodeId)) return;
+        const next = new Set(mutedNodeIds);
+        next.delete(nodeId);
+        cachedAnalysis = null;
+        set({ mutedNodeIds: next, topologyVersion: topologyVersion + 1 });
       },
     }))
   );
