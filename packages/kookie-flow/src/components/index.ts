@@ -1,7 +1,7 @@
 export { KookieFlow } from './kookie-flow';
 export { FlowProvider, useFlowStore, useFlowStoreApi } from './context';
 export { Grid } from './grid';
-export { Nodes } from './nodes';
+export { Entities } from './nodes';
 export { Edges } from './edges';
 export { Sockets } from './sockets';
 export { RerouteNodes } from './reroute-nodes';

@@ -123,12 +123,12 @@ export interface SocketType {
   step?: number;
 }
 
-/** Socket definition on a node */
+/** Socket definition on an entity */
 export interface Socket {
   id: string;
   name: string;
   type: string;
-  /** Position relative to node (0 = top, 1 = bottom) */
+  /** Position relative to entity (0 = top, 1 = bottom) */
   position?: number;
   /** Widget type override (false = disable widget) */
   widget?: WidgetType | false | InlineWidgetComponent;
@@ -147,7 +147,7 @@ export interface Socket {
   /**
    * Layout mode for this socket's widget.
    * - 'inline' (default): Label on left, widget on right
-   * - 'stacked': Label above widget, widget spans full node width
+   * - 'stacked': Label above widget, widget spans full entity width
    */
   layout?: SocketLayoutMode;
   /**
@@ -164,40 +164,47 @@ export interface Socket {
   height?: number;
 }
 
-/** Socket handle for identifying a specific socket on a node */
+/** Socket handle for identifying a specific socket on an entity */
 export interface SocketHandle {
-  nodeId: string;
+  entityId: string;
   socketId: string;
   isInput: boolean;
 }
 
-/** Base node data */
-export interface NodeData {
+/** Entity status for visual feedback */
+export type EntityStatus = 'error' | 'warning' | 'running' | 'success';
+
+/** Base entity data */
+export interface EntityData {
   label?: string;
+  /** Entity status for visual feedback rendering */
+  status?: EntityStatus;
+  /** Human-readable status message */
+  statusMessage?: string;
   [key: string]: unknown;
 }
 
 // ============================================================================
-// Special Node Types (Phase 7C)
+// Special Entity Types
 // ============================================================================
 
-/** Built-in special node types */
-export type BuiltInNodeType = 'group' | 'comment' | 'reroute';
+/** Built-in special entity types */
+export type BuiltInEntityType = 'frame' | 'comment' | 'reroute' | 'draw' | 'text' | 'image' | 'video' | 'mesh';
 
-/** Data for group nodes */
-export interface GroupNodeData extends NodeData {
-  /** Group title shown in header */
+/** Data for frame entities (spatial containers) */
+export interface FrameEntityData extends EntityData {
+  /** Frame title shown in header */
   label?: string;
   /** Optional description shown below title when expanded */
   description?: string;
-  /** Background color for the group frame */
+  /** Background color for the frame */
   backgroundColor?: string;
-  /** Border color for the group frame */
+  /** Border color for the frame */
   borderColor?: string;
 }
 
-/** Data for comment/sticky note nodes */
-export interface CommentNodeData extends NodeData {
+/** Data for comment/sticky note entities */
+export interface CommentEntityData extends EntityData {
   /** Comment text content */
   content: string;
   /** Background color (CSS color). Default: yellow-ish sticky note */
@@ -208,46 +215,123 @@ export interface CommentNodeData extends NodeData {
   fontSize?: number;
 }
 
-/** Data for reroute/waypoint nodes */
-export interface RerouteNodeData extends NodeData {
+/** Data for reroute/waypoint entities */
+export interface RerouteEntityData extends EntityData {
   /** Optional label (rarely used, mostly for debugging) */
   label?: string;
 }
 
-/** Group node type */
-export type GroupNode = Node<GroupNodeData> & {
-  type: 'group';
+/** Data for draw entities (shapes, SVG paths, freeform drawing) */
+export interface DrawEntityData extends EntityData {
+  /** Shapes contained in this draw entity */
+  shapes?: Array<{
+    type: 'rect' | 'ellipse' | 'path' | 'text';
+    /** Shape-specific properties */
+    [key: string]: unknown;
+  }>;
+}
+
+/** Data for text entities (rich text blocks) */
+export interface TextEntityData extends EntityData {
+  /** Text content */
+  content?: string;
+  /** Font size in pixels */
+  fontSize?: number;
+  /** Text color */
+  textColor?: string;
+  /** Text alignment */
+  textAlign?: 'left' | 'center' | 'right';
+}
+
+/** Data for image entities */
+export interface ImageEntityData extends EntityData {
+  /** Image source URL or data URL */
+  src?: string;
+  /** Alt text for accessibility */
+  alt?: string;
+  /** Object fit mode */
+  objectFit?: 'contain' | 'cover' | 'fill';
+}
+
+/** Data for video entities */
+export interface VideoEntityData extends EntityData {
+  /** Video source URL */
+  src?: string;
+  /** Poster frame URL */
+  poster?: string;
+  /** Whether to autoplay */
+  autoplay?: boolean;
+  /** Whether to loop */
+  loop?: boolean;
+}
+
+/** Data for 3D mesh entities */
+export interface MeshEntityData extends EntityData {
+  /** URL to glTF/GLB file */
+  src?: string;
+  /** Camera position for the 3D viewport */
+  cameraPosition?: { x: number; y: number; z: number };
+}
+
+/** Draw entity type */
+export type DrawEntity = Entity<DrawEntityData> & {
+  type: 'draw';
+};
+
+/** Text entity type */
+export type TextEntity = Entity<TextEntityData> & {
+  type: 'text';
+};
+
+/** Image entity type */
+export type ImageEntity = Entity<ImageEntityData> & {
+  type: 'image';
+};
+
+/** Video entity type */
+export type VideoEntity = Entity<VideoEntityData> & {
+  type: 'video';
+};
+
+/** Mesh entity type */
+export type MeshEntity = Entity<MeshEntityData> & {
+  type: 'mesh';
+};
+
+/** Frame entity type (spatial container) */
+export type FrameEntity = Entity<FrameEntityData> & {
+  type: 'frame';
   collapsed?: boolean;
   extent?: 'auto' | 'fixed';
 };
 
-/** Comment node type */
-export type CommentNode = Node<CommentNodeData> & {
+/** Comment entity type */
+export type CommentEntity = Entity<CommentEntityData> & {
   type: 'comment';
 };
 
-/** Reroute node type */
-export type RerouteNode = Node<RerouteNodeData> & {
+/** Reroute entity type */
+export type RerouteEntity = Entity<RerouteEntityData> & {
   type: 'reroute';
 };
 
-/** Helper type guard for group nodes */
-export function isGroupNode(node: Node): node is GroupNode {
-  return node.type === 'group';
+/** Helper type guard for frame entities */
+export function isFrameEntity(entity: Entity): entity is FrameEntity {
+  return entity.type === 'frame';
 }
 
-/** Helper type guard for comment nodes */
-export function isCommentNode(node: Node): node is CommentNode {
-  return node.type === 'comment';
+/** Helper type guard for comment entities */
+export function isCommentEntity(entity: Entity): entity is CommentEntity {
+  return entity.type === 'comment';
 }
 
-/** Helper type guard for reroute nodes */
-export function isRerouteNode(node: Node): node is RerouteNode {
-  return node.type === 'reroute';
+/** Helper type guard for reroute entities */
+export function isRerouteEntity(entity: Entity): entity is RerouteEntity {
+  return entity.type === 'reroute';
 }
 
-/** Node in the graph */
-export interface Node<T extends NodeData = NodeData> {
+/** Entity in the graph */
+export interface Entity<T extends EntityData = EntityData> {
   id: string;
   type: string;
   position: XYPosition;
@@ -258,32 +342,32 @@ export interface Node<T extends NodeData = NodeData> {
   dragging?: boolean;
   inputs?: Socket[];
   outputs?: Socket[];
-  /** Per-node accent color override (matches Kookie UI accent colors) */
+  /** Per-entity accent color override (matches Kookie UI accent colors) */
   color?: AccentColor;
 
   // ============================================================================
-  // Grouping (Phase 7C)
+  // Grouping / Hierarchy
   // ============================================================================
 
   /**
-   * Parent group node ID. When set, this node is a child of the group.
-   * Child nodes move with their parent and are hidden when the group is collapsed.
+   * Parent frame entity ID. When set, this entity is a child of the frame.
+   * Child entities move with their parent and are hidden when the frame is collapsed.
    */
   parentId?: string;
   /**
-   * Whether this group node is collapsed (only applies to group nodes).
-   * When collapsed, child nodes are hidden and edges are rerouted through the group.
+   * Whether this frame entity is collapsed (only applies to frame entities).
+   * When collapsed, child entities are hidden and edges are rerouted through the frame.
    */
   collapsed?: boolean;
   /**
-   * Extent mode for group nodes. Determines if the group auto-sizes to fit children.
-   * - 'auto': Group resizes to fit children with padding (default)
-   * - 'fixed': Group uses explicit width/height
+   * Extent mode for frame entities. Determines if the frame auto-sizes to fit children.
+   * - 'auto': Frame resizes to fit children with padding (default)
+   * - 'fixed': Frame uses explicit width/height
    */
   extent?: 'auto' | 'fixed';
 }
 
-/** Edge connecting two nodes */
+/** Edge connecting two entities */
 export interface Edge {
   id: string;
   source: string;
@@ -308,7 +392,7 @@ export interface Edge {
   // ============================================================================
 
   /**
-   * IDs of reroute nodes that this edge passes through.
+   * IDs of reroute entities that this edge passes through.
    * Edge is rendered as segments: source → reroute1 → reroute2 → ... → target
    * Order matters - first reroute is closest to source.
    */
@@ -344,7 +428,7 @@ export type IsValidConnectionFn = (
 
 /** Parameters passed to onConnectStart callback */
 export interface OnConnectStartParams {
-  nodeId: string;
+  entityId: string;
   socketId: string;
   isInput: boolean;
 }
@@ -355,7 +439,7 @@ export interface ConnectionEndState {
   isValid: boolean;
   /** The socket where the drag originated */
   source: {
-    nodeId: string;
+    entityId: string;
     socketId: string;
     isInput: boolean;
   };
@@ -363,12 +447,12 @@ export interface ConnectionEndState {
   position: XYPosition;
 }
 
-/** Node change event */
-export type NodeChange =
+/** Entity change event */
+export type EntityChange =
   | { type: 'position'; id: string; position: XYPosition }
   | { type: 'select'; id: string; selected: boolean }
   | { type: 'remove'; id: string }
-  | { type: 'add'; node: Node }
+  | { type: 'add'; entity: Entity }
   | { type: 'dimensions'; id: string; dimensions: Dimensions }
   | { type: 'collapse'; id: string; collapsed: boolean }
   | { type: 'parent'; id: string; parentId: string | null };
@@ -379,9 +463,9 @@ export type EdgeChange =
   | { type: 'remove'; id: string }
   | { type: 'add'; edge: Edge };
 
-/** Node type definition for custom rendering */
-export interface NodeTypeDefinition<T extends NodeData = NodeData> {
-  /** Node type identifier */
+/** Entity type definition for custom rendering */
+export interface EntityTypeDefinition<T extends EntityData = EntityData> {
+  /** Entity type identifier */
   type: string;
   /** Display label */
   label?: string;
@@ -398,11 +482,11 @@ export interface NodeTypeDefinition<T extends NodeData = NodeData> {
     source?: string;
   };
   /** Custom React component for hybrid mode */
-  component?: React.ComponentType<NodeComponentProps<T>>;
+  component?: React.ComponentType<EntityComponentProps<T>>;
 }
 
-/** Props passed to custom node components */
-export interface NodeComponentProps<T extends NodeData = NodeData> {
+/** Props passed to custom entity components */
+export interface EntityComponentProps<T extends EntityData = EntityData> {
   id: string;
   data: T;
   selected: boolean;
@@ -410,10 +494,10 @@ export interface NodeComponentProps<T extends NodeData = NodeData> {
 }
 
 /** Options for cloning elements */
-export interface CloneElementsOptions<T extends NodeData = NodeData> {
-  /** Offset to apply to cloned node positions */
+export interface CloneElementsOptions<T extends EntityData = EntityData> {
+  /** Offset to apply to cloned entity positions */
   offset?: XYPosition;
-  /** Transform function for node data (for app-specific transformations) */
+  /** Transform function for entity data (for app-specific transformations) */
   transformData?: (data: T) => T;
   /** Custom ID generation function */
   generateId?: () => string;
@@ -427,9 +511,9 @@ export interface CloneElementsOptions<T extends NodeData = NodeData> {
 
 /** Result of cloning elements */
 export interface CloneElementsResult {
-  /** Cloned nodes with new IDs */
-  nodes: Node[];
-  /** Cloned edges with new IDs and remapped node references */
+  /** Cloned entities with new IDs */
+  entities: Entity[];
+  /** Cloned edges with new IDs and remapped entity references */
   edges: Edge[];
   /** Map from old ID to new ID */
   idMap: Map<string, string>;
@@ -437,39 +521,39 @@ export interface CloneElementsResult {
 
 /** Elements batch (for add/delete operations) */
 export interface ElementsBatch {
-  nodes?: Node[];
+  entities?: Entity[];
   edges?: Edge[];
 }
 
 /** Delete elements batch (by ID) */
 export interface DeleteElementsBatch {
-  nodeIds?: string[];
+  entityIds?: string[];
   edgeIds?: string[];
 }
 
 /** Serialized flow state */
 export interface FlowObject {
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
   viewport: Viewport;
 }
 
 /** Internal clipboard state */
 export interface InternalClipboard {
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
 }
 
 /** Options for pasting from internal clipboard */
-export interface PasteFromInternalOptions<T extends NodeData = NodeData> {
-  /** Offset to apply to pasted node positions. Default: { x: 50, y: 50 } */
+export interface PasteFromInternalOptions<T extends EntityData = EntityData> {
+  /** Offset to apply to pasted entity positions. Default: { x: 50, y: 50 } */
   offset?: XYPosition;
-  /** Transform function for node data (for app-specific transformations) */
+  /** Transform function for entity data (for app-specific transformations) */
   transformData?: (data: T) => T;
   /**
    * Preserve external connections when pasting.
-   * When true, edges connecting to non-copied nodes will be recreated,
-   * connecting the pasted nodes to the original external nodes.
+   * When true, edges connecting to non-copied entities will be recreated,
+   * connecting the pasted entities to the original external entities.
    * Default: false (only internal edges are pasted)
    */
   preserveExternalConnections?: boolean;
@@ -512,16 +596,16 @@ export interface FontConfig {
 // Styling Types (Milestone 2)
 // ============================================================================
 
-/** Node size scale (matches Kookie UI Card) */
-export type NodeSize = '1' | '2' | '3' | '4' | '5';
+/** Entity size scale (matches Kookie UI Card) */
+export type EntitySize = '1' | '2' | '3' | '4' | '5';
 
-/** Node visual variant (matches Kookie UI Card) */
-export type NodeVariant = 'surface' | 'outline' | 'soft' | 'classic' | 'ghost';
+/** Entity visual variant (matches Kookie UI Card) */
+export type EntityVariant = 'surface' | 'outline' | 'soft' | 'classic' | 'ghost';
 
-/** Node border radius style */
-export type NodeRadius = 'none' | 'small' | 'medium' | 'large' | 'full';
+/** Entity border radius style */
+export type EntityRadius = 'none' | 'small' | 'medium' | 'large' | 'full';
 
-/** Header position relative to node body */
+/** Header position relative to entity body */
 export type HeaderPosition = 'none' | 'inside' | 'outside';
 
 /** 26 Kookie UI accent colors */
@@ -553,8 +637,8 @@ export type AccentColor =
   | 'mint'
   | 'sky';
 
-/** Style overrides for nodes (fine-grained control) */
-export interface NodeStyleOverrides {
+/** Style overrides for entities (fine-grained control) */
+export interface EntityStyleOverrides {
   /** Background color (CSS color, converted to RGB for WebGL) */
   background?: string;
   /** Border color (CSS color) */
@@ -580,10 +664,10 @@ export interface MinimapProps {
   height?: number;
   /** Background color. Default: from THEME_COLORS.minimap.background with 0.9 alpha */
   backgroundColor?: string;
-  /** Node color (or function for per-node color). Default: from THEME_COLORS.minimap.node */
-  nodeColor?: string | ((node: Node) => string);
-  /** Selected node color. Default: from THEME_COLORS.minimap.nodeSelected */
-  selectedNodeColor?: string;
+  /** Entity color (or function for per-entity color). Default: from THEME_COLORS.minimap.entity */
+  entityColor?: string | ((entity: Entity) => string);
+  /** Selected entity color. Default: from THEME_COLORS.minimap.nodeSelected */
+  selectedEntityColor?: string;
   /** Viewport indicator fill color. Default: from THEME_COLORS.minimap.viewport with 0.3 alpha */
   viewportColor?: string;
   /** Viewport indicator border color. Default: from THEME_COLORS.minimap.viewportBorder */
@@ -594,7 +678,7 @@ export interface MinimapProps {
   interactive?: boolean;
   /**
    * Whether the minimap zooms with the main canvas.
-   * - false (default): Shows all nodes at fixed scale, viewport indicator resizes
+   * - false (default): Shows all entities at fixed scale, viewport indicator resizes
    * - true: Minimap zooms with main canvas, viewport indicator stays fixed size
    */
   zoomable?: boolean;
@@ -604,16 +688,16 @@ export interface MinimapProps {
 
 /** KookieFlow component props */
 export interface KookieFlowProps {
-  /** Nodes in the graph */
-  nodes: Node[];
-  /** Edges connecting nodes */
+  /** Entities in the graph */
+  entities: Entity[];
+  /** Edges connecting entities */
   edges: Edge[];
-  /** Node type definitions */
-  nodeTypes?: Record<string, NodeTypeDefinition>;
+  /** Entity type definitions */
+  entityTypes?: Record<string, EntityTypeDefinition>;
   /** Socket type definitions */
   socketTypes?: Record<string, SocketType>;
-  /** Callback when nodes change */
-  onNodesChange?: (changes: NodeChange[]) => void;
+  /** Callback when entities change */
+  onEntitiesChange?: (changes: EntityChange[]) => void;
   /** Callback when edges change */
   onEdgesChange?: (changes: EdgeChange[]) => void;
   /** Callback when a connection is made */
@@ -622,8 +706,8 @@ export interface KookieFlowProps {
   onConnectStart?: (event: PointerEvent, params: OnConnectStartParams) => void;
   /** Callback when a connection drag ends (regardless of success) */
   onConnectEnd?: (event: PointerEvent, state: ConnectionEndState) => void;
-  /** Callback when a node is clicked */
-  onNodeClick?: (node: Node) => void;
+  /** Callback when an entity is clicked */
+  onEntityClick?: (entity: Entity) => void;
   /** Callback when an edge is clicked */
   onEdgeClick?: (edge: Edge) => void;
   /** Callback when empty space is clicked */
@@ -690,18 +774,18 @@ export interface KookieFlowProps {
   // Styling Props (Milestone 2 - matches Kookie UI Card)
   // ============================================================================
 
-  /** Node size scale. Default: '2' */
-  size?: NodeSize;
-  /** Node visual variant. Default: 'surface' */
-  variant?: NodeVariant;
-  /** Node border radius style. Default: 'medium' */
-  radius?: NodeRadius;
+  /** Entity size scale. Default: '2' */
+  size?: EntitySize;
+  /** Entity visual variant. Default: 'surface' */
+  variant?: EntityVariant;
+  /** Entity border radius style. Default: 'medium' */
+  radius?: EntityRadius;
   /** Header position. Default: 'none' */
   header?: HeaderPosition;
   /** Tint header with accent color. Default: false */
   accentHeader?: boolean;
   /** Fine-grained style overrides */
-  nodeStyle?: Partial<NodeStyleOverrides>;
+  entityStyle?: Partial<EntityStyleOverrides>;
 
   // ============================================================================
   // Widget Props (Phase 7D)
@@ -710,17 +794,17 @@ export interface KookieFlowProps {
   /** Custom widget components (keyed by widget type name) */
   widgetTypes?: Record<string, React.ComponentType<WidgetProps>>;
   /** Callback when a widget value changes */
-  onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
+  onWidgetChange?: (entityId: string, socketId: string, value: unknown) => void;
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
-  /** Default node width when node.width is not specified. Default: 240 */
-  defaultNodeWidth?: number;
+  /** Default entity width when entity.width is not specified. Default: 240 */
+  defaultEntityWidth?: number;
   /** Width reserved for socket labels before widget starts. Default: 96 */
   socketLabelWidth?: number;
   /**
-   * Kookie UI Theme component for per-node accent color support.
+   * Kookie UI Theme component for per-entity accent color support.
    * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
-   * When provided, widgets on nodes with `color` prop will use that accent color.
+   * When provided, widgets on entities with `color` prop will use that accent color.
    *
    * @example
    * ```tsx
@@ -743,21 +827,21 @@ export interface KookieFlowProps {
 export interface FitViewOptions {
   /** Padding around the content in pixels. Default: 50 */
   padding?: number;
-  /** Whether to include hidden nodes in the bounds calculation. Default: true */
-  includeHiddenNodes?: boolean;
+  /** Whether to include hidden entities in the bounds calculation. Default: true */
+  includeHiddenEntities?: boolean;
   /** Minimum zoom level for the fit. Default: uses component's minZoom */
   minZoom?: number;
   /** Maximum zoom level for the fit. Default: 1 (won't zoom in past 100%) */
   maxZoom?: number;
-  /** Specific nodes to fit (by ID). If not provided, fits all nodes. */
-  nodes?: string[];
+  /** Specific entities to fit (by ID). If not provided, fits all entities. */
+  entities?: string[];
   /** Animation duration in ms. 0 = instant. Default: 0 */
   duration?: number;
 }
 
 /** Imperative handle exposed via ref */
 export interface KookieFlowInstance {
-  /** Fit the viewport to show all nodes (or specific nodes) */
+  /** Fit the viewport to show all entities (or specific entities) */
   fitView: (options?: FitViewOptions) => void;
   /** Get the current viewport */
   getViewport: () => Viewport;
@@ -767,25 +851,25 @@ export interface KookieFlowInstance {
   zoomIn: (step?: number) => void;
   /** Zoom out by a step */
   zoomOut: (step?: number) => void;
-  /** Get all nodes */
-  getNodes: () => Node[];
+  /** Get all entities */
+  getEntities: () => Entity[];
   /** Get all edges */
   getEdges: () => Edge[];
-  /** Get currently selected nodes */
-  getSelectedNodes: () => Node[];
+  /** Get currently selected entities */
+  getSelectedEntities: () => Entity[];
   /** Get currently selected edges */
   getSelectedEdges: () => Edge[];
   /** Center the viewport on a specific position */
   setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
 
   // ============================================================================
-  // Grouping API (Phase 7C)
+  // Grouping API
   // ============================================================================
 
-  /** Get all child nodes of a group (non-recursive) */
-  getGroupChildren: (groupId: string) => Node[];
-  /** Get all descendant nodes of a group (recursive) */
-  getGroupDescendants: (groupId: string) => Node[];
+  /** Get all child entities of a group (non-recursive) */
+  getGroupChildren: (groupId: string) => Entity[];
+  /** Get all descendant entities of a group (recursive) */
+  getGroupDescendants: (groupId: string) => Entity[];
   /** Toggle a group's collapsed state */
   toggleGroupCollapse: (groupId: string) => void;
   /** Expand a collapsed group */

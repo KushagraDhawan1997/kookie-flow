@@ -6,10 +6,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
-  DEFAULT_NODE_WIDTH,
+  DEFAULT_ENTITY_WIDTH,
   SOCKET_RADIUS,
 } from '../core/constants';
-import { getNodeSocketLayout } from '../utils/socket-layout-cache';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
@@ -214,8 +214,8 @@ export function Sockets({
 
   // Store subscriptions
   useEffect(() => {
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
       () => {
         dirtyRef.current = true;
       }
@@ -264,7 +264,7 @@ export function Sockets({
     }
 
     return () => {
-      unsubNodes();
+      unsubEntities();
       unsubHoveredSocket();
       unsubConnectionDraft();
       unsubEdges();
@@ -285,7 +285,7 @@ export function Sockets({
 
     if (!dirtyRef.current) return;
 
-    const { nodes, nodeMap, hoveredSocketId, connectionDraft } =
+    const { entities, entityMap, hoveredSocketId, connectionDraft } =
       store.getState();
 
     // Use cached connected sockets Set (rebuilt only when edges change)
@@ -294,17 +294,17 @@ export function Sockets({
     // Get source socket type with caching (O(1) after first lookup per connection draft)
     let sourceSocketType: string | null = null;
     if (connectionDraft) {
-      const cacheKey = `${connectionDraft.source.nodeId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+      const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
       if (sourceSocketCacheRef.current?.key === cacheKey) {
         // Cache hit - O(1)
         sourceSocketType = sourceSocketCacheRef.current.type;
       } else {
         // Cache miss - O(n) but only once per connection draft
-        const sourceNode = nodeMap.get(connectionDraft.source.nodeId);
-        if (sourceNode) {
+        const sourceEntity = entityMap.get(connectionDraft.source.entityId);
+        if (sourceEntity) {
           const sourceSockets = connectionDraft.source.isInput
-            ? sourceNode.inputs
-            : sourceNode.outputs;
+            ? sourceEntity.inputs
+            : sourceEntity.outputs;
           const sourceSocket = sourceSockets?.find(
             (s) => s.id === connectionDraft.source.socketId
           );
@@ -324,20 +324,20 @@ export function Sockets({
 
     let visibleCount = 0;
 
-    for (const node of nodes) {
-      const width = node.width ?? DEFAULT_NODE_WIDTH;
+    for (const entity of entities) {
+      const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
       // Get cached socket layout (supports variable heights)
-      const nodeLayout = getNodeSocketLayout(node, socketLayout);
-      const height = node.height ?? nodeLayout.computedHeight;
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      const height = entity.height ?? entityLayout.computedHeight;
 
       // Render input sockets (after outputs in layout order)
-      if (node.inputs) {
-        for (let i = 0; i < node.inputs.length; i++) {
+      if (entity.inputs) {
+        for (let i = 0; i < entity.inputs.length; i++) {
           if (visibleCount >= capacity) break;
 
-          const socket = node.inputs[i];
+          const socket = entity.inputs[i];
           // Use cached position (supports variable row heights and stacked layouts)
-          const cachedPos = nodeLayout.inputs[i];
+          const cachedPos = entityLayout.inputs[i];
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
@@ -346,8 +346,8 @@ export function Sockets({
           // Position matrix
           tempMatrix.identity();
           tempMatrix.setPosition(
-            node.position.x,
-            -(node.position.y + yOffset), // Negate Y for WebGL
+            entity.position.x,
+            -(entity.position.y + yOffset), // Negate Y for WebGL
             0.5 // Above edges
           );
           mesh.setMatrixAt(visibleCount, tempMatrix);
@@ -362,13 +362,13 @@ export function Sockets({
 
           // Hovered state
           const isHovered =
-            hoveredSocketId?.nodeId === node.id &&
+            hoveredSocketId?.entityId === entity.id &&
             hoveredSocketId?.socketId === socket.id &&
             hoveredSocketId?.isInput === true;
           buffers.hovered[visibleCount] = isHovered ? 1.0 : 0.0;
 
           // Connected state
-          const socketKey = `${node.id}:${socket.id}:input`;
+          const socketKey = `${entity.id}:${socket.id}:input`;
           buffers.connected[visibleCount] = connectedSockets.has(socketKey)
             ? 1.0
             : 0.0;
@@ -377,8 +377,8 @@ export function Sockets({
           // Fast path: use cached sourceSocketType and areTypesCompatible
           let isValidTarget = 0.0;
           if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
-            // Must connect output to input (not same node)
-            const isStructurallyValid = connectionDraft.source.nodeId !== node.id;
+            // Must connect output to input (not same entity)
+            const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
             const isTypeCompatible = areTypesCompatible(
               sourceSocketType,
               socket.type,
@@ -399,13 +399,13 @@ export function Sockets({
       }
 
       // Render output sockets (first in layout order)
-      if (node.outputs) {
-        for (let i = 0; i < node.outputs.length; i++) {
+      if (entity.outputs) {
+        for (let i = 0; i < entity.outputs.length; i++) {
           if (visibleCount >= capacity) break;
 
-          const socket = node.outputs[i];
+          const socket = entity.outputs[i];
           // Use cached position (supports variable row heights and stacked layouts)
-          const cachedPos = nodeLayout.outputs[i];
+          const cachedPos = entityLayout.outputs[i];
           const yOffset =
             socket.position !== undefined
               ? socket.position * height
@@ -413,8 +413,8 @@ export function Sockets({
 
           tempMatrix.identity();
           tempMatrix.setPosition(
-            node.position.x + width,
-            -(node.position.y + yOffset),
+            entity.position.x + width,
+            -(entity.position.y + yOffset),
             0.5
           );
           mesh.setMatrixAt(visibleCount, tempMatrix);
@@ -427,12 +427,12 @@ export function Sockets({
           buffers.colors[visibleCount * 3 + 2] = tempColor.b;
 
           const isHovered =
-            hoveredSocketId?.nodeId === node.id &&
+            hoveredSocketId?.entityId === entity.id &&
             hoveredSocketId?.socketId === socket.id &&
             hoveredSocketId?.isInput === false;
           buffers.hovered[visibleCount] = isHovered ? 1.0 : 0.0;
 
-          const socketKey = `${node.id}:${socket.id}:output`;
+          const socketKey = `${entity.id}:${socket.id}:output`;
           buffers.connected[visibleCount] = connectedSockets.has(socketKey)
             ? 1.0
             : 0.0;
@@ -441,8 +441,8 @@ export function Sockets({
           // Fast path: use cached sourceSocketType and areTypesCompatible
           let isValidTarget = 0.0;
           if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
-            // Must connect input to output (not same node)
-            const isStructurallyValid = connectionDraft.source.nodeId !== node.id;
+            // Must connect input to output (not same entity)
+            const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
             const isTypeCompatible = areTypesCompatible(
               sourceSocketType,
               socket.type,

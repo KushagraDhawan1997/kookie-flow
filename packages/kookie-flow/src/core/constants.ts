@@ -1,9 +1,9 @@
-/** Default node dimensions */
-export const DEFAULT_NODE_WIDTH = 240;
+/** Default entity dimensions */
+export const DEFAULT_ENTITY_WIDTH = 240;
 
 /** Widget layout: space reserved for socket label before widget starts */
 export const SOCKET_LABEL_WIDTH = 96;
-export const DEFAULT_NODE_HEIGHT = 100;
+export const DEFAULT_ENTITY_HEIGHT = 100;
 
 /** Default viewport */
 export const DEFAULT_VIEWPORT = {

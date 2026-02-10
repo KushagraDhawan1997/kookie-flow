@@ -4,9 +4,27 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
-import { getNodeSocketLayout } from '../utils/socket-layout-cache';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
-import { DEFAULT_NODE_WIDTH } from '../core/constants';
+import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
+import type { EntityStatus } from '../types';
+
+// Status enum encoding for GPU (matches aStatus attribute)
+const STATUS_NONE = 0;
+const STATUS_ERROR = 1;
+const STATUS_WARNING = 2;
+const STATUS_RUNNING = 3;
+const STATUS_SUCCESS = 4;
+
+function encodeStatus(status: EntityStatus | undefined): number {
+  switch (status) {
+    case 'error': return STATUS_ERROR;
+    case 'warning': return STATUS_WARNING;
+    case 'running': return STATUS_RUNNING;
+    case 'success': return STATUS_SUCCESS;
+    default: return STATUS_NONE;
+  }
+}
 
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
@@ -16,24 +34,24 @@ const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 256;
 
 /**
- * High-performance instanced mesh renderer for nodes.
+ * High-performance instanced mesh renderer for entities.
  * Key optimizations:
  * - Pre-allocated, reusable buffers (no GC pressure)
  * - Direct GPU buffer updates (bypasses React)
  * - Viewport frustum culling
  * - Dirty flag to skip unnecessary updates
  */
-export function Nodes() {
+export function Entities() {
   const store = useFlowStoreApi();
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const resolvedStyle = useResolvedStyle();
   const socketLayout = useSocketLayout();
   const tokens = useTheme();
 
-  // Get initial node count for capacity
+  // Get initial entity count for capacity
   const [capacity, setCapacity] = useState(() => {
-    const initialNodes = store.getState().nodes;
-    return Math.max(MIN_CAPACITY, Math.ceil(initialNodes.length * BUFFER_GROWTH_FACTOR));
+    const initialEntities = store.getState().entities;
+    return Math.max(MIN_CAPACITY, Math.ceil(initialEntities.length * BUFFER_GROWTH_FACTOR));
   });
 
   // Dirty flag for updates
@@ -64,12 +82,19 @@ export function Nodes() {
         uShadowBlur: { value: resolvedStyle.shadowBlur },
         uShadowOffsetY: { value: resolvedStyle.shadowOffsetY },
         uShadowOpacity: { value: resolvedStyle.shadowOpacity },
+        // Status rendering
+        uTime: { value: 0 },
+        uStatusErrorColor: { value: new THREE.Color(0.93, 0.28, 0.26) },   // red-9
+        uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },   // amber-9
+        uStatusRunningColor: { value: new THREE.Color(0.39, 0.40, 0.96) },  // indigo-9 (accent)
+        uStatusSuccessColor: { value: new THREE.Color(0.30, 0.75, 0.39) },  // green-9
       },
       vertexShader: /* glsl */ `
         attribute float aSelected;
         attribute float aHovered;
         attribute vec2 aSize;
-        attribute vec3 aAccentColor; // Per-node accent color override (-1 = use global)
+        attribute vec3 aAccentColor; // Per-entity accent color override (-1 = use global)
+        attribute float aStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
 
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
@@ -80,6 +105,7 @@ export function Nodes() {
         varying vec2 vSize;
         varying vec2 vExpandedSize;
         varying vec3 vAccentColor;
+        varying float vStatus;
 
         void main() {
           vUv = uv;
@@ -87,6 +113,7 @@ export function Nodes() {
           vHovered = aHovered;
           vSize = aSize;
           vAccentColor = aAccentColor;
+          vStatus = aStatus;
 
           // Expand geometry to include shadow padding
           float shadowPadding = uShadowBlur + abs(uShadowOffsetY);
@@ -120,13 +147,20 @@ export function Nodes() {
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
         uniform float uShadowOpacity;
+        // Status uniforms
+        uniform float uTime;
+        uniform vec3 uStatusErrorColor;
+        uniform vec3 uStatusWarningColor;
+        uniform vec3 uStatusRunningColor;
+        uniform vec3 uStatusSuccessColor;
 
         varying vec2 vUv;
         varying float vSelected;
         varying float vHovered;
         varying vec2 vSize;
         varying vec2 vExpandedSize;
-        varying vec3 vAccentColor; // Per-node accent color override (-1 = use global)
+        varying vec3 vAccentColor; // Per-entity accent color override (-1 = use global)
+        varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
 
         float roundedBoxSDF(vec2 p, vec2 b, float r) {
           vec2 q = abs(p) - b + r;
@@ -134,7 +168,7 @@ export function Nodes() {
         }
 
         void main() {
-          // Map UV to expanded coordinate space, then use node size for SDF
+          // Map UV to expanded coordinate space, then use entity size for SDF
           vec2 p = (vUv - 0.5) * vExpandedSize;
           vec2 b = vSize * 0.5;
 
@@ -161,14 +195,14 @@ export function Nodes() {
             vSelected
           );
 
-          // Resolve header color: per-node override if r >= 0, else global uniform
-          // For per-node colors, create a subtle tint by mixing with background (like --accent-3)
+          // Resolve header color: per-entity override if r >= 0, else global uniform
+          // For per-entity colors, create a subtle tint by mixing with background (like --accent-3)
           // Global uHeaderColor is already a subtle tint (--accent-3 or --gray-3)
           vec3 resolvedHeaderColor = vAccentColor.r < 0.0
             ? uHeaderColor
             : mix(bgColor, vAccentColor, 0.15); // 15% tint to match subtle -3 variants
 
-          // Header region check (top of node) - only for "inside" mode (1.0)
+          // Header region check (top of entity) - only for "inside" mode (1.0)
           // "outside" mode (2.0) has no colored header - just floating text above
           if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
             float halfHeight = b.y;
@@ -178,7 +212,7 @@ export function Nodes() {
             bgColor = mix(bgColor, resolvedHeaderColor, headerMask);
           }
 
-          // Resolve selected border color: per-node override if r >= 0, else global uniform
+          // Resolve selected border color: per-entity override if r >= 0, else global uniform
           vec3 resolvedSelectedBorderColor = vAccentColor.r < 0.0 ? uSelectedBorderColor : vAccentColor;
 
           // Border: selected > hovered > default
@@ -188,11 +222,35 @@ export function Nodes() {
             vSelected
           );
 
+          // Status border override (takes priority over selection/hover)
+          float statusBorderWidth = uBorderWidth;
+          if (vStatus > 0.5) {
+            vec3 statusColor = uBorderColor;
+            if (vStatus < 1.5) {
+              // Error: solid red border
+              statusColor = uStatusErrorColor;
+            } else if (vStatus < 2.5) {
+              // Warning: solid amber border
+              statusColor = uStatusWarningColor;
+            } else if (vStatus < 3.5) {
+              // Running: pulsing accent border (sine wave 0.4–1.0 opacity)
+              float pulse = 0.7 + 0.3 * sin(uTime * 3.0);
+              statusColor = mix(uBorderColor, uStatusRunningColor, pulse);
+            } else {
+              // Success: green flash that fades out (uses fract of time as progress)
+              // The CPU side encodes a countdown in the status; here we just show green
+              float flash = 0.7 + 0.3 * sin(uTime * 4.0);
+              statusColor = mix(uBorderColor, uStatusSuccessColor, flash);
+            }
+            borderColor = statusColor;
+            statusBorderWidth = uBorderWidth + 0.5; // Slightly thicker for visibility
+          }
+
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
 
           // Border calculation
-          float borderD = d + uBorderWidth;
+          float borderD = d + statusBorderWidth;
           float borderMask = smoothstep(-aa, aa, borderD) - smoothstep(-aa, aa, d);
 
           // Background fill (respects backgroundAlpha for ghost/outline variants)
@@ -231,11 +289,13 @@ export function Nodes() {
     selected: new Float32Array(capacity),
     hovered: new Float32Array(capacity),
     sizes: new Float32Array(capacity * 2),
-    accentColor: new Float32Array(capacity * 3), // Per-node accent color (RGB)
+    accentColor: new Float32Array(capacity * 3), // Per-entity accent color (RGB)
+    status: new Float32Array(capacity), // Per-entity status (0=none, 1=error, 2=warning, 3=running, 4=success)
     selectedAttr: null as THREE.InstancedBufferAttribute | null,
     hoveredAttr: null as THREE.InstancedBufferAttribute | null,
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
     accentColorAttr: null as THREE.InstancedBufferAttribute | null,
+    statusAttr: null as THREE.InstancedBufferAttribute | null,
   }), [capacity]);
 
   // Reset initialized flag when buffers change (mesh will be recreated due to key change)
@@ -259,11 +319,14 @@ export function Nodes() {
     buffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.accentColorAttr = new THREE.InstancedBufferAttribute(buffers.accentColor, 3);
     buffers.accentColorAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.statusAttr = new THREE.InstancedBufferAttribute(buffers.status, 1);
+    buffers.statusAttr.setUsage(THREE.DynamicDrawUsage);
 
     mesh.geometry.setAttribute('aSelected', buffers.selectedAttr);
     mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
     mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
     mesh.geometry.setAttribute('aAccentColor', buffers.accentColorAttr);
+    mesh.geometry.setAttribute('aStatus', buffers.statusAttr);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     initializedRef.current = true;
@@ -272,13 +335,13 @@ export function Nodes() {
 
   // Subscribe to store changes
   useEffect(() => {
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      (nodes) => {
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (entities) => {
         dirtyRef.current = true;
         // Check if we need more capacity
-        if (nodes.length > capacity) {
-          setCapacity(Math.ceil(nodes.length * BUFFER_GROWTH_FACTOR));
+        if (entities.length > capacity) {
+          setCapacity(Math.ceil(entities.length * BUFFER_GROWTH_FACTOR));
         }
       }
     );
@@ -287,21 +350,21 @@ export function Nodes() {
       () => { dirtyRef.current = true; }
     );
     const unsubHovered = store.subscribe(
-      (state) => state.hoveredNodeId,
+      (state) => state.hoveredEntityId,
       () => { dirtyRef.current = true; }
     );
     const unsubSelection = store.subscribe(
-      (state) => state.selectedNodeIds,
+      (state) => state.selectedEntityIds,
       () => { dirtyRef.current = true; }
     );
-    // Subscribe to hidden node changes (Phase 7C) - O(1) lookup in hot path
+    // Subscribe to hidden entity changes (Phase 7C) - O(1) lookup in hot path
     const unsubHidden = store.subscribe(
-      (state) => state.hiddenNodeIds,
+      (state) => state.hiddenEntityIds,
       () => { dirtyRef.current = true; }
     );
 
     return () => {
-      unsubNodes();
+      unsubEntities();
       unsubViewport();
       unsubHovered();
       unsubSelection();
@@ -309,14 +372,24 @@ export function Nodes() {
     };
   }, [store, capacity]);
 
+  // Track whether any entity has an animated status (running/success)
+  const hasAnimatedStatusRef = useRef(false);
+
   // Use R3F's useFrame for RAF-synchronized updates
-  useFrame(({ size }) => {
+  useFrame(({ size, clock }) => {
     const mesh = meshRef.current;
 
-    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+    if (!mesh || !initializedRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId, selectedNodeIds, hiddenNodeIds } = store.getState();
-    if (nodes.length === 0) {
+    // Always update time uniform for animated statuses
+    if (hasAnimatedStatusRef.current) {
+      (material.uniforms.uTime as { value: number }).value = clock.elapsedTime;
+    }
+
+    if (!dirtyRef.current) return;
+
+    const { entities, viewport, hoveredEntityId, selectedEntityIds, hiddenEntityIds } = store.getState();
+    if (entities.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
       return;
@@ -329,63 +402,66 @@ export function Nodes() {
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
 
-    // Padding for nodes partially in view
+    // Padding for entities partially in view
     const cullPadding = 300;
 
     let visibleCount = 0;
     const maxVisible = capacity;
 
-    for (let i = 0; i < nodes.length && visibleCount < maxVisible; i++) {
-      const node = nodes[i];
+    for (let i = 0; i < entities.length && visibleCount < maxVisible; i++) {
+      const entity = entities[i];
 
-      // Skip special node types (handled by separate renderers)
-      if (node.type === 'comment' || node.type === 'reroute') {
+      // Skip special entity types (handled by separate renderers)
+      if (entity.type === 'comment' || entity.type === 'reroute') {
         continue;
       }
 
-      // Skip nodes inside collapsed groups (Phase 7C) - O(1) lookup
-      if (hiddenNodeIds.has(node.id)) {
+      // Skip entities inside collapsed frames (Phase 7C) - O(1) lookup
+      if (hiddenEntityIds.has(entity.id)) {
         continue;
       }
 
-      const width = node.width ?? DEFAULT_NODE_WIDTH;
+      const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
       // Calculate height from cached socket layout (supports variable heights)
-      const nodeLayout = getNodeSocketLayout(node, socketLayout);
-      const height = node.height ?? nodeLayout.computedHeight;
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      const height = entity.height ?? entityLayout.computedHeight;
 
-      // Frustum culling - skip nodes outside viewport
-      const nodeRight = node.position.x + width;
-      const nodeBottom = node.position.y + height;
+      // Frustum culling - skip entities outside viewport
+      const entityRight = entity.position.x + width;
+      const entityBottom = entity.position.y + height;
 
       if (
-        nodeRight < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        nodeBottom < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
+        entityRight < viewLeft - cullPadding ||
+        entity.position.x > viewRight + cullPadding ||
+        entityBottom < viewTop - cullPadding ||
+        entity.position.y > viewBottom + cullPadding
       ) {
-        continue; // Skip this node - not visible
+        continue; // Skip this entity - not visible
       }
 
-      // Update matrix for visible node
+      // Update matrix for visible entity
       tempMatrix.identity();
       tempMatrix.setPosition(
-        node.position.x + width / 2,
-        -(node.position.y + height / 2),
+        entity.position.x + width / 2,
+        -(entity.position.y + height / 2),
         0
       );
       mesh.setMatrixAt(visibleCount, tempMatrix);
 
       // Update attributes - query selection Set for O(1) lookup
-      buffers.selected[visibleCount] = selectedNodeIds.has(node.id) ? 1.0 : 0.0;
-      buffers.hovered[visibleCount] = node.id === hoveredNodeId ? 1.0 : 0.0;
+      buffers.selected[visibleCount] = selectedEntityIds.has(entity.id) ? 1.0 : 0.0;
+      buffers.hovered[visibleCount] = entity.id === hoveredEntityId ? 1.0 : 0.0;
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;
 
-      // Per-node accent color override (or sentinel for global)
-      const accentRGB = resolveAccentColorRGB(node.color, tokens);
+      // Per-entity accent color override (or sentinel for global)
+      const accentRGB = resolveAccentColorRGB(entity.color, tokens);
       buffers.accentColor[visibleCount * 3] = accentRGB[0];
       buffers.accentColor[visibleCount * 3 + 1] = accentRGB[1];
       buffers.accentColor[visibleCount * 3 + 2] = accentRGB[2];
+
+      // Per-entity status
+      buffers.status[visibleCount] = encodeStatus(entity.data?.status);
 
       visibleCount++;
     }
@@ -394,12 +470,24 @@ export function Nodes() {
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
-    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr && buffers.accentColorAttr) {
+    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr && buffers.accentColorAttr && buffers.statusAttr) {
       buffers.selectedAttr.needsUpdate = true;
       buffers.hoveredAttr.needsUpdate = true;
       buffers.sizeAttr.needsUpdate = true;
       buffers.accentColorAttr.needsUpdate = true;
+      buffers.statusAttr.needsUpdate = true;
     }
+
+    // Check if any visible entity has animated status
+    let hasAnimated = false;
+    for (let j = 0; j < visibleCount; j++) {
+      const s = buffers.status[j];
+      if (s > 2.5) { // running (3) or success (4)
+        hasAnimated = true;
+        break;
+      }
+    }
+    hasAnimatedStatusRef.current = hasAnimated;
 
     // Safety: never exceed buffer capacity to prevent WebGL errors
     mesh.count = Math.min(visibleCount, capacity);

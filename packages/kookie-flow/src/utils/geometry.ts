@@ -1,7 +1,7 @@
-import type { Node, Edge, XYPosition, Viewport, SocketHandle, EdgeType } from '../types';
+import type { Entity, Edge, XYPosition, Viewport, SocketHandle, EdgeType } from '../types';
 import {
-  DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
+  DEFAULT_ENTITY_WIDTH,
+  DEFAULT_ENTITY_HEIGHT,
   SOCKET_RADIUS,
   SOCKET_SPACING,
   SOCKET_MARGIN_TOP,
@@ -37,36 +37,36 @@ export function worldToScreen(
 }
 
 /**
- * Check if a point is inside a node's bounds.
+ * Check if a point is inside an entity's bounds.
  */
-export function isPointInNode(
+export function isPointInEntity(
   point: XYPosition,
-  node: Node
+  entity: Entity
 ): boolean {
-  const width = node.width ?? DEFAULT_NODE_WIDTH;
-  const height = node.height ?? DEFAULT_NODE_HEIGHT;
+  const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+  const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
 
   return (
-    point.x >= node.position.x &&
-    point.x <= node.position.x + width &&
-    point.y >= node.position.y &&
-    point.y <= node.position.y + height
+    point.x >= entity.position.x &&
+    point.x <= entity.position.x + width &&
+    point.y >= entity.position.y &&
+    point.y <= entity.position.y + height
   );
 }
 
 /**
- * Find the topmost node at a given world position.
- * Returns null if no node is at that position.
- * Nodes later in the array are considered "on top".
+ * Find the topmost entity at a given world position.
+ * Returns null if no entity is at that position.
+ * Entities later in the array are considered "on top".
  */
-export function getNodeAtPosition(
+export function getEntityAtPosition(
   worldPos: XYPosition,
-  nodes: Node[]
-): Node | null {
-  // Iterate in reverse to find topmost node first
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    if (isPointInNode(worldPos, nodes[i])) {
-      return nodes[i];
+  entities: Entity[]
+): Entity | null {
+  // Iterate in reverse to find topmost entity first
+  for (let i = entities.length - 1; i >= 0; i--) {
+    if (isPointInEntity(worldPos, entities[i])) {
+      return entities[i];
     }
   }
   return null;
@@ -88,13 +88,13 @@ export function boxesIntersect(
 }
 
 /**
- * Get all nodes that intersect with a selection box.
+ * Get all entities that intersect with a selection box.
  */
-export function getNodesInBox(
+export function getEntitiesInBox(
   start: XYPosition,
   end: XYPosition,
-  nodes: Node[]
-): Node[] {
+  entities: Entity[]
+): Entity[] {
   // Normalize the box (handle any drag direction)
   const boxX = Math.min(start.x, end.x);
   const boxY = Math.min(start.y, end.y);
@@ -108,25 +108,25 @@ export function getNodesInBox(
     height: boxHeight,
   };
 
-  return nodes.filter((node) => {
-    const nodeBox = {
-      x: node.position.x,
-      y: node.position.y,
-      width: node.width ?? DEFAULT_NODE_WIDTH,
-      height: node.height ?? DEFAULT_NODE_HEIGHT,
+  return entities.filter((entity) => {
+    const entityBox = {
+      x: entity.position.x,
+      y: entity.position.y,
+      width: entity.width ?? DEFAULT_ENTITY_WIDTH,
+      height: entity.height ?? DEFAULT_ENTITY_HEIGHT,
     };
-    return boxesIntersect(selectionBox, nodeBox);
+    return boxesIntersect(selectionBox, entityBox);
   });
 }
 
 /**
- * Calculate world position of a socket on a node.
+ * Calculate world position of a socket on an entity.
  * Inputs are on the left edge, outputs on the right edge.
  *
  * Layout order (when using ResolvedSocketLayout):
  *   Header (if inside) → Output rows → Input rows
  *
- * @param node - The node containing the socket
+ * @param entity - The entity containing the socket
  * @param socketId - The ID of the socket to find
  * @param isInput - Whether this is an input socket (left side) or output (right side)
  * @param layout - Optional resolved socket layout for tokenized positioning.
@@ -134,19 +134,19 @@ export function getNodesInBox(
  *                 When omitted, falls back to legacy SOCKET_SPACING constants.
  */
 export function getSocketPosition(
-  node: Node,
+  entity: Entity,
   socketId: string,
   isInput: boolean,
   layout?: ResolvedSocketLayout
 ): XYPosition | null {
-  const sockets = isInput ? node.inputs : node.outputs;
+  const sockets = isInput ? entity.inputs : entity.outputs;
   if (!sockets) return null;
 
   const index = sockets.findIndex((s) => s.id === socketId);
   if (index === -1) return null;
 
-  const width = node.width ?? DEFAULT_NODE_WIDTH;
-  const height = node.height ?? DEFAULT_NODE_HEIGHT;
+  const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+  const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
 
   // Use socket.position if defined (0-1 range), otherwise calculate from index
   const socket = sockets[index];
@@ -158,7 +158,7 @@ export function getSocketPosition(
   } else if (layout) {
     // New tokenized layout: outputs first, then inputs
     // Y = marginTop + (rowIndex * rowHeight) + (rowHeight / 2) for vertical centering
-    const outputCount = node.outputs?.length ?? 0;
+    const outputCount = entity.outputs?.length ?? 0;
     const rowIndex = isInput ? outputCount + index : index;
     yOffset = layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
   } else {
@@ -167,8 +167,8 @@ export function getSocketPosition(
   }
 
   return {
-    x: isInput ? node.position.x : node.position.x + width,
-    y: node.position.y + yOffset,
+    x: isInput ? entity.position.x : entity.position.x + width,
+    y: entity.position.y + yOffset,
   };
 }
 
@@ -177,14 +177,14 @@ export function getSocketPosition(
  * Uses brute force with viewport culling - performant for typical socket counts.
  *
  * @param worldPos - World position to test
- * @param nodes - All nodes to check
+ * @param entities - All entities to check
  * @param viewport - Current viewport for culling
  * @param canvasSize - Canvas dimensions for culling
  * @param layout - Optional resolved socket layout for tokenized positioning
  */
 export function getSocketAtPosition(
   worldPos: XYPosition,
-  nodes: Node[],
+  entities: Entity[],
   viewport: Viewport,
   canvasSize: { width: number; height: number },
   layout?: ResolvedSocketLayout
@@ -201,46 +201,46 @@ export function getSocketAtPosition(
   const viewBottom = (canvasSize.height - viewport.y) * invZoom;
   const padding = 50;
 
-  // Iterate in reverse for z-ordering (topmost node first)
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const node = nodes[i];
-    const width = node.width ?? DEFAULT_NODE_WIDTH;
-    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+  // Iterate in reverse for z-ordering (topmost entity first)
+  for (let i = entities.length - 1; i >= 0; i--) {
+    const entity = entities[i];
+    const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+    const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
 
-    // Skip nodes outside viewport
+    // Skip entities outside viewport
     if (
-      node.position.x + width < viewLeft - padding ||
-      node.position.x > viewRight + padding ||
-      node.position.y + height < viewTop - padding ||
-      node.position.y > viewBottom + padding
+      entity.position.x + width < viewLeft - padding ||
+      entity.position.x > viewRight + padding ||
+      entity.position.y + height < viewTop - padding ||
+      entity.position.y > viewBottom + padding
     ) {
       continue;
     }
 
     // Check input sockets
-    if (node.inputs) {
-      for (const socket of node.inputs) {
-        const pos = getSocketPosition(node, socket.id, true, layout);
+    if (entity.inputs) {
+      for (const socket of entity.inputs) {
+        const pos = getSocketPosition(entity, socket.id, true, layout);
         if (!pos) continue;
 
         const dx = worldPos.x - pos.x;
         const dy = worldPos.y - pos.y;
         if (dx * dx + dy * dy < hitRadiusSq) {
-          return { nodeId: node.id, socketId: socket.id, isInput: true };
+          return { entityId: entity.id, socketId: socket.id, isInput: true };
         }
       }
     }
 
     // Check output sockets
-    if (node.outputs) {
-      for (const socket of node.outputs) {
-        const pos = getSocketPosition(node, socket.id, false, layout);
+    if (entity.outputs) {
+      for (const socket of entity.outputs) {
+        const pos = getSocketPosition(entity, socket.id, false, layout);
         if (!pos) continue;
 
         const dx = worldPos.x - pos.x;
         const dy = worldPos.y - pos.y;
         if (dx * dx + dy * dy < hitRadiusSq) {
-          return { nodeId: node.id, socketId: socket.id, isInput: false };
+          return { entityId: entity.id, socketId: socket.id, isInput: false };
         }
       }
     }
@@ -279,7 +279,7 @@ export function getSocketAtPositionFast(
   if (results.length > 0) {
     const socket = results[0];
     return {
-      nodeId: socket.nodeId,
+      entityId: socket.entityId,
       socketId: socket.socketId,
       isInput: socket.isInput,
     };
@@ -422,43 +422,44 @@ function pointToSegmentDistanceSq(
 /** Socket info for O(1) lookup */
 export type SocketIndexMap = Map<string, { index: number; socket: { id: string; type: string; position?: number } }>;
 
+
 /**
  * Calculate socket Y offset for edge positioning.
  * Supports both legacy constants and new tokenized layout.
  *
- * @param node - The node containing the socket
+ * @param entity - The entity containing the socket
  * @param socketId - The socket ID to find
  * @param isInput - Whether this is an input socket
  * @param socketIndexMap - Optional map for O(1) lookups
  * @param layout - Optional resolved socket layout for tokenized positioning
- * @returns Y offset from node top, or nodeHeight/2 as fallback
+ * @returns Y offset from entity top, or entityHeight/2 as fallback
  */
 function calculateSocketYOffset(
-  node: Node,
+  entity: Entity,
   socketId: string | undefined,
   isInput: boolean,
   socketIndexMap?: SocketIndexMap,
   layout?: ResolvedSocketLayout
 ): number {
-  const nodeHeight = node.height ?? DEFAULT_NODE_HEIGHT;
+  const entityHeight = entity.height ?? DEFAULT_ENTITY_HEIGHT;
 
   if (!socketId) {
-    return nodeHeight / 2;
+    return entityHeight / 2;
   }
 
-  const sockets = isInput ? node.inputs : node.outputs;
+  const sockets = isInput ? entity.inputs : entity.outputs;
 
   // Try socketIndexMap first (O(1))
   if (socketIndexMap) {
-    const key = `${node.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+    const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
     const socketInfo = socketIndexMap.get(key);
     if (socketInfo) {
       if (socketInfo.socket.position !== undefined) {
-        return socketInfo.socket.position * nodeHeight;
+        return socketInfo.socket.position * entityHeight;
       }
       if (layout) {
         // New tokenized layout: outputs first, then inputs
-        const outputCount = node.outputs?.length ?? 0;
+        const outputCount = entity.outputs?.length ?? 0;
         const rowIndex = isInput ? outputCount + socketInfo.index : socketInfo.index;
         return layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
       }
@@ -473,10 +474,10 @@ function calculateSocketYOffset(
     if (socketIndex !== -1) {
       const socket = sockets[socketIndex];
       if (socket.position !== undefined) {
-        return socket.position * nodeHeight;
+        return socket.position * entityHeight;
       }
       if (layout) {
-        const outputCount = node.outputs?.length ?? 0;
+        const outputCount = entity.outputs?.length ?? 0;
         const rowIndex = isInput ? outputCount + socketIndex : socketIndex;
         return layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
       }
@@ -485,7 +486,7 @@ function calculateSocketYOffset(
     }
   }
 
-  return nodeHeight / 2;
+  return entityHeight / 2;
 }
 
 /**
@@ -493,14 +494,14 @@ function calculateSocketYOffset(
  * Returns the edge closest to the point if within hit tolerance.
  *
  * @param socketIndexMap - Optional pre-built map for O(1) socket lookups.
- *                         Key format: "${nodeId}:${socketId}:input|output"
+ *                         Key format: "${entityId}:${socketId}:input|output"
  *                         If not provided, falls back to O(k) findIndex per edge.
  * @param layout - Optional resolved socket layout for tokenized positioning
  */
 export function getEdgeAtPosition(
   worldPos: XYPosition,
   edges: Edge[],
-  nodeMap: Map<string, Node>,
+  entityMap: Map<string, Entity>,
   defaultEdgeType: EdgeType = 'bezier',
   viewport: Viewport,
   socketIndexMap?: SocketIndexMap,
@@ -512,20 +513,20 @@ export function getEdgeAtPosition(
   let closestDist = hitTolerance;
 
   for (const edge of edges) {
-    const sourceNode = nodeMap.get(edge.source);
-    const targetNode = nodeMap.get(edge.target);
-    if (!sourceNode || !targetNode) continue;
+    const sourceEntity = entityMap.get(edge.source);
+    const targetEntity = entityMap.get(edge.target);
+    if (!sourceEntity || !targetEntity) continue;
 
-    const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
+    const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
 
     // Calculate socket Y offsets using helper function
-    const sourceYOffset = calculateSocketYOffset(sourceNode, edge.sourceSocket, false, socketIndexMap, layout);
-    const targetYOffset = calculateSocketYOffset(targetNode, edge.targetSocket, true, socketIndexMap, layout);
+    const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
+    const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-    const x0 = sourceNode.position.x + sourceWidth;
-    const y0 = sourceNode.position.y + sourceYOffset;
-    const x1 = targetNode.position.x;
-    const y1 = targetNode.position.y + targetYOffset;
+    const x0 = sourceEntity.position.x + sourceWidth;
+    const y0 = sourceEntity.position.y + sourceYOffset;
+    const x1 = targetEntity.position.x;
+    const y1 = targetEntity.position.y + targetYOffset;
 
     // Quick bounding box check
     const minX = Math.min(x0, x1) - hitTolerance;
@@ -597,26 +598,26 @@ function bezierTangent(
  */
 export function getEdgePointAtT(
   edge: Edge,
-  nodeMap: Map<string, Node>,
+  entityMap: Map<string, Entity>,
   t: number,
   defaultEdgeType: EdgeType = 'bezier',
   socketIndexMap?: SocketIndexMap,
   layout?: ResolvedSocketLayout
 ): EdgePointResult | null {
-  const sourceNode = nodeMap.get(edge.source);
-  const targetNode = nodeMap.get(edge.target);
-  if (!sourceNode || !targetNode) return null;
+  const sourceEntity = entityMap.get(edge.source);
+  const targetEntity = entityMap.get(edge.target);
+  if (!sourceEntity || !targetEntity) return null;
 
-  const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
+  const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
 
   // Calculate socket Y offsets using helper function
-  const sourceYOffset = calculateSocketYOffset(sourceNode, edge.sourceSocket, false, socketIndexMap, layout);
-  const targetYOffset = calculateSocketYOffset(targetNode, edge.targetSocket, true, socketIndexMap, layout);
+  const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
+  const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-  const x0 = sourceNode.position.x + sourceWidth;
-  const y0 = sourceNode.position.y + sourceYOffset;
-  const x1 = targetNode.position.x;
-  const y1 = targetNode.position.y + targetYOffset;
+  const x0 = sourceEntity.position.x + sourceWidth;
+  const y0 = sourceEntity.position.y + sourceYOffset;
+  const x1 = targetEntity.position.x;
+  const y1 = targetEntity.position.y + targetYOffset;
 
   const edgeType = edge.type ?? defaultEdgeType;
 
@@ -675,13 +676,13 @@ export function getEdgePointAtT(
  */
 export function getEdgeEndpoints(
   edge: Edge,
-  nodeMap: Map<string, Node>,
+  entityMap: Map<string, Entity>,
   defaultEdgeType: EdgeType = 'bezier',
   socketIndexMap?: SocketIndexMap,
   layout?: ResolvedSocketLayout
 ): { start: EdgePointResult; end: EdgePointResult } | null {
-  const start = getEdgePointAtT(edge, nodeMap, 0, defaultEdgeType, socketIndexMap, layout);
-  const end = getEdgePointAtT(edge, nodeMap, 1, defaultEdgeType, socketIndexMap, layout);
+  const start = getEdgePointAtT(edge, entityMap, 0, defaultEdgeType, socketIndexMap, layout);
+  const end = getEdgePointAtT(edge, entityMap, 1, defaultEdgeType, socketIndexMap, layout);
 
   if (!start || !end) return null;
 

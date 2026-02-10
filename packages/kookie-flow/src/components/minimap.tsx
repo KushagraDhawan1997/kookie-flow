@@ -11,9 +11,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
-import type { MinimapProps, Node } from '../types';
-import { DEFAULT_NODE_WIDTH, MINIMAP_DEFAULTS } from '../core/constants';
-import { calculateMinNodeHeight, type ResolvedSocketLayout } from '../utils/style-resolver';
+import type { MinimapProps, Entity } from '../types';
+import { DEFAULT_ENTITY_WIDTH, MINIMAP_DEFAULTS } from '../core/constants';
+import { calculateMinEntityHeight, type ResolvedSocketLayout } from '../utils/style-resolver';
 
 /** Transform to map world coordinates to minimap coordinates */
 interface MinimapTransform {
@@ -34,19 +34,19 @@ interface DragState {
 const MIN_RENDER_SIZE = 0.5;
 
 /**
- * Calculate the transform to fit all nodes into minimap with padding.
+ * Calculate the transform to fit all entities into minimap with padding.
  * Writes directly to output object to avoid allocations.
  * Returns false if no valid transform (empty or degenerate bounds).
  */
 function calculateMinimapTransform(
-  nodes: Node[],
+  entities: Entity[],
   minimapWidth: number,
   minimapHeight: number,
   padding: number,
   socketLayout: ResolvedSocketLayout,
   out: MinimapTransform
 ): boolean {
-  if (nodes.length === 0) return false;
+  if (entities.length === 0) return false;
 
   // Calculate world bounds
   let minX = Infinity,
@@ -54,14 +54,14 @@ function calculateMinimapTransform(
     maxX = -Infinity,
     maxY = -Infinity;
 
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const w = node.width ?? DEFAULT_NODE_WIDTH;
-    const outputCount = node.outputs?.length ?? 0;
-    const inputCount = node.inputs?.length ?? 0;
-    const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
-    const px = node.position.x;
-    const py = node.position.y;
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+    const outputCount = entity.outputs?.length ?? 0;
+    const inputCount = entity.inputs?.length ?? 0;
+    const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
+    const px = entity.position.x;
+    const py = entity.position.y;
     if (px < minX) minX = px;
     if (py < minY) minY = py;
     if (px + w > maxX) maxX = px + w;
@@ -93,16 +93,16 @@ function calculateMinimapTransform(
 }
 
 /**
- * Generate a hash of node positions for change detection.
+ * Generate a hash of entity positions for change detection.
  * Uses a simple checksum approach - fast but not cryptographic.
  */
-function hashNodePositions(nodes: Node[]): number {
-  let hash = nodes.length;
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
+function hashEntityPositions(entities: Entity[]): number {
+  let hash = entities.length;
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
     // Combine position into hash (bitwise ops are fast)
-    hash = ((hash << 5) - hash + (node.position.x | 0)) | 0;
-    hash = ((hash << 5) - hash + (node.position.y | 0)) | 0;
+    hash = ((hash << 5) - hash + (entity.position.x | 0)) | 0;
+    hash = ((hash << 5) - hash + (entity.position.y | 0)) | 0;
   }
   return hash;
 }
@@ -121,10 +121,10 @@ const POSITION_STYLES: Record<string, CSSProperties> = {
  * Performance optimizations:
  * - Canvas 2D for efficient rendering of 10k+ rectangles (single composite)
  * - RAF-throttled updates (single render per frame)
- * - Fine-grained dirty flags (skip node redraw for viewport-only changes)
- * - Position hash for bounds invalidation (detects node moves)
+ * - Fine-grained dirty flags (skip entity redraw for viewport-only changes)
+ * - Position hash for bounds invalidation (detects entity moves)
  * - Inline coordinate math (zero object allocations in render loop)
- * - Culling for sub-pixel nodes
+ * - Culling for sub-pixel entities
  * - ResizeObserver for container size (no layout queries in render)
  * - HiDPI support for crisp rendering
  */
@@ -133,8 +133,8 @@ export function Minimap({
   width = MINIMAP_DEFAULTS.width,
   height = MINIMAP_DEFAULTS.height,
   backgroundColor: backgroundColorProp,
-  nodeColor: nodeColorProp,
-  selectedNodeColor: selectedNodeColorProp,
+  entityColor: entityColorProp,
+  selectedEntityColor: selectedEntityColorProp,
   viewportColor: viewportColorProp,
   viewportBorderColor: viewportBorderColorProp,
   padding = MINIMAP_DEFAULTS.padding,
@@ -147,10 +147,10 @@ export function Minimap({
   const socketLayout = useSocketLayout();
 
   // Derive colors from theme with prop overrides
-  const { backgroundColor, nodeColor, selectedNodeColor, viewportColor, viewportBorderColor } =
+  const { backgroundColor, entityColor, selectedEntityColor, viewportColor, viewportBorderColor } =
     useMemo(() => {
       const bgRgb = tokens[THEME_COLORS.minimap.background];
-      const nodeRgb = tokens[THEME_COLORS.minimap.node];
+      const entityRgb = tokens[THEME_COLORS.minimap.node];
       const selectedRgb = tokens[THEME_COLORS.minimap.nodeSelected];
       const viewportRgb = tokens[THEME_COLORS.minimap.viewport];
       const viewportBorderRgb = tokens[THEME_COLORS.minimap.viewportBorder];
@@ -159,8 +159,8 @@ export function Minimap({
         backgroundColor:
           backgroundColorProp ??
           `rgba(${Math.round(bgRgb[0] * 255)}, ${Math.round(bgRgb[1] * 255)}, ${Math.round(bgRgb[2] * 255)}, 0.9)`,
-        nodeColor: nodeColorProp ?? rgbToHex(nodeRgb),
-        selectedNodeColor: selectedNodeColorProp ?? rgbToHex(selectedRgb),
+        entityColor: entityColorProp ?? rgbToHex(entityRgb),
+        selectedEntityColor: selectedEntityColorProp ?? rgbToHex(selectedRgb),
         viewportColor:
           viewportColorProp ??
           `rgba(${Math.round(viewportRgb[0] * 255)}, ${Math.round(viewportRgb[1] * 255)}, ${Math.round(viewportRgb[2] * 255)}, 0.3)`,
@@ -169,8 +169,8 @@ export function Minimap({
     }, [
       tokens,
       backgroundColorProp,
-      nodeColorProp,
-      selectedNodeColorProp,
+      entityColorProp,
+      selectedEntityColorProp,
       viewportColorProp,
       viewportBorderColorProp,
     ]);
@@ -200,7 +200,7 @@ export function Minimap({
 
   // Dirty flags
   const dirtyRef = useRef({
-    nodes: true, // Nodes changed (positions, count, etc.)
+    entities: true, // Entities changed (positions, count, etc.)
     selection: true, // Selection changed
     viewport: true, // Viewport changed
   });
@@ -213,23 +213,23 @@ export function Minimap({
     const ctx = ctxRef.current;
     if (!canvas || !ctx) return;
 
-    const { nodes, viewport, selectedNodeIds } = store.getState();
+    const { entities, viewport, selectedEntityIds } = store.getState();
     const containerWidth = containerSizeRef.current.width;
     const containerHeight = containerSizeRef.current.height;
 
     // Check what actually changed
-    const currentHash = hashNodePositions(nodes);
-    const nodesChanged =
+    const currentHash = hashEntityPositions(entities);
+    const entitiesChanged =
       currentHash !== lastPositionHashRef.current ||
-      nodes.length !== (lastPositionHashRef.current === 0 ? 0 : nodes.length);
-    const selectionChanged = selectedNodeIds !== lastSelectionRef.current;
+      entities.length !== (lastPositionHashRef.current === 0 ? 0 : entities.length);
+    const selectionChanged = selectedEntityIds !== lastSelectionRef.current;
 
-    if (nodesChanged) {
+    if (entitiesChanged) {
       lastPositionHashRef.current = currentHash;
-      dirtyRef.current.nodes = true;
+      dirtyRef.current.entities = true;
     }
     if (selectionChanged) {
-      lastSelectionRef.current = selectedNodeIds;
+      lastSelectionRef.current = selectedEntityIds;
       dirtyRef.current.selection = true;
     }
 
@@ -237,9 +237,9 @@ export function Minimap({
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, width, height);
 
-    if (nodes.length === 0) {
+    if (entities.length === 0) {
       // Reset dirty flags
-      dirtyRef.current.nodes = false;
+      dirtyRef.current.entities = false;
       dirtyRef.current.selection = false;
       dirtyRef.current.viewport = false;
       return;
@@ -259,32 +259,32 @@ export function Minimap({
       const offsetX = width / 2 - worldCenterX * minimapScale;
       const offsetY = height / 2 - worldCenterY * minimapScale;
 
-      // Draw nodes - inline coordinate math, no object allocations
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        const w = node.width ?? DEFAULT_NODE_WIDTH;
-        const outputCount = node.outputs?.length ?? 0;
-        const inputCount = node.inputs?.length ?? 0;
-        const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      // Draw entities - inline coordinate math, no object allocations
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const outputCount = entity.outputs?.length ?? 0;
+        const inputCount = entity.inputs?.length ?? 0;
+        const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
 
         const scaledW = w * minimapScale;
         const scaledH = h * minimapScale;
 
-        // Culling: skip sub-pixel nodes
+        // Culling: skip sub-pixel entities
         if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
 
-        const x = node.position.x * minimapScale + offsetX;
-        const y = node.position.y * minimapScale + offsetY;
+        const x = entity.position.x * minimapScale + offsetX;
+        const y = entity.position.y * minimapScale + offsetY;
 
-        // Culling: skip nodes outside minimap bounds
+        // Culling: skip entities outside minimap bounds
         if (x + scaledW < 0 || x > width || y + scaledH < 0 || y > height) continue;
 
-        const isSelected = selectedNodeIds.has(node.id);
+        const isSelected = selectedEntityIds.has(entity.id);
         ctx.fillStyle = isSelected
-          ? selectedNodeColor
-          : typeof nodeColor === 'function'
-            ? nodeColor(node)
-            : nodeColor;
+          ? selectedEntityColor
+          : typeof entityColor === 'function'
+            ? entityColor(entity)
+            : entityColor;
         ctx.fillRect(
           x,
           y,
@@ -305,12 +305,12 @@ export function Minimap({
 
       viewportRectRef.current = { x: 0, y: 0, w: width, h: height };
     } else {
-      // Standard mode: show all nodes, viewport indicator resizes with zoom
+      // Standard mode: show all entities, viewport indicator resizes with zoom
 
-      // Recalculate transform if nodes changed
-      if (dirtyRef.current.nodes) {
+      // Recalculate transform if entities changed
+      if (dirtyRef.current.entities) {
         hasValidTransformRef.current = calculateMinimapTransform(
-          nodes,
+          entities,
           width,
           height,
           padding,
@@ -320,7 +320,7 @@ export function Minimap({
       }
 
       if (!hasValidTransformRef.current) {
-        dirtyRef.current.nodes = false;
+        dirtyRef.current.entities = false;
         dirtyRef.current.selection = false;
         dirtyRef.current.viewport = false;
         return;
@@ -328,30 +328,30 @@ export function Minimap({
 
       const { scale, offsetX, offsetY } = transformRef.current;
 
-      // Draw nodes - inline coordinate math, no object allocations
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        const w = node.width ?? DEFAULT_NODE_WIDTH;
-        const outputCount = node.outputs?.length ?? 0;
-        const inputCount = node.inputs?.length ?? 0;
-        const h = node.height ?? calculateMinNodeHeight(outputCount, inputCount, socketLayout);
+      // Draw entities - inline coordinate math, no object allocations
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const outputCount = entity.outputs?.length ?? 0;
+        const inputCount = entity.inputs?.length ?? 0;
+        const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
 
         const scaledW = w * scale;
         const scaledH = h * scale;
 
-        // Culling: skip sub-pixel nodes (unlikely in standard mode but check anyway)
+        // Culling: skip sub-pixel entities (unlikely in standard mode but check anyway)
         if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
 
         // Inline worldToMinimap: x = worldX * scale + offsetX
-        const x = node.position.x * scale + offsetX;
-        const y = node.position.y * scale + offsetY;
+        const x = entity.position.x * scale + offsetX;
+        const y = entity.position.y * scale + offsetY;
 
-        const isSelected = selectedNodeIds.has(node.id);
+        const isSelected = selectedEntityIds.has(entity.id);
         ctx.fillStyle = isSelected
-          ? selectedNodeColor
-          : typeof nodeColor === 'function'
-            ? nodeColor(node)
-            : nodeColor;
+          ? selectedEntityColor
+          : typeof entityColor === 'function'
+            ? entityColor(entity)
+            : entityColor;
         ctx.fillRect(
           x,
           y,
@@ -393,7 +393,7 @@ export function Minimap({
     }
 
     // Reset dirty flags
-    dirtyRef.current.nodes = false;
+    dirtyRef.current.entities = false;
     dirtyRef.current.selection = false;
     dirtyRef.current.viewport = false;
   }, [
@@ -402,8 +402,8 @@ export function Minimap({
     height,
     padding,
     backgroundColor,
-    nodeColor,
-    selectedNodeColor,
+    entityColor,
+    selectedEntityColor,
     viewportColor,
     viewportBorderColor,
     zoomable,

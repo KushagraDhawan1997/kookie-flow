@@ -4,7 +4,7 @@
  */
 
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
-import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides, HeaderPosition } from '../types';
+import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
 import { parseColorToRGB, type RGBColor } from './color';
 
 // ============================================================================
@@ -44,7 +44,7 @@ export const SOCKET_ROW_HEIGHT_TOKEN: keyof ThemeTokens = '--space-7';
  */
 export const WIDGET_HEIGHT_TOKEN: keyof ThemeTokens = '--space-6';
 
-export const SIZE_MAP: Record<NodeSize, SizeConfig> = {
+export const SIZE_MAP: Record<EntitySize, SizeConfig> = {
   '1': {
     padding: '--space-2', // 8px
     borderRadius: '--radius-3', // 10px
@@ -96,7 +96,7 @@ interface VariantConfig {
   shadow: keyof ThemeTokens | 'none';
 }
 
-export const VARIANT_MAP: Record<NodeVariant, VariantConfig> = {
+export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
   surface: {
     background: '--gray-1',
     backgroundHover: '--gray-2',
@@ -143,7 +143,7 @@ export const VARIANT_MAP: Record<NodeVariant, VariantConfig> = {
 // Radius Map
 // ============================================================================
 
-export const RADIUS_MAP: Record<NodeRadius, keyof ThemeTokens | 0> = {
+export const RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   none: 0,
   small: '--radius-2', // 8px
   medium: '--radius-4', // 12px
@@ -156,9 +156,9 @@ export const RADIUS_MAP: Record<NodeRadius, keyof ThemeTokens | 0> = {
 // ============================================================================
 
 /**
- * Fully resolved node style with all values ready for WebGL shaders.
+ * Fully resolved entity style with all values ready for WebGL shaders.
  */
-export interface ResolvedNodeStyle {
+export interface ResolvedEntityStyle {
   // Layout
   padding: number;
   headerHeight: number;
@@ -247,7 +247,7 @@ function resolveTokenShadow(
 }
 
 /**
- * Resolve node style props and theme tokens to WebGL-ready values.
+ * Resolve entity style props and theme tokens to WebGL-ready values.
  *
  * IMPORTANT: This function returns a new object every call.
  * Always memoize the result with useMemo to avoid unnecessary re-renders.
@@ -255,20 +255,20 @@ function resolveTokenShadow(
  * @example
  * ```tsx
  * const resolvedStyle = useMemo(
- *   () => resolveNodeStyle(size, variant, radius, header, accentHeader, tokens, overrides),
+ *   () => resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, overrides),
  *   [size, variant, radius, header, accentHeader, tokens, overrides]
  * );
  * ```
  */
-export function resolveNodeStyle(
-  size: NodeSize = '2',
-  variant: NodeVariant = 'surface',
-  radius: NodeRadius | undefined,
+export function resolveEntityStyle(
+  size: EntitySize = '2',
+  variant: EntityVariant = 'surface',
+  radius: EntityRadius | undefined,
   header: HeaderPosition = 'none',
   accentHeader: boolean = false,
   tokens: ThemeTokens,
-  overrides?: Partial<NodeStyleOverrides>
-): ResolvedNodeStyle {
+  overrides?: Partial<EntityStyleOverrides>
+): ResolvedEntityStyle {
   const sizeConfig = SIZE_MAP[size];
   const variantConfig = VARIANT_MAP[variant];
 
@@ -377,17 +377,17 @@ export interface ResolvedSocketLayout {
 }
 
 /**
- * Resolve socket layout from theme tokens and node style settings.
+ * Resolve socket layout from theme tokens and entity style settings.
  *
  * Layout order: Header (if inside) → Output rows → Input rows
  *
- * @param hasHeaderInside - Whether the node has an inside header
- * @param size - Node size for padding and socket size
+ * @param hasHeaderInside - Whether the entity has an inside header
+ * @param size - Entity size for padding and socket size
  * @param tokens - Theme tokens for resolving --space-N values
  */
 export function resolveSocketLayout(
   hasHeaderInside: boolean,
-  size: NodeSize = '2',
+  size: EntitySize = '2',
   tokens: ThemeTokens
 ): ResolvedSocketLayout {
   const sizeConfig = SIZE_MAP[size];
@@ -410,7 +410,7 @@ export function resolveSocketLayout(
 }
 
 /**
- * Calculate the minimum height required for a node based on socket count.
+ * Calculate the minimum height required for an entity based on socket count.
  *
  * Height = marginTop + max(1, totalRows) * rowHeight + bottomPadding
  *
@@ -419,7 +419,7 @@ export function resolveSocketLayout(
  * @param layout - Resolved socket layout
  * @returns Minimum required height in pixels
  */
-export function calculateMinNodeHeight(
+export function calculateMinEntityHeight(
   outputCount: number,
   inputCount: number,
   layout: ResolvedSocketLayout

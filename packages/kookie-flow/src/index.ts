@@ -16,7 +16,7 @@ export {
 export { ThemeProvider, useTheme } from './contexts';
 export {
   StyleProvider,
-  useNodeStyle,
+  useEntityStyle,
   useResolvedStyle,
   useSocketLayout,
   type StyleConfig,
@@ -33,9 +33,9 @@ export {
 export {
   screenToWorld,
   worldToScreen,
-  isPointInNode,
-  getNodeAtPosition,
-  getNodesInBox,
+  isPointInEntity,
+  getEntityAtPosition,
+  getEntitiesInBox,
   getSocketPosition,
   getSocketAtPosition,
   getEdgeAtPosition,
@@ -63,30 +63,30 @@ export {
 // Socket type utilities
 export { resolveSocketTypes } from './utils/socket-types';
 
-// Style resolution utilities (Milestone 2 & 3.5)
+// Style resolution utilities
 export {
   SIZE_MAP,
   VARIANT_MAP,
   RADIUS_MAP,
   SOCKET_ROW_HEIGHT_TOKEN,
   WIDGET_HEIGHT_TOKEN,
-  resolveNodeStyle,
+  resolveEntityStyle,
   resolveSocketLayout,
-  calculateMinNodeHeight,
-  type ResolvedNodeStyle,
+  calculateMinEntityHeight,
+  type ResolvedEntityStyle,
   type ResolvedSocketLayout,
 } from './utils/style-resolver';
 
 // Store types
 export type { FlowState, FlowStore } from './core/store';
 
-// Graph engine (Phase 8)
+// Graph engine
 export type { AdjacencyIndex, CachedAnalysis, GraphValidationIssue } from './core/graph';
 export {
   buildAdjacencyIndex,
   getIncomers,
   getOutgoers,
-  getNodeEdges,
+  getEntityEdges,
   getInputEdges,
   getOutputEdges,
   getEdgesBetween,
@@ -120,8 +120,9 @@ export type {
   SocketType,
   Socket,
   SocketHandle,
-  NodeData,
-  Node,
+  EntityData,
+  Entity,
+  EntityStatus,
   Edge,
   Connection,
   ConnectionMode,
@@ -129,25 +130,25 @@ export type {
   IsValidConnectionFn,
   OnConnectStartParams,
   ConnectionEndState,
-  NodeChange,
+  EntityChange,
   EdgeChange,
-  NodeTypeDefinition,
-  NodeComponentProps,
+  EntityTypeDefinition,
+  EntityComponentProps,
   KookieFlowProps,
-  // Styling types (Milestone 2)
-  NodeSize,
-  NodeVariant,
-  NodeRadius,
+  // Styling types
+  EntitySize,
+  EntityVariant,
+  EntityRadius,
   HeaderPosition,
   AccentColor,
-  NodeStyleOverrides,
-  // Widget types (Phase 7D)
+  EntityStyleOverrides,
+  // Widget types
   WidgetType,
   WidgetProps,
   InlineWidgetComponent,
   ResolvedWidgetConfig,
   SocketLayoutMode,
-  // Phase 6 types
+  // Clone/paste types
   CloneElementsOptions,
   CloneElementsResult,
   ElementsBatch,
@@ -166,46 +167,57 @@ export type {
   // Imperative API types
   FitViewOptions,
   KookieFlowInstance,
-  // Phase 7C: Grouping types
-  BuiltInNodeType,
-  GroupNodeData,
-  CommentNodeData,
-  RerouteNodeData,
-  GroupNode,
-  CommentNode,
-  RerouteNode,
+  // Entity type definitions
+  BuiltInEntityType,
+  FrameEntityData,
+  CommentEntityData,
+  RerouteEntityData,
+  DrawEntityData,
+  TextEntityData,
+  ImageEntityData,
+  VideoEntityData,
+  MeshEntityData,
+  FrameEntity,
+  CommentEntity,
+  RerouteEntity,
+  DrawEntity,
+  TextEntity,
+  ImageEntity,
+  VideoEntity,
+  MeshEntity,
 } from './types';
 
-// Phase 7C: Grouping utilities & type guards
+// Entity type guards
 export {
-  isGroupNode,
-  isCommentNode,
-  isRerouteNode,
+  isFrameEntity,
+  isCommentEntity,
+  isRerouteEntity,
 } from './types';
 
+// Grouping utilities
 export {
   GROUP_PADDING,
   MIN_GROUP_WIDTH,
   MIN_GROUP_HEIGHT,
   getGroupChildren,
   getGroupDescendants,
-  isNodeHidden,
-  getVisibleNodes,
+  isEntityHidden,
+  getVisibleEntities,
   calculateGroupBounds,
   getParentChain,
   isDescendantOf,
   calculateDescendantPositions,
   getAncestorGroups,
   wouldCreateCycle,
-  getTopLevelNodes,
+  getTopLevelEntities,
   sortByDepth,
   type Bounds,
 } from './utils/grouping';
 
 // Constants
 export {
-  DEFAULT_NODE_WIDTH,
-  DEFAULT_NODE_HEIGHT,
+  DEFAULT_ENTITY_WIDTH,
+  DEFAULT_ENTITY_HEIGHT,
   DEFAULT_VIEWPORT,
   DEFAULT_SOCKET_TYPES,
   SOCKET_RADIUS,
@@ -219,10 +231,10 @@ export {
 
 // Socket layout cache (for custom renderers)
 export {
-  getNodeSocketLayout,
-  clearNodeLayoutCache,
+  getEntitySocketLayout,
+  clearEntityLayoutCache,
   type ComputedSocketPosition,
-  type NodeSocketLayoutCache,
+  type EntitySocketLayoutCache,
 } from './utils/socket-layout-cache';
 
 // Semantic theme colors

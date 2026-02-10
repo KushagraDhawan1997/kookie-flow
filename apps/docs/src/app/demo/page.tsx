@@ -6,9 +6,9 @@ import {
   useGraph,
   useFlowStoreApi,
   useThemeTokens,
-  type Node,
+  type Entity,
   type Edge,
-  type NodeVariant,
+  type EntityVariant,
   type KookieFlowInstance,
   type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow';
@@ -88,11 +88,11 @@ const nodeColors = [
 // ============================================================================
 
 // Group node with children - demonstrates parent-child relationships
-const groupingDemoNodes: Node[] = [
+const groupingDemoNodes: Entity[] = [
   // A group node
   {
     id: 'group-1',
-    type: 'group',
+    type: 'frame',
     position: { x: -3500, y: 0 },
     width: 500,
     height: 400,
@@ -196,7 +196,7 @@ const groupingDemoEdges: Edge[] = [
 ];
 
 // Widget demo nodes (positioned far left, away from complex nodes)
-const widgetDemoNodes: Node[] = [
+const widgetDemoNodes: Entity[] = [
   {
     id: 'widget-demo-1',
     type: 'default',
@@ -544,14 +544,14 @@ const widgetDemoNodes: Node[] = [
 ];
 
 // Generate demo nodes with sockets
-function generateNodes(count: number): Node[] {
+function generateEntities(count: number): Entity[] {
   const cols = Math.ceil(Math.sqrt(count));
   const spacing = 300;
 
-  const gridNodes = Array.from({ length: count }, (_, i) => {
+  const gridEntities = Array.from({ length: count }, (_, i) => {
     const pattern = socketPatterns[i % socketPatterns.length];
 
-    const node: Node = {
+    const entity: Entity = {
       id: `node-${i}`,
       type: 'default',
       position: {
@@ -575,13 +575,13 @@ function generateNodes(count: number): Node[] {
 
     // Add custom colors to some nodes (every 10th node)
     if (i % 10 === 0) {
-      node.color = nodeColors[(i / 10) % nodeColors.length];
+      entity.color = nodeColors[(i / 10) % nodeColors.length];
     }
 
-    return node;
+    return entity;
   });
 
-  return [...groupingDemoNodes, ...widgetDemoNodes, ...gridNodes];
+  return [...groupingDemoNodes, ...widgetDemoNodes, ...gridEntities];
 }
 
 // Find compatible socket pair between two nodes
@@ -824,7 +824,7 @@ function ClipboardDemo() {
     const unsubscribe = store.subscribe(
       (state) => state.internalClipboard,
       (clipboard) => {
-        setClipboardSize(clipboard?.nodes.length ?? 0);
+        setClipboardSize(clipboard?.entities.length ?? 0);
       }
     );
     return unsubscribe;
@@ -836,7 +836,7 @@ function ClipboardDemo() {
       'mod+c': () => {
         copy();
         const clipboard = store.getState().internalClipboard;
-        setClipboardSize(clipboard?.nodes.length ?? 0);
+        setClipboardSize(clipboard?.entities.length ?? 0);
       },
       'mod+v': () => paste({ preserveExternalConnections: preserveExternal }),
       'mod+x': () => {
@@ -1025,9 +1025,9 @@ function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInst
         <button
           style={buttonStyle}
           onClick={() => {
-            const selected = flowRef.current?.getSelectedNodes().map((n) => n.id);
+            const selected = flowRef.current?.getSelectedEntities().map((n) => n.id);
             if (selected && selected.length > 0) {
-              flowRef.current?.fitView({ nodes: selected, padding: 100 });
+              flowRef.current?.fitView({ entities: selected, padding: 100 });
             }
           }}
         >
@@ -1057,14 +1057,14 @@ function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInst
 }
 
 // All available node variants
-const VARIANTS: NodeVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
+const VARIANTS: EntityVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
 
 function VariantShowcase({
   variant,
   setVariant,
 }: {
-  variant: NodeVariant;
-  setVariant: (v: NodeVariant) => void;
+  variant: EntityVariant;
+  setVariant: (v: EntityVariant) => void;
 }) {
   return (
     <div
@@ -1125,9 +1125,9 @@ function VariantShowcase({
 
 export default function DemoPage() {
   const nodeCount = 1000;
-  const initialNodes = useMemo(() => generateNodes(nodeCount), [nodeCount]);
+  const initialEntities = useMemo(() => generateEntities(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
-  const [variant, setVariant] = useState<NodeVariant>('surface');
+  const [variant, setVariant] = useState<EntityVariant>('surface');
   const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
   const flowRef = useRef<KookieFlowInstance>(null);
 
@@ -1154,8 +1154,8 @@ export default function DemoPage() {
     }, 150);
   }, []);
 
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addEdge } = useGraph({
-    initialNodes,
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect, addEntity, addEdge } = useGraph({
+    initialEntities,
     initialEdges,
   });
 
@@ -1169,37 +1169,37 @@ export default function DemoPage() {
       const { isInput } = state.source;
 
       // Create a new node with a matching socket
-      const newNode: Node = {
+      const newEntity: Entity = {
         id,
         type: 'default',
         position: state.position,
-        data: { label: 'New Node' },
+        data: { label: 'New Entity' },
         inputs: isInput ? [] : [{ id: `${id}-in-0`, name: 'Input', type: 'any' }],
         outputs: isInput ? [{ id: `${id}-out-0`, name: 'Output', type: 'any' }] : [],
         color: 'cyan',
       };
 
-      // Build the edge from source to new node (or vice versa)
+      // Build the edge from source to new entity (or vice versa)
       const newEdge: Edge = isInput
         ? {
             id: `${id}-edge`,
             source: id,
             sourceSocket: `${id}-out-0`,
-            target: state.source.nodeId,
+            target: state.source.entityId,
             targetSocket: state.source.socketId,
           }
         : {
             id: `${id}-edge`,
-            source: state.source.nodeId,
+            source: state.source.entityId,
             sourceSocket: state.source.socketId,
             target: id,
             targetSocket: `${id}-in-0`,
           };
 
-      addNode(newNode);
+      addEntity(newEntity);
       addEdge(newEdge);
     },
-    [addNode, addEdge]
+    [addEntity, addEdge]
   );
 
   return (
@@ -1218,7 +1218,7 @@ export default function DemoPage() {
       >
         <h1 style={{ fontSize: 18, marginBottom: 8 }}>Kookie Flow</h1>
         <p style={{ color: '#888' }}>
-          {nodes.length} nodes, {edges.length} edges
+          {entities.length} entities, {edges.length} edges
         </p>
         <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
           Variant: <span style={{ color: '#4ade80', textTransform: 'capitalize' }}>{variant}</span>
@@ -1227,9 +1227,9 @@ export default function DemoPage() {
 
       <KookieFlow
         ref={flowRef}
-        nodes={nodes}
+        entities={entities}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onConnectEnd={handleConnectEnd}

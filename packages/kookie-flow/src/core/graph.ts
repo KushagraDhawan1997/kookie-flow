@@ -10,7 +10,7 @@
  * - Cached analysis recomputed only when topologyVersion changes
  */
 
-import type { Edge, Node } from '../types';
+import type { Edge, Entity } from '../types';
 
 // ============================================================================
 // Types
@@ -18,12 +18,12 @@ import type { Edge, Node } from '../types';
 
 /** Pre-computed adjacency index for O(1) neighbor lookups */
 export interface AdjacencyIndex {
-  /** Forward: nodeId → socketId → edges leaving this port */
+  /** Forward: entityId → socketId → edges leaving this port */
   outgoing: Map<string, Map<string, Edge[]>>;
-  /** Reverse: nodeId → socketId → edges arriving at this port */
+  /** Reverse: entityId → socketId → edges arriving at this port */
   incoming: Map<string, Map<string, Edge[]>>;
-  /** All edges touching a node (for getConnectedEdges) */
-  byNode: Map<string, Edge[]>;
+  /** All edges touching an entity (for getConnectedEdges) */
+  byEntity: Map<string, Edge[]>;
 }
 
 /** Cached graph analysis, invalidated on topology change */
@@ -32,22 +32,22 @@ export interface CachedAnalysis {
   topologyVersion: number;
   /** Flat execution order (null if graph has cycles) */
   topologicalOrder: string[] | null;
-  /** Nodes grouped by execution level (null if graph has cycles) */
+  /** Entities grouped by execution level (null if graph has cycles) */
   executionLevels: string[][] | null;
   /** Whether the graph contains cycles */
   hasCycles: boolean;
-  /** Node IDs that participate in cycles */
-  cycleNodeIds: string[];
-  /** Nodes with no incoming edges */
+  /** Entity IDs that participate in cycles */
+  cycleEntityIds: string[];
+  /** Entities with no incoming edges */
   roots: string[];
-  /** Nodes with no outgoing edges */
+  /** Entities with no outgoing edges */
   leaves: string[];
 }
 
 /** Validation issue found in the graph */
 export type GraphValidationIssue =
-  | { type: 'cycle'; nodeIds: string[] }
-  | { type: 'unconnected-required'; nodeId: string; portId: string; portName: string }
+  | { type: 'cycle'; entityIds: string[] }
+  | { type: 'unconnected-required'; entityId: string; portId: string; portName: string }
   | { type: 'type-mismatch'; edgeId: string; sourceType: string; targetType: string };
 
 // ============================================================================
@@ -60,7 +60,7 @@ const DEFAULT_SOCKET = '__default__';
 export function buildAdjacencyIndex(edges: Edge[]): AdjacencyIndex {
   const outgoing = new Map<string, Map<string, Edge[]>>();
   const incoming = new Map<string, Map<string, Edge[]>>();
-  const byNode = new Map<string, Edge[]>();
+  const byEntity = new Map<string, Edge[]>();
 
   for (const edge of edges) {
     // --- outgoing[source][sourceSocket] ---
@@ -91,34 +91,34 @@ export function buildAdjacencyIndex(edges: Edge[]): AdjacencyIndex {
     }
     tgtList.push(edge);
 
-    // --- byNode[source] and byNode[target] ---
-    let srcAll = byNode.get(edge.source);
+    // --- byEntity[source] and byEntity[target] ---
+    let srcAll = byEntity.get(edge.source);
     if (!srcAll) {
       srcAll = [];
-      byNode.set(edge.source, srcAll);
+      byEntity.set(edge.source, srcAll);
     }
     srcAll.push(edge);
 
     if (edge.source !== edge.target) {
-      let tgtAll = byNode.get(edge.target);
+      let tgtAll = byEntity.get(edge.target);
       if (!tgtAll) {
         tgtAll = [];
-        byNode.set(edge.target, tgtAll);
+        byEntity.set(edge.target, tgtAll);
       }
       tgtAll.push(edge);
     }
   }
 
-  return { outgoing, incoming, byNode };
+  return { outgoing, incoming, byEntity };
 }
 
 // ============================================================================
 // Basic Queries — O(1) via adjacency index
 // ============================================================================
 
-/** Get node IDs that directly feed into this node. O(1) + O(k). */
-export function getIncomers(index: AdjacencyIndex, nodeId: string): string[] {
-  const ports = index.incoming.get(nodeId);
+/** Get entity IDs that directly feed into this entity. O(1) + O(k). */
+export function getIncomers(index: AdjacencyIndex, entityId: string): string[] {
+  const ports = index.incoming.get(entityId);
   if (!ports) return [];
   const ids = new Set<string>();
   for (const edges of ports.values()) {
@@ -129,9 +129,9 @@ export function getIncomers(index: AdjacencyIndex, nodeId: string): string[] {
   return Array.from(ids);
 }
 
-/** Get node IDs that this node directly feeds into. O(1) + O(k). */
-export function getOutgoers(index: AdjacencyIndex, nodeId: string): string[] {
-  const ports = index.outgoing.get(nodeId);
+/** Get entity IDs that this entity directly feeds into. O(1) + O(k). */
+export function getOutgoers(index: AdjacencyIndex, entityId: string): string[] {
+  const ports = index.outgoing.get(entityId);
   if (!ports) return [];
   const ids = new Set<string>();
   for (const edges of ports.values()) {
@@ -142,14 +142,14 @@ export function getOutgoers(index: AdjacencyIndex, nodeId: string): string[] {
   return Array.from(ids);
 }
 
-/** Get all edges touching a node. O(1). */
-export function getNodeEdges(index: AdjacencyIndex, nodeId: string): Edge[] {
-  return index.byNode.get(nodeId) ?? [];
+/** Get all edges touching an entity. O(1). */
+export function getEntityEdges(index: AdjacencyIndex, entityId: string): Edge[] {
+  return index.byEntity.get(entityId) ?? [];
 }
 
-/** Get edges arriving at a node (inputs). O(1) + O(k). */
-export function getInputEdges(index: AdjacencyIndex, nodeId: string): Edge[] {
-  const ports = index.incoming.get(nodeId);
+/** Get edges arriving at an entity (inputs). O(1) + O(k). */
+export function getInputEdges(index: AdjacencyIndex, entityId: string): Edge[] {
+  const ports = index.incoming.get(entityId);
   if (!ports) return [];
   const result: Edge[] = [];
   for (const edges of ports.values()) {
@@ -160,9 +160,9 @@ export function getInputEdges(index: AdjacencyIndex, nodeId: string): Edge[] {
   return result;
 }
 
-/** Get edges leaving a node (outputs). O(1) + O(k). */
-export function getOutputEdges(index: AdjacencyIndex, nodeId: string): Edge[] {
-  const ports = index.outgoing.get(nodeId);
+/** Get edges leaving an entity (outputs). O(1) + O(k). */
+export function getOutputEdges(index: AdjacencyIndex, entityId: string): Edge[] {
+  const ports = index.outgoing.get(entityId);
   if (!ports) return [];
   const result: Edge[] = [];
   for (const edges of ports.values()) {
@@ -173,18 +173,18 @@ export function getOutputEdges(index: AdjacencyIndex, nodeId: string): Edge[] {
   return result;
 }
 
-/** Get direct edges between two specific nodes. O(k). */
+/** Get direct edges between two specific entities. O(k). */
 export function getEdgesBetween(
   index: AdjacencyIndex,
-  nodeA: string,
-  nodeB: string
+  entityA: string,
+  entityB: string
 ): Edge[] {
-  const aEdges = index.byNode.get(nodeA);
+  const aEdges = index.byEntity.get(entityA);
   if (!aEdges) return [];
   return aEdges.filter(
     (e) =>
-      (e.source === nodeA && e.target === nodeB) ||
-      (e.source === nodeB && e.target === nodeA)
+      (e.source === entityA && e.target === entityB) ||
+      (e.source === entityB && e.target === entityA)
   );
 }
 
@@ -192,17 +192,17 @@ export function getEdgesBetween(
 // Traversal — Iterator-based, O(k) where k = reachable nodes
 // ============================================================================
 
-/** Walk upstream from a node, yielding all ancestor node IDs. */
+/** Walk upstream from an entity, yielding all ancestor entity IDs. */
 export function* walkUpstream(
   index: AdjacencyIndex,
-  startNodeId: string
+  startEntityId: string
 ): Generator<string> {
   const visited = new Set<string>();
-  visited.add(startNodeId);
+  visited.add(startEntityId);
   const stack: string[] = [];
 
   // Seed with direct incomers
-  const incomers = getIncomers(index, startNodeId);
+  const incomers = getIncomers(index, startEntityId);
   for (const id of incomers) {
     if (!visited.has(id)) stack.push(id);
   }
@@ -226,17 +226,17 @@ export function* walkUpstream(
   }
 }
 
-/** Walk downstream from a node, yielding all dependent node IDs. */
+/** Walk downstream from an entity, yielding all dependent entity IDs. */
 export function* walkDownstream(
   index: AdjacencyIndex,
-  startNodeId: string
+  startEntityId: string
 ): Generator<string> {
   const visited = new Set<string>();
-  visited.add(startNodeId);
+  visited.add(startEntityId);
   const stack: string[] = [];
 
   // Seed with direct outgoers
-  const outgoers = getOutgoers(index, startNodeId);
+  const outgoers = getOutgoers(index, startEntityId);
   for (const id of outgoers) {
     if (!visited.has(id)) stack.push(id);
   }
@@ -266,32 +266,32 @@ export function* walkDownstream(
 
 /**
  * Compute topological sort and execution levels in a single pass.
- * Uses Kahn's algorithm (BFS-based). If not all nodes are processed,
- * the remaining nodes are in cycles.
+ * Uses Kahn's algorithm (BFS-based). If not all entities are processed,
+ * the remaining entities are in cycles.
  *
- * @param nodeIds - All node IDs that participate in the graph
+ * @param entityIds - All entity IDs that participate in the graph
  * @param index - Pre-built adjacency index
- * @param mutedNodeIds - Nodes to skip in execution order (treated as pass-through)
+ * @param mutedEntityIds - Entities to skip in execution order (treated as pass-through)
  */
 export function computeAnalysis(
-  nodeIds: string[],
+  entityIds: string[],
   index: AdjacencyIndex,
-  mutedNodeIds?: ReadonlySet<string>
+  mutedEntityIds?: ReadonlySet<string>
 ): Omit<CachedAnalysis, 'topologyVersion'> {
-  const nodeIdSet = new Set(nodeIds);
+  const entityIdSet = new Set(entityIds);
 
-  // Count in-degree for each node (edges from nodes within the set)
+  // Count in-degree for each entity (edges from entities within the set)
   const inDegree = new Map<string, number>();
-  for (const id of nodeIds) {
+  for (const id of entityIds) {
     inDegree.set(id, 0);
   }
 
-  for (const id of nodeIds) {
+  for (const id of entityIds) {
     const ports = index.incoming.get(id);
     if (ports) {
       for (const edges of ports.values()) {
         for (const edge of edges) {
-          if (nodeIdSet.has(edge.source)) {
+          if (entityIdSet.has(edge.source)) {
             inDegree.set(id, (inDegree.get(id) ?? 0) + 1);
           }
         }
@@ -308,7 +308,7 @@ export function computeAnalysis(
   const order: string[] = [];
   const levels: string[][] = [];
   const roots: string[] = [];
-  const leafCandidates = new Set(nodeIds);
+  const leafCandidates = new Set(entityIds);
 
   while (queue.length > 0) {
     const level: string[] = [];
@@ -316,8 +316,8 @@ export function computeAnalysis(
 
     for (const id of queue) {
       order.push(id);
-      // Skip muted nodes in level grouping but still process their edges
-      if (!mutedNodeIds?.has(id)) {
+      // Skip muted entities in level grouping but still process their edges
+      if (!mutedEntityIds?.has(id)) {
         level.push(id);
       }
 
@@ -327,7 +327,7 @@ export function computeAnalysis(
       if (ports) {
         for (const edges of ports.values()) {
           for (const edge of edges) {
-            if (nodeIdSet.has(edge.source)) {
+            if (entityIdSet.has(edge.source)) {
               hasIncoming = true;
               break;
             }
@@ -342,7 +342,7 @@ export function computeAnalysis(
       if (outPorts) {
         for (const edges of outPorts.values()) {
           for (const edge of edges) {
-            if (nodeIdSet.has(edge.target)) {
+            if (entityIdSet.has(edge.target)) {
               leafCandidates.delete(id); // has outgoing, not a leaf
               const newDegree = (inDegree.get(edge.target) ?? 1) - 1;
               inDegree.set(edge.target, newDegree);
@@ -361,20 +361,20 @@ export function computeAnalysis(
     queue = nextQueue;
   }
 
-  const hasCycles = order.length < nodeIds.length;
+  const hasCycles = order.length < entityIds.length;
   const processedSet = new Set(order);
-  const cycleNodeIds = hasCycles
-    ? nodeIds.filter((id) => !processedSet.has(id))
+  const cycleEntityIds = hasCycles
+    ? entityIds.filter((id) => !processedSet.has(id))
     : [];
 
-  // Leaves: nodes with no outgoing edges within the graph
+  // Leaves: entities with no outgoing edges within the graph
   const leaves = Array.from(leafCandidates).filter((id) => processedSet.has(id));
 
   return {
     topologicalOrder: hasCycles ? null : order,
     executionLevels: hasCycles ? null : levels,
     hasCycles,
-    cycleNodeIds,
+    cycleEntityIds,
     roots,
     leaves,
   };
@@ -385,27 +385,27 @@ export function computeAnalysis(
 // ============================================================================
 
 /**
- * Would adding an edge from sourceNodeId to targetNodeId create a cycle?
+ * Would adding an edge from sourceEntityId to targetEntityId create a cycle?
  * DFS from target following outgoing edges, looking for source.
  * Called on every pointer move during connection drag — must be fast.
  *
- * O(k) where k = nodes reachable downstream from target. Early termination.
+ * O(k) where k = entities reachable downstream from target. Early termination.
  */
 export function wouldCreateCycle(
   index: AdjacencyIndex,
-  sourceNodeId: string,
-  targetNodeId: string
+  sourceEntityId: string,
+  targetEntityId: string
 ): boolean {
-  if (sourceNodeId === targetNodeId) return true;
+  if (sourceEntityId === targetEntityId) return true;
 
   // If adding source→target, cycle exists iff target can reach source
   // via existing edges (target→...→source already exists)
   const visited = new Set<string>();
-  const stack: string[] = [targetNodeId];
+  const stack: string[] = [targetEntityId];
 
   while (stack.length > 0) {
     const current = stack.pop()!;
-    if (current === sourceNodeId) return true;
+    if (current === sourceEntityId) return true;
     if (visited.has(current)) continue;
     visited.add(current);
 
@@ -414,7 +414,7 @@ export function wouldCreateCycle(
       for (const edges of ports.values()) {
         for (const edge of edges) {
           if (!visited.has(edge.target)) {
-            if (edge.target === sourceNodeId) return true; // fast path
+            if (edge.target === sourceEntityId) return true; // fast path
             stack.push(edge.target);
           }
         }
@@ -430,21 +430,21 @@ export function wouldCreateCycle(
 // ============================================================================
 
 /**
- * Get all nodes affected by a change to the given node(s).
- * Returns downstream nodes in topological order.
+ * Get all entities affected by a change to the given entity(s).
+ * Returns downstream entities in topological order.
  *
- * @param changedNodeIds - Node(s) that changed
+ * @param changedEntityIds - Entity(s) that changed
  * @param index - Adjacency index
  * @param cachedOrder - Cached topological order (for sorting the result)
- * @param mutedNodeIds - Muted nodes are treated as pass-through (propagation continues through them)
+ * @param mutedEntityIds - Muted entities are treated as pass-through (propagation continues through them)
  */
 export function getAffectedEntities(
-  changedNodeIds: string | string[],
+  changedEntityIds: string | string[],
   index: AdjacencyIndex,
   cachedOrder?: string[] | null,
-  mutedNodeIds?: ReadonlySet<string>
+  mutedEntityIds?: ReadonlySet<string>
 ): string[] {
-  const startIds = typeof changedNodeIds === 'string' ? [changedNodeIds] : changedNodeIds;
+  const startIds = typeof changedEntityIds === 'string' ? [changedEntityIds] : changedEntityIds;
   const affected = new Set<string>();
 
   // Walk downstream from all changed nodes
@@ -476,17 +476,17 @@ export function getAffectedEntities(
 
 /**
  * Find connected components using Union-Find. O(V+E).
- * Returns a Map from component ID (smallest node ID in component) to array of node IDs.
+ * Returns a Map from component ID (smallest entity ID in component) to array of entity IDs.
  */
 export function getConnectedComponents(
-  nodeIds: string[],
+  entityIds: string[],
   index: AdjacencyIndex
 ): Map<string, string[]> {
   // Union-Find with path compression and union by rank
   const parent = new Map<string, string>();
   const rank = new Map<string, number>();
 
-  for (const id of nodeIds) {
+  for (const id of entityIds) {
     parent.set(id, id);
     rank.set(id, 0);
   }
@@ -522,13 +522,13 @@ export function getConnectedComponents(
     }
   }
 
-  // Union nodes connected by edges
-  const nodeIdSet = new Set(nodeIds);
-  for (const id of nodeIds) {
-    const edges = index.byNode.get(id);
+  // Union entities connected by edges
+  const entityIdSet = new Set(entityIds);
+  for (const id of entityIds) {
+    const edges = index.byEntity.get(id);
     if (edges) {
       for (const edge of edges) {
-        if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
+        if (entityIdSet.has(edge.source) && entityIdSet.has(edge.target)) {
           union(edge.source, edge.target);
         }
       }
@@ -537,7 +537,7 @@ export function getConnectedComponents(
 
   // Group by component
   const components = new Map<string, string[]>();
-  for (const id of nodeIds) {
+  for (const id of entityIds) {
     const root = find(id);
     let group = components.get(root);
     if (!group) {
@@ -550,23 +550,23 @@ export function getConnectedComponents(
   return components;
 }
 
-/** Check if two nodes are in the same connected component. O(α(n)) ≈ O(1). */
+/** Check if two entities are in the same connected component. O(alpha(n)) ~ O(1). */
 export function areConnected(
   index: AdjacencyIndex,
-  nodeA: string,
-  nodeB: string
+  entityA: string,
+  entityB: string
 ): boolean {
-  // Simple BFS from A looking for B (undirected via byNode)
+  // Simple BFS from A looking for B (undirected via byEntity)
   const visited = new Set<string>();
-  const stack: string[] = [nodeA];
+  const stack: string[] = [entityA];
 
   while (stack.length > 0) {
     const current = stack.pop()!;
-    if (current === nodeB) return true;
+    if (current === entityB) return true;
     if (visited.has(current)) continue;
     visited.add(current);
 
-    const edges = index.byNode.get(current);
+    const edges = index.byEntity.get(current);
     if (edges) {
       for (const edge of edges) {
         const neighbor = edge.source === current ? edge.target : edge.source;
@@ -585,40 +585,40 @@ export function areConnected(
 // ============================================================================
 
 /**
- * Get execution order for evaluating a specific node.
- * Returns only the subgraph needed (upstream dependencies + the node itself).
+ * Get execution order for evaluating a specific entity.
+ * Returns only the subgraph needed (upstream dependencies + the entity itself).
  */
 export function getExecutionOrder(
   index: AdjacencyIndex,
-  targetNodeId: string
+  targetEntityId: string
 ): string[] {
-  // Collect all upstream nodes
+  // Collect all upstream entities
   const needed = new Set<string>();
-  needed.add(targetNodeId);
-  for (const id of walkUpstream(index, targetNodeId)) {
+  needed.add(targetEntityId);
+  for (const id of walkUpstream(index, targetEntityId)) {
     needed.add(id);
   }
 
   // Topo sort just this subgraph
-  const subgraphNodes = Array.from(needed);
-  const result = computeAnalysis(subgraphNodes, index);
-  return result.topologicalOrder ?? subgraphNodes; // fallback if cycles
+  const subgraphEntities = Array.from(needed);
+  const result = computeAnalysis(subgraphEntities, index);
+  return result.topologicalOrder ?? subgraphEntities; // fallback if cycles
 }
 
 /**
- * Get nodes ready to execute given a set of already-completed nodes.
- * A node is "ready" if all its incomers are in the completed set.
+ * Get entities ready to execute given a set of already-completed entities.
+ * An entity is "ready" if all its incomers are in the completed set.
  * O(k) where k = number of candidates.
  */
 export function getReadyEntities(
-  nodeIds: string[],
+  entityIds: string[],
   index: AdjacencyIndex,
   completed: ReadonlySet<string>
 ): string[] {
-  const nodeIdSet = new Set(nodeIds);
+  const entityIdSet = new Set(entityIds);
   const ready: string[] = [];
 
-  for (const id of nodeIds) {
+  for (const id of entityIds) {
     if (completed.has(id)) continue;
 
     // Check if all incomers are completed
@@ -627,7 +627,7 @@ export function getReadyEntities(
     if (ports) {
       outer: for (const edges of ports.values()) {
         for (const edge of edges) {
-          if (nodeIdSet.has(edge.source) && !completed.has(edge.source)) {
+          if (entityIdSet.has(edge.source) && !completed.has(edge.source)) {
             allReady = false;
             break outer;
           }
@@ -646,43 +646,43 @@ export function getReadyEntities(
 // ============================================================================
 
 /**
- * Compute the edges and node position needed to insert a node on an existing edge.
+ * Compute the edges and entity position needed to insert an entity on an existing edge.
  * Returns the changes to apply — does NOT mutate state.
  *
- * A→B becomes A→newNode→B
+ * A→B becomes A→newEntity→B
  */
 export function computeInsertOnEdge(
   edgeToSplit: Edge,
-  newNode: { id: string; type: string; inputs?: { id: string }[]; outputs?: { id: string }[] },
-  sourceNode: Node | undefined,
-  targetNode: Node | undefined
+  newEntity: { id: string; type: string; inputs?: { id: string }[]; outputs?: { id: string }[] },
+  sourceEntity: Entity | undefined,
+  targetEntity: Entity | undefined
 ): {
   removeEdgeId: string;
   newEdges: [Edge, Edge];
-  nodePosition: { x: number; y: number };
+  entityPosition: { x: number; y: number };
 } {
-  // Position at midpoint of the two connected nodes
-  const sx = sourceNode?.position.x ?? 0;
-  const sy = sourceNode?.position.y ?? 0;
-  const tx = targetNode?.position.x ?? 0;
-  const ty = targetNode?.position.y ?? 0;
-  const nodePosition = { x: (sx + tx) / 2, y: (sy + ty) / 2 };
+  // Position at midpoint of the two connected entities
+  const sx = sourceEntity?.position.x ?? 0;
+  const sy = sourceEntity?.position.y ?? 0;
+  const tx = targetEntity?.position.x ?? 0;
+  const ty = targetEntity?.position.y ?? 0;
+  const entityPosition = { x: (sx + tx) / 2, y: (sy + ty) / 2 };
 
-  // Pick input/output sockets on the new node
-  const newInputSocket = newNode.inputs?.[0]?.id;
-  const newOutputSocket = newNode.outputs?.[0]?.id;
+  // Pick input/output sockets on the new entity
+  const newInputSocket = newEntity.inputs?.[0]?.id;
+  const newOutputSocket = newEntity.outputs?.[0]?.id;
 
   const edgeA: Edge = {
     id: `${edgeToSplit.id}-a`,
     source: edgeToSplit.source,
     sourceSocket: edgeToSplit.sourceSocket,
-    target: newNode.id,
+    target: newEntity.id,
     targetSocket: newInputSocket,
   };
 
   const edgeB: Edge = {
     id: `${edgeToSplit.id}-b`,
-    source: newNode.id,
+    source: newEntity.id,
     sourceSocket: newOutputSocket,
     target: edgeToSplit.target,
     targetSocket: edgeToSplit.targetSocket,
@@ -691,25 +691,25 @@ export function computeInsertOnEdge(
   return {
     removeEdgeId: edgeToSplit.id,
     newEdges: [edgeA, edgeB],
-    nodePosition,
+    entityPosition,
   };
 }
 
 /**
- * Compute the edge changes needed to bypass (remove) a node and reconnect.
- * A→node→B becomes A→B.
+ * Compute the edge changes needed to bypass (remove) an entity and reconnect.
+ * A→entity→B becomes A→B.
  * Matches first input to first output (or all if counts match).
  */
 export function computeBypass(
-  nodeId: string,
+  entityId: string,
   index: AdjacencyIndex
 ): {
   removeEdgeIds: string[];
-  removeNodeId: string;
+  removeEntityId: string;
   newEdges: Edge[];
 } {
-  const inputEdges = getInputEdges(index, nodeId);
-  const outputEdges = getOutputEdges(index, nodeId);
+  const inputEdges = getInputEdges(index, entityId);
+  const outputEdges = getOutputEdges(index, entityId);
   const removeEdgeIds = [...inputEdges, ...outputEdges].map((e) => e.id);
 
   // Reconnect: pair input edges with output edges
@@ -717,7 +717,7 @@ export function computeBypass(
   const pairCount = Math.min(inputEdges.length, outputEdges.length);
   for (let i = 0; i < pairCount; i++) {
     newEdges.push({
-      id: `bypass-${nodeId}-${i}`,
+      id: `bypass-${entityId}-${i}`,
       source: inputEdges[i].source,
       sourceSocket: inputEdges[i].sourceSocket,
       target: outputEdges[i].target,
@@ -725,7 +725,7 @@ export function computeBypass(
     });
   }
 
-  return { removeEdgeIds, removeNodeId: nodeId, newEdges };
+  return { removeEdgeIds, removeEntityId: entityId, newEdges };
 }
 
 // ============================================================================
@@ -740,35 +740,35 @@ export function computeBypass(
  * - Unconnected required input ports (inputs with no incoming edge and no default value)
  * - Type mismatches on edges (source/target socket types incompatible)
  *
- * @param nodes - All nodes in the graph
+ * @param entities - All entities in the graph
  * @param edges - All edges in the graph
  * @param index - Adjacency index
  * @param socketTypes - Socket type definitions for compatibility checking
  * @param isTypeCompatible - Optional custom type compatibility function
  */
 export function validate(
-  nodes: Node[],
+  entities: Entity[],
   edges: Edge[],
   index: AdjacencyIndex,
   socketTypes?: Record<string, { compatibleWith?: string[] | '*' }>,
   isTypeCompatible?: (typeA: string, typeB: string) => boolean
 ): GraphValidationIssue[] {
   const issues: GraphValidationIssue[] = [];
-  const nodeIds = nodes.map((n) => n.id);
+  const entityIds = entities.map((n) => n.id);
 
   // Check for cycles
-  const analysis = computeAnalysis(nodeIds, index);
+  const analysis = computeAnalysis(entityIds, index);
   if (analysis.hasCycles) {
-    issues.push({ type: 'cycle', nodeIds: analysis.cycleNodeIds });
+    issues.push({ type: 'cycle', entityIds: analysis.cycleEntityIds });
   }
 
   // Check for unconnected required inputs
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  for (const node of nodes) {
-    if (!node.inputs) continue;
-    for (const input of node.inputs) {
+  const entityMap = new Map(entities.map((n) => [n.id, n]));
+  for (const entity of entities) {
+    if (!entity.inputs) continue;
+    for (const input of entity.inputs) {
       // Check if this input has any incoming edge
-      const ports = index.incoming.get(node.id);
+      const ports = index.incoming.get(entity.id);
       let hasConnection = false;
       if (ports) {
         const socketEdges = ports.get(input.id);
@@ -787,7 +787,7 @@ export function validate(
       if (!hasConnection && input.defaultValue === undefined) {
         issues.push({
           type: 'unconnected-required',
-          nodeId: node.id,
+          entityId: entity.id,
           portId: input.id,
           portName: input.name,
         });
@@ -798,14 +798,14 @@ export function validate(
   // Check for type mismatches on edges
   if (socketTypes || isTypeCompatible) {
     for (const edge of edges) {
-      const sourceNode = nodeMap.get(edge.source);
-      const targetNode = nodeMap.get(edge.target);
-      if (!sourceNode || !targetNode) continue;
+      const sourceEntity = entityMap.get(edge.source);
+      const targetEntity = entityMap.get(edge.target);
+      if (!sourceEntity || !targetEntity) continue;
 
-      const sourceSocket = sourceNode.outputs?.find(
+      const sourceSocket = sourceEntity.outputs?.find(
         (s) => s.id === (edge.sourceSocket ?? DEFAULT_SOCKET)
       );
-      const targetSocket = targetNode.inputs?.find(
+      const targetSocket = targetEntity.inputs?.find(
         (s) => s.id === (edge.targetSocket ?? DEFAULT_SOCKET)
       );
       if (!sourceSocket || !targetSocket) continue;
@@ -859,15 +859,15 @@ function defaultTypeCompatible(
  * Simpler boolean version of validate().
  */
 export function isGraphComplete(
-  nodes: Node[],
+  entities: Entity[],
   index: AdjacencyIndex
 ): boolean {
-  for (const node of nodes) {
-    if (!node.inputs) continue;
-    for (const input of node.inputs) {
+  for (const entity of entities) {
+    if (!entity.inputs) continue;
+    for (const input of entity.inputs) {
       if (input.defaultValue !== undefined) continue;
 
-      const ports = index.incoming.get(node.id);
+      const ports = index.incoming.get(entity.id);
       let hasConnection = false;
       if (ports) {
         const socketEdges = ports.get(input.id);
@@ -892,55 +892,55 @@ export function isGraphComplete(
  * Get compatible target ports for a given source socket during connection drag.
  * Returns port entries that the source can connect to based on type compatibility.
  *
- * @param sourceNodeId - The node where the drag started
+ * @param sourceEntityId - The entity where the drag started
  * @param sourceSocketId - The socket where the drag started
  * @param isSourceInput - Whether the source socket is an input
- * @param nodes - All nodes
+ * @param entities - All entities
  * @param socketTypes - Socket type definitions
  * @param index - Adjacency index (for cycle checking)
  * @param allowCycles - Whether cycles are permitted
  */
 export function getCompatiblePorts(
-  sourceNodeId: string,
+  sourceEntityId: string,
   sourceSocketId: string,
   isSourceInput: boolean,
-  nodes: Node[],
+  entities: Entity[],
   socketTypes: Record<string, { compatibleWith?: string[] | '*' }>,
   index?: AdjacencyIndex,
   allowCycles?: boolean
-): Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }> {
+): Array<{ entityId: string; socketId: string; socketName: string; socketType: string }> {
   // Find source socket type
-  const sourceNode = nodes.find((n) => n.id === sourceNodeId);
-  if (!sourceNode) return [];
+  const sourceEntity = entities.find((n) => n.id === sourceEntityId);
+  if (!sourceEntity) return [];
 
-  const sourceSockets = isSourceInput ? sourceNode.inputs : sourceNode.outputs;
+  const sourceSockets = isSourceInput ? sourceEntity.inputs : sourceEntity.outputs;
   const sourceSocket = sourceSockets?.find((s) => s.id === sourceSocketId);
   if (!sourceSocket) return [];
 
-  const result: Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }> = [];
+  const result: Array<{ entityId: string; socketId: string; socketName: string; socketType: string }> = [];
 
-  for (const node of nodes) {
-    if (node.id === sourceNodeId) continue; // Can't connect to self
+  for (const entity of entities) {
+    if (entity.id === sourceEntityId) continue; // Can't connect to self
 
     // If source is output, look at target inputs; if source is input, look at target outputs
-    const targetSockets = isSourceInput ? node.outputs : node.inputs;
+    const targetSockets = isSourceInput ? entity.outputs : entity.inputs;
     if (!targetSockets) continue;
 
     // Check cycle prevention
     if (!allowCycles && index) {
       if (isSourceInput) {
         // Source is input, target is output → edge goes target→source
-        if (wouldCreateCycle(index, node.id, sourceNodeId)) continue;
+        if (wouldCreateCycle(index, entity.id, sourceEntityId)) continue;
       } else {
         // Source is output, target is input → edge goes source→target
-        if (wouldCreateCycle(index, sourceNodeId, node.id)) continue;
+        if (wouldCreateCycle(index, sourceEntityId, entity.id)) continue;
       }
     }
 
     for (const socket of targetSockets) {
       if (defaultTypeCompatible(sourceSocket.type, socket.type, socketTypes)) {
         result.push({
-          nodeId: node.id,
+          entityId: entity.id,
           socketId: socket.id,
           socketName: socket.name,
           socketType: socket.type,
@@ -957,23 +957,23 @@ export function getCompatiblePorts(
 // ============================================================================
 
 /**
- * Compute the changes needed to collapse a set of nodes into a single compound/group node.
+ * Compute the changes needed to collapse a set of entities into a single compound/frame entity.
  *
- * Creates a group node that replaces the selected nodes. External edges (edges
- * crossing the boundary) are reconnected to the group node's auto-generated ports.
+ * Creates a frame entity that replaces the selected entities. External edges (edges
+ * crossing the boundary) are reconnected to the frame entity's auto-generated ports.
  *
- * @param nodeIds - Nodes to collapse into a group
- * @param groupId - ID for the new group node
- * @param nodes - All nodes
+ * @param entityIds - Entities to collapse into a frame
+ * @param frameId - ID for the new frame entity
+ * @param entities - All entities
  * @param index - Adjacency index
  */
 export function computeCollapseToSubgraph(
-  nodeIds: string[],
-  groupId: string,
-  nodes: Node[],
+  entityIds: string[],
+  frameId: string,
+  entities: Entity[],
   index: AdjacencyIndex
 ): {
-  groupNode: {
+  frameEntity: {
     id: string;
     position: { x: number; y: number };
     width: number;
@@ -982,44 +982,44 @@ export function computeCollapseToSubgraph(
   };
   /** Edges to remove (internal edges + boundary edges) */
   removeEdgeIds: string[];
-  /** New edges reconnecting external connections to the group */
+  /** New edges reconnecting external connections to the frame */
   newEdges: Edge[];
-  /** Port definitions for the group node */
-  groupInputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }>;
-  groupOutputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }>;
+  /** Port definitions for the frame entity */
+  frameInputs: Array<{ id: string; name: string; type: string; originalEntityId: string; originalSocketId: string }>;
+  frameOutputs: Array<{ id: string; name: string; type: string; originalEntityId: string; originalSocketId: string }>;
 } {
-  const nodeIdSet = new Set(nodeIds);
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const entityIdSet = new Set(entityIds);
+  const entityMap = new Map(entities.map((n) => [n.id, n]));
 
-  // Calculate group bounds from contained nodes
+  // Calculate frame bounds from contained entities
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const id of nodeIds) {
-    const node = nodeMap.get(id);
-    if (!node) continue;
-    const w = node.width ?? 200;
-    const h = node.height ?? 100;
-    minX = Math.min(minX, node.position.x);
-    minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + w);
-    maxY = Math.max(maxY, node.position.y + h);
+  for (const id of entityIds) {
+    const entity = entityMap.get(id);
+    if (!entity) continue;
+    const w = entity.width ?? 200;
+    const h = entity.height ?? 100;
+    minX = Math.min(minX, entity.position.x);
+    minY = Math.min(minY, entity.position.y);
+    maxX = Math.max(maxX, entity.position.x + w);
+    maxY = Math.max(maxY, entity.position.y + h);
   }
 
   const padding = 40;
-  const groupPosition = { x: minX - padding, y: minY - padding };
-  const groupWidth = maxX - minX + padding * 2;
-  const groupHeight = maxY - minY + padding * 2;
+  const framePosition = { x: minX - padding, y: minY - padding };
+  const frameWidth = maxX - minX + padding * 2;
+  const frameHeight = maxY - minY + padding * 2;
 
   // Categorize edges
   const removeEdgeIds: string[] = [];
   const boundaryIncoming: Edge[] = []; // external → inside
   const boundaryOutgoing: Edge[] = []; // inside → external
 
-  for (const id of nodeIds) {
-    const edges = index.byNode.get(id);
+  for (const id of entityIds) {
+    const edges = index.byEntity.get(id);
     if (!edges) continue;
     for (const edge of edges) {
-      const srcInside = nodeIdSet.has(edge.source);
-      const tgtInside = nodeIdSet.has(edge.target);
+      const srcInside = entityIdSet.has(edge.source);
+      const tgtInside = entityIdSet.has(edge.target);
       if (srcInside && tgtInside) {
         // Fully internal
         removeEdgeIds.push(edge.id);
@@ -1038,140 +1038,140 @@ export function computeCollapseToSubgraph(
   // Deduplicate edge IDs
   const removeEdgeIdSet = new Set(removeEdgeIds);
 
-  // Generate group ports from boundary edges
-  const groupInputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }> = [];
-  const groupOutputs: Array<{ id: string; name: string; type: string; originalNodeId: string; originalSocketId: string }> = [];
+  // Generate frame ports from boundary edges
+  const frameInputs: Array<{ id: string; name: string; type: string; originalEntityId: string; originalSocketId: string }> = [];
+  const frameOutputs: Array<{ id: string; name: string; type: string; originalEntityId: string; originalSocketId: string }> = [];
   const newEdges: Edge[] = [];
 
-  // Create group input ports for boundary incoming edges
-  const seenInputs = new Map<string, string>(); // "nodeId:socketId" → groupPortId
+  // Create frame input ports for boundary incoming edges
+  const seenInputs = new Map<string, string>(); // "entityId:socketId" → framePortId
   for (const edge of boundaryIncoming) {
     const key = `${edge.target}:${edge.targetSocket ?? DEFAULT_SOCKET}`;
-    let groupPortId = seenInputs.get(key);
-    if (!groupPortId) {
-      groupPortId = `gin-${groupInputs.length}`;
-      const targetNode = nodeMap.get(edge.target);
-      const targetSocket = targetNode?.inputs?.find((s) => s.id === (edge.targetSocket ?? DEFAULT_SOCKET));
-      groupInputs.push({
-        id: groupPortId,
-        name: targetSocket?.name ?? `Input ${groupInputs.length}`,
+    let framePortId = seenInputs.get(key);
+    if (!framePortId) {
+      framePortId = `gin-${frameInputs.length}`;
+      const targetEntity = entityMap.get(edge.target);
+      const targetSocket = targetEntity?.inputs?.find((s) => s.id === (edge.targetSocket ?? DEFAULT_SOCKET));
+      frameInputs.push({
+        id: framePortId,
+        name: targetSocket?.name ?? `Input ${frameInputs.length}`,
         type: targetSocket?.type ?? 'any',
-        originalNodeId: edge.target,
+        originalEntityId: edge.target,
         originalSocketId: edge.targetSocket ?? DEFAULT_SOCKET,
       });
-      seenInputs.set(key, groupPortId);
+      seenInputs.set(key, framePortId);
     }
-    // Reconnect: external source → group input
+    // Reconnect: external source → frame input
     newEdges.push({
-      id: `${groupId}-in-${newEdges.length}`,
+      id: `${frameId}-in-${newEdges.length}`,
       source: edge.source,
       sourceSocket: edge.sourceSocket,
-      target: groupId,
-      targetSocket: groupPortId,
+      target: frameId,
+      targetSocket: framePortId,
     });
   }
 
-  // Create group output ports for boundary outgoing edges
-  const seenOutputs = new Map<string, string>(); // "nodeId:socketId" → groupPortId
+  // Create frame output ports for boundary outgoing edges
+  const seenOutputs = new Map<string, string>(); // "entityId:socketId" → framePortId
   for (const edge of boundaryOutgoing) {
     const key = `${edge.source}:${edge.sourceSocket ?? DEFAULT_SOCKET}`;
-    let groupPortId = seenOutputs.get(key);
-    if (!groupPortId) {
-      groupPortId = `gout-${groupOutputs.length}`;
-      const sourceNode = nodeMap.get(edge.source);
-      const sourceSocket = sourceNode?.outputs?.find((s) => s.id === (edge.sourceSocket ?? DEFAULT_SOCKET));
-      groupOutputs.push({
-        id: groupPortId,
-        name: sourceSocket?.name ?? `Output ${groupOutputs.length}`,
+    let framePortId = seenOutputs.get(key);
+    if (!framePortId) {
+      framePortId = `gout-${frameOutputs.length}`;
+      const sourceEntity = entityMap.get(edge.source);
+      const sourceSocket = sourceEntity?.outputs?.find((s) => s.id === (edge.sourceSocket ?? DEFAULT_SOCKET));
+      frameOutputs.push({
+        id: framePortId,
+        name: sourceSocket?.name ?? `Output ${frameOutputs.length}`,
         type: sourceSocket?.type ?? 'any',
-        originalNodeId: edge.source,
+        originalEntityId: edge.source,
         originalSocketId: edge.sourceSocket ?? DEFAULT_SOCKET,
       });
-      seenOutputs.set(key, groupPortId);
+      seenOutputs.set(key, framePortId);
     }
-    // Reconnect: group output → external target
+    // Reconnect: frame output → external target
     newEdges.push({
-      id: `${groupId}-out-${newEdges.length}`,
-      source: groupId,
-      sourceSocket: groupPortId,
+      id: `${frameId}-out-${newEdges.length}`,
+      source: frameId,
+      sourceSocket: framePortId,
       target: edge.target,
       targetSocket: edge.targetSocket,
     });
   }
 
   return {
-    groupNode: {
-      id: groupId,
-      position: groupPosition,
-      width: groupWidth,
-      height: groupHeight,
-      childIds: nodeIds,
+    frameEntity: {
+      id: frameId,
+      position: framePosition,
+      width: frameWidth,
+      height: frameHeight,
+      childIds: entityIds,
     },
     removeEdgeIds: Array.from(removeEdgeIdSet),
     newEdges,
-    groupInputs,
-    groupOutputs,
+    frameInputs,
+    frameOutputs,
   };
 }
 
 /**
- * Compute the changes needed to expand a compound/group node back to its children.
+ * Compute the changes needed to expand a compound/frame entity back to its children.
  * Inverse of collapseToSubgraph.
  *
- * @param groupId - The group node to expand
- * @param childNodes - The nodes inside the group (restored from storage)
+ * @param frameId - The frame entity to expand
+ * @param childEntities - The entities inside the frame (restored from storage)
  * @param internalEdges - Edges between children (restored from storage)
- * @param nodes - All current nodes
+ * @param entities - All current entities
  * @param index - Current adjacency index
  */
 export function computeExpandSubgraph(
-  groupId: string,
-  childNodes: Node[],
+  frameId: string,
+  childEntities: Entity[],
   internalEdges: Edge[],
-  nodes: Node[],
+  entities: Entity[],
   index: AdjacencyIndex,
   portMapping: {
-    inputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
-    outputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+    inputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+    outputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
   }
 ): {
-  removeNodeId: string;
+  removeEntityId: string;
   removeEdgeIds: string[];
-  restoreNodes: Node[];
+  restoreEntities: Entity[];
   restoreEdges: Edge[];
   reconnectEdges: Edge[];
 } {
-  // Edges connected to the group node
-  const groupEdges = getNodeEdges(index, groupId);
-  const removeEdgeIds = groupEdges.map((e) => e.id);
+  // Edges connected to the frame entity
+  const frameEdges = getEntityEdges(index, frameId);
+  const removeEdgeIds = frameEdges.map((e) => e.id);
 
   // Build port mapping lookups
-  const inputMap = new Map(portMapping.inputs.map((p) => [p.groupPortId, p]));
-  const outputMap = new Map(portMapping.outputs.map((p) => [p.groupPortId, p]));
+  const inputMap = new Map(portMapping.inputs.map((p) => [p.framePortId, p]));
+  const outputMap = new Map(portMapping.outputs.map((p) => [p.framePortId, p]));
 
-  // Reconnect external edges to original internal nodes
+  // Reconnect external edges to original internal entities
   const reconnectEdges: Edge[] = [];
 
-  for (const edge of groupEdges) {
-    if (edge.target === groupId) {
+  for (const edge of frameEdges) {
+    if (edge.target === frameId) {
       // Incoming edge → reconnect to original internal input
       const mapping = inputMap.get(edge.targetSocket ?? DEFAULT_SOCKET);
       if (mapping) {
         reconnectEdges.push({
-          id: `expand-${groupId}-${reconnectEdges.length}`,
+          id: `expand-${frameId}-${reconnectEdges.length}`,
           source: edge.source,
           sourceSocket: edge.sourceSocket,
-          target: mapping.originalNodeId,
+          target: mapping.originalEntityId,
           targetSocket: mapping.originalSocketId,
         });
       }
-    } else if (edge.source === groupId) {
+    } else if (edge.source === frameId) {
       // Outgoing edge → reconnect from original internal output
       const mapping = outputMap.get(edge.sourceSocket ?? DEFAULT_SOCKET);
       if (mapping) {
         reconnectEdges.push({
-          id: `expand-${groupId}-${reconnectEdges.length}`,
-          source: mapping.originalNodeId,
+          id: `expand-${frameId}-${reconnectEdges.length}`,
+          source: mapping.originalEntityId,
           sourceSocket: mapping.originalSocketId,
           target: edge.target,
           targetSocket: edge.targetSocket,
@@ -1181,9 +1181,9 @@ export function computeExpandSubgraph(
   }
 
   return {
-    removeNodeId: groupId,
+    removeEntityId: frameId,
     removeEdgeIds,
-    restoreNodes: childNodes,
+    restoreEntities: childEntities,
     restoreEdges: internalEdges,
     reconnectEdges,
   };

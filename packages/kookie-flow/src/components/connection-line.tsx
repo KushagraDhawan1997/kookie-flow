@@ -6,9 +6,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
-  DEFAULT_NODE_WIDTH,
+  DEFAULT_ENTITY_WIDTH,
 } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { calculateMinEntityHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
@@ -93,7 +93,7 @@ export function ConnectionLine({
   const pointsRef = useRef<Float32Array>(new Float32Array((SEGMENTS + 1) * 2));
 
   // Cache socket lookup for O(1) access in hot path
-  // Key: "nodeId:socketId:input|output" -> { index, socket }
+  // Key: "entityId:socketId:input|output" -> { index, socket }
   const socketCacheRef = useRef<{
     key: string;
     index: number;
@@ -149,7 +149,7 @@ export function ConnectionLine({
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current) return;
 
-    const { connectionDraft, nodeMap, viewport } = store.getState();
+    const { connectionDraft, entityMap, viewport } = store.getState();
 
     if (!connectionDraft) {
       mesh.visible = false;
@@ -158,20 +158,20 @@ export function ConnectionLine({
       return;
     }
 
-    const sourceNode = nodeMap.get(connectionDraft.source.nodeId);
-    if (!sourceNode) {
+    const sourceEntity = entityMap.get(connectionDraft.source.entityId);
+    if (!sourceEntity) {
       mesh.visible = false;
       return;
     }
 
     // Calculate source socket position
-    const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
-    const sourceOutputCount = sourceNode.outputs?.length ?? 0;
-    const sourceInputCount = sourceNode.inputs?.length ?? 0;
-    const sourceHeight = sourceNode.height ?? calculateMinNodeHeight(sourceOutputCount, sourceInputCount, socketLayout);
+    const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
+    const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
+    const sourceInputCount = sourceEntity.inputs?.length ?? 0;
+    const sourceHeight = sourceEntity.height ?? calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
     const sourceSockets = connectionDraft.source.isInput
-      ? sourceNode.inputs
-      : sourceNode.outputs;
+      ? sourceEntity.inputs
+      : sourceEntity.outputs;
 
     if (!sourceSockets) {
       mesh.visible = false;
@@ -179,7 +179,7 @@ export function ConnectionLine({
     }
 
     // O(1) socket lookup via cache (only compute once per connection draft)
-    const cacheKey = `${connectionDraft.source.nodeId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+    const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
     let socketIndex: number;
     let socket: { id: string; type: string; position?: number };
 
@@ -201,7 +201,7 @@ export function ConnectionLine({
     }
     // Calculate row index based on socket type
     // Layout order: outputs first, then inputs
-    const outputCount = sourceNode.outputs?.length ?? 0;
+    const outputCount = sourceEntity.outputs?.length ?? 0;
     const rowIndex = connectionDraft.source.isInput
       ? outputCount + socketIndex
       : socketIndex;
@@ -211,9 +211,9 @@ export function ConnectionLine({
         : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
 
     const sourceX = connectionDraft.source.isInput
-      ? sourceNode.position.x
-      : sourceNode.position.x + sourceWidth;
-    const sourceY = sourceNode.position.y + yOffset;
+      ? sourceEntity.position.x
+      : sourceEntity.position.x + sourceWidth;
+    const sourceY = sourceEntity.position.y + yOffset;
 
     // Target is current mouse position
     const targetX = connectionDraft.mouseWorld.x;

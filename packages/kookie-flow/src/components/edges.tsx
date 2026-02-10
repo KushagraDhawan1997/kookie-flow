@@ -5,12 +5,12 @@ import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
-  DEFAULT_NODE_WIDTH,
+  DEFAULT_ENTITY_WIDTH,
   DEFAULT_SOCKET_TYPES,
 } from '../core/constants';
-import { calculateMinNodeHeight } from '../utils/style-resolver';
+import { calculateMinEntityHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
-import type { Node, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
+import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
 
 // Buffer sizing
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -151,11 +151,11 @@ export function Edges({
   // Track last selection state for per-edge color updates
   const lastSelectedEdgesRef = useRef<Set<string>>(new Set());
 
-  // Node map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
-  const nodeMapRef = useRef<Map<string, Node>>(new Map());
+  // Entity map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
+  const entityMapRef = useRef<Map<string, Entity>>(new Map());
 
-  // Socket index map for O(1) lookups: "${nodeId}:${socketId}:input|output" -> { index, socket }
-  // Rebuilt only when nodes are added/removed (not on position changes)
+  // Socket index map for O(1) lookups: "${entityId}:${socketId}:input|output" -> { index, socket }
+  // Rebuilt only when entities are added/removed (not on position changes)
   const socketIndexMapRef = useRef<
     Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
   >(new Map());
@@ -278,9 +278,9 @@ export function Edges({
     mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
 
     // Helper to rebuild socket index map (only called on add/remove, not position changes)
-    const rebuildSocketIndexMap = (nodes: Node[]) => {
+    const rebuildSocketIndexMap = (entities: Entity[]) => {
       socketIndexMapRef.current.clear();
-      for (const n of nodes) {
+      for (const n of entities) {
         if (n.inputs) {
           for (let i = 0; i < n.inputs.length; i++) {
             const s = n.inputs[i];
@@ -297,15 +297,15 @@ export function Edges({
     };
 
     // Subscribe to changes
-    // IMPORTANT: nodes.length subscription for socket index map rebuild (only on add/remove)
-    // Also sync nodeMapRef here - store creates new nodeMap only on add/remove,
-    // during drag it mutates the same Map in place (updateNodePositions)
-    const unsubNodesLength = store.subscribe(
-      (state) => state.nodes.length,
+    // IMPORTANT: entities.length subscription for socket index map rebuild (only on add/remove)
+    // Also sync entityMapRef here - store creates new entityMap only on add/remove,
+    // during drag it mutates the same Map in place (updateEntityPositions)
+    const unsubEntitiesLength = store.subscribe(
+      (state) => state.entities.length,
       () => {
-        const { nodes, nodeMap } = store.getState();
-        nodeMapRef.current = nodeMap;
-        rebuildSocketIndexMap(nodes);
+        const { entities, entityMap } = store.getState();
+        entityMapRef.current = entityMap;
+        rebuildSocketIndexMap(entities);
         geometryDirtyRef.current = true;
         colorDirtyRef.current = true;
       }
@@ -332,17 +332,17 @@ export function Edges({
       }
     );
 
-    // Initialize nodeMap ref and socket index map
-    const { nodes, nodeMap } = store.getState();
-    nodeMapRef.current = nodeMap;
-    rebuildSocketIndexMap(nodes);
+    // Initialize entityMap ref and socket index map
+    const { entities, entityMap } = store.getState();
+    entityMapRef.current = entityMap;
+    rebuildSocketIndexMap(entities);
 
     // Mark dirty to ensure edges render on first frame after initialization
     geometryDirtyRef.current = true;
     colorDirtyRef.current = true;
 
     return () => {
-      unsubNodesLength();
+      unsubEntitiesLength();
       unsubPositions();
       unsubEdges();
       unsubSelection();
@@ -355,7 +355,7 @@ export function Edges({
     if (!meshRef.current) return;
 
     const { edges, viewport, selectedEdgeIds, positionVersion } = store.getState();
-    const nodeMap = nodeMapRef.current;
+    const entityMap = entityMapRef.current;
 
     // Always update zoom uniform (cheap operation)
     material.uniforms.uZoom.value = viewport.zoom;
@@ -380,7 +380,7 @@ export function Edges({
     const buffers = buffersRef.current;
     const mesh = meshRef.current;
 
-    if (edges.length === 0 || nodeMap.size === 0) {
+    if (edges.length === 0 || entityMap.size === 0) {
       mesh.geometry.setDrawRange(0, 0);
       geometryDirtyRef.current = false;
       colorDirtyRef.current = false;
@@ -397,9 +397,9 @@ export function Edges({
       let vertexOffset = 0;
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
-        const sourceNode = nodeMap.get(edge.source);
-        const targetNode = nodeMap.get(edge.target);
-        if (!sourceNode || !targetNode) continue;
+        const sourceEntity = entityMap.get(edge.source);
+        const targetEntity = entityMap.get(edge.target);
+        if (!sourceEntity || !targetEntity) continue;
 
         // Determine color
         let cr: number, cg: number, cb: number;
@@ -473,18 +473,18 @@ export function Edges({
 
     for (let i = 0; i < edges.length; i++) {
       const edge = edges[i];
-      const sourceNode = nodeMap.get(edge.source);
-      const targetNode = nodeMap.get(edge.target);
+      const sourceEntity = entityMap.get(edge.source);
+      const targetEntity = entityMap.get(edge.target);
 
-      if (!sourceNode || !targetNode) continue;
+      if (!sourceEntity || !targetEntity) continue;
 
-      const sourceWidth = sourceNode.width ?? DEFAULT_NODE_WIDTH;
-      const sourceOutputCount = sourceNode.outputs?.length ?? 0;
-      const sourceInputCount = sourceNode.inputs?.length ?? 0;
-      const sourceHeight = sourceNode.height ?? calculateMinNodeHeight(sourceOutputCount, sourceInputCount, socketLayout);
-      const targetOutputCount = targetNode.outputs?.length ?? 0;
-      const targetInputCount = targetNode.inputs?.length ?? 0;
-      const targetHeight = targetNode.height ?? calculateMinNodeHeight(targetOutputCount, targetInputCount, socketLayout);
+      const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
+      const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
+      const sourceInputCount = sourceEntity.inputs?.length ?? 0;
+      const sourceHeight = sourceEntity.height ?? calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
+      const targetOutputCount = targetEntity.outputs?.length ?? 0;
+      const targetInputCount = targetEntity.inputs?.length ?? 0;
+      const targetHeight = targetEntity.height ?? calculateMinEntityHeight(targetOutputCount, targetInputCount, socketLayout);
 
       // Calculate source socket position - O(1) lookup via socketIndexMap
       // Source socket is always an output (rowIndex = outputIndex)
@@ -505,7 +505,7 @@ export function Edges({
       if (edge.targetSocket) {
         const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
         if (socketInfo) {
-          const targetOutputCount = targetNode.outputs?.length ?? 0;
+          const targetOutputCount = targetEntity.outputs?.length ?? 0;
           const rowIndex = targetOutputCount + socketInfo.index;
           targetYOffset =
             socketInfo.socket.position !== undefined
@@ -515,10 +515,10 @@ export function Edges({
       }
 
       // Edge endpoints at actual socket positions
-      const x0 = sourceNode.position.x + sourceWidth;
-      const y0 = sourceNode.position.y + sourceYOffset;
-      const x1 = targetNode.position.x;
-      const y1 = targetNode.position.y + targetYOffset;
+      const x0 = sourceEntity.position.x + sourceWidth;
+      const y0 = sourceEntity.position.y + sourceYOffset;
+      const x1 = targetEntity.position.x;
+      const y1 = targetEntity.position.y + targetYOffset;
 
       // Get edge type early - needed for control point calculation before culling
       const edgeType = edge.type ?? defaultEdgeType;
@@ -552,8 +552,8 @@ export function Edges({
         cy2 = y1;
       } else {
         // Bezier: adaptive offset based on distance
-        // - For close nodes, use minimal offset for direct connection
-        // - For far nodes, use proportional offset for nice curve
+        // - For close entities, use minimal offset for direct connection
+        // - For far entities, use proportional offset for nice curve
         // - Consider vertical distance too
         const distance = Math.sqrt(dx * dx + dy * dy);
         const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
@@ -776,7 +776,7 @@ export function Edges({
       const markerStart = normalizeMarker(edge.markerStart);
       const markerEnd = normalizeMarker(edge.markerEnd);
 
-      // Arrow dimensions in world space (scales with zoom like nodes)
+      // Arrow dimensions in world space (scales with zoom like entities)
       const arrowWidth = (markerEnd?.width ?? ARROW_WIDTH) / 2;
       const arrowHeight = markerEnd?.height ?? ARROW_HEIGHT;
 

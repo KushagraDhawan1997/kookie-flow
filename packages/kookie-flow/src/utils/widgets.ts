@@ -89,24 +89,24 @@ export function resolveWidgetConfig(
 /**
  * Check if a socket is connected (has an incoming edge).
  *
- * @param nodeId - The node ID containing the socket
+ * @param entityId - The entity ID containing the socket
  * @param socketId - The socket ID to check
- * @param connectedSockets - Set of connected socket keys in format "nodeId:socketId"
+ * @param connectedSockets - Set of connected socket keys in format "entityId:socketId"
  * @returns true if the socket has an incoming connection
  */
 export function isSocketConnected(
-  nodeId: string,
+  entityId: string,
   socketId: string,
   connectedSockets: Set<string>
 ): boolean {
-  return connectedSockets.has(`${nodeId}:${socketId}`);
+  return connectedSockets.has(`${entityId}:${socketId}`);
 }
 
 /**
  * Build a set of connected input socket keys from edges.
  *
  * @param edges - Array of edges to process
- * @returns Set of connected socket keys in format "nodeId:socketId"
+ * @returns Set of connected socket keys in format "entityId:socketId"
  */
 export function buildConnectedSocketsSet(
   edges: Array<{ target: string; targetSocket?: string }>

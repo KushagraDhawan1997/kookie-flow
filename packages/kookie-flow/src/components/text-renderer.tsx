@@ -1,7 +1,7 @@
 /**
  * TextRenderer - High-performance WebGL text rendering using instanced MSDF
  *
- * Renders all text labels (node headers, socket labels, edge labels) using
+ * Renders all text labels (entity headers, socket labels, edge labels) using
  * Multi-channel Signed Distance Field (MSDF) technique.
  *
  * Supports multiple font weights with separate InstancedMesh per weight
@@ -19,7 +19,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
+import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
 import { useFont } from '../contexts/FontContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
@@ -36,8 +36,8 @@ import {
   countGlyphs,
   truncateText,
 } from '../utils/text-layout';
-import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
-import { getNodeSocketLayout } from '../utils/socket-layout-cache';
+import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
@@ -241,7 +241,7 @@ export function MultiWeightTextRenderer({
 }: MultiWeightTextRendererProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
-  const { resolved: style, config } = useNodeStyle();
+  const { resolved: style, config } = useEntityStyle();
   const socketLayout = useSocketLayout();
   const fontContext = useFont();
 
@@ -280,9 +280,9 @@ export function MultiWeightTextRenderer({
 
   // Build socket index map
   const rebuildSocketIndexMap = useCallback(() => {
-    const { nodes } = store.getState();
+    const { entities } = store.getState();
     socketIndexMapRef.current.clear();
-    for (const n of nodes) {
+    for (const n of entities) {
       if (n.inputs) {
         for (let i = 0; i < n.inputs.length; i++) {
           const s = n.inputs[i];
@@ -309,43 +309,43 @@ export function MultiWeightTextRenderer({
     ): { regular: TextEntry[]; semibold: TextEntry[] } => {
       const regular: TextEntry[] = [];
       const semibold: TextEntry[] = [];
-      const { nodes, edges, nodeMap } = store.getState();
+      const { entities, edges, entityMap } = store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
       const cullPadding = 100;
 
-      // Node headers (semibold)
-      for (const node of nodes) {
-        const width = node.width ?? DEFAULT_NODE_WIDTH;
-        const nodeLayout = getNodeSocketLayout(node, socketLayout);
-        const height = node.height ?? nodeLayout.computedHeight;
+      // Entity headers (semibold)
+      for (const entity of entities) {
+        const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const entityLayout = getEntitySocketLayout(entity, socketLayout);
+        const height = entity.height ?? entityLayout.computedHeight;
 
-        const nodeRight = node.position.x + width;
-        const nodeBottom = node.position.y + height;
+        const entityRight = entity.position.x + width;
+        const entityBottom = entity.position.y + height;
         if (
-          nodeRight < viewLeft - cullPadding ||
-          node.position.x > viewRight + cullPadding ||
-          nodeBottom < viewTop - cullPadding ||
-          node.position.y > viewBottom + cullPadding
+          entityRight < viewLeft - cullPadding ||
+          entity.position.x > viewRight + cullPadding ||
+          entityBottom < viewTop - cullPadding ||
+          entity.position.y > viewBottom + cullPadding
         ) {
           continue;
         }
 
-        const label = node.data.label ?? node.type;
+        const label = entity.data.label ?? entity.type;
         // Position label based on header mode:
-        // - 'none' or 'inside': inside node at top
-        // - 'outside': floating above node
+        // - 'none' or 'inside': inside entity at top
+        // - 'outside': floating above entity
         // Vertically center text within header (fontSize=12, approximate line-height ~14)
         const verticalOffset = (style.headerHeight - 14) / 2;
         const labelY =
           config.header === 'outside'
-            ? node.position.y - style.headerHeight + verticalOffset
-            : node.position.y + verticalOffset;
+            ? entity.position.y - style.headerHeight + verticalOffset
+            : entity.position.y + verticalOffset;
         const entry: TextEntry = {
-          id: `node-${node.id}`,
+          id: `entity-${entity.id}`,
           text: label,
-          position: [node.position.x + 12, labelY, 0.1],
+          position: [entity.position.x + 12, labelY, 0.1],
           fontSize: 12,
           color: primaryTextColor,
           anchor: 'left',
@@ -362,29 +362,29 @@ export function MultiWeightTextRenderer({
 
       // Socket labels (regular)
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
-        for (const node of nodes) {
-          const width = node.width ?? DEFAULT_NODE_WIDTH;
-          const nodeLayout = getNodeSocketLayout(node, socketLayout);
-          const height = node.height ?? nodeLayout.computedHeight;
+        for (const entity of entities) {
+          const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+          const entityLayout = getEntitySocketLayout(entity, socketLayout);
+          const height = entity.height ?? entityLayout.computedHeight;
 
-          const nodeRight = node.position.x + width;
-          const nodeBottom = node.position.y + height;
+          const entityRight = entity.position.x + width;
+          const entityBottom = entity.position.y + height;
           if (
-            nodeRight < viewLeft - cullPadding ||
-            node.position.x > viewRight + cullPadding ||
-            nodeBottom < viewTop - cullPadding ||
-            node.position.y > viewBottom + cullPadding
+            entityRight < viewLeft - cullPadding ||
+            entity.position.x > viewRight + cullPadding ||
+            entityBottom < viewTop - cullPadding ||
+            entity.position.y > viewBottom + cullPadding
           ) {
             continue;
           }
 
           // Output sockets (first in layout order)
-          if (node.outputs) {
-            for (let i = 0; i < node.outputs.length; i++) {
-              const socket = node.outputs[i];
+          if (entity.outputs) {
+            for (let i = 0; i < entity.outputs.length; i++) {
+              const socket = entity.outputs[i];
               // Use cached position (supports variable row heights and stacked layouts)
-              const cachedPos = nodeLayout.outputs[i];
-              const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+              const cachedPos = entityLayout.outputs[i];
+              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
               const textY = socketY - 7; // adjust for visual centering
               // Truncate output labels to fit available space (mirror of input label width)
               const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
@@ -400,9 +400,9 @@ export function MultiWeightTextRenderer({
                     )
                   : socket.name;
               regular.push({
-                id: `socket-${node.id}-${socket.id}`,
+                id: `socket-${entity.id}-${socket.id}`,
                 text: truncatedName,
-                position: [node.position.x + width - 12, textY, 0.1],
+                position: [entity.position.x + width - 12, textY, 0.1],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'right',
@@ -412,12 +412,12 @@ export function MultiWeightTextRenderer({
           }
 
           // Input sockets (after outputs in layout order)
-          if (node.inputs) {
-            for (let i = 0; i < node.inputs.length; i++) {
-              const socket = node.inputs[i];
+          if (entity.inputs) {
+            for (let i = 0; i < entity.inputs.length; i++) {
+              const socket = entity.inputs[i];
               // Use cached position (supports variable row heights and stacked layouts)
-              const cachedPos = nodeLayout.inputs[i];
-              const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+              const cachedPos = entityLayout.inputs[i];
+              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
               const textY = socketY - 7; // adjust for visual centering
               // Truncate input labels to fit before widget area
               const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
@@ -433,9 +433,9 @@ export function MultiWeightTextRenderer({
                     )
                   : socket.name;
               regular.push({
-                id: `socket-${node.id}-${socket.id}`,
+                id: `socket-${entity.id}-${socket.id}`,
                 text: truncatedName,
-                position: [node.position.x + 12, textY, 0.1],
+                position: [entity.position.x + 12, textY, 0.1],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'left',
@@ -456,7 +456,7 @@ export function MultiWeightTextRenderer({
 
           const pointResult = getEdgePointAtT(
             edge,
-            nodeMap,
+            entityMap,
             t,
             defaultEdgeType,
             socketIndexMapRef.current
@@ -505,28 +505,28 @@ export function MultiWeightTextRenderer({
     ]
   );
 
-  // Subscribe to store changes - rebuild socket index map when nodes are added/removed
-  // IMPORTANT: Subscribe to nodes.length, NOT nodes array - position changes create new
+  // Subscribe to store changes - rebuild socket index map when entities are added/removed
+  // IMPORTANT: Subscribe to entities.length, NOT entities array - position changes create new
   // array references which would cause this to fire every frame during drag
   useEffect(() => {
     rebuildSocketIndexMap();
 
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes.length,
+    const unsubEntities = store.subscribe(
+      (state) => state.entities.length,
       () => {
         rebuildSocketIndexMap();
       }
     );
 
     return () => {
-      unsubNodes();
+      unsubEntities();
     };
   }, [store, rebuildSocketIndexMap]);
 
   // Collect entries on frame - update refs directly for same-frame rendering
   // Always collect every frame to ensure positions are fresh during drag
   useFrame(({ size }) => {
-    const { viewport, nodes } = store.getState();
+    const { viewport, entities } = store.getState();
 
     if (viewport.zoom < MIN_TEXT_ZOOM) {
       regularEntriesRef.current = [];
@@ -541,7 +541,7 @@ export function MultiWeightTextRenderer({
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
 
-    if (nodes.length > 0 && socketIndexMapRef.current.size === 0) {
+    if (entities.length > 0 && socketIndexMapRef.current.size === 0) {
       rebuildSocketIndexMap();
     }
 

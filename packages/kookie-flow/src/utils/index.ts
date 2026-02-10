@@ -1,10 +1,10 @@
 export {
   screenToWorld,
   worldToScreen,
-  isPointInNode,
-  getNodeAtPosition,
+  isPointInEntity,
+  getEntityAtPosition,
   boxesIntersect,
-  getNodesInBox,
+  getEntitiesInBox,
   getSocketPosition,
   getSocketAtPosition,
   getSocketAtPositionFast,
@@ -63,11 +63,11 @@ export {
   RADIUS_MAP,
   SOCKET_ROW_HEIGHT_TOKEN,
   WIDGET_HEIGHT_TOKEN,
-  type ResolvedNodeStyle,
+  type ResolvedEntityStyle,
   type ResolvedSocketLayout,
-  resolveNodeStyle,
+  resolveEntityStyle,
   resolveSocketLayout,
-  calculateMinNodeHeight,
+  calculateMinEntityHeight,
 } from './style-resolver';
 
 // Widget utilities (Phase 7D)
@@ -77,7 +77,7 @@ export {
   buildConnectedSocketsSet,
 } from './widgets';
 
-// Per-node accent color utilities
+// Per-entity accent color utilities
 export {
   NO_OVERRIDE_SENTINEL,
   resolveAccentColorRGB,
@@ -91,14 +91,14 @@ export {
   type Bounds,
   getGroupChildren,
   getGroupDescendants,
-  isNodeHidden,
-  getVisibleNodes,
+  isEntityHidden,
+  getVisibleEntities,
   calculateGroupBounds,
   getParentChain,
   isDescendantOf,
   calculateDescendantPositions,
   getAncestorGroups,
   wouldCreateCycle,
-  getTopLevelNodes,
+  getTopLevelEntities,
   sortByDepth,
 } from './grouping';

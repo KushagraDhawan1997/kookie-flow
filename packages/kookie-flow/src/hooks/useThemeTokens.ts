@@ -34,7 +34,7 @@ export interface ThemeTokens {
   '--radius-full': number;
 
   // Typography - Font sizes (resolved to pixels)
-  // Used for node labels and widget sizing alignment
+  // Used for entity labels and widget sizing alignment
   '--font-size-1': number;
   '--font-size-2': number;
   '--font-size-3': number;
@@ -73,7 +73,7 @@ export interface ThemeTokens {
   '--accent-a3': RGBAColor;
 
   // Radix color palette (all 26 AccentColor values at step 9)
-  // Used for socket types and per-node color overrides
+  // Used for socket types and per-entity color overrides
   // Note: --gray-9 is already defined in gray scale above
   '--gold-9': RGBColor;
   '--bronze-9': RGBColor;

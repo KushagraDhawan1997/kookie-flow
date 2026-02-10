@@ -1,23 +1,23 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useTheme } from './ThemeContext';
 import {
-  resolveNodeStyle,
+  resolveEntityStyle,
   resolveSocketLayout,
-  type ResolvedNodeStyle,
+  type ResolvedEntityStyle,
   type ResolvedSocketLayout,
 } from '../utils/style-resolver';
-import type { NodeSize, NodeVariant, NodeRadius, NodeStyleOverrides, HeaderPosition } from '../types';
+import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
 
 /**
  * Style configuration props passed to KookieFlow.
  */
 export interface StyleConfig {
-  size: NodeSize;
-  variant: NodeVariant;
-  radius?: NodeRadius;
+  size: EntitySize;
+  variant: EntityVariant;
+  radius?: EntityRadius;
   header: HeaderPosition;
   accentHeader: boolean;
-  nodeStyle?: Partial<NodeStyleOverrides>;
+  entityStyle?: Partial<EntityStyleOverrides>;
 }
 
 /**
@@ -25,7 +25,7 @@ export interface StyleConfig {
  */
 export interface StyleContextValue {
   /** Resolved WebGL-ready style values */
-  resolved: ResolvedNodeStyle;
+  resolved: ResolvedEntityStyle;
   /** Resolved socket layout for positioning sockets and widgets */
   socketLayout: ResolvedSocketLayout;
   /** Original configuration */
@@ -39,7 +39,7 @@ const DEFAULT_CONFIG: StyleConfig = {
   radius: undefined,
   header: 'none',
   accentHeader: false,
-  nodeStyle: undefined,
+  entityStyle: undefined,
 };
 
 /**
@@ -80,16 +80,16 @@ const StyleContext = createContext<StyleContextValue>(DEFAULT_CONTEXT);
 
 interface StyleProviderProps {
   children: ReactNode;
-  size?: NodeSize;
-  variant?: NodeVariant;
-  radius?: NodeRadius;
+  size?: EntitySize;
+  variant?: EntityVariant;
+  radius?: EntityRadius;
   header?: HeaderPosition;
   accentHeader?: boolean;
-  nodeStyle?: Partial<NodeStyleOverrides>;
+  entityStyle?: Partial<EntityStyleOverrides>;
 }
 
 /**
- * Provides resolved node styles to all child components.
+ * Provides resolved entity styles to all child components.
  *
  * Reads theme tokens from ThemeContext and resolves style props
  * to WebGL-ready values. Memoized to avoid re-computation.
@@ -101,13 +101,13 @@ export function StyleProvider({
   radius,
   header = 'none',
   accentHeader = false,
-  nodeStyle,
+  entityStyle,
 }: StyleProviderProps) {
   const tokens = useTheme();
 
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
-    const resolved = resolveNodeStyle(size, variant, radius, header, accentHeader, tokens, nodeStyle);
+    const resolved = resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, entityStyle);
     const hasHeaderInside = header === 'inside';
     const socketLayout = resolveSocketLayout(hasHeaderInside, size, tokens);
     const config: StyleConfig = {
@@ -116,25 +116,25 @@ export function StyleProvider({
       radius,
       header,
       accentHeader,
-      nodeStyle,
+      entityStyle,
     };
     return { resolved, socketLayout, config };
-  }, [size, variant, radius, header, accentHeader, nodeStyle, tokens]);
+  }, [size, variant, radius, header, accentHeader, entityStyle, tokens]);
 
   return <StyleContext.Provider value={value}>{children}</StyleContext.Provider>;
 }
 
 /**
- * Hook to access resolved node styles from context.
+ * Hook to access resolved entity styles from context.
  */
-export function useNodeStyle(): StyleContextValue {
+export function useEntityStyle(): StyleContextValue {
   return useContext(StyleContext);
 }
 
 /**
  * Hook to access only the resolved style values (convenience).
  */
-export function useResolvedStyle(): ResolvedNodeStyle {
+export function useResolvedStyle(): ResolvedEntityStyle {
   return useContext(StyleContext).resolved;
 }
 

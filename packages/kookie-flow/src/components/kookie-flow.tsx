@@ -15,7 +15,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
 import { FlowProvider, useFlowStoreApi } from './context';
 import { Grid } from './grid';
-import { Nodes } from './nodes';
+import { Entities } from './nodes';
 import { Edges } from './edges';
 import { Sockets } from './sockets';
 import { RerouteNodes } from './reroute-nodes';
@@ -40,7 +40,7 @@ import type {
   KookieFlowProps,
   KookieFlowInstance,
   FitViewOptions,
-  Node,
+  Entity,
   Edge,
   SocketType,
   Connection,
@@ -63,16 +63,16 @@ const isSafari =
  */
 export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(function KookieFlow(
   {
-    nodes,
+    entities,
     edges,
-    nodeTypes = {},
+    entityTypes = {},
     socketTypes = {},
-    onNodesChange,
+    onEntitiesChange,
     onEdgesChange,
     onConnect,
     onConnectStart,
     onConnectEnd,
-    onNodeClick,
+    onEntityClick,
     onEdgeClick,
     onPaneClick,
     edgesSelectable = true,
@@ -102,13 +102,13 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     radius,
     header = 'none',
     accentHeader = false,
-    nodeStyle,
+    entityStyle,
     // Widget props (Phase 7D)
     widgetTypes,
     onWidgetChange,
     showWidgets = true,
     ThemeComponent,
-    defaultNodeWidth,
+    defaultEntityWidth,
     socketLabelWidth,
   },
   ref
@@ -123,12 +123,12 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
         radius={radius}
         header={header}
         accentHeader={accentHeader}
-        nodeStyle={nodeStyle}
+        entityStyle={entityStyle}
       >
         <FontProvider font={font}>
           <ThemedFlowContainer
             ref={ref}
-            nodes={nodes}
+            entities={entities}
             edges={edges}
             defaultViewport={defaultViewport}
             className={className}
@@ -142,20 +142,20 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             allowCycles={allowCycles}
             defaultEdgeType={defaultEdgeType}
             edgesSelectable={edgesSelectable}
-            onNodeClick={onNodeClick}
+            onEntityClick={onEntityClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onConnect={onConnect}
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
-            onNodesChange={onNodesChange}
+            onEntitiesChange={onEntitiesChange}
             onEdgesChange={onEdgesChange}
             showGrid={showGrid}
             showStats={showStats}
             textRenderMode={textRenderMode}
             showSocketLabels={showSocketLabels}
             showEdgeLabels={showEdgeLabels}
-            nodeTypes={nodeTypes}
+            entityTypes={entityTypes}
             scaleTextWithZoom={scaleTextWithZoom}
             showMinimap={showMinimap}
             minimapProps={minimapProps}
@@ -163,7 +163,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             onWidgetChange={onWidgetChange}
             showWidgets={showWidgets}
             ThemeComponent={ThemeComponent}
-            defaultNodeWidth={defaultNodeWidth}
+            defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
           >
             {children}
@@ -178,7 +178,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
  * Inner container that has access to theme tokens for styling.
  */
 interface ThemedFlowContainerProps {
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
   defaultViewport?: KookieFlowProps['defaultViewport'];
   className?: string;
@@ -192,20 +192,20 @@ interface ThemedFlowContainerProps {
   allowCycles: boolean;
   defaultEdgeType: EdgeType;
   edgesSelectable: boolean;
-  onNodeClick?: (node: Node) => void;
+  onEntityClick?: (entity: Entity) => void;
   onEdgeClick?: (edge: Edge) => void;
   onPaneClick?: () => void;
   onConnect?: (connection: Connection) => void;
   onConnectStart?: KookieFlowProps['onConnectStart'];
   onConnectEnd?: KookieFlowProps['onConnectEnd'];
-  onNodesChange?: KookieFlowProps['onNodesChange'];
+  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
   showGrid: boolean;
   showStats: boolean;
   textRenderMode: TextRenderMode;
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
-  nodeTypes: KookieFlowProps['nodeTypes'];
+  entityTypes: KookieFlowProps['entityTypes'];
   scaleTextWithZoom: boolean;
   showMinimap: boolean;
   minimapProps?: KookieFlowProps['minimapProps'];
@@ -215,14 +215,14 @@ interface ThemedFlowContainerProps {
   onWidgetChange?: KookieFlowProps['onWidgetChange'];
   showWidgets: boolean;
   ThemeComponent?: KookieFlowProps['ThemeComponent'];
-  defaultNodeWidth?: number;
+  defaultEntityWidth?: number;
   socketLabelWidth?: number;
 }
 
 const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerProps>(
   function ThemedFlowContainer(
     {
-      nodes,
+      entities,
       edges,
       defaultViewport,
       className,
@@ -236,20 +236,20 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       allowCycles,
       defaultEdgeType,
       edgesSelectable,
-      onNodeClick,
+      onEntityClick,
       onEdgeClick,
       onPaneClick,
       onConnect,
       onConnectStart,
       onConnectEnd,
-      onNodesChange,
+      onEntitiesChange,
       onEdgesChange,
       showGrid,
       showStats,
       textRenderMode,
       showSocketLabels,
       showEdgeLabels,
-      nodeTypes,
+      entityTypes,
       scaleTextWithZoom,
       showMinimap,
       minimapProps,
@@ -258,7 +258,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       onWidgetChange,
       showWidgets,
       ThemeComponent,
-      defaultNodeWidth,
+      defaultEntityWidth,
       socketLabelWidth,
     },
     ref
@@ -284,7 +284,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
 
     return (
       <div ref={containerRef} className={className} style={containerStyle}>
-        <FlowProvider initialState={{ nodes, edges, viewport: defaultViewport }}>
+        <FlowProvider initialState={{ entities, edges, viewport: defaultViewport }}>
           <FlowInstanceHandle
             ref={ref}
             containerRef={containerRef}
@@ -302,13 +302,13 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             allowCycles={allowCycles}
             defaultEdgeType={defaultEdgeType}
             edgesSelectable={edgesSelectable}
-            onNodeClick={onNodeClick}
+            onEntityClick={onEntityClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onConnect={onConnect}
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
-            onNodesChange={onNodesChange}
+            onEntitiesChange={onEntitiesChange}
             onEdgesChange={onEdgesChange}
           >
             <FlowCanvas
@@ -321,10 +321,10 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               showEdgeLabels={showEdgeLabels}
             />
             <DOMLayer
-              nodeTypes={nodeTypes}
+              entityTypes={entityTypes}
               scaleTextWithZoom={scaleTextWithZoom}
               defaultEdgeType={defaultEdgeType}
-              showNodeLabels={textRenderMode === 'dom'}
+              showEntityLabels={textRenderMode === 'dom'}
               showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false}
               showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}
             >
@@ -336,16 +336,16 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
                 widgetTypes={widgetTypes}
                 onWidgetChange={onWidgetChange}
                 ThemeComponent={ThemeComponent}
-                defaultNodeWidth={defaultNodeWidth}
+                defaultEntityWidth={defaultEntityWidth}
                 socketLabelWidth={socketLabelWidth}
               />
             )}
             {showMinimap && <Minimap {...minimapProps} />}
             <FlowSync
-              nodes={nodes}
+              entities={entities}
               edges={edges}
               socketTypes={resolvedSocketTypes}
-              onNodesChange={onNodesChange}
+              onEntitiesChange={onEntitiesChange}
               onEdgesChange={onEdgesChange}
             />
           </InputHandler>
@@ -405,17 +405,17 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
           state.zoom(-step);
         },
 
-        getNodes: () => {
-          return store.getState().nodes;
+        getEntities: () => {
+          return store.getState().entities;
         },
 
         getEdges: () => {
           return store.getState().edges;
         },
 
-        getSelectedNodes: () => {
+        getSelectedEntities: () => {
           const state = store.getState();
-          return state.nodes.filter((n) => state.selectedNodeIds.has(n.id));
+          return state.entities.filter((n) => state.selectedEntityIds.has(n.id));
         },
 
         getSelectedEdges: () => {
@@ -490,13 +490,13 @@ interface InputHandlerProps {
   allowCycles: boolean;
   defaultEdgeType: EdgeType;
   edgesSelectable: boolean;
-  onNodeClick?: (node: Node) => void;
+  onEntityClick?: (entity: Entity) => void;
   onEdgeClick?: (edge: Edge) => void;
   onPaneClick?: () => void;
   onConnect?: (connection: Connection) => void;
   onConnectStart?: KookieFlowProps['onConnectStart'];
   onConnectEnd?: KookieFlowProps['onConnectEnd'];
-  onNodesChange?: KookieFlowProps['onNodesChange'];
+  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
@@ -515,13 +515,13 @@ function InputHandler({
   allowCycles,
   defaultEdgeType,
   edgesSelectable,
-  onNodeClick,
+  onEntityClick,
   onEdgeClick,
   onPaneClick,
   onConnect,
   onConnectStart,
   onConnectEnd,
-  onNodesChange,
+  onEntitiesChange,
   onEdgesChange,
 }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -551,18 +551,18 @@ function InputHandler({
   );
   const hasDragged = useRef(false);
 
-  // Track drag state for node dragging
+  // Track drag state for entity dragging
   const dragState = useRef<{
-    nodeIds: string[];
+    entityIds: string[];
     startPositions: Map<string, { x: number; y: number }>;
-    cursorOffset: { x: number; y: number }; // Offset from cursor to primary node position at click time
+    cursorOffset: { x: number; y: number }; // Offset from cursor to primary entity position at click time
     containerRect: { width: number; height: number }; // Cached to avoid layout queries in RAF
   } | null>(null);
 
   // Pending drag info - captured at click time, used when threshold is crossed
   const pendingDragRef = useRef<{
-    clickedNodeId: string;
-    cursorOffset: { x: number; y: number }; // cursor position - node position at click time
+    clickedEntityId: string;
+    cursorOffset: { x: number; y: number }; // cursor position - entity position at click time
   } | null>(null);
 
   // Auto-scroll state for dragging near viewport edges
@@ -627,11 +627,11 @@ function InputHandler({
       zoom: viewport.zoom,
     });
 
-    // 2. Update node positions based on new viewport
+    // 2. Update entity positions based on new viewport
     // Use cursor offset approach (same as main drag handler)
     const currentWorldPos = screenToWorld({ x: screenX, y: screenY }, store.getState().viewport);
 
-    // Calculate primary node position using cursor offset
+    // Calculate primary entity position using cursor offset
     let primaryX = currentWorldPos.x - dragState.current.cursorOffset.x;
     let primaryY = currentWorldPos.y - dragState.current.cursorOffset.y;
 
@@ -640,20 +640,20 @@ function InputHandler({
       primaryY = Math.round(primaryY / snapGrid[1]) * snapGrid[1];
     }
 
-    // Calculate delta from primary node's start position
-    const primaryNodeId = dragState.current.nodeIds[0];
-    const primaryStartPos = dragState.current.startPositions.get(primaryNodeId)!;
+    // Calculate delta from primary entity's start position
+    const primaryEntityId = dragState.current.entityIds[0];
+    const primaryStartPos = dragState.current.startPositions.get(primaryEntityId)!;
     const deltaX = primaryX - primaryStartPos.x;
     const deltaY = primaryY - primaryStartPos.y;
 
-    const updates = dragState.current.nodeIds.map((id) => {
+    const updates = dragState.current.entityIds.map((id) => {
       const startPos = dragState.current!.startPositions.get(id)!;
       return {
         id,
         position: { x: startPos.x + deltaX, y: startPos.y + deltaY },
       };
     });
-    store.getState().updateNodePositions(updates);
+    store.getState().updateEntityPositions(updates);
 
     // Schedule next frame
     autoScrollRef.current.active = true;
@@ -777,13 +777,13 @@ function InputHandler({
 
       // Left-click: potentially start selection, box selection, or connection
       if (e.button === 0) {
-        const { viewport, nodes } = store.getState();
+        const { viewport, entities } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check for socket click first
         const socket = getSocketAtPosition(
           worldPos,
-          nodes,
+          entities,
           viewport,
           { width: rect.width, height: rect.height },
           socketLayout
@@ -798,7 +798,7 @@ function InputHandler({
 
           // Fire onConnectStart callback
           onConnectStart?.(e.nativeEvent, {
-            nodeId: socket.nodeId,
+            entityId: socket.entityId,
             socketId: socket.socketId,
             isInput: socket.isInput,
           });
@@ -814,21 +814,21 @@ function InputHandler({
         };
         hasDragged.current = false;
 
-        // Check if clicking on a node - capture offset for smooth dragging
-        const { quadtree, nodeMap } = store.getState();
+        // Check if clicking on an entity - capture offset for smooth dragging
+        const { quadtree, entityMap } = store.getState();
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
-        const clickedNode =
-          queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+        const clickedEntity =
+          queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
-        if (clickedNode) {
-          // Store cursor offset from node position (React Flow style)
-          // This ensures the node doesn't "jump" when drag threshold is crossed
+        if (clickedEntity) {
+          // Store cursor offset from entity position (React Flow style)
+          // This ensures the entity doesn't "jump" when drag threshold is crossed
           pendingDragRef.current = {
-            clickedNodeId: clickedNode.id,
+            clickedEntityId: clickedEntity.id,
             cursorOffset: {
-              x: worldPos.x - clickedNode.position.x,
-              y: worldPos.y - clickedNode.position.y,
+              x: worldPos.x - clickedEntity.position.x,
+              y: worldPos.y - clickedEntity.position.y,
             },
           };
         } else {
@@ -916,13 +916,13 @@ function InputHandler({
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, nodes, nodeMap } = store.getState();
+        const { viewport, entities, entityMap } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check for socket hover during connection
         const hoveredSocket = getSocketAtPosition(
           worldPos,
-          nodes,
+          entities,
           viewport,
           { width: rect.width, height: rect.height },
           socketLayout
@@ -930,21 +930,21 @@ function InputHandler({
         store.getState().setHoveredSocketId(hoveredSocket);
 
         // Check type compatibility for visual feedback (always show, regardless of mode)
-        // Use nodeMap for O(1) lookups in hot path
+        // Use entityMap for O(1) lookups in hot path
         let isTypeCompatible = true;
         if (hoveredSocket) {
           isTypeCompatible = isSocketCompatible(
             connectionDraft.source,
             hoveredSocket,
-            nodeMap,
+            entityMap,
             socketTypes
           );
 
           // Also check cycle prevention for visual feedback
           if (isTypeCompatible && !allowCycles) {
             const isSourceInput = connectionDraft.source.isInput;
-            const sourceNodeId = isSourceInput ? hoveredSocket.nodeId : connectionDraft.source.nodeId;
-            const targetNodeId = isSourceInput ? connectionDraft.source.nodeId : hoveredSocket.nodeId;
+            const sourceNodeId = isSourceInput ? hoveredSocket.entityId : connectionDraft.source.entityId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.entityId : hoveredSocket.entityId;
             if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) {
               isTypeCompatible = false;
             }
@@ -956,7 +956,7 @@ function InputHandler({
         return;
       }
 
-      // Check for drag threshold to start box selection or node dragging
+      // Check for drag threshold to start box selection or entity dragging
       // Use refs to check state: dragState.current for dragging, selectionBox for box selection
       if (pointerDownPos.current && !selectionBox && !dragState.current) {
         const dx = e.clientX - pointerDownPos.current.screenX;
@@ -966,9 +966,9 @@ function InputHandler({
         if (distance > DRAG_THRESHOLD) {
           hasDragged.current = true;
 
-          // Check if we're clicking on a node or empty space
+          // Check if we're clicking on an entity or empty space
           // Use quadtree for O(log n) hit testing
-          const { quadtree, nodeMap, selectedNodeIds } = store.getState();
+          const { quadtree, entityMap, selectedEntityIds } = store.getState();
           // Clear and reuse pre-allocated array to avoid GC
           queryResultsRef.current.length = 0;
           quadtree.queryPoint(
@@ -976,40 +976,40 @@ function InputHandler({
             pointerDownPos.current.y,
             queryResultsRef.current
           );
-          const clickedNode =
-            queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+          const clickedEntity =
+            queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
-          if (clickedNode) {
-            // Start node dragging
-            let dragNodeIds: string[];
+          if (clickedEntity) {
+            // Start entity dragging
+            let dragEntityIds: string[];
 
-            if (selectedNodeIds.has(clickedNode.id)) {
-              // Drag all selected nodes - put clicked node FIRST so cursor offset calculation works
-              // (cursorOffset was captured relative to clicked node, not arbitrary first selected node)
-              dragNodeIds = [
-                clickedNode.id,
-                ...[...selectedNodeIds].filter((id) => id !== clickedNode.id),
+            if (selectedEntityIds.has(clickedEntity.id)) {
+              // Drag all selected entities - put clicked entity FIRST so cursor offset calculation works
+              // (cursorOffset was captured relative to clicked entity, not arbitrary first selected entity)
+              dragEntityIds = [
+                clickedEntity.id,
+                ...[...selectedEntityIds].filter((id) => id !== clickedEntity.id),
               ];
             } else {
-              // Select and drag just this node
-              store.getState().selectNode(clickedNode.id);
-              dragNodeIds = [clickedNode.id];
+              // Select and drag just this entity
+              store.getState().selectEntity(clickedEntity.id);
+              dragEntityIds = [clickedEntity.id];
             }
 
             // Store initial positions
             const startPositions = new Map<string, { x: number; y: number }>();
-            for (const id of dragNodeIds) {
-              const node = nodeMap.get(id);
-              if (node) startPositions.set(id, { x: node.position.x, y: node.position.y });
+            for (const id of dragEntityIds) {
+              const entity = entityMap.get(id);
+              if (entity) startPositions.set(id, { x: entity.position.x, y: entity.position.y });
             }
 
             // Use cursor offset captured at click time (React Flow style)
-            // This ensures smooth dragging - cursor stays at same spot on node
+            // This ensures smooth dragging - cursor stays at same spot on entity
             const cursorOffset = pendingDragRef.current?.cursorOffset ?? { x: 0, y: 0 };
 
             // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
             dragState.current = {
-              nodeIds: dragNodeIds,
+              entityIds: dragEntityIds,
               startPositions,
               cursorOffset,
               containerRect: {
@@ -1029,7 +1029,7 @@ function InputHandler({
         }
       }
 
-      // Update node dragging
+      // Update entity dragging
       // Use ref check (dragState.current) instead of React state (isDragging)
       // Also verify primary button is still held (e.buttons & 1)
       if (dragState.current && e.buttons & 1) {
@@ -1041,8 +1041,8 @@ function InputHandler({
         const { viewport } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        // Calculate primary node position using cursor offset (React Flow style)
-        // This keeps cursor at same spot on node throughout drag
+        // Calculate primary entity position using cursor offset (React Flow style)
+        // This keeps cursor at same spot on entity throughout drag
         let primaryX = worldPos.x - dragState.current.cursorOffset.x;
         let primaryY = worldPos.y - dragState.current.cursorOffset.y;
 
@@ -1052,15 +1052,15 @@ function InputHandler({
           primaryY = Math.round(primaryY / snapGrid[1]) * snapGrid[1];
         }
 
-        // Calculate delta from primary node's start position
-        // This delta applies to all dragged nodes to maintain relative positions
-        const primaryNodeId = dragState.current.nodeIds[0];
-        const primaryStartPos = dragState.current.startPositions.get(primaryNodeId)!;
+        // Calculate delta from primary entity's start position
+        // This delta applies to all dragged entities to maintain relative positions
+        const primaryEntityId = dragState.current.entityIds[0];
+        const primaryStartPos = dragState.current.startPositions.get(primaryEntityId)!;
         const deltaX = primaryX - primaryStartPos.x;
         const deltaY = primaryY - primaryStartPos.y;
 
-        // Update all dragged node positions
-        const updates = dragState.current.nodeIds.map((id) => {
+        // Update all dragged entity positions
+        const updates = dragState.current.entityIds.map((id) => {
           const startPos = dragState.current!.startPositions.get(id)!;
           return {
             id,
@@ -1068,7 +1068,7 @@ function InputHandler({
           };
         });
 
-        store.getState().updateNodePositions(updates);
+        store.getState().updateEntityPositions(updates);
 
         // Track screen position and trigger auto-scroll if near edges
         // Reuse object to avoid allocation in hot path
@@ -1109,13 +1109,13 @@ function InputHandler({
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, hoveredNodeId, hoveredSocketId, nodes, quadtree } = store.getState();
+        const { viewport, hoveredEntityId, hoveredSocketId, entities, quadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check socket hover first
         const newHoveredSocket = getSocketAtPosition(
           worldPos,
-          nodes,
+          entities,
           viewport,
           { width: rect.width, height: rect.height },
           socketLayout
@@ -1123,21 +1123,21 @@ function InputHandler({
 
         // Update socket hover if changed
         if (
-          newHoveredSocket?.nodeId !== hoveredSocketId?.nodeId ||
+          newHoveredSocket?.entityId !== hoveredSocketId?.entityId ||
           newHoveredSocket?.socketId !== hoveredSocketId?.socketId
         ) {
           store.getState().setHoveredSocketId(newHoveredSocket);
         }
 
-        // Use quadtree for O(log n) hit testing for nodes
+        // Use quadtree for O(log n) hit testing for entities
         // Clear and reuse pre-allocated array to avoid GC
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
         const newHoveredId = queryResultsRef.current.length > 0 ? queryResultsRef.current[0] : null;
 
         // Only update if changed to avoid unnecessary re-renders
-        if (newHoveredId !== hoveredNodeId) {
-          store.getState().setHoveredNodeId(newHoveredId);
+        if (newHoveredId !== hoveredEntityId) {
+          store.getState().setHoveredEntityId(newHoveredId);
         }
       }
     },
@@ -1154,15 +1154,15 @@ function InputHandler({
 
       // End connection draft (check store state, not React state)
       if (connectionDraft) {
-        const { hoveredSocketId, nodeMap, viewport } = store.getState();
+        const { hoveredSocketId, entityMap, viewport } = store.getState();
         let connectionSucceeded = false;
 
         if (hoveredSocketId) {
-          // Check if connection is valid (use nodeMap for O(1))
+          // Check if connection is valid (use entityMap for O(1))
           let isValid = validateConnection(
             connectionDraft.source,
             hoveredSocketId,
-            nodeMap,
+            entityMap,
             socketTypes,
             connectionMode,
             isValidConnection
@@ -1171,8 +1171,8 @@ function InputHandler({
           // Check cycle prevention when allowCycles is false
           if (isValid && !allowCycles) {
             const isSourceInput = connectionDraft.source.isInput;
-            const sourceNodeId = isSourceInput ? hoveredSocketId.nodeId : connectionDraft.source.nodeId;
-            const targetNodeId = isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId;
+            const sourceNodeId = isSourceInput ? hoveredSocketId.entityId : connectionDraft.source.entityId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.entityId : hoveredSocketId.entityId;
             if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) {
               isValid = false;
             }
@@ -1186,18 +1186,18 @@ function InputHandler({
             const isTypeCompatible = isSocketCompatible(
               connectionDraft.source,
               hoveredSocketId,
-              nodeMap,
+              entityMap,
               socketTypes
             );
 
             // Determine source and target based on input/output
             const isSourceInput = connectionDraft.source.isInput;
             const connection: Connection = {
-              source: isSourceInput ? hoveredSocketId.nodeId : connectionDraft.source.nodeId,
+              source: isSourceInput ? hoveredSocketId.entityId : connectionDraft.source.entityId,
               sourceSocket: isSourceInput
                 ? hoveredSocketId.socketId
                 : connectionDraft.source.socketId,
-              target: isSourceInput ? connectionDraft.source.nodeId : hoveredSocketId.nodeId,
+              target: isSourceInput ? connectionDraft.source.entityId : hoveredSocketId.entityId,
               targetSocket: isSourceInput
                 ? connectionDraft.source.socketId
                 : hoveredSocketId.socketId,
@@ -1221,7 +1221,7 @@ function InputHandler({
           onConnectEnd(e.nativeEvent, {
             isValid: connectionSucceeded,
             source: {
-              nodeId: connectionDraft.source.nodeId,
+              entityId: connectionDraft.source.entityId,
               socketId: connectionDraft.source.socketId,
               isInput: connectionDraft.source.isInput,
             },
@@ -1248,7 +1248,7 @@ function InputHandler({
         return;
       }
 
-      // End node dragging (check ref, not React state)
+      // End entity dragging (check ref, not React state)
       if (dragState.current) {
         // Cancel auto-scroll
         if (autoScrollRef.current.rafId) {
@@ -1268,7 +1268,7 @@ function InputHandler({
 
       // End box selection (check store state, not React state)
       if (selectionBox) {
-        const { quadtree, selectedNodeIds } = store.getState();
+        const { quadtree, selectedEntityIds } = store.getState();
         // Use quadtree for O(log n) range query
         const bounds = boundsFromCorners(
           selectionBox.start.x,
@@ -1278,13 +1278,13 @@ function InputHandler({
         );
         const selectedIds = quadtree.queryRange(bounds);
 
-        // Select the nodes (additive with Ctrl/Cmd key)
+        // Select the entities (additive with Ctrl/Cmd key)
         if (e.ctrlKey || e.metaKey) {
           // Add to existing selection - use Set for O(1) merge
-          const newSelection = [...new Set([...selectedNodeIds, ...selectedIds])];
-          store.getState().selectNodes(newSelection);
+          const newSelection = [...new Set([...selectedEntityIds, ...selectedIds])];
+          store.getState().selectEntities(newSelection);
         } else {
-          store.getState().selectNodes(selectedIds);
+          store.getState().selectEntities(selectedIds);
         }
 
         store.getState().setSelectionBox(null);
@@ -1298,24 +1298,24 @@ function InputHandler({
       // Handle click (no drag occurred)
       if (pointerDownPos.current && !hasDragged.current && e.button === 0) {
         // Use quadtree for O(log n) hit testing
-        const { quadtree, nodeMap, edges, viewport } = store.getState();
+        const { quadtree, entityMap, edges, viewport } = store.getState();
         const clickPos = { x: pointerDownPos.current.x, y: pointerDownPos.current.y };
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(clickPos.x, clickPos.y, queryResultsRef.current);
-        const clickedNode =
-          queryResultsRef.current.length > 0 ? nodeMap.get(queryResultsRef.current[0]) : null;
+        const clickedEntity =
+          queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
-        if (clickedNode) {
-          // Click on node: select it
+        if (clickedEntity) {
+          // Click on entity: select it
           const additive = e.ctrlKey || e.metaKey;
-          store.getState().selectNode(clickedNode.id, additive);
-          onNodeClick?.(clickedNode);
+          store.getState().selectEntity(clickedEntity.id, additive);
+          onEntityClick?.(clickedEntity);
         } else if (edgesSelectable) {
           // Check for edge click
           const clickedEdge = getEdgeAtPosition(
             clickPos,
             edges,
-            nodeMap,
+            entityMap,
             defaultEdgeType,
             viewport,
             undefined,
@@ -1350,7 +1350,7 @@ function InputHandler({
       defaultEdgeType,
       edgesSelectable,
       store,
-      onNodeClick,
+      onEntityClick,
       onEdgeClick,
       onPaneClick,
       onConnect,
@@ -1383,7 +1383,7 @@ function InputHandler({
         setIsSpaceDown(true);
       }
 
-      // Ctrl+A or Cmd+A: select all nodes
+      // Ctrl+A or Cmd+A: select all entities
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
         e.preventDefault();
         store.getState().selectAll();
@@ -1402,15 +1402,15 @@ function InputHandler({
         }
       }
 
-      // Delete/Backspace: delete selected nodes and edges
+      // Delete/Backspace: delete selected entities and edges
       if (e.code === 'Delete' || e.code === 'Backspace') {
-        const { selectedNodeIds, selectedEdgeIds, edges } = store.getState();
+        const { selectedEntityIds, selectedEdgeIds, edges } = store.getState();
 
-        // Collect all edges to delete: selected edges + edges connected to deleted nodes
+        // Collect all edges to delete: selected edges + edges connected to deleted entities
         const edgeIdsToDelete = new Set(selectedEdgeIds);
-        if (selectedNodeIds.size > 0) {
+        if (selectedEntityIds.size > 0) {
           for (const edge of edges) {
-            if (selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)) {
+            if (selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target)) {
               edgeIdsToDelete.add(edge.id);
             }
           }
@@ -1426,14 +1426,14 @@ function InputHandler({
           store.getState().applyEdgeChanges(edgeChanges);
         }
 
-        // Delete selected nodes
-        if (selectedNodeIds.size > 0) {
-          const nodeChanges = Array.from(selectedNodeIds).map((id) => ({
+        // Delete selected entities
+        if (selectedEntityIds.size > 0) {
+          const entityChanges = Array.from(selectedEntityIds).map((id) => ({
             type: 'remove' as const,
             id,
           }));
-          onNodesChange?.(nodeChanges);
-          store.getState().applyNodeChanges(nodeChanges);
+          onEntitiesChange?.(entityChanges);
+          store.getState().applyEntityChanges(entityChanges);
         }
 
         // Clear selection
@@ -1458,7 +1458,7 @@ function InputHandler({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPanning, isBoxSelecting, isConnecting, store, onNodesChange, onEdgesChange]);
+  }, [isPanning, isBoxSelecting, isConnecting, store, onEntitiesChange, onEdgesChange]);
 
   // Prevent context menu on middle click
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -1587,7 +1587,7 @@ function InputHandler({
       onPointerUp={handlePointerUp}
       onPointerLeave={(e) => {
         handlePointerUp(e);
-        store.getState().setHoveredNodeId(null);
+        store.getState().setHoveredEntityId(null);
         store.getState().setHoveredSocketId(null);
       }}
       onContextMenu={handleContextMenu}
@@ -1690,7 +1690,7 @@ function FlowCanvas({
       {showGrid && <Grid />}
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
-      <Nodes />
+      <Entities />
       <RerouteNodes />
       <SelectionBox />
       <ConnectionLine socketTypes={socketTypes} />
@@ -1709,25 +1709,25 @@ function FlowCanvas({
  * Syncs external props with internal store.
  */
 interface FlowSyncProps {
-  nodes: KookieFlowProps['nodes'];
+  entities: KookieFlowProps['entities'];
   edges: KookieFlowProps['edges'];
   socketTypes: Record<string, SocketType>;
-  onNodesChange?: KookieFlowProps['onNodesChange'];
+  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
-function FlowSync({ nodes, edges, socketTypes, onNodesChange, onEdgesChange }: FlowSyncProps) {
+function FlowSync({ entities, edges, socketTypes, onEntitiesChange, onEdgesChange }: FlowSyncProps) {
   const store = useFlowStoreApi();
 
   useEffect(() => {
-    store.getState().setNodes(nodes);
-  }, [nodes, store]);
+    store.getState().setEntities(entities);
+  }, [entities, store]);
 
   // Compute invalid flag for edges that don't have it (e.g., loaded from external source)
   // This runs once when edges change, not every frame
   // Only creates new edge objects when actually needed to avoid triggering subscriptions
   useEffect(() => {
-    const { nodeMap } = store.getState();
+    const { entityMap } = store.getState();
 
     // First pass: check if any edge needs invalid flag computed
     let needsComputation = false;
@@ -1748,9 +1748,9 @@ function FlowSync({ nodes, edges, socketTypes, onNodesChange, onEdgesChange }: F
         } else {
           // Compute type compatibility and create new object
           const isValid = isSocketCompatible(
-            { nodeId: edge.source, socketId: edge.sourceSocket, isInput: false },
-            { nodeId: edge.target, socketId: edge.targetSocket, isInput: true },
-            nodeMap,
+            { entityId: edge.source, socketId: edge.sourceSocket, isInput: false },
+            { entityId: edge.target, socketId: edge.targetSocket, isInput: true },
+            entityMap,
             socketTypes
           );
           processedEdges.push({ ...edge, invalid: !isValid });
@@ -1763,17 +1763,17 @@ function FlowSync({ nodes, edges, socketTypes, onNodesChange, onEdgesChange }: F
   }, [edges, socketTypes, store]);
 
   useEffect(() => {
-    if (!onNodesChange) return;
+    if (!onEntitiesChange) return;
 
     const unsubscribe = store.subscribe(
-      (state) => state.nodes,
-      (newNodes, prevNodes) => {
+      (state) => state.entities,
+      (newEntities, prevEntities) => {
         // Generate change events (simplified)
       }
     );
 
     return unsubscribe;
-  }, [store, onNodesChange]);
+  }, [store, onEntitiesChange]);
 
   return null;
 }

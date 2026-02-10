@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
-  Node,
+  Entity,
   Edge,
   Viewport,
-  NodeChange,
+  EntityChange,
   EdgeChange,
   Connection,
   XYPosition,
@@ -16,15 +16,15 @@ import type {
   FlowObject,
   InternalClipboard,
   PasteFromInternalOptions,
-  NodeData,
+  EntityData,
   FitViewOptions,
 } from '../types';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING } from './constants';
-import { Quadtree, SocketQuadtree, getNodeBounds, type SocketEntry } from './spatial';
+import { Quadtree, SocketQuadtree, getEntityBounds, type SocketEntry } from './spatial';
 import {
   getGroupChildren as utilGetGroupChildren,
   getGroupDescendants as utilGetGroupDescendants,
-  isNodeHidden,
+  isEntityHidden,
   calculateGroupBounds as utilCalculateGroupBounds,
   calculateDescendantPositions,
   type Bounds,
@@ -37,16 +37,16 @@ let idCounter = 0;
 const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
 
 export interface FlowState {
-  /** Nodes in the graph */
-  nodes: Node[];
+  /** Entities in the graph */
+  entities: Entity[];
   /** Edges in the graph */
   edges: Edge[];
   /** Current viewport */
   viewport: Viewport;
   /** Currently connecting from (legacy) */
-  connectionStart: { nodeId: string; socketId: string } | null;
-  /** Currently hovered node */
-  hoveredNodeId: string | null;
+  connectionStart: { entityId: string; socketId: string } | null;
+  /** Currently hovered entity */
+  hoveredEntityId: string | null;
   /** Currently hovered socket */
   hoveredSocketId: SocketHandle | null;
   /** Connection draft while dragging from a socket */
@@ -60,11 +60,11 @@ export interface FlowState {
   selectionBox: { start: XYPosition; end: XYPosition } | null;
 
   /** Selection state - O(1) lookup */
-  selectedNodeIds: Set<string>;
+  selectedEntityIds: Set<string>;
   selectedEdgeIds: Set<string>;
 
-  /** Node map for O(1) lookup by ID */
-  nodeMap: Map<string, Node>;
+  /** Entity map for O(1) lookup by ID */
+  entityMap: Map<string, Entity>;
 
   /** Quadtree for O(log n) spatial queries */
   quadtree: Quadtree;
@@ -74,7 +74,7 @@ export interface FlowState {
 
   /**
    * Connected sockets cache - O(1) lookup for widget visibility.
-   * Format: "nodeId:socketId" for each input socket that has an incoming edge.
+   * Format: "entityId:socketId" for each input socket that has an incoming edge.
    * Rebuilt when edges change.
    */
   connectedSockets: Set<string>;
@@ -82,7 +82,7 @@ export interface FlowState {
   /**
    * Position version counter - increments on any position update.
    * Used by components that need to track position changes without
-   * relying on nodeMap reference changes (which may be mutated in place).
+   * relying on entityMap reference changes (which may be mutated in place).
    */
   positionVersion: number;
 
@@ -93,14 +93,14 @@ export interface FlowState {
   // Grouping State (Phase 7C)
   // ============================================================================
 
-  /** Set of collapsed group node IDs (O(1) lookup for visibility checks) */
+  /** Set of collapsed group entity IDs (O(1) lookup for visibility checks) */
   collapsedGroupIds: Set<string>;
 
   /**
-   * Pre-computed set of hidden node IDs (nodes inside collapsed groups).
+   * Pre-computed set of hidden entity IDs (entities inside collapsed groups).
    * Rebuilt when collapsedGroupIds changes. Used for O(1) visibility checks in hot paths.
    */
-  hiddenNodeIds: Set<string>;
+  hiddenEntityIds: Set<string>;
 
   // ============================================================================
   // Graph Engine State (Phase 8)
@@ -109,19 +109,19 @@ export interface FlowState {
   /** Pre-computed adjacency index for O(1) neighbor lookups. Rebuilt on edge changes. */
   adjacencyIndex: AdjacencyIndex;
 
-  /** Topology version counter. Increments on node/edge add/remove only. */
+  /** Topology version counter. Increments on entity/edge add/remove only. */
   topologyVersion: number;
 
-  /** Node IDs excluded from execution (treated as pass-through). */
-  mutedNodeIds: Set<string>;
+  /** Entity IDs excluded from execution (treated as pass-through). */
+  mutedEntityIds: Set<string>;
 
   /** Internal actions */
-  setNodes: (nodes: Node[]) => void;
+  setEntities: (entities: Entity[]) => void;
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
-  setHoveredNodeId: (id: string | null) => void;
+  setHoveredEntityId: (id: string | null) => void;
   setHoveredSocketId: (socket: SocketHandle | null) => void;
-  startConnection: (nodeId: string, socketId: string) => void;
+  startConnection: (entityId: string, socketId: string) => void;
   endConnection: () => void;
   setSelectionBox: (box: { start: XYPosition; end: XYPosition } | null) => void;
 
@@ -131,17 +131,17 @@ export interface FlowState {
   cancelConnectionDraft: () => void;
 
   /** Apply changes */
-  applyNodeChanges: (changes: NodeChange[]) => void;
+  applyEntityChanges: (changes: EntityChange[]) => void;
   applyEdgeChanges: (changes: EdgeChange[]) => void;
 
   /** Selection - O(1) operations */
-  selectNode: (id: string, additive?: boolean) => void;
-  selectNodes: (ids: string[]) => void;
+  selectEntity: (id: string, additive?: boolean) => void;
+  selectEntities: (ids: string[]) => void;
   selectEdge: (id: string, additive?: boolean) => void;
   selectEdges: (ids: string[]) => void;
   selectAll: () => void;
   deselectAll: () => void;
-  isNodeSelected: (id: string) => boolean;
+  isEntitySelected: (id: string) => boolean;
   isEdgeSelected: (id: string) => boolean;
 
   /** Viewport controls */
@@ -150,42 +150,42 @@ export interface FlowState {
   fitView: (options?: FitViewOptions, canvasWidth?: number, canvasHeight?: number) => void;
 
   /** Efficient batch position update for dragging */
-  updateNodePositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
+  updateEntityPositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
 
   // ========================================
   // Phase 6: Core Operations
   // ========================================
 
   /**
-   * Clone nodes and edges with new IDs.
+   * Clone entities and edges with new IDs.
    * Single-pass operation with pre-allocated ID pool and edge remapping.
    */
-  cloneElements: <T extends NodeData = NodeData>(
-    nodes: Node<T>[],
+  cloneElements: <T extends EntityData = EntityData>(
+    entities: Entity<T>[],
     edges: Edge[],
     options?: CloneElementsOptions<T>
   ) => CloneElementsResult;
 
   /**
-   * Batch add nodes and edges in a single state update.
-   * More efficient than multiple applyNodeChanges/applyEdgeChanges calls.
+   * Batch add entities and edges in a single state update.
+   * More efficient than multiple applyEntityChanges/applyEdgeChanges calls.
    */
   addElements: (batch: ElementsBatch) => void;
 
   /**
-   * Delete nodes and edges by ID.
-   * Automatically removes edges connected to deleted nodes.
+   * Delete entities and edges by ID.
+   * Automatically removes edges connected to deleted entities.
    */
   deleteElements: (batch: DeleteElementsBatch) => void;
 
   /**
-   * Delete all currently selected nodes and edges.
+   * Delete all currently selected entities and edges.
    * Convenience wrapper around deleteElements.
    */
   deleteSelected: () => void;
 
   /**
-   * Copy selected nodes and connected edges to internal clipboard.
+   * Copy selected entities and connected edges to internal clipboard.
    * No serialization - just holds references.
    */
   copySelectedToInternal: () => void;
@@ -194,12 +194,12 @@ export interface FlowState {
    * Paste from internal clipboard.
    * Clones the clipboard contents with new IDs.
    */
-  pasteFromInternal: <T extends NodeData = NodeData>(
+  pasteFromInternal: <T extends EntityData = EntityData>(
     options?: Omit<CloneElementsOptions<T>, 'generateId'>
   ) => CloneElementsResult | null;
 
   /**
-   * Cut selected nodes and edges to internal clipboard.
+   * Cut selected entities and edges to internal clipboard.
    * Copies then deletes.
    */
   cutSelectedToInternal: () => void;
@@ -211,32 +211,32 @@ export interface FlowState {
   toObject: () => FlowObject;
 
   /**
-   * Get currently selected nodes.
+   * Get currently selected entities.
    */
-  getSelectedNodes: () => Node[];
+  getSelectedEntities: () => Entity[];
 
   /**
-   * Get edges connected to the given node IDs.
+   * Get edges connected to the given entity IDs.
    */
-  getConnectedEdges: (nodeIds: string[]) => Edge[];
+  getConnectedEdges: (entityIds: string[]) => Edge[];
 
   // ========================================
   // Phase 7C: Grouping Actions
   // ========================================
 
   /**
-   * Get direct children of a group node.
+   * Get direct children of a group entity.
    */
-  getGroupChildren: (groupId: string) => Node[];
+  getGroupChildren: (groupId: string) => Entity[];
 
   /**
-   * Get all descendants of a group node (recursive).
+   * Get all descendants of a group entity (recursive).
    */
-  getGroupDescendants: (groupId: string) => Node[];
+  getGroupDescendants: (groupId: string) => Entity[];
 
   /**
    * Toggle a group's collapsed state.
-   * Fires a 'collapse' node change event.
+   * Fires a 'collapse' entity change event.
    */
   toggleGroupCollapse: (groupId: string) => void;
 
@@ -262,10 +262,10 @@ export interface FlowState {
   getGroupBounds: (groupId: string) => Bounds | null;
 
   /**
-   * Set the parent of a node (for grouping).
+   * Set the parent of an entity (for grouping).
    * Validates that the operation doesn't create cycles.
    */
-  setNodeParent: (nodeId: string, parentId: string | null) => boolean;
+  setEntityParent: (entityId: string, parentId: string | null) => boolean;
 
   /**
    * Move a group and all its descendants.
@@ -277,46 +277,46 @@ export interface FlowState {
   // Graph Engine Queries (Phase 8)
   // ============================================================================
 
-  /** Get node IDs that directly feed into this node. */
-  getIncomers: (nodeId: string) => string[];
-  /** Get node IDs that this node directly feeds into. */
-  getOutgoers: (nodeId: string) => string[];
-  /** Get all edges touching a node via adjacency index. */
-  getNodeEdges: (nodeId: string) => Edge[];
-  /** Get edges arriving at a node (inputs). */
-  getInputEdges: (nodeId: string) => Edge[];
-  /** Get edges leaving a node (outputs). */
-  getOutputEdges: (nodeId: string) => Edge[];
-  /** Get direct edges between two nodes. */
-  getEdgesBetween: (nodeA: string, nodeB: string) => Edge[];
-  /** Walk upstream from a node, yielding all ancestor node IDs. */
-  walkUpstream: (startNodeId: string) => Generator<string>;
-  /** Walk downstream from a node, yielding all dependent node IDs. */
-  walkDownstream: (startNodeId: string) => Generator<string>;
+  /** Get entity IDs that directly feed into this entity. */
+  getIncomers: (entityId: string) => string[];
+  /** Get entity IDs that this entity directly feeds into. */
+  getOutgoers: (entityId: string) => string[];
+  /** Get all edges touching an entity via adjacency index. */
+  getEntityEdges: (entityId: string) => Edge[];
+  /** Get edges arriving at an entity (inputs). */
+  getInputEdges: (entityId: string) => Edge[];
+  /** Get edges leaving an entity (outputs). */
+  getOutputEdges: (entityId: string) => Edge[];
+  /** Get direct edges between two entities. */
+  getEdgesBetween: (entityA: string, entityB: string) => Edge[];
+  /** Walk upstream from an entity, yielding all ancestor entity IDs. */
+  walkUpstream: (startEntityId: string) => Generator<string>;
+  /** Walk downstream from an entity, yielding all dependent entity IDs. */
+  walkDownstream: (startEntityId: string) => Generator<string>;
   /** Get cached graph analysis (topo sort, execution levels, cycles, roots, leaves). */
   getAnalysis: () => CachedAnalysis;
   /** Would adding an edge from source to target create a cycle? */
-  wouldCreateCycle: (sourceNodeId: string, targetNodeId: string) => boolean;
-  /** Get all nodes downstream of changed nodes, in topological order. */
-  getAffectedEntities: (changedNodeIds: string | string[]) => string[];
-  /** Find connected components. Returns Map<componentId, nodeIds[]>. */
+  wouldCreateCycle: (sourceEntityId: string, targetEntityId: string) => boolean;
+  /** Get all entities downstream of changed entities, in topological order. */
+  getAffectedEntities: (changedEntityIds: string | string[]) => string[];
+  /** Find connected components. Returns Map<componentId, entityIds[]>. */
   getConnectedComponents: () => Map<string, string[]>;
-  /** Check if two nodes are in the same connected component. */
-  areConnected: (nodeA: string, nodeB: string) => boolean;
-  /** Get execution order for evaluating a specific node (upstream subgraph). */
-  getExecutionOrder: (targetNodeId: string) => string[];
-  /** Get nodes ready to execute given completed set. */
-  getReadyEntities: (nodeIds: string[], completed: ReadonlySet<string>) => string[];
-  /** Insert a node onto an existing edge (A→B becomes A→new→B). */
-  insertOnEdge: (edgeId: string, newNode: Node) => void;
-  /** Remove a node and reconnect its inputs to outputs. */
-  bypassEntity: (nodeId: string) => void;
-  /** Mark a node as muted (skipped in execution). */
-  muteEntity: (nodeId: string) => void;
-  /** Remove muted status from a node. */
-  unmuteEntity: (nodeId: string) => void;
-  /** Check if a node is muted. */
-  isMuted: (nodeId: string) => boolean;
+  /** Check if two entities are in the same connected component. */
+  areConnected: (entityA: string, entityB: string) => boolean;
+  /** Get execution order for evaluating a specific entity (upstream subgraph). */
+  getExecutionOrder: (targetEntityId: string) => string[];
+  /** Get entities ready to execute given completed set. */
+  getReadyEntities: (entityIds: string[], completed: ReadonlySet<string>) => string[];
+  /** Insert an entity onto an existing edge (A→B becomes A→new→B). */
+  insertOnEdge: (edgeId: string, newEntity: Entity) => void;
+  /** Remove an entity and reconnect its inputs to outputs. */
+  bypassEntity: (entityId: string) => void;
+  /** Mark an entity as muted (skipped in execution). */
+  muteEntity: (entityId: string) => void;
+  /** Remove muted status from an entity. */
+  unmuteEntity: (entityId: string) => void;
+  /** Check if an entity is muted. */
+  isMuted: (entityId: string) => boolean;
 
   // ========================================
   // Phase 8: Graph Validation & Subgraph Mutations
@@ -328,22 +328,22 @@ export interface FlowState {
   isGraphComplete: () => boolean;
   /** Get compatible ports for a source socket (for connection drag UI). */
   getCompatiblePorts: (
-    sourceNodeId: string,
+    sourceEntityId: string,
     sourceSocketId: string,
     isSourceInput: boolean,
     socketTypes: Record<string, { compatibleWith?: string[] | '*' }>,
     allowCycles?: boolean
-  ) => Array<{ nodeId: string; socketId: string; socketName: string; socketType: string }>;
-  /** Collapse a set of nodes into a compound group node. */
-  collapseToSubgraph: (nodeIds: string[], groupId: string) => void;
-  /** Expand a compound group node back to its children. */
+  ) => Array<{ entityId: string; socketId: string; socketName: string; socketType: string }>;
+  /** Collapse a set of entities into a compound group entity. */
+  collapseToSubgraph: (entityIds: string[], groupId: string) => void;
+  /** Expand a compound group entity back to its children. */
   expandSubgraph: (
     groupId: string,
-    childNodes: Node[],
+    childEntities: Entity[],
     internalEdges: Edge[],
     portMapping: {
-      inputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
-      outputs: Array<{ groupPortId: string; originalNodeId: string; originalSocketId: string }>;
+      inputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+      outputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
     }
   ) => void;
 }
@@ -351,92 +351,92 @@ export interface FlowState {
 export type FlowStore = ReturnType<typeof createFlowStore>;
 
 // Helper to calculate socket Y offset (without layout param - uses legacy constants)
-function getSocketYOffset(node: Node, socketIndex: number, isInput: boolean): number {
-  const nodeHeight = node.height ?? 100;
-  const outputCount = node.outputs?.length ?? 0;
+function getSocketYOffset(entity: Entity, socketIndex: number, isInput: boolean): number {
+  const entityHeight = entity.height ?? 100;
+  const outputCount = entity.outputs?.length ?? 0;
   // Layout: outputs first, then inputs
   const rowIndex = isInput ? outputCount + socketIndex : socketIndex;
   return SOCKET_MARGIN_TOP + rowIndex * SOCKET_SPACING;
 }
 
-// Helper to build collapsedGroupIds set from nodes
-function buildCollapsedGroupIds(nodes: Node[]): Set<string> {
+// Helper to build collapsedGroupIds set from entities
+function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
   const collapsed = new Set<string>();
-  for (const node of nodes) {
-    if (node.type === 'group' && node.collapsed) {
-      collapsed.add(node.id);
+  for (const entity of entities) {
+    if (entity.type === 'frame' && entity.collapsed) {
+      collapsed.add(entity.id);
     }
   }
   return collapsed;
 }
 
-// Helper to rebuild derived state from nodes
+// Helper to rebuild derived state from entities
 // collapsedGroupIds is used to filter children of collapsed groups from quadtrees
-function rebuildDerivedState(nodes: Node[], collapsedGroupIds?: Set<string>) {
-  const nodeMap = new Map<string, Node>();
+function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>) {
+  const entityMap = new Map<string, Entity>();
   const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
   const socketQuadtree = new SocketQuadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
 
-  // Build nodeMap first (all nodes, for O(1) lookup)
-  for (const node of nodes) {
-    nodeMap.set(node.id, node);
+  // Build entityMap first (all entities, for O(1) lookup)
+  for (const entity of entities) {
+    entityMap.set(entity.id, entity);
   }
 
   // Build collapsed set if not provided (e.g., during initialization)
-  const collapsed = collapsedGroupIds ?? buildCollapsedGroupIds(nodes);
+  const collapsed = collapsedGroupIds ?? buildCollapsedGroupIds(entities);
 
-  // Pre-compute hidden node IDs for O(1) lookup in hot paths
-  // This is O(n*d) but only runs when nodes/collapsed state changes, not every frame
-  const hiddenNodeIds = new Set<string>();
-  for (const node of nodes) {
-    if (isNodeHidden(node, nodeMap, collapsed)) {
-      hiddenNodeIds.add(node.id);
+  // Pre-compute hidden entity IDs for O(1) lookup in hot paths
+  // This is O(n*d) but only runs when entities/collapsed state changes, not every frame
+  const hiddenEntityIds = new Set<string>();
+  for (const entity of entities) {
+    if (isEntityHidden(entity, entityMap, collapsed)) {
+      hiddenEntityIds.add(entity.id);
     }
   }
 
-  // Determine which nodes are visible (not inside collapsed groups)
-  const visibleNodes: Node[] = [];
-  for (const node of nodes) {
-    if (!hiddenNodeIds.has(node.id)) {
-      visibleNodes.push(node);
+  // Determine which entities are visible (not inside collapsed groups)
+  const visibleEntities: Entity[] = [];
+  for (const entity of entities) {
+    if (!hiddenEntityIds.has(entity.id)) {
+      visibleEntities.push(entity);
     }
   }
 
-  // Only add visible nodes to quadtrees
-  for (const node of visibleNodes) {
+  // Only add visible entities to quadtrees
+  for (const entity of visibleEntities) {
     // Insert sockets into socket quadtree
-    const nodeWidth = node.width ?? 200;
-    if (node.inputs) {
-      for (let i = 0; i < node.inputs.length; i++) {
-        const socket = node.inputs[i];
-        const yOffset = getSocketYOffset(node, i, true);
+    const entityWidth = entity.width ?? 200;
+    if (entity.inputs) {
+      for (let i = 0; i < entity.inputs.length; i++) {
+        const socket = entity.inputs[i];
+        const yOffset = getSocketYOffset(entity, i, true);
         socketQuadtree.insert({
-          nodeId: node.id,
+          entityId: entity.id,
           socketId: socket.id,
           isInput: true,
-          x: node.position.x,
-          y: node.position.y + yOffset,
+          x: entity.position.x,
+          y: entity.position.y + yOffset,
         });
       }
     }
-    if (node.outputs) {
-      for (let i = 0; i < node.outputs.length; i++) {
-        const socket = node.outputs[i];
-        const yOffset = getSocketYOffset(node, i, false);
+    if (entity.outputs) {
+      for (let i = 0; i < entity.outputs.length; i++) {
+        const socket = entity.outputs[i];
+        const yOffset = getSocketYOffset(entity, i, false);
         socketQuadtree.insert({
-          nodeId: node.id,
+          entityId: entity.id,
           socketId: socket.id,
           isInput: false,
-          x: node.position.x + nodeWidth,
-          y: node.position.y + yOffset,
+          x: entity.position.x + entityWidth,
+          y: entity.position.y + yOffset,
         });
       }
     }
   }
 
-  quadtree.rebuild(visibleNodes);
+  quadtree.rebuild(visibleEntities);
 
-  return { nodeMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenNodeIds };
+  return { entityMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenEntityIds };
 }
 
 // Helper to rebuild connected sockets set from edges
@@ -451,10 +451,10 @@ function rebuildConnectedSockets(edges: Edge[]): Set<string> {
 }
 
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
-  // Initialize derived state from initial nodes and edges
-  const initialNodes = initialState?.nodes ?? [];
+  // Initialize derived state from initial entities and edges
+  const initialEntities = initialState?.entities ?? [];
   const initialEdges = initialState?.edges ?? [];
-  const { nodeMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenNodeIds } = rebuildDerivedState(initialNodes);
+  const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } = rebuildDerivedState(initialEntities);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
   const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
 
@@ -464,21 +464,21 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   return create<FlowState>()(
     subscribeWithSelector((set, get) => ({
       // Initial state - use extracted values to ensure they're set correctly
-      nodes: initialNodes,
+      entities: initialEntities,
       edges: initialEdges,
       viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
       connectionStart: null,
-      hoveredNodeId: null,
+      hoveredEntityId: null,
       hoveredSocketId: null,
       connectionDraft: null,
       selectionBox: null,
 
       // Selection state
-      selectedNodeIds: new Set<string>(),
+      selectedEntityIds: new Set<string>(),
       selectedEdgeIds: new Set<string>(),
 
       // Derived state for O(1) lookups
-      nodeMap,
+      entityMap,
       quadtree,
       socketQuadtree,
       connectedSockets,
@@ -491,18 +491,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Grouping state (Phase 7C)
       collapsedGroupIds,
-      hiddenNodeIds,
+      hiddenEntityIds,
 
       // Graph engine state (Phase 8)
       adjacencyIndex: initialAdjacencyIndex,
       topologyVersion: 0,
-      mutedNodeIds: new Set<string>(),
+      mutedEntityIds: new Set<string>(),
 
-      // Setters - rebuild derived state when nodes change
-      setNodes: (nodes) => {
-        const derived = rebuildDerivedState(nodes);
+      // Setters - rebuild derived state when entities change
+      setEntities: (entities) => {
+        const derived = rebuildDerivedState(entities);
         cachedAnalysis = null;
-        set({ nodes, ...derived, topologyVersion: get().topologyVersion + 1 });
+        set({ entities, ...derived, topologyVersion: get().topologyVersion + 1 });
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
@@ -514,10 +514,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         });
       },
       setViewport: (viewport) => set({ viewport }),
-      setHoveredNodeId: (hoveredNodeId) => set({ hoveredNodeId }),
+      setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
       setHoveredSocketId: (hoveredSocketId) => set({ hoveredSocketId }),
-      startConnection: (nodeId, socketId) =>
-        set({ connectionStart: { nodeId, socketId } }),
+      startConnection: (entityId, socketId) =>
+        set({ connectionStart: { entityId, socketId } }),
       endConnection: () => set({ connectionStart: null }),
       setSelectionBox: (selectionBox) => set({ selectionBox }),
 
@@ -544,17 +544,17 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       // Apply changes
-      applyNodeChanges: (changes) => {
-        const { nodes, collapsedGroupIds: currentCollapsed } = get();
-        const nextNodes = [...nodes];
+      applyEntityChanges: (changes) => {
+        const { entities, collapsedGroupIds: currentCollapsed } = get();
+        const nextEntities = [...entities];
         let collapsedChanged = false;
         let topologyChanged = false;
         const nextCollapsed = new Set(currentCollapsed);
 
         // Build id->index map once for O(1) lookups: O(n)
         const idToIndex = new Map<string, number>();
-        for (let i = 0; i < nextNodes.length; i++) {
-          idToIndex.set(nextNodes[i].id, i);
+        for (let i = 0; i < nextEntities.length; i++) {
+          idToIndex.set(nextEntities[i].id, i);
         }
 
         for (const change of changes) {
@@ -562,26 +562,26 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'position': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes[index] = { ...nextNodes[index], position: change.position };
+                nextEntities[index] = { ...nextEntities[index], position: change.position };
               }
               break;
             }
             case 'select': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes[index] = { ...nextNodes[index], selected: change.selected };
+                nextEntities[index] = { ...nextEntities[index], selected: change.selected };
               }
               break;
             }
             case 'remove': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes.splice(index, 1);
+                nextEntities.splice(index, 1);
                 topologyChanged = true;
                 // Update indices for subsequent removals (shift down)
                 idToIndex.delete(change.id);
-                for (let i = index; i < nextNodes.length; i++) {
-                  idToIndex.set(nextNodes[i].id, i);
+                for (let i = index; i < nextEntities.length; i++) {
+                  idToIndex.set(nextEntities[i].id, i);
                 }
                 // Also remove from collapsed set if it was a group
                 if (nextCollapsed.has(change.id)) {
@@ -592,12 +592,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               break;
             }
             case 'add': {
-              idToIndex.set(change.node.id, nextNodes.length);
-              nextNodes.push(change.node);
+              idToIndex.set(change.entity.id, nextEntities.length);
+              nextEntities.push(change.entity);
               topologyChanged = true;
               // If adding a collapsed group, add to collapsed set
-              if (change.node.type === 'group' && change.node.collapsed) {
-                nextCollapsed.add(change.node.id);
+              if (change.entity.type === 'frame' && change.entity.collapsed) {
+                nextCollapsed.add(change.entity.id);
                 collapsedChanged = true;
               }
               break;
@@ -605,8 +605,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'dimensions': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes[index] = {
-                  ...nextNodes[index],
+                nextEntities[index] = {
+                  ...nextEntities[index],
                   width: change.dimensions.width,
                   height: change.dimensions.height,
                 };
@@ -616,7 +616,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'collapse': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes[index] = { ...nextNodes[index], collapsed: change.collapsed };
+                nextEntities[index] = { ...nextEntities[index], collapsed: change.collapsed };
                 if (change.collapsed) {
                   nextCollapsed.add(change.id);
                 } else {
@@ -629,8 +629,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'parent': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextNodes[index] = {
-                  ...nextNodes[index],
+                nextEntities[index] = {
+                  ...nextEntities[index],
                   parentId: change.parentId ?? undefined,
                 };
               }
@@ -639,12 +639,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
-        // Rebuild derived state (nodeMap, quadtree, socketQuadtree) to stay in sync
+        // Rebuild derived state (entityMap, quadtree, socketQuadtree) to stay in sync
         const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
-        const derived = rebuildDerivedState(nextNodes, finalCollapsed);
+        const derived = rebuildDerivedState(nextEntities, finalCollapsed);
         if (topologyChanged) cachedAnalysis = null;
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           ...derived,
           ...(topologyChanged ? { topologyVersion: get().topologyVersion + 1 } : {}),
         });
@@ -704,38 +704,38 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       // Selection - O(1) operations using Sets
-      selectNode: (id, additive = false) => {
-        const { selectedNodeIds } = get();
+      selectEntity: (id, additive = false) => {
+        const { selectedEntityIds } = get();
         if (additive) {
           // Add to existing selection
-          const newSet = new Set(selectedNodeIds);
+          const newSet = new Set(selectedEntityIds);
           newSet.add(id);
-          set({ selectedNodeIds: newSet });
+          set({ selectedEntityIds: newSet });
         } else {
           // Replace selection (clear edges too for unified selection)
           set({
-            selectedNodeIds: new Set([id]),
+            selectedEntityIds: new Set([id]),
             selectedEdgeIds: new Set<string>(),
           });
         }
       },
 
-      selectNodes: (ids) => {
-        set({ selectedNodeIds: new Set(ids) });
+      selectEntities: (ids) => {
+        set({ selectedEntityIds: new Set(ids) });
       },
 
       selectEdge: (id, additive = false) => {
-        const { selectedEdgeIds, selectedNodeIds } = get();
+        const { selectedEdgeIds, selectedEntityIds } = get();
         if (additive) {
           // Add to existing selection
           const newSet = new Set(selectedEdgeIds);
           newSet.add(id);
           set({ selectedEdgeIds: newSet });
         } else {
-          // Replace selection (clear nodes too for unified selection)
+          // Replace selection (clear entities too for unified selection)
           set({
             selectedEdgeIds: new Set([id]),
-            selectedNodeIds: new Set<string>(),
+            selectedEntityIds: new Set<string>(),
           });
         }
       },
@@ -745,19 +745,19 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       selectAll: () => {
-        const { nodes } = get();
-        set({ selectedNodeIds: new Set(nodes.map((n) => n.id)) });
+        const { entities } = get();
+        set({ selectedEntityIds: new Set(entities.map((n) => n.id)) });
       },
 
       deselectAll: () => {
         set({
-          selectedNodeIds: new Set<string>(),
+          selectedEntityIds: new Set<string>(),
           selectedEdgeIds: new Set<string>(),
         });
       },
 
-      isNodeSelected: (id) => {
-        return get().selectedNodeIds.has(id);
+      isEntitySelected: (id) => {
+        return get().selectedEntityIds.has(id);
       },
 
       isEdgeSelected: (id) => {
@@ -798,29 +798,29 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       fitView: (options: FitViewOptions = {}, canvasWidth?: number, canvasHeight?: number) => {
-        const { nodes: allNodes } = get();
+        const { entities: allEntities } = get();
 
         const {
           padding = 50,
-          // includeHiddenNodes - reserved for future use when hidden nodes are supported
+          // includeHiddenEntities - reserved for future use when hidden entities are supported
           minZoom: optMinZoom = MIN_ZOOM,
           maxZoom: optMaxZoom = 1, // Default: don't zoom in past 100%
-          nodes: nodeIds,
+          entities: entityIds,
           // duration - reserved for future animation support
         } = options;
 
-        // Determine which nodes to fit
-        let nodesToFit: Node[];
-        if (nodeIds && nodeIds.length > 0) {
-          // Fit specific nodes by ID
-          const nodeIdSet = new Set(nodeIds);
-          nodesToFit = allNodes.filter(n => nodeIdSet.has(n.id));
+        // Determine which entities to fit
+        let entitiesToFit: Entity[];
+        if (entityIds && entityIds.length > 0) {
+          // Fit specific entities by ID
+          const entityIdSet = new Set(entityIds);
+          entitiesToFit = allEntities.filter(n => entityIdSet.has(n.id));
         } else {
-          // Fit all nodes
-          nodesToFit = allNodes;
+          // Fit all entities
+          entitiesToFit = allEntities;
         }
 
-        if (nodesToFit.length === 0) return;
+        if (entitiesToFit.length === 0) return;
 
         // Use provided dimensions or fallback to window size
         const containerWidth = canvasWidth ?? window.innerWidth;
@@ -832,11 +832,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           maxX = -Infinity,
           maxY = -Infinity;
 
-        for (const node of nodesToFit) {
-          minX = Math.min(minX, node.position.x);
-          minY = Math.min(minY, node.position.y);
-          maxX = Math.max(maxX, node.position.x + (node.width ?? 200));
-          maxY = Math.max(maxY, node.position.y + (node.height ?? 100));
+        for (const entity of entitiesToFit) {
+          minX = Math.min(minX, entity.position.x);
+          minY = Math.min(minY, entity.position.y);
+          maxX = Math.max(maxX, entity.position.x + (entity.width ?? 200));
+          maxY = Math.max(maxY, entity.position.y + (entity.height ?? 100));
         }
 
         // Add padding
@@ -871,55 +871,55 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Efficient batch position update for dragging
       // Updates positions and quadtree incrementally without full rebuild
-      // O(n+k) where n=nodes, k=updates (builds index map once, then O(1) per update)
-      updateNodePositions: (updates) => {
-        const { nodes, nodeMap, quadtree, socketQuadtree, positionVersion } = get();
-        const nextNodes = [...nodes];
+      // O(n+k) where n=entities, k=updates (builds index map once, then O(1) per update)
+      updateEntityPositions: (updates) => {
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion } = get();
+        const nextEntities = [...entities];
 
         // Build id->index map once: O(n)
         const idToIndex = new Map<string, number>();
-        for (let i = 0; i < nodes.length; i++) {
-          idToIndex.set(nodes[i].id, i);
+        for (let i = 0; i < entities.length; i++) {
+          idToIndex.set(entities[i].id, i);
         }
 
-        // Update each node: O(k)
+        // Update each entity: O(k)
         for (const { id, position } of updates) {
           const index = idToIndex.get(id);
           if (index !== undefined) {
-            const node = { ...nextNodes[index], position };
-            nextNodes[index] = node;
-            nodeMap.set(id, node);
-            quadtree.update(id, getNodeBounds(node));
+            const entity = { ...nextEntities[index], position };
+            nextEntities[index] = entity;
+            entityMap.set(id, entity);
+            quadtree.update(id, getEntityBounds(entity));
 
             // Update socket positions in socketQuadtree
-            const nodeWidth = node.width ?? 200;
-            if (node.inputs) {
-              for (let i = 0; i < node.inputs.length; i++) {
-                const socket = node.inputs[i];
-                const yOffset = getSocketYOffset(node, i, true);
+            const entityWidth = entity.width ?? 200;
+            if (entity.inputs) {
+              for (let i = 0; i < entity.inputs.length; i++) {
+                const socket = entity.inputs[i];
+                const yOffset = getSocketYOffset(entity, i, true);
                 socketQuadtree.update(id, socket.id, true, position.x, position.y + yOffset);
               }
             }
-            if (node.outputs) {
-              for (let i = 0; i < node.outputs.length; i++) {
-                const socket = node.outputs[i];
-                const yOffset = getSocketYOffset(node, i, false);
-                socketQuadtree.update(id, socket.id, false, position.x + nodeWidth, position.y + yOffset);
+            if (entity.outputs) {
+              for (let i = 0; i < entity.outputs.length; i++) {
+                const socket = entity.outputs[i];
+                const yOffset = getSocketYOffset(entity, i, false);
+                socketQuadtree.update(id, socket.id, false, position.x + entityWidth, position.y + yOffset);
               }
             }
           }
         }
 
         // Increment positionVersion so subscribers know positions changed
-        set({ nodes: nextNodes, positionVersion: positionVersion + 1 });
+        set({ entities: nextEntities, positionVersion: positionVersion + 1 });
       },
 
       // ========================================
       // Phase 6: Core Operations Implementation
       // ========================================
 
-      cloneElements: <T extends NodeData = NodeData>(
-        nodesToClone: Node<T>[],
+      cloneElements: <T extends EntityData = EntityData>(
+        entitiesToClone: Entity<T>[],
         edgesToClone: Edge[],
         options?: CloneElementsOptions<T>
       ): CloneElementsResult => {
@@ -932,34 +932,34 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Build ID map in single pass
         const idMap = new Map<string, string>();
-        for (const node of nodesToClone) {
-          idMap.set(node.id, generateId());
+        for (const entity of entitiesToClone) {
+          idMap.set(entity.id, generateId());
         }
 
-        // Clone nodes with new IDs and offset positions
-        const clonedNodes: Node[] = nodesToClone.map((node) => {
-          const newId = idMap.get(node.id)!;
-          const newData = transformData ? transformData(node.data as T) : { ...node.data };
+        // Clone entities with new IDs and offset positions
+        const clonedEntities: Entity[] = entitiesToClone.map((entity) => {
+          const newId = idMap.get(entity.id)!;
+          const newData = transformData ? transformData(entity.data as T) : { ...entity.data };
           return {
-            ...node,
+            ...entity,
             id: newId,
             position: {
-              x: node.position.x + offset.x,
-              y: node.position.y + offset.y,
+              x: entity.position.x + offset.x,
+              y: entity.position.y + offset.y,
             },
             data: newData,
             selected: false,
           };
         });
 
-        // Build set of cloned node IDs for fast lookup
-        const clonedNodeIdSet = new Set(nodesToClone.map((n) => n.id));
+        // Build set of cloned entity IDs for fast lookup
+        const clonedEntityIdSet = new Set(entitiesToClone.map((n) => n.id));
 
         // Clone edges, remapping source/target
         const clonedEdges: Edge[] = [];
         for (const edge of edgesToClone) {
-          const sourceInCloned = clonedNodeIdSet.has(edge.source);
-          const targetInCloned = clonedNodeIdSet.has(edge.target);
+          const sourceInCloned = clonedEntityIdSet.has(edge.source);
+          const targetInCloned = clonedEntityIdSet.has(edge.target);
 
           if (sourceInCloned && targetInCloned) {
             // Internal edge: remap both endpoints
@@ -997,52 +997,52 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           // If not preserveExternalConnections and edge is external, skip it
         }
 
-        return { nodes: clonedNodes, edges: clonedEdges, idMap };
+        return { entities: clonedEntities, edges: clonedEdges, idMap };
       },
 
       addElements: (batch) => {
-        const { nodes: currentNodes, edges: currentEdges, nodeMap, quadtree, socketQuadtree } = get();
-        const { nodes: newNodes = [], edges: newEdges = [] } = batch;
+        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree } = get();
+        const { entities: newEntities = [], edges: newEdges = [] } = batch;
 
-        if (newNodes.length === 0 && newEdges.length === 0) return;
+        if (newEntities.length === 0 && newEdges.length === 0) return;
 
         // Single state update with all new elements
-        const nextNodes = [...currentNodes, ...newNodes];
+        const nextEntities = [...currentEntities, ...newEntities];
         const nextEdges = [...currentEdges, ...newEdges];
 
-        // Incremental update: add new nodes to existing data structures
+        // Incremental update: add new entities to existing data structures
         // O(k log n) instead of O(n log n) full rebuild
-        for (const node of newNodes) {
-          nodeMap.set(node.id, node);
+        for (const entity of newEntities) {
+          entityMap.set(entity.id, entity);
         }
-        quadtree.incrementalAdd(newNodes);
+        quadtree.incrementalAdd(newEntities);
 
         // Add new sockets to socket quadtree
-        for (const node of newNodes) {
-          const nodeWidth = node.width ?? 200;
-          if (node.inputs) {
-            for (let i = 0; i < node.inputs.length; i++) {
-              const socket = node.inputs[i];
-              const yOffset = getSocketYOffset(node, i, true);
+        for (const entity of newEntities) {
+          const entityWidth = entity.width ?? 200;
+          if (entity.inputs) {
+            for (let i = 0; i < entity.inputs.length; i++) {
+              const socket = entity.inputs[i];
+              const yOffset = getSocketYOffset(entity, i, true);
               socketQuadtree.insert({
-                nodeId: node.id,
+                entityId: entity.id,
                 socketId: socket.id,
                 isInput: true,
-                x: node.position.x,
-                y: node.position.y + yOffset,
+                x: entity.position.x,
+                y: entity.position.y + yOffset,
               });
             }
           }
-          if (node.outputs) {
-            for (let i = 0; i < node.outputs.length; i++) {
-              const socket = node.outputs[i];
-              const yOffset = getSocketYOffset(node, i, false);
+          if (entity.outputs) {
+            for (let i = 0; i < entity.outputs.length; i++) {
+              const socket = entity.outputs[i];
+              const yOffset = getSocketYOffset(entity, i, false);
               socketQuadtree.insert({
-                nodeId: node.id,
+                entityId: entity.id,
                 socketId: socket.id,
                 isInput: false,
-                x: node.position.x + nodeWidth,
-                y: node.position.y + yOffset,
+                x: entity.position.x + entityWidth,
+                y: entity.position.y + yOffset,
               });
             }
           }
@@ -1050,7 +1050,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         cachedAnalysis = null;
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           connectedSockets: rebuildConnectedSockets(nextEdges),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
@@ -1059,51 +1059,51 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       deleteElements: (batch) => {
-        const { nodes, edges, selectedNodeIds, selectedEdgeIds, nodeMap, quadtree, socketQuadtree } = get();
-        const { nodeIds = [], edgeIds = [] } = batch;
+        const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree } = get();
+        const { entityIds = [], edgeIds = [] } = batch;
 
-        if (nodeIds.length === 0 && edgeIds.length === 0) return;
+        if (entityIds.length === 0 && edgeIds.length === 0) return;
 
         // Build sets for O(1) lookup
-        const nodeIdsToDelete = new Set(nodeIds);
+        const entityIdsToDelete = new Set(entityIds);
         const edgeIdsToDelete = new Set(edgeIds);
 
-        // Also delete edges connected to deleted nodes
+        // Also delete edges connected to deleted entities
         for (const edge of edges) {
-          if (nodeIdsToDelete.has(edge.source) || nodeIdsToDelete.has(edge.target)) {
+          if (entityIdsToDelete.has(edge.source) || entityIdsToDelete.has(edge.target)) {
             edgeIdsToDelete.add(edge.id);
           }
         }
 
         // Incremental removal from spatial structures O(k log n)
-        // Remove sockets first, then nodes
-        for (const nodeId of nodeIdsToDelete) {
-          const node = nodeMap.get(nodeId);
-          if (node) {
-            if (node.inputs) {
-              for (const socket of node.inputs) {
-                socketQuadtree.remove(nodeId, socket.id, true);
+        // Remove sockets first, then entities
+        for (const entityId of entityIdsToDelete) {
+          const entity = entityMap.get(entityId);
+          if (entity) {
+            if (entity.inputs) {
+              for (const socket of entity.inputs) {
+                socketQuadtree.remove(entityId, socket.id, true);
               }
             }
-            if (node.outputs) {
-              for (const socket of node.outputs) {
-                socketQuadtree.remove(nodeId, socket.id, false);
+            if (entity.outputs) {
+              for (const socket of entity.outputs) {
+                socketQuadtree.remove(entityId, socket.id, false);
               }
             }
           }
-          nodeMap.delete(nodeId);
+          entityMap.delete(entityId);
         }
-        quadtree.incrementalRemove(Array.from(nodeIdsToDelete));
+        quadtree.incrementalRemove(Array.from(entityIdsToDelete));
 
         // Filter out deleted elements
-        const nextNodes = nodes.filter((n) => !nodeIdsToDelete.has(n.id));
+        const nextEntities = entities.filter((n) => !entityIdsToDelete.has(n.id));
         const nextEdges = edges.filter((e) => !edgeIdsToDelete.has(e.id));
 
         // Update selection - remove deleted items
-        const nextSelectedNodeIds = new Set(selectedNodeIds);
+        const nextSelectedEntityIds = new Set(selectedEntityIds);
         const nextSelectedEdgeIds = new Set(selectedEdgeIds);
-        for (const id of nodeIdsToDelete) {
-          nextSelectedNodeIds.delete(id);
+        for (const id of entityIdsToDelete) {
+          nextSelectedEntityIds.delete(id);
         }
         for (const id of edgeIdsToDelete) {
           nextSelectedEdgeIds.delete(id);
@@ -1111,81 +1111,81 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         cachedAnalysis = null;
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           connectedSockets: rebuildConnectedSockets(nextEdges),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: get().topologyVersion + 1,
-          selectedNodeIds: nextSelectedNodeIds,
+          selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
         });
       },
 
       deleteSelected: () => {
-        const { selectedNodeIds, selectedEdgeIds, deleteElements } = get();
+        const { selectedEntityIds, selectedEdgeIds, deleteElements } = get();
         deleteElements({
-          nodeIds: Array.from(selectedNodeIds),
+          entityIds: Array.from(selectedEntityIds),
           edgeIds: Array.from(selectedEdgeIds),
         });
       },
 
       copySelectedToInternal: () => {
-        const { getSelectedNodes, getConnectedEdges, selectedNodeIds } = get();
-        const selectedNodes = getSelectedNodes();
+        const { getSelectedEntities, getConnectedEdges, selectedEntityIds } = get();
+        const selectedEntities = getSelectedEntities();
 
-        if (selectedNodes.length === 0) return;
+        if (selectedEntities.length === 0) return;
 
-        // Get ALL edges connected to selected nodes (both internal and external)
+        // Get ALL edges connected to selected entities (both internal and external)
         // Filtering to internal-only or preserving external happens at paste time
-        const nodeIds = Array.from(selectedNodeIds);
-        const connectedEdges = getConnectedEdges(nodeIds);
+        const entityIds = Array.from(selectedEntityIds);
+        const connectedEdges = getConnectedEdges(entityIds);
 
         set({
           internalClipboard: {
-            nodes: selectedNodes,
+            entities: selectedEntities,
             edges: connectedEdges,
           },
         });
       },
 
-      pasteFromInternal: <T extends NodeData = NodeData>(
+      pasteFromInternal: <T extends EntityData = EntityData>(
         options?: PasteFromInternalOptions<T>
       ): CloneElementsResult | null => {
-        const { internalClipboard, cloneElements, addElements, selectNodes, selectEdges } = get();
+        const { internalClipboard, cloneElements, addElements, selectEntities, selectEdges } = get();
 
-        if (!internalClipboard || internalClipboard.nodes.length === 0) {
+        if (!internalClipboard || internalClipboard.entities.length === 0) {
           return null;
         }
 
         const { preserveExternalConnections = false } = options ?? {};
-        const clipboardNodeIds = new Set(internalClipboard.nodes.map((n) => n.id));
+        const clipboardEntityIds = new Set(internalClipboard.entities.map((n) => n.id));
 
         // Filter edges based on preserveExternalConnections option
         // - false (default): only edges where BOTH endpoints are in clipboard (internal edges)
-        // - true: all edges where AT LEAST ONE endpoint is in clipboard (reconnect to existing nodes)
+        // - true: all edges where AT LEAST ONE endpoint is in clipboard (reconnect to existing entities)
         const edgesToClone = preserveExternalConnections
           ? internalClipboard.edges
           : internalClipboard.edges.filter(
-              (e) => clipboardNodeIds.has(e.source) && clipboardNodeIds.has(e.target)
+              (e) => clipboardEntityIds.has(e.source) && clipboardEntityIds.has(e.target)
             );
 
         // Clone with default offset
         const result = cloneElements(
-          internalClipboard.nodes as Node<T>[],
+          internalClipboard.entities as Entity<T>[],
           edgesToClone,
           {
             offset: options?.offset ?? { x: 50, y: 50 },
             transformData: options?.transformData,
-            // For external connections, we need to preserve the original external node references
+            // For external connections, we need to preserve the original external entity references
             preserveExternalConnections,
           }
         );
 
         // Add to graph
-        addElements({ nodes: result.nodes, edges: result.edges });
+        addElements({ entities: result.entities, edges: result.edges });
 
         // Select pasted elements
-        selectNodes(result.nodes.map((n) => n.id));
+        selectEntities(result.entities.map((n) => n.id));
         selectEdges(result.edges.map((e) => e.id));
 
         return result;
@@ -1198,23 +1198,23 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       toObject: (): FlowObject => {
-        const { nodes, edges, viewport } = get();
-        return { nodes, edges, viewport };
+        const { entities, edges, viewport } = get();
+        return { entities, edges, viewport };
       },
 
-      getSelectedNodes: (): Node[] => {
-        const { nodes, selectedNodeIds } = get();
-        if (selectedNodeIds.size === 0) return [];
-        return nodes.filter((n) => selectedNodeIds.has(n.id));
+      getSelectedEntities: (): Entity[] => {
+        const { entities, selectedEntityIds } = get();
+        if (selectedEntityIds.size === 0) return [];
+        return entities.filter((n) => selectedEntityIds.has(n.id));
       },
 
-      getConnectedEdges: (nodeIds: string[]): Edge[] => {
-        if (nodeIds.length === 0) return [];
+      getConnectedEdges: (entityIds: string[]): Edge[] => {
+        if (entityIds.length === 0) return [];
         const { adjacencyIndex } = get();
         const seen = new Set<string>();
         const result: Edge[] = [];
-        for (const nodeId of nodeIds) {
-          const edges = adjacencyIndex.byNode.get(nodeId);
+        for (const entityId of entityIds) {
+          const edges = adjacencyIndex.byEntity.get(entityId);
           if (edges) {
             for (const edge of edges) {
               if (!seen.has(edge.id)) {
@@ -1231,36 +1231,36 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Phase 7C: Grouping Actions Implementation
       // ========================================
 
-      getGroupChildren: (groupId: string): Node[] => {
-        const { nodes } = get();
-        return utilGetGroupChildren(nodes, groupId);
+      getGroupChildren: (groupId: string): Entity[] => {
+        const { entities } = get();
+        return utilGetGroupChildren(entities, groupId);
       },
 
-      getGroupDescendants: (groupId: string): Node[] => {
-        const { nodes } = get();
-        return utilGetGroupDescendants(nodes, groupId);
+      getGroupDescendants: (groupId: string): Entity[] => {
+        const { entities } = get();
+        return utilGetGroupDescendants(entities, groupId);
       },
 
       toggleGroupCollapse: (groupId: string): void => {
-        const { nodeMap, collapsedGroupIds, applyNodeChanges } = get();
-        const group = nodeMap.get(groupId);
-        if (!group || group.type !== 'group') return;
+        const { entityMap, collapsedGroupIds, applyEntityChanges } = get();
+        const group = entityMap.get(groupId);
+        if (!group || group.type !== 'frame') return;
 
         const newCollapsed = !collapsedGroupIds.has(groupId);
-        applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: newCollapsed }]);
+        applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: newCollapsed }]);
       },
 
       expandGroup: (groupId: string): void => {
-        const { collapsedGroupIds, applyNodeChanges } = get();
+        const { collapsedGroupIds, applyEntityChanges } = get();
         if (collapsedGroupIds.has(groupId)) {
-          applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: false }]);
+          applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: false }]);
         }
       },
 
       collapseGroup: (groupId: string): void => {
-        const { collapsedGroupIds, applyNodeChanges } = get();
+        const { collapsedGroupIds, applyEntityChanges } = get();
         if (!collapsedGroupIds.has(groupId)) {
-          applyNodeChanges([{ type: 'collapse', id: groupId, collapsed: true }]);
+          applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: true }]);
         }
       },
 
@@ -1270,43 +1270,43 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       getGroupBounds: (groupId: string): Bounds | null => {
-        const { nodes } = get();
-        return utilCalculateGroupBounds(nodes, groupId);
+        const { entities } = get();
+        return utilCalculateGroupBounds(entities, groupId);
       },
 
-      setNodeParent: (nodeId: string, parentId: string | null): boolean => {
-        const { nodeMap, applyNodeChanges } = get();
-        const node = nodeMap.get(nodeId);
-        if (!node) return false;
+      setEntityParent: (entityId: string, parentId: string | null): boolean => {
+        const { entityMap, applyEntityChanges } = get();
+        const entity = entityMap.get(entityId);
+        if (!entity) return false;
 
         // Validate: can't parent to self
-        if (parentId === nodeId) return false;
+        if (parentId === entityId) return false;
 
-        // Validate: can't create cycle (if proposedParent is a descendant of node)
+        // Validate: can't create cycle (if proposedParent is a descendant of entity)
         if (parentId) {
-          const parent = nodeMap.get(parentId);
+          const parent = entityMap.get(parentId);
           if (!parent) return false;
 
-          // Check if parentId is a descendant of nodeId
+          // Check if parentId is a descendant of entityId
           let current: string | undefined = parent.parentId;
           while (current) {
-            if (current === nodeId) return false; // Would create cycle
-            const currentNode = nodeMap.get(current);
-            current = currentNode?.parentId;
+            if (current === entityId) return false; // Would create cycle
+            const currentEntity = entityMap.get(current);
+            current = currentEntity?.parentId;
           }
         }
 
-        applyNodeChanges([{ type: 'parent', id: nodeId, parentId }]);
+        applyEntityChanges([{ type: 'parent', id: entityId, parentId }]);
         return true;
       },
 
       moveGroup: (groupId: string, delta: XYPosition): void => {
-        const { nodes, nodeMap, updateNodePositions } = get();
-        const group = nodeMap.get(groupId);
+        const { entities, entityMap, updateEntityPositions } = get();
+        const group = entityMap.get(groupId);
         if (!group) return;
 
         // Get positions for group and all descendants
-        const descendantPositions = calculateDescendantPositions(nodes, groupId, delta);
+        const descendantPositions = calculateDescendantPositions(entities, groupId, delta);
 
         // Build updates array
         const updates: Array<{ id: string; position: XYPosition }> = [
@@ -1317,113 +1317,113 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           updates.push({ id, position });
         }
 
-        updateNodePositions(updates);
+        updateEntityPositions(updates);
       },
 
       // ========================================
       // Phase 8: Graph Engine Implementation
       // ========================================
 
-      getIncomers: (nodeId: string): string[] => {
-        return graphEngine.getIncomers(get().adjacencyIndex, nodeId);
+      getIncomers: (entityId: string): string[] => {
+        return graphEngine.getIncomers(get().adjacencyIndex, entityId);
       },
 
-      getOutgoers: (nodeId: string): string[] => {
-        return graphEngine.getOutgoers(get().adjacencyIndex, nodeId);
+      getOutgoers: (entityId: string): string[] => {
+        return graphEngine.getOutgoers(get().adjacencyIndex, entityId);
       },
 
-      getNodeEdges: (nodeId: string): Edge[] => {
-        return graphEngine.getNodeEdges(get().adjacencyIndex, nodeId);
+      getEntityEdges: (entityId: string): Edge[] => {
+        return graphEngine.getEntityEdges(get().adjacencyIndex, entityId);
       },
 
-      getInputEdges: (nodeId: string): Edge[] => {
-        return graphEngine.getInputEdges(get().adjacencyIndex, nodeId);
+      getInputEdges: (entityId: string): Edge[] => {
+        return graphEngine.getInputEdges(get().adjacencyIndex, entityId);
       },
 
-      getOutputEdges: (nodeId: string): Edge[] => {
-        return graphEngine.getOutputEdges(get().adjacencyIndex, nodeId);
+      getOutputEdges: (entityId: string): Edge[] => {
+        return graphEngine.getOutputEdges(get().adjacencyIndex, entityId);
       },
 
-      getEdgesBetween: (nodeA: string, nodeB: string): Edge[] => {
-        return graphEngine.getEdgesBetween(get().adjacencyIndex, nodeA, nodeB);
+      getEdgesBetween: (entityA: string, entityB: string): Edge[] => {
+        return graphEngine.getEdgesBetween(get().adjacencyIndex, entityA, entityB);
       },
 
-      walkUpstream: (startNodeId: string): Generator<string> => {
-        return graphEngine.walkUpstream(get().adjacencyIndex, startNodeId);
+      walkUpstream: (startEntityId: string): Generator<string> => {
+        return graphEngine.walkUpstream(get().adjacencyIndex, startEntityId);
       },
 
-      walkDownstream: (startNodeId: string): Generator<string> => {
-        return graphEngine.walkDownstream(get().adjacencyIndex, startNodeId);
+      walkDownstream: (startEntityId: string): Generator<string> => {
+        return graphEngine.walkDownstream(get().adjacencyIndex, startEntityId);
       },
 
       getAnalysis: (): CachedAnalysis => {
-        const { nodes, adjacencyIndex, topologyVersion, mutedNodeIds } = get();
+        const { entities, adjacencyIndex, topologyVersion, mutedEntityIds } = get();
         if (cachedAnalysis && cachedAnalysis.topologyVersion === topologyVersion) {
           return cachedAnalysis;
         }
-        const nodeIds = nodes.map((n) => n.id);
-        const result = graphEngine.computeAnalysis(nodeIds, adjacencyIndex, mutedNodeIds);
+        const entityIds = entities.map((n) => n.id);
+        const result = graphEngine.computeAnalysis(entityIds, adjacencyIndex, mutedEntityIds);
         cachedAnalysis = { ...result, topologyVersion };
         return cachedAnalysis;
       },
 
-      wouldCreateCycle: (sourceNodeId: string, targetNodeId: string): boolean => {
-        return graphEngine.wouldCreateCycle(get().adjacencyIndex, sourceNodeId, targetNodeId);
+      wouldCreateCycle: (sourceEntityId: string, targetEntityId: string): boolean => {
+        return graphEngine.wouldCreateCycle(get().adjacencyIndex, sourceEntityId, targetEntityId);
       },
 
-      getAffectedEntities: (changedNodeIds: string | string[]): string[] => {
-        const { adjacencyIndex, mutedNodeIds } = get();
+      getAffectedEntities: (changedEntityIds: string | string[]): string[] => {
+        const { adjacencyIndex, mutedEntityIds } = get();
         const analysis = get().getAnalysis();
         return graphEngine.getAffectedEntities(
-          changedNodeIds,
+          changedEntityIds,
           adjacencyIndex,
           analysis.topologicalOrder,
-          mutedNodeIds
+          mutedEntityIds
         );
       },
 
       getConnectedComponents: (): Map<string, string[]> => {
-        const { nodes, adjacencyIndex } = get();
+        const { entities, adjacencyIndex } = get();
         return graphEngine.getConnectedComponents(
-          nodes.map((n) => n.id),
+          entities.map((n) => n.id),
           adjacencyIndex
         );
       },
 
-      areConnected: (nodeA: string, nodeB: string): boolean => {
-        return graphEngine.areConnected(get().adjacencyIndex, nodeA, nodeB);
+      areConnected: (entityA: string, entityB: string): boolean => {
+        return graphEngine.areConnected(get().adjacencyIndex, entityA, entityB);
       },
 
-      getExecutionOrder: (targetNodeId: string): string[] => {
-        return graphEngine.getExecutionOrder(get().adjacencyIndex, targetNodeId);
+      getExecutionOrder: (targetEntityId: string): string[] => {
+        return graphEngine.getExecutionOrder(get().adjacencyIndex, targetEntityId);
       },
 
-      getReadyEntities: (nodeIds: string[], completed: ReadonlySet<string>): string[] => {
-        return graphEngine.getReadyEntities(nodeIds, get().adjacencyIndex, completed);
+      getReadyEntities: (entityIds: string[], completed: ReadonlySet<string>): string[] => {
+        return graphEngine.getReadyEntities(entityIds, get().adjacencyIndex, completed);
       },
 
-      insertOnEdge: (edgeId: string, newNode: Node): void => {
+      insertOnEdge: (edgeId: string, newEntity: Entity): void => {
         const state = get();
         const edge = state.edges.find((e) => e.id === edgeId);
         if (!edge) return;
 
         const changes = graphEngine.computeInsertOnEdge(
           edge,
-          newNode,
-          state.nodeMap.get(edge.source),
-          state.nodeMap.get(edge.target)
+          newEntity,
+          state.entityMap.get(edge.source),
+          state.entityMap.get(edge.target)
         );
 
-        const positionedNode = { ...newNode, position: changes.nodePosition };
-        const nextNodes = [...state.nodes, positionedNode];
+        const positionedEntity = { ...newEntity, position: changes.entityPosition };
+        const nextEntities = [...state.entities, positionedEntity];
         const nextEdges = state.edges
           .filter((e) => e.id !== changes.removeEdgeId)
           .concat(changes.newEdges);
 
-        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
         cachedAnalysis = null;
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
@@ -1432,57 +1432,57 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         });
       },
 
-      bypassEntity: (nodeId: string): void => {
+      bypassEntity: (entityId: string): void => {
         const state = get();
-        const changes = graphEngine.computeBypass(nodeId, state.adjacencyIndex);
+        const changes = graphEngine.computeBypass(entityId, state.adjacencyIndex);
 
         const removeEdgeIdSet = new Set(changes.removeEdgeIds);
         const nextEdges = state.edges
           .filter((e) => !removeEdgeIdSet.has(e.id))
           .concat(changes.newEdges);
-        const nextNodes = state.nodes.filter((n) => n.id !== changes.removeNodeId);
+        const nextEntities = state.entities.filter((n) => n.id !== changes.removeEntityId);
 
-        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
         cachedAnalysis = null;
 
         // Update selection
-        const nextSelectedNodeIds = new Set(state.selectedNodeIds);
-        nextSelectedNodeIds.delete(nodeId);
+        const nextSelectedEntityIds = new Set(state.selectedEntityIds);
+        nextSelectedEntityIds.delete(entityId);
         const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
         for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
 
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
           connectedSockets: rebuildConnectedSockets(nextEdges),
-          selectedNodeIds: nextSelectedNodeIds,
+          selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
           ...derived,
         });
       },
 
-      muteEntity: (nodeId: string): void => {
-        const { mutedNodeIds, topologyVersion } = get();
-        if (mutedNodeIds.has(nodeId)) return;
-        const next = new Set(mutedNodeIds);
-        next.add(nodeId);
+      muteEntity: (entityId: string): void => {
+        const { mutedEntityIds, topologyVersion } = get();
+        if (mutedEntityIds.has(entityId)) return;
+        const next = new Set(mutedEntityIds);
+        next.add(entityId);
         cachedAnalysis = null;
-        set({ mutedNodeIds: next, topologyVersion: topologyVersion + 1 });
+        set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
       },
 
-      unmuteEntity: (nodeId: string): void => {
-        const { mutedNodeIds, topologyVersion } = get();
-        if (!mutedNodeIds.has(nodeId)) return;
-        const next = new Set(mutedNodeIds);
-        next.delete(nodeId);
+      unmuteEntity: (entityId: string): void => {
+        const { mutedEntityIds, topologyVersion } = get();
+        if (!mutedEntityIds.has(entityId)) return;
+        const next = new Set(mutedEntityIds);
+        next.delete(entityId);
         cachedAnalysis = null;
-        set({ mutedNodeIds: next, topologyVersion: topologyVersion + 1 });
+        set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
       },
 
-      isMuted: (nodeId: string): boolean => {
-        return get().mutedNodeIds.has(nodeId);
+      isMuted: (entityId: string): boolean => {
+        return get().mutedEntityIds.has(entityId);
       },
 
       // ========================================
@@ -1490,51 +1490,51 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // ========================================
 
       validate: (socketTypes) => {
-        const { nodes, edges, adjacencyIndex } = get();
-        return graphEngine.validate(nodes, edges, adjacencyIndex, socketTypes);
+        const { entities, edges, adjacencyIndex } = get();
+        return graphEngine.validate(entities, edges, adjacencyIndex, socketTypes);
       },
 
       isGraphComplete: () => {
-        const { nodes, adjacencyIndex } = get();
-        return graphEngine.isGraphComplete(nodes, adjacencyIndex);
+        const { entities, adjacencyIndex } = get();
+        return graphEngine.isGraphComplete(entities, adjacencyIndex);
       },
 
-      getCompatiblePorts: (sourceNodeId, sourceSocketId, isSourceInput, socketTypes, allowCycles) => {
-        const { nodes, adjacencyIndex } = get();
+      getCompatiblePorts: (sourceEntityId, sourceSocketId, isSourceInput, socketTypes, allowCycles) => {
+        const { entities, adjacencyIndex } = get();
         return graphEngine.getCompatiblePorts(
-          sourceNodeId,
+          sourceEntityId,
           sourceSocketId,
           isSourceInput,
-          nodes,
+          entities,
           socketTypes,
           adjacencyIndex,
           allowCycles
         );
       },
 
-      collapseToSubgraph: (nodeIds: string[], groupId: string): void => {
+      collapseToSubgraph: (entityIds: string[], groupId: string): void => {
         const state = get();
         const result = graphEngine.computeCollapseToSubgraph(
-          nodeIds,
+          entityIds,
           groupId,
-          state.nodes,
+          state.entities,
           state.adjacencyIndex
         );
 
-        // Create the group node
-        const groupNode: Node = {
-          id: result.groupNode.id,
-          type: 'group',
-          position: result.groupNode.position,
-          width: result.groupNode.width,
-          height: result.groupNode.height,
+        // Create the frame entity
+        const frameEntity: Entity = {
+          id: result.frameEntity.id,
+          type: 'frame',
+          position: result.frameEntity.position,
+          width: result.frameEntity.width,
+          height: result.frameEntity.height,
           data: { label: 'Group' },
-          inputs: result.groupInputs.map((p) => ({
+          inputs: result.frameInputs.map((p) => ({
             id: p.id,
             name: p.name,
             type: p.type,
           })),
-          outputs: result.groupOutputs.map((p) => ({
+          outputs: result.frameOutputs.map((p) => ({
             id: p.id,
             name: p.name,
             type: p.type,
@@ -1542,19 +1542,19 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         };
 
         // Set children's parentId to the group
-        const childIdSet = new Set(nodeIds);
+        const childIdSet = new Set(entityIds);
         const removeEdgeIdSet = new Set(result.removeEdgeIds);
-        const nextNodes = state.nodes
+        const nextEntities = state.entities
           .map((n) => (childIdSet.has(n.id) ? { ...n, parentId: groupId } : n))
-          .concat(groupNode);
+          .concat(frameEntity);
         const nextEdges = state.edges
           .filter((e) => !removeEdgeIdSet.has(e.id))
           .concat(result.newEdges);
 
-        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
         cachedAnalysis = null;
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
@@ -1563,44 +1563,44 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         });
       },
 
-      expandSubgraph: (groupId, childNodes, internalEdges, portMapping): void => {
+      expandSubgraph: (groupId, childEntities, internalEdges, portMapping): void => {
         const state = get();
         const result = graphEngine.computeExpandSubgraph(
           groupId,
-          childNodes,
+          childEntities,
           internalEdges,
-          state.nodes,
+          state.entities,
           state.adjacencyIndex,
           portMapping
         );
 
         const removeEdgeIdSet = new Set(result.removeEdgeIds);
-        // Remove group node, restore children (clear parentId), add reconnect edges
-        const nextNodes = state.nodes
-          .filter((n) => n.id !== result.removeNodeId)
+        // Remove group entity, restore children (clear parentId), add reconnect edges
+        const nextEntities = state.entities
+          .filter((n) => n.id !== result.removeEntityId)
           .map((n) => (n.parentId === groupId ? { ...n, parentId: undefined } : n))
-          .concat(result.restoreNodes.map((n) => ({ ...n, parentId: undefined })));
+          .concat(result.restoreEntities.map((n) => ({ ...n, parentId: undefined })));
         const nextEdges = state.edges
           .filter((e) => !removeEdgeIdSet.has(e.id))
           .concat(result.restoreEdges)
           .concat(result.reconnectEdges);
 
-        const derived = rebuildDerivedState(nextNodes, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
         cachedAnalysis = null;
 
         // Update selection
-        const nextSelectedNodeIds = new Set(state.selectedNodeIds);
-        nextSelectedNodeIds.delete(groupId);
+        const nextSelectedEntityIds = new Set(state.selectedEntityIds);
+        nextSelectedEntityIds.delete(groupId);
         const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
         for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
 
         set({
-          nodes: nextNodes,
+          entities: nextEntities,
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
           connectedSockets: rebuildConnectedSockets(nextEdges),
-          selectedNodeIds: nextSelectedNodeIds,
+          selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
           ...derived,
         });

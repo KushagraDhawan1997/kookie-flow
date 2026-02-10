@@ -1,16 +1,16 @@
 /**
- * Socket layout cache - pre-computes Y positions for all sockets on a node.
+ * Socket layout cache - pre-computes Y positions for all sockets on an entity.
  *
  * Supports variable row heights via socket.layout, socket.rows, and socket.height.
  *
  * Performance characteristics:
- * - O(1) lookup per node (after initial computation)
+ * - O(1) lookup per entity (after initial computation)
  * - O(n) computation where n = total sockets (computed once)
- * - Automatic invalidation when node reference changes or socket config changes
+ * - Automatic invalidation when entity reference changes or socket config changes
  * - Zero allocations in hot paths (positions are numbers)
  */
 
-import type { Node, Socket, SocketLayoutMode } from '../types';
+import type { Entity, Socket, SocketLayoutMode } from '../types';
 import type { ResolvedSocketLayout } from './style-resolver';
 import { STACKED_LABEL_HEIGHT, STACKED_GAP } from '../core/constants';
 
@@ -25,30 +25,30 @@ import { STACKED_LABEL_HEIGHT, STACKED_GAP } from '../core/constants';
 export interface ComputedSocketPosition {
   /** Socket index within its array (input or output) */
   index: number;
-  /** Y offset from node top to socket center (world coords) */
+  /** Y offset from entity top to socket center (world coords) */
   yOffset: number;
   /** Total height this socket row occupies */
   height: number;
   /** Layout mode for this socket */
   layout: SocketLayoutMode;
-  /** Y offset from node top to widget top-left (for DOM positioning) */
+  /** Y offset from entity top to widget top-left (for DOM positioning) */
   widgetY: number;
   /** Widget height in pixels */
   widgetHeight: number;
-  /** Y offset from node top to label center (for stacked mode) */
+  /** Y offset from entity top to label center (for stacked mode) */
   labelY: number;
 }
 
 /**
- * Cached socket layout for an entire node.
- * Computed once when node config changes, reused during pan/zoom/drag.
+ * Cached socket layout for an entire entity.
+ * Computed once when entity config changes, reused during pan/zoom/drag.
  */
-export interface NodeSocketLayoutCache {
+export interface EntitySocketLayoutCache {
   /** Output socket positions */
   outputs: ComputedSocketPosition[];
   /** Input socket positions */
   inputs: ComputedSocketPosition[];
-  /** Total computed node height based on socket layout */
+  /** Total computed entity height based on socket layout */
   computedHeight: number;
 }
 
@@ -56,21 +56,21 @@ export interface NodeSocketLayoutCache {
 // Cache Implementation
 // ============================================================================
 
-// WeakMap for automatic cleanup when nodes are GC'd
-const nodeLayoutCache = new WeakMap<Node, NodeSocketLayoutCache>();
+// WeakMap for automatic cleanup when entities are GC'd
+const entityLayoutCache = new WeakMap<Entity, EntitySocketLayoutCache>();
 
-// Stable cache key to detect config changes within same node reference
-const nodeCacheKeys = new WeakMap<Node, string>();
+// Stable cache key to detect config changes within same entity reference
+const entityCacheKeys = new WeakMap<Entity, string>();
 
 /**
  * Build a stable cache key from socket configuration.
  * Key includes all properties that affect socket positioning.
  */
-function buildCacheKey(node: Node): string {
-  const inputs = (node.inputs ?? [])
+function buildCacheKey(entity: Entity): string {
+  const inputs = (entity.inputs ?? [])
     .map((s) => `${s.id}:${s.layout ?? 'i'}:${s.rows ?? 1}:${s.height ?? 0}`)
     .join(',');
-  const outputs = (node.outputs ?? [])
+  const outputs = (entity.outputs ?? [])
     .map((s) => `${s.id}:${s.layout ?? 'i'}:${s.rows ?? 1}:${s.height ?? 0}`)
     .join(',');
   return `${inputs}|${outputs}`;
@@ -132,19 +132,19 @@ function computeSocketPosition(
 }
 
 /**
- * Compute the full socket layout for a node.
+ * Compute the full socket layout for an entity.
  */
-function computeNodeSocketLayout(
-  node: Node,
+function computeEntitySocketLayout(
+  entity: Entity,
   baseLayout: ResolvedSocketLayout
-): NodeSocketLayoutCache {
+): EntitySocketLayoutCache {
   const outputs: ComputedSocketPosition[] = [];
   const inputs: ComputedSocketPosition[] = [];
 
   let currentY = baseLayout.marginTop;
 
   // Process outputs first (they come before inputs in layout order)
-  const outputSockets = node.outputs ?? [];
+  const outputSockets = entity.outputs ?? [];
   for (let i = 0; i < outputSockets.length; i++) {
     const socket = outputSockets[i];
     const computed = computeSocketPosition(socket, i, currentY, baseLayout);
@@ -153,7 +153,7 @@ function computeNodeSocketLayout(
   }
 
   // Process inputs
-  const inputSockets = node.inputs ?? [];
+  const inputSockets = entity.inputs ?? [];
   for (let i = 0; i < inputSockets.length; i++) {
     const socket = inputSockets[i];
     const computed = computeSocketPosition(socket, i, currentY, baseLayout);
@@ -172,38 +172,38 @@ function computeNodeSocketLayout(
 }
 
 /**
- * Get the cached socket layout for a node.
+ * Get the cached socket layout for an entity.
  * Automatically computes and caches if not already cached or if config changed.
  *
- * @param node - The node to get layout for
+ * @param entity - The entity to get layout for
  * @param socketLayout - Base socket layout from style context
  * @returns Cached socket positions and computed height
  */
-export function getNodeSocketLayout(
-  node: Node,
+export function getEntitySocketLayout(
+  entity: Entity,
   socketLayout: ResolvedSocketLayout
-): NodeSocketLayoutCache {
-  const existingKey = nodeCacheKeys.get(node);
-  const currentKey = buildCacheKey(node);
+): EntitySocketLayoutCache {
+  const existingKey = entityCacheKeys.get(entity);
+  const currentKey = buildCacheKey(entity);
 
   // Return cached if key matches
   if (existingKey === currentKey) {
-    const cached = nodeLayoutCache.get(node);
+    const cached = entityLayoutCache.get(entity);
     if (cached) return cached;
   }
 
   // Compute new layout
-  const layout = computeNodeSocketLayout(node, socketLayout);
-  nodeLayoutCache.set(node, layout);
-  nodeCacheKeys.set(node, currentKey);
+  const layout = computeEntitySocketLayout(entity, socketLayout);
+  entityLayoutCache.set(entity, layout);
+  entityCacheKeys.set(entity, currentKey);
 
   return layout;
 }
 
 /**
- * Clear the cache for a specific node (for testing or manual invalidation).
+ * Clear the cache for a specific entity (for testing or manual invalidation).
  */
-export function clearNodeLayoutCache(node: Node): void {
-  nodeLayoutCache.delete(node);
-  nodeCacheKeys.delete(node);
+export function clearEntityLayoutCache(entity: Entity): void {
+  entityLayoutCache.delete(entity);
+  entityCacheKeys.delete(entity);
 }

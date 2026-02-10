@@ -7,30 +7,30 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowStoreApi } from './context';
-import { useNodeStyle, useSocketLayout } from '../contexts/StyleContext';
-import type { NodeTypeDefinition, Node, Edge, EdgeType, EdgeLabelConfig, CommentNodeData } from '../types';
-import { DEFAULT_NODE_WIDTH } from '../core/constants';
-import { getNodeSocketLayout } from '../utils/socket-layout-cache';
+import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
+import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData } from '../types';
+import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
 export interface DOMLayerProps {
-  nodeTypes?: Record<string, NodeTypeDefinition>;
+  entityTypes?: Record<string, EntityTypeDefinition>;
   /** Scale text with zoom (true = CSS scale, false = crisp text). Default: false */
   scaleTextWithZoom?: boolean;
   /** Default edge type for label positioning. Default: 'bezier' */
   defaultEdgeType?: EdgeType;
-  /** Show node header labels. Default: true */
-  showNodeLabels?: boolean;
+  /** Show entity header labels. Default: true */
+  showEntityLabels?: boolean;
   /** Show socket labels. Default: true */
   showSocketLabels?: boolean;
   /** Show edge labels. Default: true */
   showEdgeLabels?: boolean;
-  /** Show comment nodes. Default: true */
+  /** Show comment entities. Default: true */
   showComments?: boolean;
   children?: ReactNode;
 }
 
-// LOD thresholds - match node visibility behavior
+// LOD thresholds - match entity visibility behavior
 const MIN_ZOOM_FOR_LABELS = 0.1; // Match minZoom default
 const MIN_LABEL_SCREEN_SIZE = 8; // Much smaller threshold so labels stay visible
 
@@ -55,10 +55,10 @@ const containerStyle: CSSProperties = {
  * - Ref-based updates that bypass React rendering
  */
 export function DOMLayer({
-  nodeTypes = {},
+  entityTypes = {},
   scaleTextWithZoom = false,
   defaultEdgeType = 'bezier',
-  showNodeLabels = true,
+  showEntityLabels = true,
   showSocketLabels = true,
   showEdgeLabels = true,
   showComments = true,
@@ -67,7 +67,7 @@ export function DOMLayer({
   if (scaleTextWithZoom) {
     return (
       <div style={containerStyle}>
-        {showNodeLabels && <ScaledContainer nodeTypes={nodeTypes} />}
+        {showEntityLabels && <ScaledContainer entityTypes={entityTypes} />}
         {showSocketLabels && <SocketLabelsContainer />}
         {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
         {showComments && <CommentsContainer />}
@@ -78,7 +78,7 @@ export function DOMLayer({
 
   return (
     <div style={containerStyle}>
-      {showNodeLabels && <CrispLabelsContainer nodeTypes={nodeTypes} />}
+      {showEntityLabels && <CrispLabelsContainer entityTypes={entityTypes} />}
       {showSocketLabels && <SocketLabelsContainer />}
       {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
       {showComments && <CommentsContainer />}
@@ -91,16 +91,16 @@ export function DOMLayer({
  * Container for crisp (non-scaled) labels.
  * Uses microtask batching for same-frame updates (no 1-frame lag during drag).
  */
-function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
+function CrispLabelsContainer({ entityTypes }: { entityTypes: Record<string, EntityTypeDefinition> }) {
   const store = useFlowStoreApi();
-  const { resolved: style, config } = useNodeStyle();
+  const { resolved: style, config } = useEntityStyle();
   const socketLayout = useSocketLayout();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
-  // Track nodes for re-rendering when they change
-  const [nodes, setNodes] = useState(() => store.getState().nodes);
+  // Track entities for re-rendering when they change
+  const [entities, setEntities] = useState(() => store.getState().entities);
 
   // Cached container size - updated via ResizeObserver (avoids layout thrashing)
   // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
@@ -113,7 +113,7 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap } = store.getState();
+    const { viewport, entityMap } = store.getState();
     const labels = labelsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -137,32 +137,32 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
     // Font size based on zoom (clamped for readability)
     const fontSize = Math.max(10, Math.min(16, 12 * viewport.zoom));
 
-    labels.forEach((el, nodeId) => {
-      const node = nodeMap.get(nodeId);
-      if (!node) {
+    labels.forEach((el, entityId) => {
+      const entity = entityMap.get(entityId);
+      if (!entity) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const nodeLayout = getNodeSocketLayout(node, socketLayout);
-      const height = node.height ?? nodeLayout.computedHeight;
+      const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      const height = entity.height ?? entityLayout.computedHeight;
 
       // Frustum culling
-      const nodeRight = node.position.x + width;
-      const nodeBottom = node.position.y + height;
+      const entityRight = entity.position.x + width;
+      const entityBottom = entity.position.y + height;
 
       if (
-        nodeRight < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        nodeBottom < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
+        entityRight < viewLeft - cullPadding ||
+        entity.position.x > viewRight + cullPadding ||
+        entityBottom < viewTop - cullPadding ||
+        entity.position.y > viewBottom + cullPadding
       ) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      // LOD: Hide if node is too small on screen
+      // LOD: Hide if entity is too small on screen
       const screenHeight = height * viewport.zoom;
       if (screenHeight < MIN_LABEL_SCREEN_SIZE) {
         el.style.visibility = 'hidden';
@@ -172,11 +172,11 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       // Calculate screen position
       // Vertically center text within header (fontSize=12, approximate line-height ~14)
       const verticalOffset = (style.headerHeight - 14) / 2;
-      // For 'outside' header, position label above the node
+      // For 'outside' header, position label above the entity
       const labelY = config.header === 'outside'
-        ? node.position.y - style.headerHeight + verticalOffset
-        : node.position.y + verticalOffset;
-      const screenX = (node.position.x + 12) * viewport.zoom + viewport.x;
+        ? entity.position.y - style.headerHeight + verticalOffset
+        : entity.position.y + verticalOffset;
+      const screenX = (entity.position.x + 12) * viewport.zoom + viewport.x;
       const screenY = labelY * viewport.zoom + viewport.y;
 
       // Update with translate3d for GPU acceleration (critical for Safari)
@@ -201,9 +201,9 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
 
     // Subscribe to store changes
     const unsub = store.subscribe((state) => {
-      // Re-render if node count changed (add/remove elements)
-      if (state.nodes.length !== nodes.length) {
-        setNodes(state.nodes);
+      // Re-render if entity count changed (add/remove elements)
+      if (state.entities.length !== entities.length) {
+        setEntities(state.entities);
       }
       scheduleUpdate();
     });
@@ -229,15 +229,15 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
       unsub();
       resizeObserver?.disconnect();
     };
-  }, [store, updateLabels, scheduleUpdate, nodes.length, nodes]);
+  }, [store, updateLabels, scheduleUpdate, entities.length, entities]);
 
   // Ref callback for label elements
   const setLabelRef = useCallback(
-    (nodeId: string) => (el: HTMLDivElement | null) => {
+    (entityId: string) => (el: HTMLDivElement | null) => {
       if (el) {
-        labelsRef.current.set(nodeId, el);
+        labelsRef.current.set(entityId, el);
       } else {
-        labelsRef.current.delete(nodeId);
+        labelsRef.current.delete(entityId);
       }
     },
     []
@@ -245,12 +245,12 @@ function CrispLabelsContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTyp
 
   return (
     <div ref={containerRef}>
-      {nodes.map((node) => {
-        const nodeType = nodeTypes[node.type];
-        const label = nodeType?.label ?? node.data.label ?? node.type;
+      {entities.map((entity) => {
+        const entityType = entityTypes[entity.type];
+        const label = entityType?.label ?? entity.data.label ?? entity.type;
 
         return (
-          <div key={node.id} ref={setLabelRef(node.id)} style={crispLabelStyle}>
+          <div key={entity.id} ref={setLabelRef(entity.id)} style={crispLabelStyle}>
             {label}
           </div>
         );
@@ -281,15 +281,15 @@ const crispLabelStyle: CSSProperties = {
  * Container that scales with viewport using CSS transform.
  * Uses ref-based updates for positions (no React re-renders during drag).
  */
-function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefinition> }) {
+function ScaledContainer({ entityTypes }: { entityTypes: Record<string, EntityTypeDefinition> }) {
   const store = useFlowStoreApi();
-  const { resolved: style, config } = useNodeStyle();
+  const { resolved: style, config } = useEntityStyle();
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
-  // Track nodes for element creation/removal only
-  const [nodes, setNodes] = useState(() => store.getState().nodes);
+  // Track entities for element creation/removal only
+  const [entities, setEntities] = useState(() => store.getState().entities);
 
   // Update container transform and label positions via refs
   const updateTransform = useCallback(() => {
@@ -297,7 +297,7 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     const el = containerRef.current;
     if (!el) return;
 
-    const { viewport, nodeMap } = store.getState();
+    const { viewport, entityMap } = store.getState();
 
     // LOD: Hide if zoomed out too far
     if (viewport.zoom < MIN_ZOOM_FOR_LABELS) {
@@ -310,17 +310,17 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
     el.style.transform = `matrix3d(${viewport.zoom},0,0,0,0,${viewport.zoom},0,0,0,0,1,0,${viewport.x},${viewport.y},0,1)`;
 
     // Update label positions via refs (no React re-render)
-    // Uses store's nodeMap for O(1) lookup per label
-    labelsRef.current.forEach((labelEl, nodeId) => {
-      const node = nodeMap.get(nodeId);
-      if (node) {
+    // Uses store's entityMap for O(1) lookup per label
+    labelsRef.current.forEach((labelEl, entityId) => {
+      const entity = entityMap.get(entityId);
+      if (entity) {
         // Vertically center text within header (fontSize=12, approximate line-height ~14)
         const verticalOffset = (style.headerHeight - 14) / 2;
-        // For 'outside' header, position label above the node
+        // For 'outside' header, position label above the entity
         const labelY = config.header === 'outside'
-          ? node.position.y - style.headerHeight + verticalOffset
-          : node.position.y + verticalOffset;
-        labelEl.style.transform = `translate3d(${node.position.x + 12}px, ${labelY}px, 0)`;
+          ? entity.position.y - style.headerHeight + verticalOffset
+          : entity.position.y + verticalOffset;
+        labelEl.style.transform = `translate3d(${entity.position.x + 12}px, ${labelY}px, 0)`;
       }
     });
   }, [store, config, style]);
@@ -339,9 +339,9 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
 
     // Subscribe to store changes
     const unsub = store.subscribe((state) => {
-      // Only re-render React when node count changes (add/remove elements)
-      if (state.nodes.length !== nodes.length) {
-        setNodes(state.nodes);
+      // Only re-render React when entity count changes (add/remove elements)
+      if (state.entities.length !== entities.length) {
+        setEntities(state.entities);
       }
       scheduleUpdate();
     });
@@ -361,15 +361,15 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
       unsub();
       resizeObserver?.disconnect();
     };
-  }, [store, updateTransform, scheduleUpdate, nodes.length]);
+  }, [store, updateTransform, scheduleUpdate, entities.length]);
 
   // Ref callback for label elements
   const setLabelRef = useCallback(
-    (nodeId: string) => (el: HTMLDivElement | null) => {
+    (entityId: string) => (el: HTMLDivElement | null) => {
       if (el) {
-        labelsRef.current.set(nodeId, el);
+        labelsRef.current.set(entityId, el);
       } else {
-        labelsRef.current.delete(nodeId);
+        labelsRef.current.delete(entityId);
       }
     },
     []
@@ -377,12 +377,12 @@ function ScaledContainer({ nodeTypes }: { nodeTypes: Record<string, NodeTypeDefi
 
   return (
     <div ref={containerRef} style={scaledContainerStyle}>
-      {nodes.map((node) => {
-        const nodeType = nodeTypes[node.type];
-        const label = nodeType?.label ?? node.data.label ?? node.type;
+      {entities.map((entity) => {
+        const entityType = entityTypes[entity.type];
+        const label = entityType?.label ?? entity.data.label ?? entity.type;
 
         return (
-          <div key={node.id} ref={setLabelRef(node.id)} style={scaledLabelStyle}>
+          <div key={entity.id} ref={setLabelRef(entity.id)} style={scaledLabelStyle}>
             {label}
           </div>
         );
@@ -447,7 +447,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   // Edge map for O(1) lookups (rebuilt when edges change)
   const edgeMapRef = useRef<Map<string, Edge>>(new Map());
 
-  // Build socket index map for O(1) lookups (rebuilt when nodes change)
+  // Build socket index map for O(1) lookups (rebuilt when entities change)
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
 
   // Cached container size - updated via ResizeObserver (avoids layout thrashing)
@@ -461,7 +461,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap } = store.getState();
+    const { viewport, entityMap } = store.getState();
     const labels = labelsRef.current;
     const socketIndexMap = socketIndexMapRef.current;
 
@@ -497,7 +497,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
       const t = labelConfig.position ?? 0.5;
 
       // Get point along edge
-      const pointResult = getEdgePointAtT(edge, nodeMap, t, defaultEdgeType, socketIndexMap);
+      const pointResult = getEdgePointAtT(edge, entityMap, t, defaultEdgeType, socketIndexMap);
       if (!pointResult) {
         el.style.visibility = 'hidden';
         return;
@@ -547,9 +547,9 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   }, [updateLabels]);
 
   // Helper to rebuild socket index map
-  const rebuildSocketIndexMap = (nodes: Node[]) => {
+  const rebuildSocketIndexMap = (entities: Entity[]) => {
     socketIndexMapRef.current.clear();
-    for (const n of nodes) {
+    for (const n of entities) {
       if (n.inputs) {
         for (let i = 0; i < n.inputs.length; i++) {
           const s = n.inputs[i];
@@ -576,19 +576,19 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
   // Setup subscriptions and initial update
   useLayoutEffect(() => {
     // Build initial maps
-    const { nodes, edges } = store.getState();
-    rebuildSocketIndexMap(nodes);
+    const { entities, edges } = store.getState();
+    rebuildSocketIndexMap(entities);
     rebuildEdgeMap(edges);
 
     // Run initial update synchronously
     updateLabels();
 
-    // Subscribe to node structure changes only (not position changes)
-    // Rebuild socket index map only when nodes are added/removed
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes.length,
+    // Subscribe to entity structure changes only (not position changes)
+    // Rebuild socket index map only when entities are added/removed
+    const unsubEntities = store.subscribe(
+      (state) => state.entities.length,
       () => {
-        rebuildSocketIndexMap(store.getState().nodes);
+        rebuildSocketIndexMap(store.getState().entities);
       }
     );
 
@@ -634,7 +634,7 @@ function EdgeLabelsContainer({ defaultEdgeType }: { defaultEdgeType: EdgeType })
     }
 
     return () => {
-      unsubNodes();
+      unsubEntities();
       unsubEdges();
       unsubViewport();
       unsubPositions();
@@ -705,8 +705,8 @@ function SocketLabelsContainer() {
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
-  // Track nodes for React element creation
-  const [nodes, setNodes] = useState(() => store.getState().nodes);
+  // Track entities for React element creation
+  const [entities, setEntities] = useState(() => store.getState().entities);
 
   // Cached container size - updated via ResizeObserver (avoids layout thrashing)
   // Initialize to 0 (SSR-safe) - ResizeObserver sets correct values on mount
@@ -719,7 +719,7 @@ function SocketLabelsContainer() {
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap } = store.getState();
+    const { viewport, entityMap } = store.getState();
     const labels = labelsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -744,33 +744,33 @@ function SocketLabelsContainer() {
     const fontSize = Math.max(8, Math.min(11, 10 * viewport.zoom));
 
     labels.forEach((el, key) => {
-      // Key format: nodeId:socketId:side
-      const [nodeId, , side] = key.split(':');
-      const node = nodeMap.get(nodeId);
-      if (!node) {
+      // Key format: entityId:socketId:side
+      const [entityId, , side] = key.split(':');
+      const entity = entityMap.get(entityId);
+      if (!entity) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      const width = node.width ?? DEFAULT_NODE_WIDTH;
-      const nodeLayout = getNodeSocketLayout(node, socketLayout);
-      const height = node.height ?? nodeLayout.computedHeight;
+      const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      const height = entity.height ?? entityLayout.computedHeight;
 
       // Frustum culling
-      const nodeRight = node.position.x + width;
-      const nodeBottom = node.position.y + height;
+      const entityRight = entity.position.x + width;
+      const entityBottom = entity.position.y + height;
 
       if (
-        nodeRight < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        nodeBottom < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
+        entityRight < viewLeft - cullPadding ||
+        entity.position.x > viewRight + cullPadding ||
+        entityBottom < viewTop - cullPadding ||
+        entity.position.y > viewBottom + cullPadding
       ) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      // LOD: Hide if node is too small on screen
+      // LOD: Hide if entity is too small on screen
       const screenHeight = height * viewport.zoom;
       if (screenHeight < MIN_LABEL_SCREEN_SIZE * 2) {
         el.style.visibility = 'hidden';
@@ -782,10 +782,10 @@ function SocketLabelsContainer() {
 
       // Get cached socket position (supports variable heights and stacked layouts)
       const cachedPos = side === 'input'
-        ? nodeLayout.inputs[socketIndex]
-        : nodeLayout.outputs[socketIndex];
-      const socketY = node.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
-      const socketX = side === 'input' ? node.position.x : node.position.x + width;
+        ? entityLayout.inputs[socketIndex]
+        : entityLayout.outputs[socketIndex];
+      const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+      const socketX = side === 'input' ? entity.position.x : entity.position.x + width;
 
       // Label offset from socket (in world space)
       const labelOffset = side === 'input' ? 12 : -12;
@@ -815,9 +815,9 @@ function SocketLabelsContainer() {
 
     // Subscribe to store changes
     const unsub = store.subscribe((state) => {
-      // Re-render if node count changed
-      if (state.nodes.length !== nodes.length) {
-        setNodes(state.nodes);
+      // Re-render if entity count changed
+      if (state.entities.length !== entities.length) {
+        setEntities(state.entities);
       }
       scheduleUpdate();
     });
@@ -841,7 +841,7 @@ function SocketLabelsContainer() {
       unsub();
       resizeObserver?.disconnect();
     };
-  }, [store, updateLabels, scheduleUpdate, nodes.length]);
+  }, [store, updateLabels, scheduleUpdate, entities.length]);
 
   // Ref callback for label elements
   const setLabelRef = useCallback(
@@ -855,7 +855,7 @@ function SocketLabelsContainer() {
     []
   );
 
-  // Collect all sockets from all nodes
+  // Collect all sockets from all entities
   const socketLabels: Array<{
     key: string;
     name: string;
@@ -864,13 +864,13 @@ function SocketLabelsContainer() {
     outputCount: number;
   }> = [];
 
-  for (const node of nodes) {
-    const outputCount = node.outputs?.length ?? 0;
-    if (node.inputs) {
-      for (let i = 0; i < node.inputs.length; i++) {
-        const socket = node.inputs[i];
+  for (const entity of entities) {
+    const outputCount = entity.outputs?.length ?? 0;
+    if (entity.inputs) {
+      for (let i = 0; i < entity.inputs.length; i++) {
+        const socket = entity.inputs[i];
         socketLabels.push({
-          key: `${node.id}:${socket.id}:input`,
+          key: `${entity.id}:${socket.id}:input`,
           name: socket.name,
           side: 'input',
           index: i,
@@ -878,11 +878,11 @@ function SocketLabelsContainer() {
         });
       }
     }
-    if (node.outputs) {
-      for (let i = 0; i < node.outputs.length; i++) {
-        const socket = node.outputs[i];
+    if (entity.outputs) {
+      for (let i = 0; i < entity.outputs.length; i++) {
+        const socket = entity.outputs[i];
         socketLabels.push({
-          key: `${node.id}:${socket.id}:output`,
+          key: `${entity.id}:${socket.id}:output`,
           name: socket.name,
           side: 'output',
           index: i,
@@ -943,7 +943,7 @@ const socketLabelStyle: CSSProperties = {
 // Comments Container (Phase 7C)
 // ============================================================================
 
-/** Default comment node dimensions */
+/** Default comment entity dimensions */
 const DEFAULT_COMMENT_WIDTH = 200;
 const DEFAULT_COMMENT_HEIGHT = 100;
 
@@ -953,7 +953,7 @@ const DEFAULT_COMMENT_TEXT_COLOR = '#424242';
 const DEFAULT_COMMENT_FONT_SIZE = 14;
 
 /**
- * Container for comment/sticky note nodes.
+ * Container for comment/sticky note entities.
  * Comments are fully DOM-rendered (text content, no sockets).
  * Uses ref-based updates for same-frame positioning without React re-renders.
  *
@@ -966,9 +966,9 @@ function CommentsContainer() {
   const commentsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
 
-  // Track comment nodes for React element creation
-  const [commentNodes, setCommentNodes] = useState<Node<CommentNodeData>[]>(() =>
-    store.getState().nodes.filter((n): n is Node<CommentNodeData> => n.type === 'comment')
+  // Track comment entities for React element creation
+  const [commentEntities, setCommentEntities] = useState<Entity<CommentEntityData>[]>(() =>
+    store.getState().entities.filter((n): n is Entity<CommentEntityData> => n.type === 'comment')
   );
 
   // Cached container size
@@ -981,7 +981,7 @@ function CommentsContainer() {
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap, hiddenNodeIds, selectedNodeIds } = store.getState();
+    const { viewport, entityMap, hiddenEntityIds, selectedEntityIds } = store.getState();
     const comments = commentsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -1001,44 +1001,44 @@ function CommentsContainer() {
     const viewBottom = (viewHeight - viewport.y) * invZoom;
     const cullPadding = 100;
 
-    comments.forEach((el, nodeId) => {
-      const node = nodeMap.get(nodeId);
-      if (!node || node.type !== 'comment') {
+    comments.forEach((el, entityId) => {
+      const entity = entityMap.get(entityId);
+      if (!entity || entity.type !== 'comment') {
         el.style.visibility = 'hidden';
         return;
       }
 
-      // Skip if inside collapsed group - O(1) lookup
-      if (hiddenNodeIds.has(node.id)) {
+      // Skip if inside collapsed frame - O(1) lookup
+      if (hiddenEntityIds.has(entity.id)) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      const width = node.width ?? DEFAULT_COMMENT_WIDTH;
-      const height = node.height ?? DEFAULT_COMMENT_HEIGHT;
+      const width = entity.width ?? DEFAULT_COMMENT_WIDTH;
+      const height = entity.height ?? DEFAULT_COMMENT_HEIGHT;
 
       // Frustum culling
-      const nodeRight = node.position.x + width;
-      const nodeBottom = node.position.y + height;
+      const entityRight = entity.position.x + width;
+      const entityBottom = entity.position.y + height;
 
       if (
-        nodeRight < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        nodeBottom < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
+        entityRight < viewLeft - cullPadding ||
+        entity.position.x > viewRight + cullPadding ||
+        entityBottom < viewTop - cullPadding ||
+        entity.position.y > viewBottom + cullPadding
       ) {
         el.style.visibility = 'hidden';
         return;
       }
 
       // Position in screen space
-      const screenX = node.position.x * viewport.zoom + viewport.x;
-      const screenY = node.position.y * viewport.zoom + viewport.y;
+      const screenX = entity.position.x * viewport.zoom + viewport.x;
+      const screenY = entity.position.y * viewport.zoom + viewport.y;
       const screenWidth = width * viewport.zoom;
       const screenHeight = height * viewport.zoom;
 
       // Apply selection border
-      const isSelected = selectedNodeIds.has(nodeId);
+      const isSelected = selectedEntityIds.has(entityId);
 
       // Get base font size from data attribute
       // Comments always scale text with zoom since they're visual canvas elements (not labels)
@@ -1069,12 +1069,12 @@ function CommentsContainer() {
     updateComments();
 
     const unsub = store.subscribe((state) => {
-      // Re-render if comment nodes changed
-      const currentComments = state.nodes.filter(
-        (n): n is Node<CommentNodeData> => n.type === 'comment'
+      // Re-render if comment entities changed
+      const currentComments = state.entities.filter(
+        (n): n is Entity<CommentEntityData> => n.type === 'comment'
       );
-      if (currentComments.length !== commentNodes.length) {
-        setCommentNodes(currentComments);
+      if (currentComments.length !== commentEntities.length) {
+        setCommentEntities(currentComments);
       }
       scheduleUpdate();
     });
@@ -1098,36 +1098,36 @@ function CommentsContainer() {
       unsub();
       resizeObserver?.disconnect();
     };
-  }, [store, updateComments, scheduleUpdate, commentNodes.length]);
+  }, [store, updateComments, scheduleUpdate, commentEntities.length]);
 
   // Ref callback for comment elements
   const setCommentRef = useCallback(
-    (nodeId: string) => (el: HTMLDivElement | null) => {
+    (entityId: string) => (el: HTMLDivElement | null) => {
       if (el) {
-        commentsRef.current.set(nodeId, el);
+        commentsRef.current.set(entityId, el);
       } else {
-        commentsRef.current.delete(nodeId);
+        commentsRef.current.delete(entityId);
       }
     },
     []
   );
 
-  if (commentNodes.length === 0) {
+  if (commentEntities.length === 0) {
     return null;
   }
 
   return (
     <div ref={containerRef}>
-      {commentNodes.map((node) => {
-        const data = node.data as CommentNodeData;
+      {commentEntities.map((entity) => {
+        const data = entity.data as CommentEntityData;
         const bgColor = data.backgroundColor ?? DEFAULT_COMMENT_BG;
         const textColor = data.textColor ?? DEFAULT_COMMENT_TEXT_COLOR;
         const fontSize = data.fontSize ?? DEFAULT_COMMENT_FONT_SIZE;
 
         return (
           <div
-            key={node.id}
-            ref={setCommentRef(node.id)}
+            key={entity.id}
+            ref={setCommentRef(entity.id)}
             data-base-font-size={fontSize}
             style={{
               ...commentStyle,

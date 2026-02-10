@@ -9,9 +9,9 @@ WebGL-native node graph library for React.
 
 I love WebGL and I love node-based editors. DOM-based solutions like React Flow exist and work great for many use cases, but I wanted to explore what a canvas-first approach could look like.
 
-**Kookie Flow renders geometry in WebGL.** Nodes are instanced meshes (1 draw call). Edges are batched GPU geometry. Text is rendered via MSDF shaders. Interactive widgets stay in DOM where they belong.
+**Kookie Flow renders geometry in WebGL.** Entities are instanced meshes (1 draw call). Edges are batched GPU geometry. Text is rendered via MSDF shaders. Interactive widgets stay in DOM where they belong.
 
-The result: 10,000 nodes at 80-120fps during aggressive pan/zoom.
+The result: 10,000 entities at 80-120fps during aggressive pan/zoom.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ The result: 10,000 nodes at 80-120fps during aggressive pan/zoom.
 │  DOM Layer (interactive widgets)        │
 ├─────────────────────────────────────────┤
 │  WebGL Canvas                           │
-│  ├── Instanced nodes (1 draw call)      │
+│  ├── Instanced entities (1 draw call)   │
 │  ├── Edges (batched geometry)           │
 │  ├── MSDF text (instanced glyphs)       │
 │  ├── Grid (shader-based)                │
@@ -28,11 +28,13 @@ The result: 10,000 nodes at 80-120fps during aggressive pan/zoom.
 └─────────────────────────────────────────┘
 ```
 
-### Three Node Tiers
+### Entity Model
 
-1. **Visual nodes** — Fully WebGL, optimized for AI/3D tools (image outputs, mesh viewers, no DOM)
-2. **Hybrid nodes** — WebGL container, DOM portal for custom React content
-3. **DOM escape hatch** — Full flexibility when needed
+Entities are the fundamental building blocks. Every object on the canvas is an entity — graph nodes with ports, frames, comments, images, text blocks, 3D meshes, and more.
+
+1. **Graph entities** — Entities with `inputs`/`outputs` sockets that participate in the graph
+2. **Spatial entities** — Entities without ports (frames, comments, text, images) that exist on the canvas
+3. **Hybrid entities** — WebGL container with DOM portal for custom React content
 
 ## Installation
 
@@ -62,10 +64,10 @@ npm install @kushagradhawan/kookie-ui
 import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
 
 function App() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes: [
-      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
-      { id: '2', type: 'default', position: { x: 250, y: 0 }, data: { label: 'Node 2' } },
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Entity 1' } },
+      { id: '2', type: 'default', position: { x: 250, y: 0 }, data: { label: 'Entity 2' } },
     ],
     initialEdges: [
       { id: 'e1-2', source: '1', target: '2' },
@@ -75,9 +77,9 @@ function App() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <KookieFlow
-        nodes={nodes}
+        entities={entities}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         showGrid
@@ -111,13 +113,13 @@ function App() {
     <>
       <button onClick={() => flowRef.current?.fitView()}>Fit All</button>
       <button onClick={() => {
-        const selected = flowRef.current?.getSelectedNodes().map(n => n.id);
-        flowRef.current?.fitView({ nodes: selected, padding: 100 });
+        const selected = flowRef.current?.getSelectedEntities().map(n => n.id);
+        flowRef.current?.fitView({ entities: selected, padding: 100 });
       }}>Fit Selection</button>
       <button onClick={() => flowRef.current?.zoomIn()}>Zoom In</button>
       <button onClick={() => flowRef.current?.setCenter(0, 0, { zoom: 1 })}>Reset</button>
 
-      <KookieFlow ref={flowRef} nodes={nodes} edges={edges} />
+      <KookieFlow ref={flowRef} entities={entities} edges={edges} />
     </>
   );
 }
@@ -127,34 +129,34 @@ function App() {
 
 | Method | Description |
 |--------|-------------|
-| `fitView(options?)` | Fit viewport to show all/specific nodes |
+| `fitView(options?)` | Fit viewport to show all/specific entities |
 | `getViewport()` | Get current `{ x, y, zoom }` |
 | `setViewport(viewport)` | Set viewport directly |
 | `zoomIn(step?)` | Zoom in (default step: 0.25) |
 | `zoomOut(step?)` | Zoom out (default step: 0.25) |
 | `setCenter(x, y, options?)` | Center on a world position |
-| `getNodes()` | Get all nodes |
+| `getEntities()` | Get all entities |
 | `getEdges()` | Get all edges |
-| `getSelectedNodes()` | Get selected nodes |
+| `getSelectedEntities()` | Get selected entities |
 | `getSelectedEdges()` | Get selected edges |
 
 **fitView options:**
 
 ```tsx
 flowRef.current?.fitView({
-  padding: 50,        // Padding around content (default: 50)
-  nodes: ['a', 'b'],  // Specific node IDs to fit (default: all)
-  minZoom: 0.1,       // Min zoom constraint
-  maxZoom: 1,         // Max zoom constraint (default: 1, won't zoom past 100%)
+  padding: 50,            // Padding around content (default: 50)
+  entities: ['a', 'b'],   // Specific entity IDs to fit (default: all)
+  minZoom: 0.1,           // Min zoom constraint
+  maxZoom: 1,             // Max zoom constraint (default: 1, won't zoom past 100%)
 });
 ```
 
 ### Selection & Interaction
-- **Click to select** — Single node selection
+- **Click to select** — Single entity selection
 - **Ctrl+click** — Add to selection
-- **Box select** — Drag on empty space to select multiple nodes
+- **Box select** — Drag on empty space to select multiple entities
 - **Keyboard shortcuts** — Ctrl+A select all, Escape deselect
-- **Node dragging** — Move selected nodes with snap-to-grid support
+- **Entity dragging** — Move selected entities with snap-to-grid support
 
 ### Socket System
 - **Typed sockets** — Input/output sockets with type-based colors
@@ -171,24 +173,24 @@ import type { ConnectionEndState } from '@kushagradhawan/kookie-flow';
 
 <KookieFlow
   onConnectStart={(event, params) => {
-    // params: { nodeId, socketId, isInput }
+    // params: { entityId, socketId, isInput }
     console.log('Drag started from', params.socketId);
   }}
   onConnectEnd={(event, state) => {
-    // state: { isValid, source: { nodeId, socketId, isInput }, position: { x, y } }
+    // state: { isValid, source: { entityId, socketId, isInput }, position: { x, y } }
     if (!state.isValid) {
-      // Dropped on empty canvas — create a node at the drop position
-      const id = `node-${Date.now()}`;
-      addNode({
+      // Dropped on empty canvas — create an entity at the drop position
+      const id = `entity-${Date.now()}`;
+      addEntity({
         id,
         type: 'default',
         position: state.position,
-        data: { label: 'New Node' },
+        data: { label: 'New Entity' },
         inputs: [{ id: 'in', name: 'Input', type: 'any' }],
       });
       addEdge({
         id: `edge-${id}`,
-        source: state.source.nodeId,
+        source: state.source.entityId,
         sourceSocket: state.source.socketId,
         target: id,
         targetSocket: 'in',
@@ -198,14 +200,29 @@ import type { ConnectionEndState } from '@kushagradhawan/kookie-flow';
 />
 ```
 
-`onConnect` fires only on successful connections. `onConnectEnd` fires every time (success or fail), giving you the drop position in world coordinates — useful for "add node on edge drop" patterns.
+`onConnect` fires only on successful connections. `onConnectEnd` fires every time (success or fail), giving you the drop position in world coordinates — useful for "add entity on edge drop" patterns.
+
+### Entity Status
+
+Entities support visual status feedback via `data.status`:
+
+```tsx
+const entities = [
+  { id: '1', data: { label: 'Processing', status: 'running' } },   // Pulsing indigo border
+  { id: '2', data: { label: 'Failed', status: 'error' } },         // Solid red border
+  { id: '3', data: { label: 'Warning', status: 'warning' } },      // Solid amber border
+  { id: '4', data: { label: 'Done', status: 'success' } },         // Pulsing green flash
+];
+```
+
+Statuses: `'error'` | `'warning'` | `'running'` | `'success'`. Add `data.statusMessage` for a human-readable message.
 
 ### Socket Widgets
 
 Input widgets on sockets that auto-hide when connected:
 
 ```tsx
-const node = {
+const entity = {
   id: 'processor',
   inputs: [
     { id: 'strength', name: 'Strength', type: 'float', min: 0, max: 1 },
@@ -229,11 +246,11 @@ const node = {
 **Widget control props:**
 ```tsx
 <KookieFlow
-  showWidgets={true}         // Toggle widget visibility (default: true)
-  defaultNodeWidth={240}     // Default node width when node.width not specified
-  socketLabelWidth={96}      // Width reserved for socket labels before widget
-  onWidgetChange={(nodeId, socketId, value) => {
-    console.log(`Widget changed: ${nodeId}.${socketId} = ${value}`);
+  showWidgets={true}           // Toggle widget visibility (default: true)
+  defaultEntityWidth={240}     // Default entity width when entity.width not specified
+  socketLabelWidth={96}        // Width reserved for socket labels before widget
+  onWidgetChange={(entityId, socketId, value) => {
+    console.log(`Widget changed: ${entityId}.${socketId} = ${value}`);
   }}
 />
 ```
@@ -249,30 +266,41 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 />
 ```
 
-### Grouping & Annotations
-- **Node groups** — Parent-child relationships with collapsible frames
-- **Comments** — Sticky note nodes for annotations (DOM-rendered text)
-- **Reroute nodes** — Edge waypoints for cleaner routing (WebGL circles)
+### Entity Types
+
+**Built-in types:**
+
+| Type | Description | Has Ports |
+|------|-------------|-----------|
+| `default` | Standard graph node with sockets | Yes (optional) |
+| `frame` | Spatial container / group with collapsible children | No |
+| `comment` | Sticky note annotation | No |
+| `reroute` | Edge waypoint for cleaner routing | No |
+| `draw` | Shapes, SVG paths, freeform drawing | No |
+| `text` | Rich text blocks | No |
+| `image` | Image display | No |
+| `video` | Video display | No |
+| `mesh` | 3D mesh viewer | No |
 
 ```tsx
-// Group node with children
-const nodes = [
+// Frame entity with children
+const entities = [
   {
-    id: 'group-1',
-    type: 'group',
+    id: 'frame-1',
+    type: 'frame',
     position: { x: 0, y: 0 },
-    data: { label: 'My Group' },
+    data: { label: 'My Frame' },
     collapsed: false, // Toggle to hide children
   },
   {
     id: 'child-1',
-    parentId: 'group-1', // Child of the group
+    parentId: 'frame-1', // Child of the frame
     position: { x: 20, y: 40 },
-    data: { label: 'Child Node' },
+    data: { label: 'Child Entity' },
   },
 ];
 
-// Comment node
+// Comment entity
 const comment = {
   id: 'note-1',
   type: 'comment',
@@ -284,7 +312,7 @@ const comment = {
   },
 };
 
-// Reroute node (edge waypoint)
+// Reroute entity (edge waypoint)
 const reroute = {
   id: 'reroute-1',
   type: 'reroute',
@@ -301,11 +329,11 @@ const reroute = {
 - **Edge markers** — Arrows at edge endpoints (start/end)
 
 ### Performance Optimizations
-- **Instanced rendering** — All nodes in a single draw call
-- **Frustum culling** — Only render visible nodes/edges
-- **Quadtree spatial indexing** — O(log n) hit testing for 10,000+ nodes
+- **Instanced rendering** — All entities in a single draw call
+- **Frustum culling** — Only render visible entities/edges
+- **Quadtree spatial indexing** — O(log n) hit testing for 10,000+ entities
 - **Pre-allocated GPU buffers** — Zero GC pressure during pan/zoom
-- **O(1) index lookups** — Node map for instant ID-based access
+- **O(1) index lookups** — Entity map for instant ID-based access
 - **Dirty flags** — Skip unnecessary updates
 - **Safari optimizations** — MSAA disabled, simplified shaders
 
@@ -313,7 +341,7 @@ const reroute = {
 - **WebGL mode** — MSDF (Multi-channel Signed Distance Field) text via instanced glyphs, single draw call for all labels
 - **DOM mode** — Traditional DOM text for maximum compatibility
 - **LOD (Level of Detail)** — Labels hide when zoomed out (configurable thresholds)
-- **Selective updates** — Text only rebuilds when nodes/edges/viewport change, not on hover
+- **Selective updates** — Text only rebuilds when entities/edges/viewport change, not on hover
 
 ### Font Configuration
 
@@ -366,34 +394,34 @@ import { Theme } from '@kushagradhawan/kookie-ui';
   <KookieFlow
     size="2"
     variant="surface"
-    nodes={nodes}
+    entities={entities}
     edges={edges}
   />
 </Theme>
 ```
 
 **Styling props:**
-- `size` — Node sizing tier ('1' - '5')
+- `size` — Entity sizing tier ('1' - '5')
 - `variant` — Visual style ('surface', 'outline', 'soft', 'classic', 'ghost')
 - `radius` — Border radius ('none', 'small', 'medium', 'large', 'full')
 - `header` — Header position ('none', 'inside', 'outside')
 - `accentHeader` — Tint header with accent color (boolean)
 
-**Per-node color override:**
+**Per-entity color override:**
 ```tsx
-const nodes = [
+const entities = [
   { id: '1', color: 'violet', ... },  // 26 accent colors supported
   { id: '2', color: 'cyan', ... },
 ];
 ```
 
-**Widget theming with per-node colors:**
+**Widget theming with per-entity colors:**
 ```tsx
 import { Theme } from '@kushagradhawan/kookie-ui';
 
 <KookieFlow
-  ThemeComponent={Theme}  // Enable per-node accent colors for widgets
-  nodes={nodes}
+  ThemeComponent={Theme}  // Enable per-entity accent colors for widgets
+  entities={entities}
   edges={edges}
 />
 ```
@@ -420,14 +448,14 @@ useKeyboardShortcuts({
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `nodes` | `Node[]` | `[]` | Array of node objects |
+| `entities` | `Entity[]` | `[]` | Array of entity objects |
 | `edges` | `Edge[]` | `[]` | Array of edge objects |
-| `onNodesChange` | `function` | - | Callback when nodes change |
+| `onEntitiesChange` | `function` | - | Callback when entities change |
 | `onEdgesChange` | `function` | - | Callback when edges change |
 | `onConnect` | `function` | - | Callback when connection is made |
 | `onConnectStart` | `function` | - | Callback when connection drag starts |
 | `onConnectEnd` | `function` | - | Callback when connection drag ends (success or fail) |
-| `onNodeClick` | `function` | - | Callback when node is clicked |
+| `onEntityClick` | `function` | - | Callback when entity is clicked |
 | `onEdgeClick` | `function` | - | Callback when edge is clicked |
 | `onWidgetChange` | `function` | - | Callback when widget value changes |
 | `showGrid` | `boolean` | `true` | Show background grid |
@@ -439,8 +467,8 @@ useKeyboardShortcuts({
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |
 | `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
-| `size` | `'1' - '5'` | `'2'` | Node size tier |
-| `variant` | `string` | `'surface'` | Node visual variant |
+| `size` | `'1' - '5'` | `'2'` | Entity size tier |
+| `variant` | `string` | `'surface'` | Entity visual variant |
 | `radius` | `string` | `'medium'` | Border radius style |
 | `header` | `'none' \| 'inside' \| 'outside'` | `'none'` | Header position |
 | `accentHeader` | `boolean` | `false` | Tint header with accent color |
@@ -449,13 +477,14 @@ useKeyboardShortcuts({
 | `defaultEdgeType` | `string` | `'bezier'` | Default edge curve type |
 | `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Socket type validation mode |
 | `edgesSelectable` | `boolean` | `true` | Allow edge selection |
-| `snapToGrid` | `boolean` | `false` | Snap nodes to grid when dragging |
+| `snapToGrid` | `boolean` | `false` | Snap entities to grid when dragging |
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 | `socketTypes` | `Record<string, SocketType>` | - | Custom socket type definitions |
+| `entityTypes` | `Record<string, EntityTypeDefinition>` | - | Custom entity type definitions |
 | `widgetTypes` | `Record<string, Component>` | - | Custom widget components |
-| `defaultNodeWidth` | `number` | `240` | Default node width when not specified |
+| `defaultEntityWidth` | `number` | `240` | Default entity width when not specified |
 | `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |
-| `ThemeComponent` | `Component` | - | Kookie UI Theme for per-node colors |
+| `ThemeComponent` | `Component` | - | Kookie UI Theme for per-entity colors |
 | `isValidConnection` | `function` | - | Custom connection validation |
 
 ## Performance
@@ -464,20 +493,20 @@ Tested on 16" MacBook Pro M4 Pro:
 
 | Scenario | Performance |
 |----------|-------------|
-| 10,000 nodes, aggressive pan/zoom | 80-120 fps |
-| 10,000 nodes with all labels (WebGL mode) | 60+ fps |
-| 50,000 simple nodes | ~30 fps |
+| 10,000 entities, aggressive pan/zoom | 80-120 fps |
+| 10,000 entities with all labels (WebGL mode) | 60+ fps |
+| 50,000 simple entities | ~30 fps |
 
 ## Roadmap
 
 - [x] Project setup
-- [x] Core WebGL renderer (nodes, edges, grid)
+- [x] Core WebGL renderer (entities, edges, grid)
 - [x] Pan/zoom camera controls
 - [x] Touch gesture support
 - [x] Safari performance optimizations
 - [x] Viewport frustum culling
-- [x] Node selection (single, multi, box)
-- [x] Node dragging with snap-to-grid
+- [x] Entity selection (single, multi, box)
+- [x] Entity dragging with snap-to-grid
 - [x] Quadtree spatial indexing (O(log n) hit testing)
 - [x] Edge curve types (bezier, step, smoothstep)
 - [x] Socket system (typed connections)
@@ -491,19 +520,21 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] WebGL text rendering (MSDF)
 - [x] Minimap
 - [x] Kookie UI theme integration
-- [x] Per-node color overrides
+- [x] Per-entity color overrides
 - [x] Socket widgets (slider, number, select, checkbox, text, color, textarea)
 - [x] Configurable socket layouts (inline, stacked)
 - [x] Variable row heights (rows prop)
 - [x] Imperative API via ref (fitView, viewport controls)
-- [x] Node grouping with collapsible frames
-- [x] Comment/sticky note nodes
-- [x] Reroute nodes (edge waypoints)
+- [x] Frame entities with collapsible children
+- [x] Comment/sticky note entities
+- [x] Reroute entities (edge waypoints)
 - [x] Connection events (onConnectStart, onConnectEnd)
 - [x] Graph engine (topology, cycles, execution levels)
-- [ ] Hybrid node portals
-- [ ] Image texture previews
-- [ ] 3D mesh previews
+- [x] Entity model refactor (nodes->entities, status rendering)
+- [ ] Text entities (rich text blocks)
+- [ ] Image entities (texture previews)
+- [ ] 3D mesh entity previews
+- [ ] Hybrid entity portals
 
 ## Development
 

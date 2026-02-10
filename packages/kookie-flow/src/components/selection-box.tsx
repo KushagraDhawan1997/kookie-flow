@@ -141,7 +141,7 @@ export function SelectionBox() {
     const centerY = (start.y + end.y) / 2;
 
     // Update mesh transform
-    mesh.position.set(centerX, -centerY, 1); // Z=1 to be above nodes
+    mesh.position.set(centerX, -centerY, 1); // Z=1 to be above entities
     mesh.scale.set(width, height, 1);
 
     // Update shader uniforms

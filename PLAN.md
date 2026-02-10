@@ -1988,14 +1988,14 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 
 **Goal:** Rename nodes→entities in API, make ports optional, add entity status rendering.
 
-- [ ] Rename `nodes` → `entities` in all types, store, components, props
-- [ ] Rename `onNodesChange` → `onEntitiesChange`
-- [ ] Rename `nodeTypes` → `entityTypes`
-- [ ] Make `inputs`/`outputs` (ports) optional on all entity types
-- [ ] Add `data.status` and `data.statusMessage` to entity data
-- [ ] Status rendering: red/amber border, pulse indicator, green flash
-- [ ] Add `frame` as proper built-in type (upgrade from current `group`)
-- [ ] Ensure draw, text, image, video, mesh entity types are structurally supported
+- [x] Rename `nodes` → `entities` in all types, store, components, props
+- [x] Rename `onNodesChange` → `onEntitiesChange`
+- [x] Rename `nodeTypes` → `entityTypes`
+- [x] Make `inputs`/`outputs` (ports) optional on all entity types
+- [x] Add `data.status` and `data.statusMessage` to entity data
+- [x] Status rendering: red/amber border, pulse indicator, green flash
+- [x] Add `frame` as proper built-in type (upgrade from current `group`)
+- [x] Ensure draw, text, image, video, mesh entity types are structurally supported
 
 ### Phase 10: Text Entity
 

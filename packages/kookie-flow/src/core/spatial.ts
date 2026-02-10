@@ -1,5 +1,5 @@
-import type { Node, Socket } from '../types';
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT, SOCKET_RADIUS } from './constants';
+import type { Entity, Socket } from '../types';
+import { DEFAULT_ENTITY_WIDTH, DEFAULT_ENTITY_HEIGHT, SOCKET_RADIUS } from './constants';
 
 /** Axis-aligned bounding box */
 export interface Bounds {
@@ -17,14 +17,14 @@ interface QuadtreeEntry {
 
 /** Socket entry for socket spatial index */
 export interface SocketEntry {
-  nodeId: string;
+  entityId: string;
   socketId: string;
   isInput: boolean;
   x: number;
   y: number;
 }
 
-/** Default quadtree capacity per node before subdivision */
+/** Default quadtree capacity per cell before subdivision */
 const DEFAULT_CAPACITY = 8;
 
 /** Maximum depth to prevent infinite subdivision */
@@ -34,7 +34,7 @@ const MAX_DEPTH = 10;
 const SOCKET_CAPACITY = 16;
 
 /**
- * Quadtree for O(log n) spatial queries on node bounding boxes.
+ * Quadtree for O(log n) spatial queries on entity bounding boxes.
  * Supports point queries (hover/click) and range queries (box selection).
  */
 export class Quadtree {
@@ -60,7 +60,7 @@ export class Quadtree {
   }
 
   /**
-   * Insert a node into the quadtree.
+   * Insert an entity into the quadtree.
    */
   insert(id: string, bounds: Bounds): boolean {
     // Check if bounds intersect with this quadrant
@@ -90,7 +90,7 @@ export class Quadtree {
     }
 
     // Try to insert into children
-    // Note: Large nodes may be inserted into multiple quadrants
+    // Note: Large entities may be inserted into multiple quadrants
     let inserted = false;
     if (this.nw!.insert(id, bounds)) inserted = true;
     if (this.ne!.insert(id, bounds)) inserted = true;
@@ -105,7 +105,7 @@ export class Quadtree {
   }
 
   /**
-   * Remove a node from the quadtree by ID.
+   * Remove an entity from the quadtree by ID.
    * For simplicity, we mark as removed rather than restructuring.
    * Call rebuild() periodically for cleanup.
    */
@@ -133,7 +133,7 @@ export class Quadtree {
   }
 
   /**
-   * Query all node IDs that contain the given point.
+   * Query all entity IDs that contain the given point.
    * Returns IDs in reverse insertion order (topmost first for z-ordering).
    *
    * @param x - X coordinate to query
@@ -169,7 +169,7 @@ export class Quadtree {
   }
 
   /**
-   * Query all node IDs that intersect with the given range.
+   * Query all entity IDs that intersect with the given range.
    * Used for box selection.
    */
   queryRange(range: Bounds): string[] {
@@ -222,14 +222,14 @@ export class Quadtree {
   }
 
   /**
-   * Rebuild the quadtree from a list of nodes.
+   * Rebuild the quadtree from a list of entities.
    * Call this on bulk changes (initial load, paste, etc.)
    */
-  rebuild(nodes: Node[]): void {
+  rebuild(entities: Entity[]): void {
     this.clear();
 
-    // Compute world bounds from all nodes
-    if (nodes.length === 0) {
+    // Compute world bounds from all entities
+    if (entities.length === 0) {
       return;
     }
 
@@ -238,13 +238,13 @@ export class Quadtree {
     let maxX = -Infinity;
     let maxY = -Infinity;
 
-    for (const node of nodes) {
-      const w = node.width ?? DEFAULT_NODE_WIDTH;
-      const h = node.height ?? DEFAULT_NODE_HEIGHT;
-      minX = Math.min(minX, node.position.x);
-      minY = Math.min(minY, node.position.y);
-      maxX = Math.max(maxX, node.position.x + w);
-      maxY = Math.max(maxY, node.position.y + h);
+    for (const entity of entities) {
+      const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+      const h = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+      minX = Math.min(minX, entity.position.x);
+      minY = Math.min(minY, entity.position.y);
+      maxX = Math.max(maxX, entity.position.x + w);
+      maxY = Math.max(maxY, entity.position.y + h);
     }
 
     // Add padding to bounds
@@ -256,16 +256,16 @@ export class Quadtree {
       height: maxY - minY + padding * 2,
     };
 
-    // Insert all nodes
-    for (const node of nodes) {
-      const bounds = getNodeBounds(node);
-      this.insert(node.id, bounds);
+    // Insert all entities
+    for (const entity of entities) {
+      const bounds = getEntityBounds(entity);
+      this.insert(entity.id, bounds);
     }
   }
 
   /**
-   * Update a single node's position.
-   * More efficient than full rebuild for single node moves.
+   * Update a single entity's position.
+   * More efficient than full rebuild for single entity moves.
    */
   update(id: string, bounds: Bounds): void {
     this.remove(id);
@@ -273,9 +273,9 @@ export class Quadtree {
   }
 
   /**
-   * Batch insert multiple nodes.
+   * Batch insert multiple entities.
    * More efficient than individual inserts for bulk operations.
-   * O(k log n) where k = number of nodes to insert
+   * O(k log n) where k = number of entities to insert
    */
   batchInsert(entries: Array<{ id: string; bounds: Bounds }>): void {
     for (const { id, bounds } of entries) {
@@ -284,8 +284,8 @@ export class Quadtree {
   }
 
   /**
-   * Batch remove multiple nodes.
-   * O(k log n) where k = number of nodes to remove
+   * Batch remove multiple entities.
+   * O(k log n) where k = number of entities to remove
    */
   batchRemove(ids: string[]): void {
     for (const id of ids) {
@@ -294,26 +294,26 @@ export class Quadtree {
   }
 
   /**
-   * Incrementally add nodes without full rebuild.
+   * Incrementally add entities without full rebuild.
    * Uses large fixed bounds so expansion is rarely needed.
-   * O(k log n) where k = number of nodes to add
+   * O(k log n) where k = number of entities to add
    */
-  incrementalAdd(nodes: Node[]): void {
-    if (nodes.length === 0) return;
+  incrementalAdd(entities: Entity[]): void {
+    if (entities.length === 0) return;
 
-    // Fast path: insert new nodes individually
-    // Our initial bounds are large (-10000 to 10000) so most nodes will fit
-    for (const node of nodes) {
-      this.insert(node.id, getNodeBounds(node));
+    // Fast path: insert new entities individually
+    // Our initial bounds are large (-10000 to 10000) so most entities will fit
+    for (const entity of entities) {
+      this.insert(entity.id, getEntityBounds(entity));
     }
   }
 
   /**
-   * Incrementally remove nodes without full rebuild.
-   * O(k log n) where k = number of nodes to remove
+   * Incrementally remove entities without full rebuild.
+   * O(k log n) where k = number of entities to remove
    */
-  incrementalRemove(nodeIds: string[]): void {
-    for (const id of nodeIds) {
+  incrementalRemove(entityIds: string[]): void {
+    for (const id of entityIds) {
       this.remove(id);
     }
   }
@@ -391,14 +391,14 @@ export class Quadtree {
 }
 
 /**
- * Get bounding box for a node.
+ * Get bounding box for an entity.
  */
-export function getNodeBounds(node: Node): Bounds {
+export function getEntityBounds(entity: Entity): Bounds {
   return {
-    x: node.position.x,
-    y: node.position.y,
-    width: node.width ?? DEFAULT_NODE_WIDTH,
-    height: node.height ?? DEFAULT_NODE_HEIGHT,
+    x: entity.position.x,
+    y: entity.position.y,
+    width: entity.width ?? DEFAULT_ENTITY_WIDTH,
+    height: entity.height ?? DEFAULT_ENTITY_HEIGHT,
   };
 }
 
@@ -448,8 +448,8 @@ export class SocketQuadtree {
   /**
    * Generate a unique key for a socket.
    */
-  private static getKey(nodeId: string, socketId: string, isInput: boolean): string {
-    return `${nodeId}:${socketId}:${isInput ? 'i' : 'o'}`;
+  private static getKey(entityId: string, socketId: string, isInput: boolean): string {
+    return `${entityId}:${socketId}:${isInput ? 'i' : 'o'}`;
   }
 
   /**
@@ -461,9 +461,10 @@ export class SocketQuadtree {
       return false;
     }
 
-    const key = SocketQuadtree.getKey(entry.nodeId, entry.socketId, entry.isInput);
+    const key = SocketQuadtree.getKey(entry.entityId, entry.socketId, entry.isInput);
 
     // If we have capacity and haven't subdivided, store here
+
     if (this.entries.length < this.capacity && !this.divided) {
       this.entries.push(entry);
       this.keyToEntry.set(key, entry);
@@ -506,15 +507,15 @@ export class SocketQuadtree {
   /**
    * Remove a socket from the quadtree.
    */
-  remove(nodeId: string, socketId: string, isInput: boolean): boolean {
-    const key = SocketQuadtree.getKey(nodeId, socketId, isInput);
+  remove(entityId: string, socketId: string, isInput: boolean): boolean {
+    const key = SocketQuadtree.getKey(entityId, socketId, isInput);
     if (!this.keyToEntry.has(key)) {
       return false;
     }
 
     // Remove from local entries
     const idx = this.entries.findIndex(
-      (e) => e.nodeId === nodeId && e.socketId === socketId && e.isInput === isInput
+      (e) => e.entityId === entityId && e.socketId === socketId && e.isInput === isInput
     );
     if (idx !== -1) {
       this.entries.splice(idx, 1);
@@ -522,10 +523,10 @@ export class SocketQuadtree {
 
     // Remove from children
     if (this.divided) {
-      this.nw!.remove(nodeId, socketId, isInput);
-      this.ne!.remove(nodeId, socketId, isInput);
-      this.sw!.remove(nodeId, socketId, isInput);
-      this.se!.remove(nodeId, socketId, isInput);
+      this.nw!.remove(entityId, socketId, isInput);
+      this.ne!.remove(entityId, socketId, isInput);
+      this.sw!.remove(entityId, socketId, isInput);
+      this.se!.remove(entityId, socketId, isInput);
     }
 
     this.keyToEntry.delete(key);
@@ -573,9 +574,9 @@ export class SocketQuadtree {
   /**
    * Update a socket's position.
    */
-  update(nodeId: string, socketId: string, isInput: boolean, x: number, y: number): void {
-    this.remove(nodeId, socketId, isInput);
-    this.insert({ nodeId, socketId, isInput, x, y });
+  update(entityId: string, socketId: string, isInput: boolean, x: number, y: number): void {
+    this.remove(entityId, socketId, isInput);
+    this.insert({ entityId, socketId, isInput, x, y });
   }
 
   /**

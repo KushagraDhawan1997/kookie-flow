@@ -8,10 +8,10 @@
  * - Auto-hide when socket is connected
  *
  * Performance optimizations:
- * - Selective store subscription (viewport + nodeMap only for positions)
- * - Pre-parsed nodeId in data attributes (no string splitting in hot loop)
+ * - Selective store subscription (viewport + entityMap only for positions)
+ * - Pre-parsed entityId in data attributes (no string splitting in hot loop)
  * - Batched style writes via cssText
- * - Cached node heights
+ * - Cached entity heights
  */
 
 import {
@@ -27,10 +27,10 @@ import { useFlowStoreApi } from './context';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { BUILT_IN_WIDGETS } from './widgets';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { DEFAULT_NODE_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
-import { getNodeSocketLayout } from '../utils/socket-layout-cache';
+import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import type {
-  Node,
+  Entity,
   Socket,
   SocketType,
   WidgetProps,
@@ -39,7 +39,7 @@ import type {
 } from '../types';
 import { shallow } from 'zustand/shallow';
 
-/** Theme component type for per-node accent color support */
+/** Theme component type for per-entity accent color support */
 type ThemeComponentType = React.ComponentType<{
   accentColor?: AccentColor;
   hasBackground?: boolean;
@@ -53,22 +53,22 @@ export interface WidgetsLayerProps {
   /** Custom widget components (override built-ins or add new types) */
   widgetTypes?: Record<string, React.ComponentType<WidgetProps>>;
   /** Callback when a widget value changes */
-  onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
+  onWidgetChange?: (entityId: string, socketId: string, value: unknown) => void;
   /** Minimum zoom level to show widgets. Default: 0.4 */
   minWidgetZoom?: number;
   /**
-   * Kookie UI Theme component for per-node accent color support.
+   * Kookie UI Theme component for per-entity accent color support.
    * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
-   * When provided, widgets on nodes with `color` prop will use that accent color.
+   * When provided, widgets on entities with `color` prop will use that accent color.
    */
   ThemeComponent?: ThemeComponentType;
-  /** Default node width when node.width is not specified. Default: 240 */
-  defaultNodeWidth?: number;
+  /** Default entity width when entity.width is not specified. Default: 240 */
+  defaultEntityWidth?: number;
   /** Width reserved for socket labels before widget starts. Default: 96 */
   socketLabelWidth?: number;
 }
 
-// LOD threshold for widgets - match node/label visibility (0.1 = minZoom default)
+// LOD threshold for widgets - match entity/label visibility (0.1 = minZoom default)
 const DEFAULT_MIN_WIDGET_ZOOM = 0.1;
 
 // Container styles
@@ -86,31 +86,31 @@ const containerStyle: CSSProperties = {
 /**
  * Individual socket widget wrapper.
  * Handles value state and change callbacks.
- * Wraps in Theme component when node has custom color (for Kookie UI integration).
+ * Wraps in Theme component when entity has custom color (for Kookie UI integration).
  */
 interface SocketWidgetProps {
-  nodeId: string;
+  entityId: string;
   socketId: string;
   config: ResolvedWidgetConfig;
   /** Pre-resolved widget component (avoid passing widgetTypes object) */
   WidgetComponent: React.ComponentType<WidgetProps>;
-  onWidgetChange?: (nodeId: string, socketId: string, value: unknown) => void;
+  onWidgetChange?: (entityId: string, socketId: string, value: unknown) => void;
   initialValue: unknown;
-  /** Per-node accent color (changes widget theme) */
-  nodeColor?: AccentColor;
+  /** Per-entity accent color (changes widget theme) */
+  entityColor?: AccentColor;
   /** Theme component for accent color support */
   ThemeComponent?: ThemeComponentType;
 }
 
 const SocketWidget = memo(
   function SocketWidget({
-    nodeId,
+    entityId,
     socketId,
     config,
     WidgetComponent,
     onWidgetChange,
     initialValue,
-    nodeColor,
+    entityColor,
     ThemeComponent,
   }: SocketWidgetProps) {
     // Local value state (widget controls its own value, notifies parent on change)
@@ -119,9 +119,9 @@ const SocketWidget = memo(
     const handleChange = useCallback(
       (newValue: unknown) => {
         setValue(newValue);
-        onWidgetChange?.(nodeId, socketId, newValue);
+        onWidgetChange?.(entityId, socketId, newValue);
       },
-      [nodeId, socketId, onWidgetChange]
+      [entityId, socketId, onWidgetChange]
     );
 
     const widget = (
@@ -137,10 +137,10 @@ const SocketWidget = memo(
       />
     );
 
-    // Wrap in Theme if node has custom color and ThemeComponent is provided
-    if (nodeColor && ThemeComponent) {
+    // Wrap in Theme if entity has custom color and ThemeComponent is provided
+    if (entityColor && ThemeComponent) {
       return (
-        <ThemeComponent accentColor={nodeColor} hasBackground={false} asChild>
+        <ThemeComponent accentColor={entityColor} hasBackground={false} asChild>
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'stretch' }}>
             {widget}
           </div>
@@ -152,12 +152,12 @@ const SocketWidget = memo(
   },
   // Custom comparison: only re-render if value-affecting props change
   (prev, next) =>
-    prev.nodeId === next.nodeId &&
+    prev.entityId === next.entityId &&
     prev.socketId === next.socketId &&
     prev.WidgetComponent === next.WidgetComponent &&
     prev.onWidgetChange === next.onWidgetChange &&
     prev.initialValue === next.initialValue &&
-    prev.nodeColor === next.nodeColor &&
+    prev.entityColor === next.entityColor &&
     prev.ThemeComponent === next.ThemeComponent &&
     prev.config.type === next.config.type &&
     prev.config.min === next.config.min &&
@@ -166,15 +166,15 @@ const SocketWidget = memo(
     prev.config.rows === next.config.rows
 );
 
-// Helper to get node height from cache (supports variable socket heights)
-function getCachedNodeHeight(node: Node, socketLayout: ReturnType<typeof useSocketLayout>): number {
-  if (node.height !== undefined) return node.height;
-  return getNodeSocketLayout(node, socketLayout).computedHeight;
+// Helper to get entity height from cache (supports variable socket heights)
+function getCachedEntityHeight(entity: Entity, socketLayout: ReturnType<typeof useSocketLayout>): number {
+  if (entity.height !== undefined) return entity.height;
+  return getEntitySocketLayout(entity, socketLayout).computedHeight;
 }
 
 // Static styles for widget wrappers - set once at mount, never in hot loop
 // PERF: Using direct property updates in updatePositions() instead of cssText
-// avoids 28ms+ style recalculation when dragging nodes (cssText replaces ALL styles)
+// avoids 28ms+ style recalculation when dragging entities (cssText replaces ALL styles)
 const widgetWrapperStyle: CSSProperties = {
   position: 'absolute',
   top: 0,
@@ -199,11 +199,11 @@ export function WidgetsLayer({
   onWidgetChange,
   minWidgetZoom = DEFAULT_MIN_WIDGET_ZOOM,
   ThemeComponent,
-  defaultNodeWidth: defaultNodeWidthProp,
+  defaultEntityWidth: defaultEntityWidthProp,
   socketLabelWidth: socketLabelWidthProp,
 }: WidgetsLayerProps) {
   // Use prop values with fallback to constants
-  const nodeWidthDefault = defaultNodeWidthProp ?? DEFAULT_NODE_WIDTH;
+  const entityWidthDefault = defaultEntityWidthProp ?? DEFAULT_ENTITY_WIDTH;
   const labelWidth = socketLabelWidthProp ?? SOCKET_LABEL_WIDTH;
   const store = useFlowStoreApi();
   const socketLayout = useSocketLayout();
@@ -218,21 +218,21 @@ export function WidgetsLayer({
     height: 0,
   });
 
-  // Track nodes and connected sockets for widget creation
-  const [nodes, setNodes] = useState(() => store.getState().nodes);
+  // Track entities and connected sockets for widget creation
+  const [entities, setEntities] = useState(() => store.getState().entities);
   const [connectedSockets, setConnectedSockets] = useState(() => store.getState().connectedSockets);
 
   // Stable reference to widgetTypes to avoid re-resolving components unnecessarily
   const widgetTypesRef = useRef(widgetTypes);
   widgetTypesRef.current = widgetTypes;
 
-  // Widget configs per node socket (memoized to avoid recalculation)
+  // Widget configs per entity socket (memoized to avoid recalculation)
   // Pre-resolves widget components to avoid passing unstable widgetTypes object to children
   const widgetConfigs = useMemo(() => {
     const configs = new Map<
       string,
       {
-        node: Node;
+        entity: Entity;
         socket: Socket;
         config: ResolvedWidgetConfig;
         inputIndex: number;
@@ -242,12 +242,12 @@ export function WidgetsLayer({
 
     const currentWidgetTypes = widgetTypesRef.current;
 
-    for (const node of nodes) {
-      if (!node.inputs) continue;
+    for (const entity of entities) {
+      if (!entity.inputs) continue;
 
-      for (let inputIndex = 0; inputIndex < node.inputs.length; inputIndex++) {
-        const socket = node.inputs[inputIndex];
-        const key = `${node.id}:${socket.id}`;
+      for (let inputIndex = 0; inputIndex < entity.inputs.length; inputIndex++) {
+        const socket = entity.inputs[inputIndex];
+        const key = `${entity.id}:${socket.id}`;
 
         // Skip if socket is connected
         if (connectedSockets.has(key)) continue;
@@ -264,12 +264,12 @@ export function WidgetsLayer({
 
         if (!WidgetComponent) continue;
 
-        configs.set(key, { node, socket, config, inputIndex, WidgetComponent });
+        configs.set(key, { entity, socket, config, inputIndex, WidgetComponent });
       }
     }
 
     return configs;
-  }, [nodes, connectedSockets, socketTypes]);
+  }, [entities, connectedSockets, socketTypes]);
 
   // Position update function (microtask-batched for same-frame updates)
   const updatePositions = useCallback(() => {
@@ -278,7 +278,7 @@ export function WidgetsLayer({
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, nodeMap } = store.getState();
+    const { viewport, entityMap } = store.getState();
     const widgets = widgetRefsMap.current;
     const { zoom, x: vpX, y: vpY } = viewport;
 
@@ -301,31 +301,31 @@ export function WidgetsLayer({
     const cullPadding = 150;
 
     widgets.forEach((el, key) => {
-      // Get nodeId from data attribute (no string splitting)
-      const nodeId = el.dataset.nodeId;
-      if (!nodeId) {
+      // Get entityId from data attribute (no string splitting)
+      const entityId = el.dataset.entityId;
+      if (!entityId) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      const node = nodeMap.get(nodeId);
-      if (!node) {
+      const entity = entityMap.get(entityId);
+      if (!entity) {
         el.style.visibility = 'hidden';
         return;
       }
 
-      const width = node.width ?? nodeWidthDefault;
-      const height = getCachedNodeHeight(node, socketLayout);
+      const width = entity.width ?? entityWidthDefault;
+      const height = getCachedEntityHeight(entity, socketLayout);
 
       // Frustum culling
-      const nodeRight = node.position.x + width;
-      const nodeBottom = node.position.y + height;
+      const entityRight = entity.position.x + width;
+      const entityBottom = entity.position.y + height;
 
       if (
-        nodeRight < viewLeft - cullPadding ||
-        node.position.x > viewRight + cullPadding ||
-        nodeBottom < viewTop - cullPadding ||
-        node.position.y > viewBottom + cullPadding
+        entityRight < viewLeft - cullPadding ||
+        entity.position.x > viewRight + cullPadding ||
+        entityBottom < viewTop - cullPadding ||
+        entity.position.y > viewBottom + cullPadding
       ) {
         el.style.visibility = 'hidden';
         return;
@@ -335,8 +335,8 @@ export function WidgetsLayer({
       const socketIndex = Number(el.dataset.socketIndex) || 0;
 
       // Get cached socket position (supports variable heights and stacked layouts)
-      const nodeLayout = getNodeSocketLayout(node, socketLayout);
-      const cachedPos = nodeLayout.inputs[socketIndex];
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      const cachedPos = entityLayout.inputs[socketIndex];
       if (!cachedPos) {
         el.style.visibility = 'hidden';
         return;
@@ -344,9 +344,9 @@ export function WidgetsLayer({
 
       // Widget world position from cache
       const widgetX = cachedPos.layout === 'stacked'
-        ? node.position.x + socketLayout.padding // Full width for stacked
-        : node.position.x + socketLayout.padding + labelWidth;
-      const widgetY = node.position.y + cachedPos.widgetY;
+        ? entity.position.x + socketLayout.padding // Full width for stacked
+        : entity.position.x + socketLayout.padding + labelWidth;
+      const widgetY = entity.position.y + cachedPos.widgetY;
       const widgetWidth = cachedPos.layout === 'stacked'
         ? width - socketLayout.padding * 2 // Full width for stacked
         : width - socketLayout.padding * 2 - labelWidth;
@@ -360,7 +360,7 @@ export function WidgetsLayer({
       el.style.transform = `translate3d(${screenX}px,${screenY}px,0) scale(${zoom})`;
       el.style.visibility = 'visible';
 
-      // Width/height: only update if changed (rare - only on node resize, not drag)
+      // Width/height: only update if changed (rare - only on entity resize, not drag)
       // Using dataset to cache previous values avoids layout thrashing
       const cachedWidth = el.dataset.w;
       const cachedHeight = el.dataset.h;
@@ -375,10 +375,10 @@ export function WidgetsLayer({
         el.dataset.h = newHeight;
       }
     });
-  }, [store, socketLayout, minWidgetZoom, nodeWidthDefault, labelWidth]);
+  }, [store, socketLayout, minWidgetZoom, entityWidthDefault, labelWidth]);
 
   // Selective subscription for position updates
-  // Uses positionVersion (increments on node drag) + viewport changes
+  // Uses positionVersion (increments on entity drag) + viewport changes
   useLayoutEffect(() => {
     const container = containerRef.current;
     const parent = container?.parentElement;
@@ -399,7 +399,7 @@ export function WidgetsLayer({
     }
 
     // Position updates: subscribe to viewport and positionVersion
-    // Note: nodeMap is mutated in place, so we use positionVersion as change signal
+    // Note: entityMap is mutated in place, so we use positionVersion as change signal
     const unsubscribePositions = store.subscribe(
       (state) => ({ viewport: state.viewport, positionVersion: state.positionVersion }),
       () => {
@@ -411,12 +411,12 @@ export function WidgetsLayer({
       { equalityFn: shallow }
     );
 
-    // React state updates: subscribe to nodes and connectedSockets for widget creation/removal
+    // React state updates: subscribe to entities and connectedSockets for widget creation/removal
     const unsubscribeState = store.subscribe(
-      (state) => ({ nodesLen: state.nodes.length, socketsSize: state.connectedSockets.size }),
-      ({ nodesLen, socketsSize }) => {
+      (state) => ({ entitiesLen: state.entities.length, socketsSize: state.connectedSockets.size }),
+      ({ entitiesLen, socketsSize }) => {
         const state = store.getState();
-        setNodes((prev) => (prev.length !== nodesLen ? state.nodes : prev));
+        setEntities((prev) => (prev.length !== entitiesLen ? state.entities : prev));
         setConnectedSockets((prev) => (prev.size !== socketsSize ? state.connectedSockets : prev));
       },
       { equalityFn: shallow }
@@ -454,9 +454,9 @@ export function WidgetsLayer({
 
   return (
     <div ref={containerRef} style={containerStyle}>
-      {widgetEntries.map(([key, { node, socket, config, inputIndex, WidgetComponent }]) => {
-        const nodeData = node.data as Record<string, unknown> | undefined;
-        const values = nodeData?.values as Record<string, unknown> | undefined;
+      {widgetEntries.map(([key, { entity, socket, config, inputIndex, WidgetComponent }]) => {
+        const entityData = entity.data as Record<string, unknown> | undefined;
+        const values = entityData?.values as Record<string, unknown> | undefined;
         const initialValue = values?.[socket.id];
 
         return (
@@ -469,7 +469,7 @@ export function WidgetsLayer({
                 widgetRefsMap.current.delete(key);
               }
             }}
-            data-node-id={node.id}
+            data-entity-id={entity.id}
             data-socket-index={inputIndex}
             style={widgetWrapperStyle}
             // Stop propagation to prevent InputHandler from capturing widget interactions
@@ -479,13 +479,13 @@ export function WidgetsLayer({
             onClick={stopPropagation}
           >
             <SocketWidget
-              nodeId={node.id}
+              entityId={entity.id}
               socketId={socket.id}
               config={config}
               WidgetComponent={WidgetComponent}
               onWidgetChange={onWidgetChange}
               initialValue={initialValue}
-              nodeColor={node.color}
+              entityColor={entity.color}
               ThemeComponent={ThemeComponent}
             />
           </div>

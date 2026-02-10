@@ -1,5 +1,5 @@
 import type {
-  Node,
+  Entity,
   SocketHandle,
   SocketType,
   ConnectionMode,
@@ -58,40 +58,40 @@ export function areTypesCompatible(
  * Check if two sockets are compatible for connection.
  * Rules:
  * 1. Cannot connect input to input or output to output
- * 2. Cannot connect a socket to itself or same node
+ * 2. Cannot connect a socket to itself or same entity
  * 3. Type compatibility: same type, 'any', or explicit compatibleWith
  *
- * Accepts either nodes array or nodeMap for flexibility.
- * Use nodeMap in hot paths (like useFrame) for O(1) lookups.
+ * Accepts either entities array or entityMap for flexibility.
+ * Use entityMap in hot paths (like useFrame) for O(1) lookups.
  */
 export function isSocketCompatible(
   source: SocketHandle,
   target: SocketHandle,
-  nodesOrMap: Node[] | Map<string, Node>,
+  entitiesOrMap: Entity[] | Map<string, Entity>,
   socketTypes: Record<string, SocketType>
 ): boolean {
   // Rule 1: Must connect input to output (or vice versa)
   if (source.isInput === target.isInput) return false;
 
-  // Rule 2: Cannot connect to same node
-  if (source.nodeId === target.nodeId) return false;
+  // Rule 2: Cannot connect to same entity
+  if (source.entityId === target.entityId) return false;
 
   // Get actual socket definitions - O(1) with Map, O(n) with array
-  let sourceNode: Node | undefined;
-  let targetNode: Node | undefined;
+  let sourceEntity: Entity | undefined;
+  let targetEntity: Entity | undefined;
 
-  if (nodesOrMap instanceof Map) {
-    sourceNode = nodesOrMap.get(source.nodeId);
-    targetNode = nodesOrMap.get(target.nodeId);
+  if (entitiesOrMap instanceof Map) {
+    sourceEntity = entitiesOrMap.get(source.entityId);
+    targetEntity = entitiesOrMap.get(target.entityId);
   } else {
-    sourceNode = nodesOrMap.find((n) => n.id === source.nodeId);
-    targetNode = nodesOrMap.find((n) => n.id === target.nodeId);
+    sourceEntity = entitiesOrMap.find((n) => n.id === source.entityId);
+    targetEntity = entitiesOrMap.find((n) => n.id === target.entityId);
   }
 
-  if (!sourceNode || !targetNode) return false;
+  if (!sourceEntity || !targetEntity) return false;
 
-  const sourceSockets = source.isInput ? sourceNode.inputs : sourceNode.outputs;
-  const targetSockets = target.isInput ? targetNode.inputs : targetNode.outputs;
+  const sourceSockets = source.isInput ? sourceEntity.inputs : sourceEntity.outputs;
+  const targetSockets = target.isInput ? targetEntity.inputs : targetEntity.outputs;
 
   const sourceSocket = sourceSockets?.find((s) => s.id === source.socketId);
   const targetSocket = targetSockets?.find((s) => s.id === target.socketId);
@@ -103,17 +103,17 @@ export function isSocketCompatible(
 
 /**
  * Validate a connection based on mode and optional custom validator.
- * - 'loose' mode: only checks structural compatibility (input/output, different nodes)
+ * - 'loose' mode: only checks structural compatibility (input/output, different entities)
  * - 'strict' mode: also checks type compatibility
  * - isValidConnection: custom validator overrides mode
  *
- * Accepts either nodes array or nodeMap for flexibility.
- * Use nodeMap in hot paths for O(1) lookups.
+ * Accepts either entities array or entityMap for flexibility.
+ * Use entityMap in hot paths for O(1) lookups.
  */
 export function validateConnection(
   source: SocketHandle,
   target: SocketHandle,
-  nodesOrMap: Node[] | Map<string, Node>,
+  entitiesOrMap: Entity[] | Map<string, Entity>,
   socketTypes: Record<string, SocketType>,
   connectionMode: ConnectionMode = 'loose',
   isValidConnection?: IsValidConnectionFn
@@ -122,25 +122,25 @@ export function validateConnection(
   // Rule 1: Must connect input to output (or vice versa)
   if (source.isInput === target.isInput) return false;
 
-  // Rule 2: Cannot connect to same node
-  if (source.nodeId === target.nodeId) return false;
+  // Rule 2: Cannot connect to same entity
+  if (source.entityId === target.entityId) return false;
 
   // Get actual socket definitions - O(1) with Map, O(n) with array
-  let sourceNode: Node | undefined;
-  let targetNode: Node | undefined;
+  let sourceEntity: Entity | undefined;
+  let targetEntity: Entity | undefined;
 
-  if (nodesOrMap instanceof Map) {
-    sourceNode = nodesOrMap.get(source.nodeId);
-    targetNode = nodesOrMap.get(target.nodeId);
+  if (entitiesOrMap instanceof Map) {
+    sourceEntity = entitiesOrMap.get(source.entityId);
+    targetEntity = entitiesOrMap.get(target.entityId);
   } else {
-    sourceNode = nodesOrMap.find((n) => n.id === source.nodeId);
-    targetNode = nodesOrMap.find((n) => n.id === target.nodeId);
+    sourceEntity = entitiesOrMap.find((n) => n.id === source.entityId);
+    targetEntity = entitiesOrMap.find((n) => n.id === target.entityId);
   }
 
-  if (!sourceNode || !targetNode) return false;
+  if (!sourceEntity || !targetEntity) return false;
 
-  const sourceSockets = source.isInput ? sourceNode.inputs : sourceNode.outputs;
-  const targetSockets = target.isInput ? targetNode.inputs : targetNode.outputs;
+  const sourceSockets = source.isInput ? sourceEntity.inputs : sourceEntity.outputs;
+  const targetSockets = target.isInput ? targetEntity.inputs : targetEntity.outputs;
 
   const sourceSocket = sourceSockets?.find((s) => s.id === source.socketId);
   const targetSocket = targetSockets?.find((s) => s.id === target.socketId);

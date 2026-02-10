@@ -1,26 +1,26 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { Node, Edge, NodeChange, EdgeChange, Connection } from '../types';
+import type { Entity, Edge, EntityChange, EdgeChange, Connection } from '../types';
 
 export interface UseGraphOptions {
-  initialNodes?: Node[];
+  initialEntities?: Entity[];
   initialEdges?: Edge[];
 }
 
 export interface UseGraphReturn {
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
-  setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setEntities: React.Dispatch<React.SetStateAction<Entity[]>>;
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
-  onNodesChange: (changes: NodeChange[]) => void;
+  onEntitiesChange: (changes: EntityChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
-  addNode: (node: Node) => void;
-  removeNode: (id: string) => void;
+  addEntity: (entity: Entity) => void;
+  removeEntity: (id: string) => void;
   addEdge: (edge: Edge) => void;
   removeEdge: (id: string) => void;
-  getNode: (id: string) => Node | undefined;
+  getEntity: (id: string) => Entity | undefined;
   getEdge: (id: string) => Edge | undefined;
-  getConnectedEdges: (nodeId: string) => Edge[];
+  getConnectedEdges: (entityId: string) => Edge[];
 }
 
 /**
@@ -28,20 +28,20 @@ export interface UseGraphReturn {
  * Use this for controlled component pattern.
  */
 export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
-  const { initialNodes = [], initialEdges = [] } = options;
+  const { initialEntities = [], initialEdges = [] } = options;
 
   // Use React state for external management
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
+  const [entities, setEntities] = useState<Entity[]>(initialEntities);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((nds) => {
-      const nextNodes = [...nds];
+  const onEntitiesChange = useCallback((changes: EntityChange[]) => {
+    setEntities((nds) => {
+      const nextEntities = [...nds];
 
       // Build id->index map once for O(1) lookups
       const idToIndex = new Map<string, number>();
-      for (let i = 0; i < nextNodes.length; i++) {
-        idToIndex.set(nextNodes[i].id, i);
+      for (let i = 0; i < nextEntities.length; i++) {
+        idToIndex.set(nextEntities[i].id, i);
       }
 
       for (const change of changes) {
@@ -49,39 +49,39 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
           case 'position': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
-              nextNodes[index] = { ...nextNodes[index], position: change.position };
+              nextEntities[index] = { ...nextEntities[index], position: change.position };
             }
             break;
           }
           case 'select': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
-              nextNodes[index] = { ...nextNodes[index], selected: change.selected };
+              nextEntities[index] = { ...nextEntities[index], selected: change.selected };
             }
             break;
           }
           case 'remove': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
-              nextNodes.splice(index, 1);
+              nextEntities.splice(index, 1);
               // Update indices for subsequent removals
               idToIndex.delete(change.id);
-              for (let i = index; i < nextNodes.length; i++) {
-                idToIndex.set(nextNodes[i].id, i);
+              for (let i = index; i < nextEntities.length; i++) {
+                idToIndex.set(nextEntities[i].id, i);
               }
             }
             break;
           }
           case 'add': {
-            idToIndex.set(change.node.id, nextNodes.length);
-            nextNodes.push(change.node);
+            idToIndex.set(change.entity.id, nextEntities.length);
+            nextEntities.push(change.entity);
             break;
           }
           case 'dimensions': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
-              nextNodes[index] = {
-                ...nextNodes[index],
+              nextEntities[index] = {
+                ...nextEntities[index],
                 width: change.dimensions.width,
                 height: change.dimensions.height,
               };
@@ -91,7 +91,7 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
         }
       }
 
-      return nextNodes;
+      return nextEntities;
     });
   }, []);
 
@@ -153,12 +153,12 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     setEdges((eds) => [...eds, newEdge]);
   }, []);
 
-  const addNode = useCallback((node: Node) => {
-    setNodes((nds) => [...nds, node]);
+  const addEntity = useCallback((entity: Entity) => {
+    setEntities((nds) => [...nds, entity]);
   }, []);
 
-  const removeNode = useCallback((id: string) => {
-    setNodes((nds) => nds.filter((n) => n.id !== id));
+  const removeEntity = useCallback((id: string) => {
+    setEntities((nds) => nds.filter((n) => n.id !== id));
     // Also remove connected edges
     setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
   }, []);
@@ -171,9 +171,9 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     setEdges((eds) => eds.filter((e) => e.id !== id));
   }, []);
 
-  const getNode = useCallback(
-    (id: string) => nodes.find((n) => n.id === id),
-    [nodes]
+  const getEntity = useCallback(
+    (id: string) => entities.find((n) => n.id === id),
+    [entities]
   );
 
   const getEdge = useCallback(
@@ -182,25 +182,24 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
   );
 
   const getConnectedEdges = useCallback(
-    (nodeId: string) => edges.filter((e) => e.source === nodeId || e.target === nodeId),
+    (entityId: string) => edges.filter((e) => e.source === entityId || e.target === entityId),
     [edges]
   );
 
   return {
-    nodes,
+    entities,
     edges,
-    setNodes,
+    setEntities,
     setEdges,
-    onNodesChange,
+    onEntitiesChange,
     onEdgesChange,
     onConnect,
-    addNode,
-    removeNode,
+    addEntity,
+    removeEntity,
     addEdge,
     removeEdge,
-    getNode,
+    getEntity,
     getEdge,
     getConnectedEdges,
   };
 }
-

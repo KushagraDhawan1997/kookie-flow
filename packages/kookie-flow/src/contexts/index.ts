@@ -1,7 +1,7 @@
 export { ThemeProvider, useTheme } from './ThemeContext';
 export {
   StyleProvider,
-  useNodeStyle,
+  useEntityStyle,
   useResolvedStyle,
   useSocketLayout,
   type StyleConfig,

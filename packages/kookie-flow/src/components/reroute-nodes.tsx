@@ -1,8 +1,8 @@
 /**
- * RerouteNodes - Renders reroute/waypoint nodes as small circles.
+ * RerouteNodes - Renders reroute/waypoint entities as small circles.
  * Phase 7C: Grouping & Annotations
  *
- * Reroute nodes are edge waypoints that allow users to create custom edge paths.
+ * Reroute entities are edge waypoints that allow users to create custom edge paths.
  * They render as small circles (similar to sockets) and can be dragged.
  */
 
@@ -17,7 +17,7 @@ const tempMatrix = new THREE.Matrix4();
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 64;
 
-/** Reroute node visual settings */
+/** Reroute entity visual settings */
 const REROUTE_RADIUS = 6; // Radius in world space
 const REROUTE_SEGMENTS = 12; // Circle segments
 
@@ -164,12 +164,12 @@ export function RerouteNodes() {
 
   // Subscribe to store changes
   useEffect(() => {
-    const unsubNodes = store.subscribe(
-      (state) => state.nodes,
-      (nodes) => {
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (entities) => {
         dirtyRef.current = true;
-        // Check if we need more capacity for reroute nodes
-        const rerouteCount = nodes.filter((n) => n.type === 'reroute').length;
+        // Check if we need more capacity for reroute entities
+        const rerouteCount = entities.filter((n) => n.type === 'reroute').length;
         if (rerouteCount > capacity) {
           setCapacity(Math.ceil(rerouteCount * BUFFER_GROWTH_FACTOR));
         }
@@ -182,26 +182,26 @@ export function RerouteNodes() {
       }
     );
     const unsubHovered = store.subscribe(
-      (state) => state.hoveredNodeId,
+      (state) => state.hoveredEntityId,
       () => {
         dirtyRef.current = true;
       }
     );
     const unsubSelection = store.subscribe(
-      (state) => state.selectedNodeIds,
+      (state) => state.selectedEntityIds,
       () => {
         dirtyRef.current = true;
       }
     );
     const unsubHidden = store.subscribe(
-      (state) => state.hiddenNodeIds,
+      (state) => state.hiddenEntityIds,
       () => {
         dirtyRef.current = true;
       }
     );
 
     return () => {
-      unsubNodes();
+      unsubEntities();
       unsubViewport();
       unsubHovered();
       unsubSelection();
@@ -215,7 +215,7 @@ export function RerouteNodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { nodes, viewport, hoveredNodeId, selectedNodeIds, hiddenNodeIds } = store.getState();
+    const { entities, viewport, hoveredEntityId, selectedEntityIds, hiddenEntityIds } = store.getState();
 
     // Mark dirty on canvas resize
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -223,10 +223,10 @@ export function RerouteNodes() {
       lastSizeRef.current.height = size.height;
     }
 
-    // Filter to reroute nodes only
-    const rerouteNodes = nodes.filter((n) => n.type === 'reroute');
+    // Filter to reroute entities only
+    const rerouteEntities = entities.filter((n) => n.type === 'reroute');
 
-    if (rerouteNodes.length === 0) {
+    if (rerouteEntities.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
       return;
@@ -243,16 +243,16 @@ export function RerouteNodes() {
     let visibleCount = 0;
     const maxVisible = capacity;
 
-    for (let i = 0; i < rerouteNodes.length && visibleCount < maxVisible; i++) {
-      const node = rerouteNodes[i];
+    for (let i = 0; i < rerouteEntities.length && visibleCount < maxVisible; i++) {
+      const entity = rerouteEntities[i];
 
-      // Skip if inside collapsed group - O(1) lookup
-      if (hiddenNodeIds.has(node.id)) {
+      // Skip if inside collapsed frame - O(1) lookup
+      if (hiddenEntityIds.has(entity.id)) {
         continue;
       }
 
-      const x = node.position.x;
-      const y = node.position.y;
+      const x = entity.position.x;
+      const y = entity.position.y;
 
       // Frustum culling
       if (
@@ -264,14 +264,14 @@ export function RerouteNodes() {
         continue;
       }
 
-      // Update matrix - position at node center
+      // Update matrix - position at entity center
       tempMatrix.identity();
       tempMatrix.setPosition(x, -y, 2); // Z=2 to render above edges
       mesh.setMatrixAt(visibleCount, tempMatrix);
 
       // Update attributes
-      buffers.selected[visibleCount] = selectedNodeIds.has(node.id) ? 1.0 : 0.0;
-      buffers.hovered[visibleCount] = node.id === hoveredNodeId ? 1.0 : 0.0;
+      buffers.selected[visibleCount] = selectedEntityIds.has(entity.id) ? 1.0 : 0.0;
+      buffers.hovered[visibleCount] = entity.id === hoveredEntityId ? 1.0 : 0.0;
 
       visibleCount++;
     }

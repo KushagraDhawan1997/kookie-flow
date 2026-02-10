@@ -1,9 +1,9 @@
 /**
  * Grouping utilities for Phase 7C
- * Helper functions for node grouping, hierarchy traversal, and bounds calculation.
+ * Helper functions for entity grouping, hierarchy traversal, and bounds calculation.
  */
 
-import type { Node, XYPosition } from '../types';
+import type { Entity, XYPosition } from '../types';
 
 /** Group padding when calculating bounds from children */
 export const GROUP_PADDING = 24;
@@ -21,28 +21,28 @@ export interface Bounds {
 }
 
 /**
- * Get direct children of a group node.
- * O(n) where n = total nodes.
+ * Get direct children of a group entity.
+ * O(n) where n = total entities.
  */
-export function getGroupChildren(nodes: Node[], groupId: string): Node[] {
-  return nodes.filter((node) => node.parentId === groupId);
+export function getGroupChildren(entities: Entity[], groupId: string): Entity[] {
+  return entities.filter((entity) => entity.parentId === groupId);
 }
 
 /**
- * Get all descendants of a group node (recursive).
- * O(n) where n = total nodes (single pass with memoization).
+ * Get all descendants of a group entity (recursive).
+ * O(n) where n = total entities (single pass with memoization).
  */
-export function getGroupDescendants(nodes: Node[], groupId: string): Node[] {
-  const descendants: Node[] = [];
+export function getGroupDescendants(entities: Entity[], groupId: string): Entity[] {
+  const descendants: Entity[] = [];
   const childIds = new Set<string>();
 
   // Build parent -> children map for O(1) child lookup
-  const childrenMap = new Map<string, Node[]>();
-  for (const node of nodes) {
-    if (node.parentId) {
-      const children = childrenMap.get(node.parentId) ?? [];
-      children.push(node);
-      childrenMap.set(node.parentId, children);
+  const childrenMap = new Map<string, Entity[]>();
+  for (const entity of entities) {
+    if (entity.parentId) {
+      const children = childrenMap.get(entity.parentId) ?? [];
+      children.push(entity);
+      childrenMap.set(entity.parentId, children);
     }
   }
 
@@ -64,50 +64,50 @@ export function getGroupDescendants(nodes: Node[], groupId: string): Node[] {
 }
 
 /**
- * Check if a node is inside a collapsed group (and should be hidden).
- * Walks up the parent chain - if any ancestor is collapsed, node is hidden.
+ * Check if an entity is inside a collapsed group (and should be hidden).
+ * Walks up the parent chain - if any ancestor is collapsed, entity is hidden.
  */
-export function isNodeHidden(
-  node: Node,
-  nodeMap: Map<string, Node>,
+export function isEntityHidden(
+  entity: Entity,
+  entityMap: Map<string, Entity>,
   collapsedGroupIds: Set<string>
 ): boolean {
-  let currentId = node.parentId;
+  let currentId = entity.parentId;
   while (currentId) {
     if (collapsedGroupIds.has(currentId)) {
       return true;
     }
-    const parent = nodeMap.get(currentId);
+    const parent = entityMap.get(currentId);
     currentId = parent?.parentId;
   }
   return false;
 }
 
 /**
- * Get visible nodes (filter out nodes inside collapsed groups).
+ * Get visible entities (filter out entities inside collapsed groups).
  * O(n) with parent chain walking.
  */
-export function getVisibleNodes(
-  nodes: Node[],
-  nodeMap: Map<string, Node>,
+export function getVisibleEntities(
+  entities: Entity[],
+  entityMap: Map<string, Entity>,
   collapsedGroupIds: Set<string>
-): Node[] {
+): Entity[] {
   if (collapsedGroupIds.size === 0) {
-    return nodes;
+    return entities;
   }
-  return nodes.filter((node) => !isNodeHidden(node, nodeMap, collapsedGroupIds));
+  return entities.filter((entity) => !isEntityHidden(entity, entityMap, collapsedGroupIds));
 }
 
 /**
- * Calculate bounds that encompass all child nodes of a group.
+ * Calculate bounds that encompass all child entities of a group.
  * Returns null if group has no children.
  */
 export function calculateGroupBounds(
-  nodes: Node[],
+  entities: Entity[],
   groupId: string,
   padding: number = GROUP_PADDING
 ): Bounds | null {
-  const children = getGroupChildren(nodes, groupId);
+  const children = getGroupChildren(entities, groupId);
 
   if (children.length === 0) {
     return null;
@@ -137,15 +137,15 @@ export function calculateGroupBounds(
 }
 
 /**
- * Get the parent chain from a node up to the root.
+ * Get the parent chain from an entity up to the root.
  * Returns array from immediate parent to root (empty if no parent).
  */
-export function getParentChain(node: Node, nodeMap: Map<string, Node>): Node[] {
-  const chain: Node[] = [];
-  let currentId = node.parentId;
+export function getParentChain(entity: Entity, entityMap: Map<string, Entity>): Entity[] {
+  const chain: Entity[] = [];
+  let currentId = entity.parentId;
 
   while (currentId) {
-    const parent = nodeMap.get(currentId);
+    const parent = entityMap.get(currentId);
     if (!parent) break;
     chain.push(parent);
     currentId = parent.parentId;
@@ -155,19 +155,19 @@ export function getParentChain(node: Node, nodeMap: Map<string, Node>): Node[] {
 }
 
 /**
- * Check if nodeA is a descendant of nodeB.
+ * Check if entityA is a descendant of entityB.
  */
 export function isDescendantOf(
-  nodeA: Node,
-  nodeB: Node,
-  nodeMap: Map<string, Node>
+  entityA: Entity,
+  entityB: Entity,
+  entityMap: Map<string, Entity>
 ): boolean {
-  let currentId = nodeA.parentId;
+  let currentId = entityA.parentId;
   while (currentId) {
-    if (currentId === nodeB.id) {
+    if (currentId === entityB.id) {
       return true;
     }
-    const parent = nodeMap.get(currentId);
+    const parent = entityMap.get(currentId);
     currentId = parent?.parentId;
   }
   return false;
@@ -175,20 +175,20 @@ export function isDescendantOf(
 
 /**
  * Move all descendants when a group is moved.
- * Returns a map of nodeId -> new position.
+ * Returns a map of entityId -> new position.
  */
 export function calculateDescendantPositions(
-  nodes: Node[],
+  entities: Entity[],
   groupId: string,
   delta: XYPosition
 ): Map<string, XYPosition> {
-  const descendants = getGroupDescendants(nodes, groupId);
+  const descendants = getGroupDescendants(entities, groupId);
   const positions = new Map<string, XYPosition>();
 
-  for (const node of descendants) {
-    positions.set(node.id, {
-      x: node.position.x + delta.x,
-      y: node.position.y + delta.y,
+  for (const entity of descendants) {
+    positions.set(entity.id, {
+      x: entity.position.x + delta.x,
+      y: entity.position.y + delta.y,
     });
   }
 
@@ -196,20 +196,20 @@ export function calculateDescendantPositions(
 }
 
 /**
- * Get all groups that are ancestors of any of the given nodes.
+ * Get all groups that are ancestors of any of the given entities.
  * Useful for determining which groups need visual updates.
  */
 export function getAncestorGroups(
-  nodes: Node[],
-  nodeMap: Map<string, Node>
+  entities: Entity[],
+  entityMap: Map<string, Entity>
 ): Set<string> {
   const ancestors = new Set<string>();
 
-  for (const node of nodes) {
-    let currentId = node.parentId;
+  for (const entity of entities) {
+    let currentId = entity.parentId;
     while (currentId) {
       ancestors.add(currentId);
-      const parent = nodeMap.get(currentId);
+      const parent = entityMap.get(currentId);
       currentId = parent?.parentId;
     }
   }
@@ -221,21 +221,21 @@ export function getAncestorGroups(
  * Validate that adding a parent relationship doesn't create a cycle.
  */
 export function wouldCreateCycle(
-  nodeId: string,
+  entityId: string,
   proposedParentId: string,
-  nodeMap: Map<string, Node>
+  entityMap: Map<string, Entity>
 ): boolean {
-  // Check if proposedParentId is a descendant of nodeId
-  const node = nodeMap.get(nodeId);
-  if (!node) return false;
+  // Check if proposedParentId is a descendant of entityId
+  const entity = entityMap.get(entityId);
+  if (!entity) return false;
 
-  // Walk up from proposedParent to see if we reach nodeId
+  // Walk up from proposedParent to see if we reach entityId
   let currentId: string | undefined = proposedParentId;
   while (currentId) {
-    if (currentId === nodeId) {
+    if (currentId === entityId) {
       return true; // Cycle detected
     }
-    const parent = nodeMap.get(currentId);
+    const parent = entityMap.get(currentId);
     currentId = parent?.parentId;
   }
 
@@ -243,49 +243,49 @@ export function wouldCreateCycle(
 }
 
 /**
- * Get all top-level nodes (nodes without a parent or whose parent doesn't exist).
+ * Get all top-level entities (entities without a parent or whose parent doesn't exist).
  */
-export function getTopLevelNodes(nodes: Node[], nodeMap: Map<string, Node>): Node[] {
-  return nodes.filter((node) => {
-    if (!node.parentId) return true;
-    return !nodeMap.has(node.parentId);
+export function getTopLevelEntities(entities: Entity[], entityMap: Map<string, Entity>): Entity[] {
+  return entities.filter((entity) => {
+    if (!entity.parentId) return true;
+    return !entityMap.has(entity.parentId);
   });
 }
 
 /**
- * Sort nodes so parents come before children (topological sort by depth).
+ * Sort entities so parents come before children (topological sort by depth).
  * Useful for rendering groups before their children.
  */
-export function sortByDepth(nodes: Node[], nodeMap: Map<string, Node>): Node[] {
+export function sortByDepth(entities: Entity[], entityMap: Map<string, Entity>): Entity[] {
   const depths = new Map<string, number>();
 
-  function getDepth(node: Node): number {
-    const cached = depths.get(node.id);
+  function getDepth(entity: Entity): number {
+    const cached = depths.get(entity.id);
     if (cached !== undefined) return cached;
 
-    if (!node.parentId) {
-      depths.set(node.id, 0);
+    if (!entity.parentId) {
+      depths.set(entity.id, 0);
       return 0;
     }
 
-    const parent = nodeMap.get(node.parentId);
+    const parent = entityMap.get(entity.parentId);
     if (!parent) {
-      depths.set(node.id, 0);
+      depths.set(entity.id, 0);
       return 0;
     }
 
     const depth = getDepth(parent) + 1;
-    depths.set(node.id, depth);
+    depths.set(entity.id, depth);
     return depth;
   }
 
   // Calculate depths
-  for (const node of nodes) {
-    getDepth(node);
+  for (const entity of entities) {
+    getDepth(entity);
   }
 
   // Sort by depth (ascending = parents first)
-  return [...nodes].sort((a, b) => {
+  return [...entities].sort((a, b) => {
     return (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0);
   });
 }

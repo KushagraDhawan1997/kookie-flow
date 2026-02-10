@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import type { Edge, Node } from '../types';
+import type { Edge, Entity } from '../types';
 import {
   buildAdjacencyIndex,
   getIncomers,
   getOutgoers,
-  getNodeEdges,
+  getEntityEdges,
   getInputEdges,
   getOutputEdges,
   getEdgesBetween,
@@ -41,8 +41,8 @@ function edge(
   return { id, source, target, sourceSocket, targetSocket };
 }
 
-/** Minimal node factory */
-function node(id: string, x = 0, y = 0): Node {
+/** Minimal entity factory */
+function entity(id: string, x = 0, y = 0): Entity {
   return { id, type: 'default', position: { x, y }, data: { label: id } };
 }
 
@@ -100,17 +100,17 @@ describe('buildAdjacencyIndex', () => {
 
   it('builds byNode map correctly', () => {
     const index = buildAdjacencyIndex(linearEdges);
-    expect(index.byNode.get('A')).toHaveLength(1); // e1
-    expect(index.byNode.get('B')).toHaveLength(2); // e1 + e2
-    expect(index.byNode.get('C')).toHaveLength(2); // e2 + e3
-    expect(index.byNode.get('D')).toHaveLength(1); // e3
+    expect(index.byEntity.get('A')).toHaveLength(1); // e1
+    expect(index.byEntity.get('B')).toHaveLength(2); // e1 + e2
+    expect(index.byEntity.get('C')).toHaveLength(2); // e2 + e3
+    expect(index.byEntity.get('D')).toHaveLength(1); // e3
   });
 
   it('handles empty edges', () => {
     const index = buildAdjacencyIndex([]);
     expect(index.outgoing.size).toBe(0);
     expect(index.incoming.size).toBe(0);
-    expect(index.byNode.size).toBe(0);
+    expect(index.byEntity.size).toBe(0);
   });
 
   it('uses __default__ for missing socket ids', () => {
@@ -124,7 +124,7 @@ describe('buildAdjacencyIndex', () => {
     const edges = [edge('e1', 'A', 'A')];
     const index = buildAdjacencyIndex(edges);
     // Self-loop should only appear once in byNode
-    expect(index.byNode.get('A')).toHaveLength(1);
+    expect(index.byEntity.get('A')).toHaveLength(1);
   });
 
   it('handles multiple edges between same nodes', () => {
@@ -133,8 +133,8 @@ describe('buildAdjacencyIndex', () => {
       edge('e2', 'A', 'B', 'out2', 'in2'),
     ];
     const index = buildAdjacencyIndex(edges);
-    expect(index.byNode.get('A')).toHaveLength(2);
-    expect(index.byNode.get('B')).toHaveLength(2);
+    expect(index.byEntity.get('A')).toHaveLength(2);
+    expect(index.byEntity.get('B')).toHaveLength(2);
     expect(index.outgoing.get('A')?.get('out1')).toHaveLength(1);
     expect(index.outgoing.get('A')?.get('out2')).toHaveLength(1);
   });
@@ -187,17 +187,17 @@ describe('getOutgoers', () => {
   });
 });
 
-describe('getNodeEdges', () => {
-  it('returns all edges touching a node', () => {
+describe('getEntityEdges', () => {
+  it('returns all edges touching an entity', () => {
     const index = buildAdjacencyIndex(diamondEdges);
-    expect(getNodeEdges(index, 'A')).toHaveLength(2); // e1, e2
-    expect(getNodeEdges(index, 'B')).toHaveLength(2); // e1, e3
-    expect(getNodeEdges(index, 'D')).toHaveLength(2); // e3, e4
+    expect(getEntityEdges(index, 'A')).toHaveLength(2); // e1, e2
+    expect(getEntityEdges(index, 'B')).toHaveLength(2); // e1, e3
+    expect(getEntityEdges(index, 'D')).toHaveLength(2); // e3, e4
   });
 
   it('returns empty for unknown node', () => {
     const index = buildAdjacencyIndex(diamondEdges);
-    expect(getNodeEdges(index, 'Z')).toEqual([]);
+    expect(getEntityEdges(index, 'Z')).toEqual([]);
   });
 });
 
@@ -328,7 +328,7 @@ describe('computeAnalysis', () => {
 
     expect(result.hasCycles).toBe(false);
     expect(result.topologicalOrder).toEqual(['A', 'B', 'C', 'D']);
-    expect(result.cycleNodeIds).toEqual([]);
+    expect(result.cycleEntityIds).toEqual([]);
   });
 
   it('computes correct execution levels for diamond', () => {
@@ -349,7 +349,7 @@ describe('computeAnalysis', () => {
     expect(result.hasCycles).toBe(true);
     expect(result.topologicalOrder).toBeNull();
     expect(result.executionLevels).toBeNull();
-    expect(result.cycleNodeIds.sort()).toEqual(['A', 'B', 'C']);
+    expect(result.cycleEntityIds.sort()).toEqual(['A', 'B', 'C']);
   });
 
   it('identifies roots and leaves', () => {
@@ -407,9 +407,9 @@ describe('computeAnalysis', () => {
     const result = computeAnalysis(['X', 'A', 'B', 'C'], index);
 
     expect(result.hasCycles).toBe(true);
-    expect(result.cycleNodeIds.sort()).toEqual(['A', 'B', 'C']);
+    expect(result.cycleEntityIds.sort()).toEqual(['A', 'B', 'C']);
     // X is still processable
-    expect(result.cycleNodeIds).not.toContain('X');
+    expect(result.cycleEntityIds).not.toContain('X');
   });
 });
 
@@ -672,21 +672,21 @@ describe('getReadyEntities', () => {
 // ============================================================================
 
 describe('computeInsertOnEdge', () => {
-  it('splits edge and positions node at midpoint', () => {
+  it('splits edge and positions entity at midpoint', () => {
     const e = edge('e1', 'A', 'B', 'out', 'in');
-    const newNode = {
+    const newEntity = {
       id: 'X',
       type: 'default',
       inputs: [{ id: 'x-in' }],
       outputs: [{ id: 'x-out' }],
     };
-    const srcNode = node('A', 0, 0);
-    const tgtNode = node('B', 100, 200);
+    const srcEntity = entity('A', 0, 0);
+    const tgtEntity = entity('B', 100, 200);
 
-    const result = computeInsertOnEdge(e, newNode, srcNode, tgtNode);
+    const result = computeInsertOnEdge(e, newEntity, srcEntity, tgtEntity);
 
     expect(result.removeEdgeId).toBe('e1');
-    expect(result.nodePosition).toEqual({ x: 50, y: 100 });
+    expect(result.entityPosition).toEqual({ x: 50, y: 100 });
     expect(result.newEdges).toHaveLength(2);
 
     // First edge: A → X
@@ -703,19 +703,19 @@ describe('computeInsertOnEdge', () => {
     expect(edgeB.targetSocket).toBe('in');
   });
 
-  it('handles missing source/target nodes (positions at 0,0)', () => {
+  it('handles missing source/target entities (positions at 0,0)', () => {
     const e = edge('e1', 'A', 'B');
-    const newNode = { id: 'X', type: 'default' };
+    const newEntity = { id: 'X', type: 'default' };
 
-    const result = computeInsertOnEdge(e, newNode, undefined, undefined);
-    expect(result.nodePosition).toEqual({ x: 0, y: 0 });
+    const result = computeInsertOnEdge(e, newEntity, undefined, undefined);
+    expect(result.entityPosition).toEqual({ x: 0, y: 0 });
   });
 
-  it('handles node with no inputs/outputs', () => {
+  it('handles entity with no inputs/outputs', () => {
     const e = edge('e1', 'A', 'B', 'out', 'in');
-    const newNode = { id: 'X', type: 'default' };
+    const newEntity = { id: 'X', type: 'default' };
 
-    const result = computeInsertOnEdge(e, newNode, node('A'), node('B'));
+    const result = computeInsertOnEdge(e, newEntity, entity('A'), entity('B'));
     expect(result.newEdges[0].targetSocket).toBeUndefined();
     expect(result.newEdges[1].sourceSocket).toBeUndefined();
   });
@@ -731,7 +731,7 @@ describe('computeBypass', () => {
     const index = buildAdjacencyIndex(linearEdges);
     const result = computeBypass('B', index);
 
-    expect(result.removeNodeId).toBe('B');
+    expect(result.removeEntityId).toBe('B');
     expect(result.removeEdgeIds.sort()).toEqual(['e1', 'e2']);
     expect(result.newEdges).toHaveLength(1);
     expect(result.newEdges[0].source).toBe('A');
@@ -744,7 +744,7 @@ describe('computeBypass', () => {
     const index = buildAdjacencyIndex([]);
     const result = computeBypass('A', index);
 
-    expect(result.removeNodeId).toBe('A');
+    expect(result.removeEntityId).toBe('A');
     expect(result.removeEdgeIds).toEqual([]);
     expect(result.newEdges).toEqual([]);
   });
@@ -753,7 +753,7 @@ describe('computeBypass', () => {
     const index = buildAdjacencyIndex(linearEdges);
     const result = computeBypass('D', index);
 
-    expect(result.removeNodeId).toBe('D');
+    expect(result.removeEntityId).toBe('D');
     expect(result.removeEdgeIds).toEqual(['e3']);
     expect(result.newEdges).toEqual([]); // no outputs to reconnect
   });
@@ -762,7 +762,7 @@ describe('computeBypass', () => {
     const index = buildAdjacencyIndex(linearEdges);
     const result = computeBypass('A', index);
 
-    expect(result.removeNodeId).toBe('A');
+    expect(result.removeEntityId).toBe('A');
     expect(result.removeEdgeIds).toEqual(['e1']);
     expect(result.newEdges).toEqual([]); // no inputs to reconnect
   });
@@ -790,8 +790,8 @@ describe('computeBypass', () => {
 describe('validate', () => {
   it('returns empty array for valid acyclic graph', () => {
     const nodes = [
-      { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
     ];
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
@@ -801,19 +801,19 @@ describe('validate', () => {
   });
 
   it('detects cycles', () => {
-    const nodes = [node('A'), node('B')];
+    const entities = [entity('A'), entity('B')];
     const edges = [edge('e1', 'A', 'B'), edge('e2', 'B', 'A')];
     const index = buildAdjacencyIndex(edges);
 
-    const issues = validate(nodes, edges, index);
+    const issues = validate(entities, edges, index);
     const cycleIssues = issues.filter((i) => i.type === 'cycle');
     expect(cycleIssues).toHaveLength(1);
-    expect(cycleIssues[0].type === 'cycle' && cycleIssues[0].nodeIds.sort()).toEqual(['A', 'B']);
+    expect(cycleIssues[0].type === 'cycle' && cycleIssues[0].entityIds.sort()).toEqual(['A', 'B']);
   });
 
   it('detects unconnected required inputs (no default value)', () => {
     const nodes = [
-      { ...node('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
     ];
     const index = buildAdjacencyIndex([]);
 
@@ -822,7 +822,7 @@ describe('validate', () => {
     expect(unconnected).toHaveLength(1);
     expect(unconnected[0]).toMatchObject({
       type: 'unconnected-required',
-      nodeId: 'A',
+      entityId: 'A',
       portId: 'in',
       portName: 'In',
     });
@@ -830,7 +830,7 @@ describe('validate', () => {
 
   it('skips inputs with defaultValue', () => {
     const nodes = [
-      { ...node('A'), inputs: [{ id: 'in', name: 'In', type: 'float', defaultValue: 0 }] },
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float', defaultValue: 0 }] },
     ];
     const index = buildAdjacencyIndex([]);
 
@@ -841,8 +841,8 @@ describe('validate', () => {
 
   it('detects type mismatches when socketTypes provided', () => {
     const nodes = [
-      { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'image' }] },
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'image' }] },
     ];
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
@@ -864,8 +864,8 @@ describe('validate', () => {
 
   it('allows compatible types (same type)', () => {
     const nodes = [
-      { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
     ];
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
@@ -878,8 +878,8 @@ describe('validate', () => {
 
   it('allows "any" type connections', () => {
     const nodes = [
-      { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'any' }] },
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'any' }] },
     ];
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
@@ -898,8 +898,8 @@ describe('validate', () => {
 describe('isGraphComplete', () => {
   it('returns true when all inputs are connected', () => {
     const nodes = [
-      { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
     ];
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
@@ -909,7 +909,7 @@ describe('isGraphComplete', () => {
 
   it('returns false when an input without default is unconnected', () => {
     const nodes = [
-      { ...node('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
     ];
     const index = buildAdjacencyIndex([]);
 
@@ -918,7 +918,7 @@ describe('isGraphComplete', () => {
 
   it('returns true when unconnected input has defaultValue', () => {
     const nodes = [
-      { ...node('A'), inputs: [{ id: 'in', name: 'In', type: 'float', defaultValue: 0 }] },
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float', defaultValue: 0 }] },
     ];
     const index = buildAdjacencyIndex([]);
 
@@ -926,10 +926,10 @@ describe('isGraphComplete', () => {
   });
 
   it('returns true for graph with no inputs', () => {
-    const nodes = [node('A'), node('B')];
+    const entities = [entity('A'), entity('B')];
     const index = buildAdjacencyIndex([]);
 
-    expect(isGraphComplete(nodes, index)).toBe(true);
+    expect(isGraphComplete(entities, index)).toBe(true);
   });
 });
 
@@ -945,17 +945,17 @@ describe('getCompatiblePorts', () => {
     any: { compatibleWith: '*' as const },
   };
 
-  const testNodes: Node[] = [
-    { ...node('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-    { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
-    { ...node('C'), inputs: [{ id: 'in', name: 'In', type: 'image' }] },
-    { ...node('D'), inputs: [{ id: 'in', name: 'In', type: 'int' }] },
-    { ...node('E'), inputs: [{ id: 'in', name: 'In', type: 'any' }] },
+  const testEntities: Entity[] = [
+    { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+    { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+    { ...entity('C'), inputs: [{ id: 'in', name: 'In', type: 'image' }] },
+    { ...entity('D'), inputs: [{ id: 'in', name: 'In', type: 'int' }] },
+    { ...entity('E'), inputs: [{ id: 'in', name: 'In', type: 'any' }] },
   ];
 
   it('returns compatible input ports for an output socket', () => {
-    const result = getCompatiblePorts('A', 'out', false, testNodes, socketTypes);
-    const targetIds = result.map((p) => p.nodeId);
+    const result = getCompatiblePorts('A', 'out', false, testEntities, socketTypes);
+    const targetIds = result.map((p) => p.entityId);
     expect(targetIds).toContain('B'); // float → float
     expect(targetIds).toContain('D'); // float → int (int compatibleWith float)
     expect(targetIds).toContain('E'); // float → any
@@ -967,20 +967,20 @@ describe('getCompatiblePorts', () => {
     // A → B exists, so B → A would create a cycle
     const edges = [edge('e1', 'A', 'B', 'out', 'in')];
     const index = buildAdjacencyIndex(edges);
-    const nodesWithOutputOnB: Node[] = [
-      { ...node('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
-      { ...node('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+    const entitiesWithOutputOnB: Entity[] = [
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
     ];
 
-    const withCycles = getCompatiblePorts('B', 'out', false, nodesWithOutputOnB, socketTypes, index, true);
-    expect(withCycles.map((p) => p.nodeId)).toContain('A');
+    const withCycles = getCompatiblePorts('B', 'out', false, entitiesWithOutputOnB, socketTypes, index, true);
+    expect(withCycles.map((p) => p.entityId)).toContain('A');
 
-    const withoutCycles = getCompatiblePorts('B', 'out', false, nodesWithOutputOnB, socketTypes, index, false);
-    expect(withoutCycles.map((p) => p.nodeId)).not.toContain('A');
+    const withoutCycles = getCompatiblePorts('B', 'out', false, entitiesWithOutputOnB, socketTypes, index, false);
+    expect(withoutCycles.map((p) => p.entityId)).not.toContain('A');
   });
 
   it('returns empty for unknown source socket', () => {
-    const result = getCompatiblePorts('A', 'nonexistent', false, testNodes, socketTypes);
+    const result = getCompatiblePorts('A', 'nonexistent', false, testEntities, socketTypes);
     expect(result).toEqual([]);
   });
 });
@@ -992,13 +992,13 @@ describe('getCompatiblePorts', () => {
 describe('computeCollapseToSubgraph', () => {
   it('collapses a linear subchain', () => {
     // A → B → C → D: collapse B and C
-    const nodes = [node('A', 0, 0), node('B', 100, 0), node('C', 200, 0), node('D', 300, 0)];
-    nodes[0].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
-    nodes[1].inputs = [{ id: 'in', name: 'In', type: 'float' }];
-    nodes[1].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
-    nodes[2].inputs = [{ id: 'in', name: 'In', type: 'float' }];
-    nodes[2].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
-    nodes[3].inputs = [{ id: 'in', name: 'In', type: 'float' }];
+    const entities = [entity('A', 0, 0), entity('B', 100, 0), entity('C', 200, 0), entity('D', 300, 0)];
+    entities[0].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
+    entities[1].inputs = [{ id: 'in', name: 'In', type: 'float' }];
+    entities[1].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
+    entities[2].inputs = [{ id: 'in', name: 'In', type: 'float' }];
+    entities[2].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
+    entities[3].inputs = [{ id: 'in', name: 'In', type: 'float' }];
 
     const edges = [
       edge('e1', 'A', 'B', 'out', 'in'),
@@ -1007,7 +1007,7 @@ describe('computeCollapseToSubgraph', () => {
     ];
     const index = buildAdjacencyIndex(edges);
 
-    const result = computeCollapseToSubgraph(['B', 'C'], 'group-1', nodes, index);
+    const result = computeCollapseToSubgraph(['B', 'C'], 'frame-1', entities, index);
 
     // Internal edge (B→C) removed
     expect(result.removeEdgeIds).toContain('e2');
@@ -1015,49 +1015,49 @@ describe('computeCollapseToSubgraph', () => {
     expect(result.removeEdgeIds).toContain('e1');
     expect(result.removeEdgeIds).toContain('e3');
 
-    // Group gets 1 input port (from B's input) and 1 output port (from C's output)
-    expect(result.groupInputs).toHaveLength(1);
-    expect(result.groupOutputs).toHaveLength(1);
+    // Frame gets 1 input port (from B's input) and 1 output port (from C's output)
+    expect(result.frameInputs).toHaveLength(1);
+    expect(result.frameOutputs).toHaveLength(1);
 
-    // New edges reconnect A→group and group→D
+    // New edges reconnect A→frame and frame→D
     expect(result.newEdges).toHaveLength(2);
     const sourceIds = result.newEdges.map((e) => e.source);
     const targetIds = result.newEdges.map((e) => e.target);
     expect(sourceIds).toContain('A');
     expect(targetIds).toContain('D');
-    expect(sourceIds).toContain('group-1');
-    expect(targetIds).toContain('group-1');
+    expect(sourceIds).toContain('frame-1');
+    expect(targetIds).toContain('frame-1');
   });
 
   it('handles isolated subgraph with no boundary edges', () => {
     // B → C (no connections to outside)
-    const nodes = [node('A'), node('B', 100, 0), node('C', 200, 0)];
+    const entities = [entity('A'), entity('B', 100, 0), entity('C', 200, 0)];
     const edges = [edge('e1', 'B', 'C')];
     const index = buildAdjacencyIndex(edges);
 
-    const result = computeCollapseToSubgraph(['B', 'C'], 'group-1', nodes, index);
+    const result = computeCollapseToSubgraph(['B', 'C'], 'frame-1', entities, index);
 
     expect(result.removeEdgeIds).toEqual(['e1']); // internal only
-    expect(result.groupInputs).toHaveLength(0);
-    expect(result.groupOutputs).toHaveLength(0);
+    expect(result.frameInputs).toHaveLength(0);
+    expect(result.frameOutputs).toHaveLength(0);
     expect(result.newEdges).toHaveLength(0);
   });
 
-  it('calculates group position from child bounds', () => {
-    const nodes = [
-      { ...node('B', 100, 50), width: 200, height: 100 },
-      { ...node('C', 200, 100), width: 200, height: 100 },
+  it('calculates frame position from child bounds', () => {
+    const entities = [
+      { ...entity('B', 100, 50), width: 200, height: 100 },
+      { ...entity('C', 200, 100), width: 200, height: 100 },
     ];
     const index = buildAdjacencyIndex([]);
 
-    const result = computeCollapseToSubgraph(['B', 'C'], 'group-1', nodes, index);
+    const result = computeCollapseToSubgraph(['B', 'C'], 'frame-1', entities, index);
 
     // Position should be min(100,200)-padding, min(50,100)-padding
-    expect(result.groupNode.position.x).toBe(100 - 40);
-    expect(result.groupNode.position.y).toBe(50 - 40);
+    expect(result.frameEntity.position.x).toBe(100 - 40);
+    expect(result.frameEntity.position.y).toBe(50 - 40);
     // Width should be max(100+200, 200+200) - min(100,200) + 2*padding
-    expect(result.groupNode.width).toBe(400 - 100 + 80);
-    expect(result.groupNode.height).toBe(200 - 50 + 80);
+    expect(result.frameEntity.width).toBe(400 - 100 + 80);
+    expect(result.frameEntity.height).toBe(200 - 50 + 80);
   });
 });
 
@@ -1066,31 +1066,31 @@ describe('computeCollapseToSubgraph', () => {
 // ============================================================================
 
 describe('computeExpandSubgraph', () => {
-  it('expands a group node back to its children', () => {
-    // Current state: A → group-1 → D (group contains B, C)
+  it('expands a frame entity back to its children', () => {
+    // Current state: A → frame-1 → D (frame contains B, C)
     const edges = [
-      edge('e-in', 'A', 'group-1', 'out', 'gin-0'),
-      edge('e-out', 'group-1', 'D', 'gout-0', 'in'),
+      edge('e-in', 'A', 'frame-1', 'out', 'gin-0'),
+      edge('e-out', 'frame-1', 'D', 'gout-0', 'in'),
     ];
-    const nodes = [
-      node('A'),
-      { ...node('group-1'), type: 'group' },
-      node('D'),
+    const entities = [
+      entity('A'),
+      { ...entity('frame-1'), type: 'frame' },
+      entity('D'),
     ];
     const index = buildAdjacencyIndex(edges);
 
-    const childNodes = [node('B'), node('C')];
+    const childEntities = [entity('B'), entity('C')];
     const internalEdges = [edge('e2', 'B', 'C', 'out', 'in')];
     const portMapping = {
-      inputs: [{ groupPortId: 'gin-0', originalNodeId: 'B', originalSocketId: 'in' }],
-      outputs: [{ groupPortId: 'gout-0', originalNodeId: 'C', originalSocketId: 'out' }],
+      inputs: [{ framePortId: 'gin-0', originalEntityId: 'B', originalSocketId: 'in' }],
+      outputs: [{ framePortId: 'gout-0', originalEntityId: 'C', originalSocketId: 'out' }],
     };
 
-    const result = computeExpandSubgraph('group-1', childNodes, internalEdges, nodes, index, portMapping);
+    const result = computeExpandSubgraph('frame-1', childEntities, internalEdges, entities, index, portMapping);
 
-    expect(result.removeNodeId).toBe('group-1');
+    expect(result.removeEntityId).toBe('frame-1');
     expect(result.removeEdgeIds.sort()).toEqual(['e-in', 'e-out']);
-    expect(result.restoreNodes).toEqual(childNodes);
+    expect(result.restoreEntities).toEqual(childEntities);
     expect(result.restoreEdges).toEqual(internalEdges);
 
     // Reconnected edges: A→B and C→D
@@ -1103,23 +1103,23 @@ describe('computeExpandSubgraph', () => {
     expect(reconnectTargets).toContain('D');
   });
 
-  it('handles group with no external connections', () => {
-    const nodes = [{ ...node('group-1'), type: 'group' }];
+  it('handles frame with no external connections', () => {
+    const entities = [{ ...entity('frame-1'), type: 'frame' }];
     const index = buildAdjacencyIndex([]);
 
     const result = computeExpandSubgraph(
-      'group-1',
-      [node('B'), node('C')],
+      'frame-1',
+      [entity('B'), entity('C')],
       [edge('e1', 'B', 'C')],
-      nodes,
+      entities,
       index,
       { inputs: [], outputs: [] }
     );
 
-    expect(result.removeNodeId).toBe('group-1');
+    expect(result.removeEntityId).toBe('frame-1');
     expect(result.removeEdgeIds).toEqual([]);
     expect(result.reconnectEdges).toEqual([]);
-    expect(result.restoreNodes).toHaveLength(2);
+    expect(result.restoreEntities).toHaveLength(2);
     expect(result.restoreEdges).toHaveLength(1);
   });
 });

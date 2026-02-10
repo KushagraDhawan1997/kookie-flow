@@ -1,22 +1,22 @@
 import { useCallback } from 'react';
 import { useFlowStoreApi } from '../components/context';
-import type { CloneElementsResult, NodeData, PasteFromInternalOptions } from '../types';
+import type { CloneElementsResult, EntityData, PasteFromInternalOptions } from '../types';
 
-export interface UseClipboardOptions<T extends NodeData = NodeData> {
+export interface UseClipboardOptions<T extends EntityData = EntityData> {
   /** Offset for pasted elements. Default: { x: 50, y: 50 } */
   offset?: { x: number; y: number };
-  /** Transform function for node data when pasting */
+  /** Transform function for entity data when pasting */
   transformData?: (data: T) => T;
   /**
    * Preserve external connections when pasting.
-   * When true, edges connecting to non-copied nodes will be recreated,
-   * connecting the pasted nodes to the original external nodes.
+   * When true, edges connecting to non-copied entities will be recreated,
+   * connecting the pasted entities to the original external entities.
    * Default: false
    */
   preserveExternalConnections?: boolean;
 }
 
-export interface PasteOptions<T extends NodeData = NodeData> {
+export interface PasteOptions<T extends EntityData = EntityData> {
   /** Override offset for this paste operation */
   offset?: { x: number; y: number };
   /** Override preserveExternalConnections for this paste operation */
@@ -25,12 +25,12 @@ export interface PasteOptions<T extends NodeData = NodeData> {
   transformData?: (data: T) => T;
 }
 
-export interface UseClipboardReturn<T extends NodeData = NodeData> {
-  /** Copy selected nodes and edges to internal clipboard */
+export interface UseClipboardReturn<T extends EntityData = EntityData> {
+  /** Copy selected entities and edges to internal clipboard */
   copy: () => void;
   /** Paste from internal clipboard. Can override options per-paste. */
   paste: (options?: PasteOptions<T>) => CloneElementsResult | null;
-  /** Cut selected nodes and edges (copy + delete) */
+  /** Cut selected entities and edges (copy + delete) */
   cut: () => void;
   /** Whether there's content in the clipboard */
   hasClipboardContent: () => boolean;
@@ -62,7 +62,7 @@ export interface UseClipboardReturn<T extends NodeData = NodeData> {
  * paste({ preserveExternalConnections: true, offset: { x: 100, y: 0 } });
  * ```
  */
-export function useClipboard<T extends NodeData = NodeData>(
+export function useClipboard<T extends EntityData = EntityData>(
   options?: UseClipboardOptions<T>
 ): UseClipboardReturn<T> {
   const store = useFlowStoreApi();
@@ -89,7 +89,7 @@ export function useClipboard<T extends NodeData = NodeData>(
 
   const hasClipboardContent = useCallback(() => {
     const clipboard = store.getState().internalClipboard;
-    return clipboard !== null && clipboard.nodes.length > 0;
+    return clipboard !== null && clipboard.entities.length > 0;
   }, [store]);
 
   return { copy, paste, cut, hasClipboardContent };

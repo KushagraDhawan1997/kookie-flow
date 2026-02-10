@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Node, Edge, XYPosition } from '../types';
+import type { Entity, Edge, XYPosition } from '../types';
 
 export type ContextMenuTarget =
-  | { type: 'node'; node: Node }
+  | { type: 'entity'; entity: Entity }
   | { type: 'edge'; edge: Edge }
   | { type: 'pane' }
-  | { type: 'selection'; nodeIds: string[]; edgeIds: string[] };
+  | { type: 'selection'; entityIds: string[]; edgeIds: string[] };
 
 export interface ContextMenuState {
   /** The target that was right-clicked */
@@ -65,10 +65,10 @@ export interface UseContextMenuReturn {
  *
  *   const handleContextMenu = (e: React.MouseEvent) => {
  *     const worldPos = screenToWorld(e.clientX, e.clientY, viewport);
- *     const node = getNodeAtPosition(nodes, worldPos, viewport);
+ *     const entity = getEntityAtPosition(entities, worldPos, viewport);
  *
- *     if (node) {
- *       onContextMenu(e, { type: 'node', node }, worldPos);
+ *     if (entity) {
+ *       onContextMenu(e, { type: 'entity', entity }, worldPos);
  *     } else {
  *       onContextMenu(e, { type: 'pane' }, worldPos);
  *     }
