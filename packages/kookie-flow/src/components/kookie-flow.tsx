@@ -70,6 +70,8 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     onNodesChange,
     onEdgesChange,
     onConnect,
+    onConnectStart,
+    onConnectEnd,
     onNodeClick,
     onEdgeClick,
     onPaneClick,
@@ -142,6 +144,8 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             showGrid={showGrid}
@@ -189,6 +193,8 @@ interface ThemedFlowContainerProps {
   onEdgeClick?: (edge: Edge) => void;
   onPaneClick?: () => void;
   onConnect?: (connection: Connection) => void;
+  onConnectStart?: KookieFlowProps['onConnectStart'];
+  onConnectEnd?: KookieFlowProps['onConnectEnd'];
   onNodesChange?: KookieFlowProps['onNodesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
   showGrid: boolean;
@@ -230,6 +236,8 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       onEdgeClick,
       onPaneClick,
       onConnect,
+      onConnectStart,
+      onConnectEnd,
       onNodesChange,
       onEdgesChange,
       showGrid,
@@ -293,6 +301,8 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
           >
@@ -478,6 +488,8 @@ interface InputHandlerProps {
   onEdgeClick?: (edge: Edge) => void;
   onPaneClick?: () => void;
   onConnect?: (connection: Connection) => void;
+  onConnectStart?: KookieFlowProps['onConnectStart'];
+  onConnectEnd?: KookieFlowProps['onConnectEnd'];
   onNodesChange?: KookieFlowProps['onNodesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
@@ -500,6 +512,8 @@ function InputHandler({
   onEdgeClick,
   onPaneClick,
   onConnect,
+  onConnectStart,
+  onConnectEnd,
   onNodesChange,
   onEdgesChange,
 }: InputHandlerProps) {
@@ -774,6 +788,13 @@ function InputHandler({
           setIsConnecting(true);
           // Capture pointer to the container, not e.target, to ensure we receive move events
           containerRef.current?.setPointerCapture(e.pointerId);
+
+          // Fire onConnectStart callback
+          onConnectStart?.(e.nativeEvent, {
+            nodeId: socket.nodeId,
+            socketId: socket.socketId,
+            isInput: socket.isInput,
+          });
           return;
         }
 
@@ -810,7 +831,7 @@ function InputHandler({
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown, store, socketLayout]
+    [isSpaceDown, store, socketLayout, onConnectStart]
   );
 
   // Handle pointer move
@@ -1116,7 +1137,8 @@ function InputHandler({
 
       // End connection draft (check store state, not React state)
       if (connectionDraft) {
-        const { hoveredSocketId, nodeMap } = store.getState();
+        const { hoveredSocketId, nodeMap, viewport } = store.getState();
+        let connectionSucceeded = false;
 
         if (hoveredSocketId) {
           // Check if connection is valid (use nodeMap for O(1))
@@ -1130,6 +1152,8 @@ function InputHandler({
           );
 
           if (isValid) {
+            connectionSucceeded = true;
+
             // Check type compatibility separately for invalid flag
             // In loose mode, connection is allowed but marked invalid if types don't match
             const isTypeCompatible = isSocketCompatible(
@@ -1156,6 +1180,26 @@ function InputHandler({
             // Call onConnect callback
             onConnect?.(connection);
           }
+        }
+
+        // Fire onConnectEnd before clearing the draft
+        if (onConnectEnd) {
+          const rect = cachedRectRef.current;
+          const dropScreenPos = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          };
+          const dropWorldPos = screenToWorld(dropScreenPos, viewport);
+
+          onConnectEnd(e.nativeEvent, {
+            isValid: connectionSucceeded,
+            source: {
+              nodeId: connectionDraft.source.nodeId,
+              socketId: connectionDraft.source.socketId,
+              isInput: connectionDraft.source.isInput,
+            },
+            position: dropWorldPos,
+          });
         }
 
         // Cancel the draft
@@ -1282,6 +1326,7 @@ function InputHandler({
       onEdgeClick,
       onPaneClick,
       onConnect,
+      onConnectEnd,
       socketLayout,
     ]
   );

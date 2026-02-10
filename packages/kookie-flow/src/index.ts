@@ -102,6 +102,8 @@ export type {
   ConnectionMode,
   ConnectionValidationParams,
   IsValidConnectionFn,
+  OnConnectStartParams,
+  ConnectionEndState,
   NodeChange,
   EdgeChange,
   NodeTypeDefinition,

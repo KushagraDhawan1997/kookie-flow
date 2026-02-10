@@ -342,6 +342,27 @@ export type IsValidConnectionFn = (
   socketTypes: Record<string, SocketType>
 ) => boolean;
 
+/** Parameters passed to onConnectStart callback */
+export interface OnConnectStartParams {
+  nodeId: string;
+  socketId: string;
+  isInput: boolean;
+}
+
+/** State passed to onConnectEnd callback */
+export interface ConnectionEndState {
+  /** Whether the connection landed on a valid socket */
+  isValid: boolean;
+  /** The socket where the drag originated */
+  source: {
+    nodeId: string;
+    socketId: string;
+    isInput: boolean;
+  };
+  /** World coordinates of the drop point */
+  position: XYPosition;
+}
+
 /** Node change event */
 export type NodeChange =
   | { type: 'position'; id: string; position: XYPosition }
@@ -597,6 +618,10 @@ export interface KookieFlowProps {
   onEdgesChange?: (changes: EdgeChange[]) => void;
   /** Callback when a connection is made */
   onConnect?: (connection: Connection) => void;
+  /** Callback when a connection drag starts */
+  onConnectStart?: (event: PointerEvent, params: OnConnectStartParams) => void;
+  /** Callback when a connection drag ends (regardless of success) */
+  onConnectEnd?: (event: PointerEvent, state: ConnectionEndState) => void;
   /** Callback when a node is clicked */
   onNodeClick?: (node: Node) => void;
   /** Callback when an edge is clicked */
