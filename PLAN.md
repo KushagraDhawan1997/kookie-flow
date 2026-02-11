@@ -2083,26 +2083,116 @@ Performance: No regressions. Resize has same per-frame cost as drag (O(1) entity
 
 ### Phase 10: Text Entity
 
-**Goal:** Standalone text entity — plain text on canvas with word wrap, auto-sizing, and inline editing. No visual container (no rounded rect body), just text within a bounding box.
+**Goal:** Standalone text entity — plain text on canvas with word wrap, auto-sizing, and Figma-quality inline editing. No visual container (no rounded rect body), just text within a bounding box. The editing experience must be seamless — entering and exiting edit mode should be invisible to the user.
 
 Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedded" pattern. A Text entity exists independently on canvas. The same `TextEntityData` interface is reused when text appears as a shape inside a Draw entity (`data.shapes[{ type: 'text', ...TextEntityData }]`). This phase covers the standalone entity only.
 
-- [ ] Text entity type: renders text content directly on canvas, no body rectangle
-- [ ] Expand `TextEntityData`: add `lineHeight`, `letterSpacing`, `autoWidth`, `autoHeight`, `overflow`
-- [ ] Overflow modes: `'visible' | 'hidden' | 'clip' | 'truncate'`
-- [ ] Sizing logic:
-  - Auto height (default): fixed width, height grows with content (word wrap)
-  - Auto width: width = longest line, no wrap
-  - Fixed: both width and height locked, text wraps, overflow behavior applies
-- [ ] Multi-line word wrap in MSDF text layout engine (`text-layout.ts`)
-- [ ] MSDF rendering for display mode (extends `text-renderer.tsx` with word-wrapped text blocks)
-- [ ] Skip text entities in node body renderer (`nodes.tsx` — no rounded rect for text)
-- [ ] DOM overlay (textarea) for edit mode: double-click to enter, Escape to exit
-- [ ] Auto-sizing: recalculate entity dimensions on content change based on sizing mode
-- [ ] Resizable via Phase 9.5 infrastructure (drag handles to set fixed width/height)
-- [ ] Copy/paste text content
-- [ ] Optional ports for graph participation (text as data source/sink)
-- [ ] Later: style runs (bold/italic/underline), contenteditable, emoji support, font selection
+#### Rendering Architecture: Canvas2D → CanvasTexture → WebGL Quad
+
+**Decision:** Text entities use Canvas2D rasterization uploaded as `THREE.CanvasTexture` onto a `PlaneGeometry` quad in the WebGL scene.
+
+**Why not MSDF?** MSDF is excellent for labels (short, single-style, thousands of them) but wrong for text entities:
+- Word wrap: requires reimplementing browser-native line breaking from scratch in `text-layout.ts`
+- Font matching: two independent text layout engines (MSDF display + contenteditable edit) must agree on every line break and glyph position — a never-ending tuning battle that prevents seamless edit transitions
+- Font variety: MSDF requires pre-built atlas per font family/weight. Text entities need arbitrary fonts
+- Rich text (future): MSDF needs separate atlas per weight/style with manual span tracking. Canvas2D just uses `ctx.font`
+
+**Why not DOM?** DOM elements in `DOMLayer` always render on top of the WebGL canvas. A DOM-based text entity can never appear behind a WebGL-rendered node. Z-ordering is broken — dealbreaker for a freeform canvas where entities overlap.
+
+**Why Canvas2D → Texture works:**
+- Z-order: it's a WebGL quad, participates in scene draw order like any other entity
+- Native text quality: Canvas2D uses the browser's font rasterizer with subpixel rendering
+- Native word wrap: `ctx.measureText()` for line breaking — same engine as the contenteditable editor
+- Edit ↔ display parity: both Canvas2D and contenteditable use the **same browser font engine**, so line breaks match and the edit transition is invisible
+- Any font: no atlas generation, just load a web font
+- Rich text later: Canvas2D can render styled spans (`ctx.font = 'bold 16px ...'`)
+
+**Zoom crispness:** Render at 2–3× device pixel ratio. Text stays crisp from ~0.3× to ~3× zoom. Beyond that, re-render at the new resolution (debounced, only on zoom threshold crossings, not every frame). Figma does the same — it re-rasterizes text at different zoom levels.
+
+#### Implementation Checklist
+
+**10A: Types & Entity Plumbing**
+- [ ] Expand `TextEntityData` in `types/index.ts`:
+  - `content: string` (required)
+  - `fontSize?: number` (default 16)
+  - `fontFamily?: string` (default from theme)
+  - `fontWeight?: number` (default 400)
+  - `textColor?: string` (default from theme)
+  - `textAlign?: 'left' | 'center' | 'right'` (default 'left')
+  - `lineHeight?: number` (multiplier, default 1.5)
+  - `letterSpacing?: number` (px, default 0)
+  - `autoWidth?: boolean` (width grows with content, no wrap)
+  - `autoHeight?: boolean` (height grows with content, default true)
+  - `overflow?: 'visible' | 'hidden' | 'clip' | 'truncate'`
+- [ ] Add `isTextEntity()` type guard
+- [ ] Skip `entity.type === 'text'` in `nodes.tsx` render loop (alongside 'comment', 'reroute')
+
+**10B: Text Texture Manager (`text-texture.ts`)**
+- [ ] `renderTextToCanvas(data, width, dpr)` → renders text onto offscreen canvas using Canvas2D API
+  - `ctx.font` from `fontWeight`, `fontSize`, `fontFamily`
+  - `ctx.fillStyle` from `textColor`
+  - `ctx.textAlign`, `ctx.textBaseline`
+  - Word wrap via `ctx.measureText()` — iterate words, accumulate width, break at boundary
+  - Support `lineHeight`, `letterSpacing` (via manual character spacing or `ctx.letterSpacing`)
+  - Returns `{ canvas, measuredWidth, measuredHeight }` for auto-sizing
+- [ ] `createTextTexture(canvas)` → `THREE.CanvasTexture` with proper filtering (LinearFilter, no mipmaps)
+- [ ] Texture cache: keyed by content hash + style hash + dimensions + dpr. Avoid re-rendering unchanged text
+- [ ] DPR-aware rendering: default 2× device pixel ratio for crisp text
+
+**10C: Text Entities WebGL Renderer (`text-entities.tsx`)**
+- [ ] New R3F component: renders text entities as textured transparent quads
+- [ ] One `PlaneGeometry` + `MeshBasicMaterial` (transparent, map = CanvasTexture) per visible text entity
+- [ ] Viewport frustum culling (match `nodes.tsx` pattern)
+- [ ] LOD: below zoom threshold, skip rendering or show colored placeholder rect
+- [ ] Zoom-aware texture re-rendering: when zoom crosses resolution threshold, re-render textures at new DPR (debounced)
+- [ ] Proper Y-flip: position quad center at `(entity.x + w/2, -(entity.y + h/2), 0)` like nodes
+- [ ] `renderOrder` between edges and nodes (text entities layer with other entities)
+- [ ] Dispose textures when entity is removed or goes off-screen for extended period
+
+**10D: Sizing Logic (Figma-style three modes)**
+- [ ] Auto height (default): fixed width, height = measured content height from Canvas2D
+- [ ] Auto width: width = longest line width, no wrap (explicit line breaks only)
+- [ ] Fixed: both width and height locked, text wraps, overflow behavior applies
+- [ ] `calculateTextDimensions(data, constrainedWidth?)` utility
+- [ ] On content change: recalculate dimensions → `updateEntityDimensions()` store action
+- [ ] Resize handle behavior:
+  - Horizontal drag → change width, text reflows, height auto-adjusts (if autoHeight)
+  - Vertical drag → switch to fixed mode
+  - Double-click handle → reset to auto mode
+
+**10E: Inline Editing (contenteditable)**
+- [ ] Add `editingEntityId: string | null` to interaction state (`interaction-state.ts`)
+- [ ] Double-click handler in InputHandler: detect double-click on text entity → enter edit mode
+- [ ] `TextEditOverlay` component in `DOMLayer`:
+  - Mount `contenteditable` div at exact entity position (world → screen transform)
+  - CSS font properties = Canvas2D params (shared config object: `TextStyleConfig`)
+  - Same `fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, `letterSpacing`, `textAlign`, `color`
+  - Transparent background, no border, no padding differences
+  - Auto-focus on mount, optionally select all or place cursor at click position
+- [ ] While editing:
+  - Hide the WebGL texture quad for this entity
+  - Live auto-sizing: on input, measure content → update entity dimensions → resize handles follow
+  - The contenteditable div IS the text — no visual difference from the texture
+- [ ] Exit edit mode: Escape, click outside, or Tab
+  - Commit text to store (`data.content`)
+  - Unmount contenteditable div
+  - Re-render Canvas2D texture
+  - Show WebGL quad again
+- [ ] Shared `TextStyleConfig` object consumed by both Canvas2D renderer and CSS styles — single source of truth for font metrics
+
+**10F: Integration & Polish**
+- [ ] EntitySelection outlines work automatically (already handles all entity types)
+- [ ] Resize via Phase 9.5 infrastructure (handles visible on select, drag to resize)
+- [ ] Copy/paste text content (integrate with existing clipboard system)
+- [ ] Optional ports for graph participation (`inputs`/`outputs` on text entities)
+- [ ] Keyboard: Enter to create new text entity (when nothing selected), or Enter to edit selected text entity
+- [ ] Empty text entity: show placeholder ("Type something...") at reduced opacity
+
+**10G: Later (not this phase)**
+- Style runs (bold/italic/underline within text) — contenteditable supports this natively, Canvas2D needs styled span rendering
+- Emoji support (Canvas2D handles emoji natively via font fallback)
+- Font selection UI
+- Nested text inside Draw entities (`data.shapes[{ type: 'text' }]`)
 
 ### Phase 11: Image Entity
 
@@ -2254,6 +2344,24 @@ The composite layer overhead of hundreds of DOM elements is unavoidable.
 - Interactive widgets (inputs, dropdowns) — require native elements
 - Custom node content — user escape hatch
 - These are few in number and viewport-culled to ~50-100 max
+
+### Why Canvas2D → Texture for Text Entities (not MSDF, not DOM)
+
+Text **labels** (node headers, socket names, edge labels) use instanced MSDF — short, single-style, thousands of them, 1 draw call. Text **entities** (standalone text blocks on canvas) have different requirements: word wrap, inline editing, font variety, future rich text.
+
+**Options evaluated:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **MSDF** (same as labels) | Crisp at any zoom, 1 draw call, existing infra | Word wrap reimplementation, font matching nightmare between MSDF display + contenteditable edit (two different layout engines), limited font variety (atlas per font), rich text = atlas per weight/style |
+| **DOM** (like comments) | Perfect text, native everything | Z-index: DOM always renders above WebGL canvas. Can never layer a WebGL node on top of a DOM text entity. Dealbreaker for freeform canvas |
+| **Canvas2D → Texture** | Native font quality, native word wrap via `measureText`, z-order via WebGL quad, edit ↔ display parity (same browser font engine), any font, rich text path | Rasterized (not infinite zoom crispness), texture memory per entity, re-render on zoom threshold |
+
+**Decision:** Canvas2D → CanvasTexture → PlaneGeometry quad. Render text with Canvas2D API, upload as `THREE.CanvasTexture`, display on a WebGL quad with proper z-order.
+
+**Key insight — edit transition:** Both Canvas2D and `contenteditable` use the **same browser font engine**. With shared font config (`TextStyleConfig`), line breaks and glyph positions match, making the edit ↔ display swap invisible. MSDF would require matching two fundamentally different text layout engines.
+
+**Zoom crispness:** Render at 2–3× device pixel ratio. Crisp from ~0.3× to ~3× zoom. Beyond that, debounced re-render at new resolution (Figma does the same). Text entity count is far lower than label count (~50-200 vs thousands), so per-entity texture memory is manageable.
 
 ### Coordinate System
 
@@ -2555,9 +2663,16 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - Enables "add node on edge drop" pattern
 - Remaining: demo example, README docs
 
-**Phase 10+: Entity types** (next major work)
+**Phase 10: Text Entity** (active — Canvas2D → Texture approach)
 
-- Text → Image → 3D Mesh → Video → Draw → Preview System → Customization
+- Rendering: Canvas2D rasterization → `THREE.CanvasTexture` → WebGL quad (not MSDF, not DOM)
+- Editing: `contenteditable` div overlay with shared font config for seamless transitions
+- Sizing: Figma-style three modes (auto height, auto width, fixed)
+- Implementation order: 10A (types) → 10B (texture manager) → 10C (WebGL renderer) → 10D (sizing) → 10E (editing) → 10F (integration)
+
+**Phase 11+: Remaining entity types** (after Phase 10)
+
+- Image → 3D Mesh → Video → Draw → Preview System → Customization
 - Each entity type done well before moving to the next
 
 ---
