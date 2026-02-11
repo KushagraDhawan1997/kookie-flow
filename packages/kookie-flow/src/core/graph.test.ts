@@ -185,6 +185,15 @@ describe('getOutgoers', () => {
     const index = buildAdjacencyIndex(diamondEdges);
     expect(getOutgoers(index, 'Z')).toEqual([]);
   });
+
+  it('deduplicates when multiple edges to same target', () => {
+    const edges = [
+      edge('e1', 'A', 'B', 'out1', 'in1'),
+      edge('e2', 'A', 'B', 'out2', 'in2'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    expect(getOutgoers(index, 'A')).toEqual(['B']);
+  });
 });
 
 describe('getEntityEdges', () => {
@@ -198,6 +207,13 @@ describe('getEntityEdges', () => {
   it('returns empty for unknown node', () => {
     const index = buildAdjacencyIndex(diamondEdges);
     expect(getEntityEdges(index, 'Z')).toEqual([]);
+  });
+
+  it('returns self-loop edge once', () => {
+    const edges = [edge('e1', 'A', 'A')];
+    const index = buildAdjacencyIndex(edges);
+    expect(getEntityEdges(index, 'A')).toHaveLength(1);
+    expect(getEntityEdges(index, 'A')[0].id).toBe('e1');
   });
 });
 
@@ -213,6 +229,22 @@ describe('getInputEdges', () => {
     const index = buildAdjacencyIndex(linearEdges);
     expect(getInputEdges(index, 'A')).toEqual([]);
   });
+
+  it('returns multiple inputs from different sockets', () => {
+    const edges = [
+      edge('e1', 'A', 'C', 'out', 'in1'),
+      edge('e2', 'B', 'C', 'out', 'in2'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const inputs = getInputEdges(index, 'C');
+    expect(inputs).toHaveLength(2);
+    expect(inputs.map((e) => e.id).sort()).toEqual(['e1', 'e2']);
+  });
+
+  it('returns empty for unknown node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    expect(getInputEdges(index, 'Z')).toEqual([]);
+  });
 });
 
 describe('getOutputEdges', () => {
@@ -226,6 +258,22 @@ describe('getOutputEdges', () => {
   it('returns empty for leaf', () => {
     const index = buildAdjacencyIndex(linearEdges);
     expect(getOutputEdges(index, 'D')).toEqual([]);
+  });
+
+  it('returns multiple outputs from different sockets', () => {
+    const edges = [
+      edge('e1', 'A', 'B', 'out1', 'in'),
+      edge('e2', 'A', 'C', 'out2', 'in'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const outputs = getOutputEdges(index, 'A');
+    expect(outputs).toHaveLength(2);
+    expect(outputs.map((e) => e.id).sort()).toEqual(['e1', 'e2']);
+  });
+
+  it('returns empty for unknown node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    expect(getOutputEdges(index, 'Z')).toEqual([]);
   });
 });
 
@@ -248,6 +296,18 @@ describe('getEdgesBetween', () => {
     ];
     const index = buildAdjacencyIndex(edges);
     expect(getEdgesBetween(index, 'A', 'B')).toHaveLength(2);
+  });
+
+  it('returns self-loop edge', () => {
+    const edges = [edge('e1', 'A', 'A')];
+    const index = buildAdjacencyIndex(edges);
+    expect(getEdgesBetween(index, 'A', 'A')).toHaveLength(1);
+    expect(getEdgesBetween(index, 'A', 'A')[0].id).toBe('e1');
+  });
+
+  it('returns empty for unknown nodes', () => {
+    const index = buildAdjacencyIndex(diamondEdges);
+    expect(getEdgesBetween(index, 'Z', 'Y')).toEqual([]);
   });
 });
 
@@ -284,6 +344,11 @@ describe('walkUpstream', () => {
     const upstream = [...walkUpstream(index, 'A')];
     expect(upstream.sort()).toEqual(['B', 'C']);
   });
+
+  it('yields empty for disconnected node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    expect([...walkUpstream(index, 'Z')]).toEqual([]);
+  });
 });
 
 describe('walkDownstream', () => {
@@ -314,6 +379,11 @@ describe('walkDownstream', () => {
     const index = buildAdjacencyIndex(cycleEdges);
     const downstream = [...walkDownstream(index, 'A')];
     expect(downstream.sort()).toEqual(['B', 'C']);
+  });
+
+  it('yields empty for disconnected node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    expect([...walkDownstream(index, 'Z')]).toEqual([]);
   });
 });
 
@@ -395,6 +465,67 @@ describe('computeAnalysis', () => {
     }
   });
 
+  it('handles single node graph', () => {
+    const index = buildAdjacencyIndex([]);
+    const result = computeAnalysis(['A'], index);
+
+    expect(result.hasCycles).toBe(false);
+    expect(result.topologicalOrder).toEqual(['A']);
+    expect(result.executionLevels).toEqual([['A']]);
+    expect(result.roots).toEqual(['A']);
+    expect(result.leaves).toEqual(['A']);
+  });
+
+  it('handles all isolated nodes (no edges)', () => {
+    const index = buildAdjacencyIndex([]);
+    const result = computeAnalysis(['A', 'B', 'C'], index);
+
+    expect(result.hasCycles).toBe(false);
+    expect(result.topologicalOrder).toHaveLength(3);
+    expect(result.roots.sort()).toEqual(['A', 'B', 'C']);
+    expect(result.leaves.sort()).toEqual(['A', 'B', 'C']);
+    // All nodes at same level
+    expect(result.executionLevels).toHaveLength(1);
+    expect(result.executionLevels![0].sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('handles wide fan-out graph', () => {
+    // A → B, A → C, A → D, A → E
+    const edges = [
+      edge('e1', 'A', 'B'),
+      edge('e2', 'A', 'C'),
+      edge('e3', 'A', 'D'),
+      edge('e4', 'A', 'E'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const result = computeAnalysis(['A', 'B', 'C', 'D', 'E'], index);
+
+    expect(result.hasCycles).toBe(false);
+    expect(result.executionLevels).toHaveLength(2);
+    expect(result.executionLevels![0]).toEqual(['A']);
+    expect(result.executionLevels![1].sort()).toEqual(['B', 'C', 'D', 'E']);
+    expect(result.roots).toEqual(['A']);
+    expect(result.leaves.sort()).toEqual(['B', 'C', 'D', 'E']);
+  });
+
+  it('handles wide fan-in graph', () => {
+    // B → A, C → A, D → A
+    const edges = [
+      edge('e1', 'B', 'A'),
+      edge('e2', 'C', 'A'),
+      edge('e3', 'D', 'A'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const result = computeAnalysis(['A', 'B', 'C', 'D'], index);
+
+    expect(result.hasCycles).toBe(false);
+    expect(result.executionLevels).toHaveLength(2);
+    expect(result.executionLevels![0].sort()).toEqual(['B', 'C', 'D']);
+    expect(result.executionLevels![1]).toEqual(['A']);
+    expect(result.roots.sort()).toEqual(['B', 'C', 'D']);
+    expect(result.leaves).toEqual(['A']);
+  });
+
   it('handles partial cycle (some nodes cyclic, some not)', () => {
     //  X → A → B → C → A  (A,B,C in cycle; X is root)
     const edges = [
@@ -471,6 +602,17 @@ describe('wouldCreateCycle', () => {
     const index = buildAdjacencyIndex(edges);
     expect(wouldCreateCycle(index, 'C', 'A')).toBe(false);
   });
+
+  it('allows connection between unknown nodes', () => {
+    const index = buildAdjacencyIndex([]);
+    expect(wouldCreateCycle(index, 'X', 'Y')).toBe(false);
+  });
+
+  it('detects cycle in already-cyclic graph', () => {
+    // A → B → C → A already exists, adding any edge within should still be detected
+    const index = buildAdjacencyIndex(cycleEdges);
+    expect(wouldCreateCycle(index, 'A', 'B')).toBe(true); // B can already reach A
+  });
 });
 
 // ============================================================================
@@ -506,6 +648,32 @@ describe('getAffectedEntities', () => {
     const index = buildAdjacencyIndex(linearEdges);
     const affected = getAffectedEntities('A', index);
     expect(affected.sort()).toEqual(['B', 'C', 'D']);
+  });
+
+  it('propagates through muted entities', () => {
+    // A → B → C → D, B is muted — propagation should still pass through B
+    const index = buildAdjacencyIndex(linearEdges);
+    const muted = new Set(['B']);
+    const affected = getAffectedEntities('A', index, null, muted);
+    // Muted entities are still in the affected set (they're downstream)
+    expect(affected.sort()).toEqual(['B', 'C', 'D']);
+  });
+
+  it('handles multiple disconnected changed nodes', () => {
+    // A → B, C → D — change A and C
+    const edges = [
+      edge('e1', 'A', 'B'),
+      edge('e2', 'C', 'D'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const affected = getAffectedEntities(['A', 'C'], index);
+    expect(affected.sort()).toEqual(['B', 'D']);
+  });
+
+  it('handles unknown changed node gracefully', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    const affected = getAffectedEntities('Z', index);
+    expect(affected).toEqual([]);
   });
 });
 
@@ -579,6 +747,16 @@ describe('areConnected', () => {
     expect(areConnected(index, 'A', 'D')).toBe(true);
     expect(areConnected(index, 'D', 'A')).toBe(true);
   });
+
+  it('returns false for unknown node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    expect(areConnected(index, 'A', 'Z')).toBe(false);
+  });
+
+  it('handles cyclic graphs', () => {
+    const index = buildAdjacencyIndex(cycleEdges);
+    expect(areConnected(index, 'A', 'C')).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -614,6 +792,21 @@ describe('getExecutionOrder', () => {
     expect(order.indexOf('A')).toBeLessThan(order.indexOf('C'));
     expect(order.indexOf('B')).toBeLessThan(order.indexOf('D'));
     expect(order.indexOf('C')).toBeLessThan(order.indexOf('D'));
+  });
+
+  it('falls back to entity list on cycle', () => {
+    // A → B → C → A — cycle, so topo sort fails
+    const index = buildAdjacencyIndex(cycleEdges);
+    const order = getExecutionOrder(index, 'A');
+    // Should return all upstream + self, fallback since cycle exists
+    expect(order).toHaveLength(3);
+    expect(order.sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('handles node with no connections', () => {
+    const index = buildAdjacencyIndex([]);
+    const order = getExecutionOrder(index, 'A');
+    expect(order).toEqual(['A']);
   });
 });
 
@@ -664,6 +857,18 @@ describe('getReadyEntities', () => {
     );
     expect(ready).toEqual(['C']);
     expect(ready).not.toContain('D');
+  });
+
+  it('handles disconnected nodes as immediately ready', () => {
+    const index = buildAdjacencyIndex([]);
+    const ready = getReadyEntities(['A', 'B', 'C'], index, new Set());
+    expect(ready.sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('handles empty entity list', () => {
+    const index = buildAdjacencyIndex([]);
+    const ready = getReadyEntities([], index, new Set());
+    expect(ready).toEqual([]);
   });
 });
 
@@ -718,6 +923,25 @@ describe('computeInsertOnEdge', () => {
     const result = computeInsertOnEdge(e, newEntity, entity('A'), entity('B'));
     expect(result.newEdges[0].targetSocket).toBeUndefined();
     expect(result.newEdges[1].sourceSocket).toBeUndefined();
+  });
+
+  it('generates unique edge IDs based on original edge', () => {
+    const e = edge('e1', 'A', 'B', 'out', 'in');
+    const newEntity = { id: 'X', type: 'default', inputs: [{ id: 'in' }], outputs: [{ id: 'out' }] };
+    const result = computeInsertOnEdge(e, newEntity, entity('A'), entity('B'));
+
+    expect(result.newEdges[0].id).toBe('e1-a');
+    expect(result.newEdges[1].id).toBe('e1-b');
+    expect(result.removeEdgeId).toBe('e1');
+  });
+
+  it('preserves original edge sockets', () => {
+    const e = edge('e1', 'A', 'B', 'custom-out', 'custom-in');
+    const newEntity = { id: 'X', type: 'default', inputs: [{ id: 'x-in' }], outputs: [{ id: 'x-out' }] };
+    const result = computeInsertOnEdge(e, newEntity, entity('A'), entity('B'));
+
+    expect(result.newEdges[0].sourceSocket).toBe('custom-out');
+    expect(result.newEdges[1].targetSocket).toBe('custom-in');
   });
 });
 
@@ -780,6 +1004,35 @@ describe('computeBypass', () => {
     expect(result.removeEdgeIds.sort()).toEqual(['e1', 'e2', 'e3']);
     // min(2 inputs, 1 output) = 1 new edge
     expect(result.newEdges).toHaveLength(1);
+  });
+
+  it('handles node with equal number of inputs and outputs', () => {
+    // A → B (in1), C → B (in2), B → D (out1), B → E (out2)
+    const edges = [
+      edge('e1', 'A', 'B', 'out', 'in1'),
+      edge('e2', 'C', 'B', 'out', 'in2'),
+      edge('e3', 'B', 'D', 'out1', 'in'),
+      edge('e4', 'B', 'E', 'out2', 'in'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+    const result = computeBypass('B', index);
+
+    expect(result.removeEdgeIds.sort()).toEqual(['e1', 'e2', 'e3', 'e4']);
+    // min(2, 2) = 2 new edges
+    expect(result.newEdges).toHaveLength(2);
+    expect(result.newEdges[0].source).toBe('A');
+    expect(result.newEdges[0].target).toBe('D');
+    expect(result.newEdges[1].source).toBe('C');
+    expect(result.newEdges[1].target).toBe('E');
+  });
+
+  it('handles unknown node', () => {
+    const index = buildAdjacencyIndex(linearEdges);
+    const result = computeBypass('Z', index);
+
+    expect(result.removeEntityId).toBe('Z');
+    expect(result.removeEdgeIds).toEqual([]);
+    expect(result.newEdges).toEqual([]);
   });
 });
 
@@ -889,6 +1142,99 @@ describe('validate', () => {
     const mismatches = issues.filter((i) => i.type === 'type-mismatch');
     expect(mismatches).toHaveLength(0);
   });
+
+  it('uses custom isTypeCompatible function', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'int' }] },
+    ];
+    const edges = [edge('e1', 'A', 'B', 'out', 'in')];
+    const index = buildAdjacencyIndex(edges);
+
+    // Custom: float and int are compatible
+    const compatible = validate(nodes, edges, index, undefined, () => true);
+    expect(compatible.filter((i) => i.type === 'type-mismatch')).toHaveLength(0);
+
+    // Custom: nothing is compatible
+    const incompatible = validate(nodes, edges, index, undefined, () => false);
+    expect(incompatible.filter((i) => i.type === 'type-mismatch')).toHaveLength(1);
+  });
+
+  it('handles edges referencing nonexistent entity sockets gracefully', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+    ];
+    // Edge references socket that doesn't exist on the entity
+    const edges = [edge('e1', 'A', 'B', 'nonexistent-out', 'nonexistent-in')];
+    const index = buildAdjacencyIndex(edges);
+    const socketTypes = { float: {} };
+
+    // Should not throw, and should skip type check for missing sockets
+    const issues = validate(nodes, edges, index, socketTypes);
+    expect(issues.filter((i) => i.type === 'type-mismatch')).toHaveLength(0);
+  });
+
+  it('detects multiple issues simultaneously', () => {
+    // A → B (cycle), C has unconnected required input
+    const nodes = [
+      entity('A'),
+      entity('B'),
+      { ...entity('C'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+    ];
+    const edges = [edge('e1', 'A', 'B'), edge('e2', 'B', 'A')];
+    const index = buildAdjacencyIndex(edges);
+
+    const issues = validate(nodes, edges, index);
+    expect(issues.filter((i) => i.type === 'cycle')).toHaveLength(1);
+    expect(issues.filter((i) => i.type === 'unconnected-required')).toHaveLength(1);
+  });
+
+  it('handles entity with no inputs/outputs defined', () => {
+    const nodes = [entity('A'), entity('B')];
+    const edges = [edge('e1', 'A', 'B')];
+    const index = buildAdjacencyIndex(edges);
+
+    const issues = validate(nodes, edges, index);
+    expect(issues).toEqual([]);
+  });
+
+  it('handles empty graph validation', () => {
+    const issues = validate([], [], buildAdjacencyIndex([]));
+    expect(issues).toEqual([]);
+  });
+
+  it('allows compatibleWith list types', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'int' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+    ];
+    const edges = [edge('e1', 'A', 'B', 'out', 'in')];
+    const index = buildAdjacencyIndex(edges);
+    const socketTypes = {
+      int: { compatibleWith: ['float'] as string[] },
+      float: {},
+    };
+
+    const issues = validate(nodes, edges, index, socketTypes);
+    expect(issues.filter((i) => i.type === 'type-mismatch')).toHaveLength(0);
+  });
+
+  it('allows wildcard compatibleWith', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'wildcard' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'image' }] },
+    ];
+    const edges = [edge('e1', 'A', 'B', 'out', 'in')];
+    const index = buildAdjacencyIndex(edges);
+    const socketTypes = {
+      wildcard: { compatibleWith: '*' as const },
+      image: {},
+    };
+
+    const issues = validate(nodes, edges, index, socketTypes);
+    expect(issues.filter((i) => i.type === 'type-mismatch')).toHaveLength(0);
+  });
 });
 
 // ============================================================================
@@ -930,6 +1276,49 @@ describe('isGraphComplete', () => {
     const index = buildAdjacencyIndex([]);
 
     expect(isGraphComplete(entities, index)).toBe(true);
+  });
+
+  it('returns true for empty graph', () => {
+    const index = buildAdjacencyIndex([]);
+    expect(isGraphComplete([], index)).toBe(true);
+  });
+
+  it('handles entity with multiple inputs (all connected)', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      {
+        ...entity('C'),
+        inputs: [
+          { id: 'in1', name: 'In1', type: 'float' },
+          { id: 'in2', name: 'In2', type: 'float' },
+        ],
+      },
+    ];
+    const edges = [
+      edge('e1', 'A', 'C', 'out', 'in1'),
+      edge('e2', 'B', 'C', 'out', 'in2'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    expect(isGraphComplete(nodes, index)).toBe(true);
+  });
+
+  it('returns false when one of multiple inputs is unconnected', () => {
+    const nodes = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      {
+        ...entity('C'),
+        inputs: [
+          { id: 'in1', name: 'In1', type: 'float' },
+          { id: 'in2', name: 'In2', type: 'float' },
+        ],
+      },
+    ];
+    const edges = [edge('e1', 'A', 'C', 'out', 'in1')]; // in2 unconnected
+    const index = buildAdjacencyIndex(edges);
+
+    expect(isGraphComplete(nodes, index)).toBe(false);
   });
 });
 
@@ -982,6 +1371,46 @@ describe('getCompatiblePorts', () => {
   it('returns empty for unknown source socket', () => {
     const result = getCompatiblePorts('A', 'nonexistent', false, testEntities, socketTypes);
     expect(result).toEqual([]);
+  });
+
+  it('returns compatible output ports for an input socket (isSourceInput=true)', () => {
+    // B has input 'in' of type 'float' — find compatible outputs
+    const result = getCompatiblePorts('B', 'in', true, testEntities, socketTypes);
+    const targetIds = result.map((p) => p.entityId);
+    expect(targetIds).toContain('A'); // float output → float input
+    expect(targetIds).not.toContain('B'); // no self-connection
+  });
+
+  it('returns empty when no entities exist', () => {
+    const result = getCompatiblePorts('A', 'out', false, [], socketTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty for unknown source entity', () => {
+    const result = getCompatiblePorts('UNKNOWN', 'out', false, testEntities, socketTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('skips entities with no target sockets', () => {
+    // Entity F has no inputs
+    const entitiesWithNoInputs: Entity[] = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('F'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] }, // no inputs
+    ];
+    const result = getCompatiblePorts('A', 'out', false, entitiesWithNoInputs, socketTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('handles allowCycles=true to permit cycle-creating connections', () => {
+    const edges = [edge('e1', 'A', 'B', 'out', 'in')];
+    const index = buildAdjacencyIndex(edges);
+    const entitiesForCycle: Entity[] = [
+      { ...entity('A'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B'), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+    ];
+
+    const result = getCompatiblePorts('B', 'out', false, entitiesForCycle, socketTypes, index, true);
+    expect(result.map((p) => p.entityId)).toContain('A');
   });
 });
 
@@ -1059,6 +1488,59 @@ describe('computeCollapseToSubgraph', () => {
     expect(result.frameEntity.width).toBe(400 - 100 + 80);
     expect(result.frameEntity.height).toBe(200 - 50 + 80);
   });
+
+  it('collapses a single entity', () => {
+    const entities = [entity('A'), entity('B', 100, 0), entity('C', 200, 0)];
+    entities[0].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
+    entities[1].inputs = [{ id: 'in', name: 'In', type: 'float' }];
+    entities[1].outputs = [{ id: 'out', name: 'Out', type: 'float' }];
+    entities[2].inputs = [{ id: 'in', name: 'In', type: 'float' }];
+
+    const edges = [
+      edge('e1', 'A', 'B', 'out', 'in'),
+      edge('e2', 'B', 'C', 'out', 'in'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    const result = computeCollapseToSubgraph(['B'], 'frame-1', entities, index);
+
+    expect(result.removeEdgeIds.sort()).toEqual(['e1', 'e2']);
+    expect(result.frameInputs).toHaveLength(1);
+    expect(result.frameOutputs).toHaveLength(1);
+    expect(result.newEdges).toHaveLength(2);
+    expect(result.frameEntity.childIds).toEqual(['B']);
+  });
+
+  it('deduplicates boundary edges to same internal socket', () => {
+    // A → B and C → B (same internal socket), then B → D
+    const entities = [
+      { ...entity('A'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('B', 100, 0), inputs: [{ id: 'in', name: 'In', type: 'float' }], outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('C'), outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      { ...entity('D', 200, 0), inputs: [{ id: 'in', name: 'In', type: 'float' }] },
+    ];
+    const edges = [
+      edge('e1', 'A', 'B', 'out', 'in'),
+      edge('e2', 'C', 'B', 'out', 'in'),
+      edge('e3', 'B', 'D', 'out', 'in'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    const result = computeCollapseToSubgraph(['B'], 'frame-1', entities, index);
+
+    // Two incoming boundary edges to same socket → 1 frame input port (deduped)
+    expect(result.frameInputs).toHaveLength(1);
+    // But 2 new edges (A→frame, C→frame) both targeting same frame port
+    expect(result.newEdges.filter((e) => e.target === 'frame-1')).toHaveLength(2);
+  });
+
+  it('stores childIds correctly', () => {
+    const entities = [entity('A'), entity('B'), entity('C')];
+    const index = buildAdjacencyIndex([]);
+
+    const result = computeCollapseToSubgraph(['A', 'B', 'C'], 'frame-1', entities, index);
+    expect(result.frameEntity.childIds.sort()).toEqual(['A', 'B', 'C']);
+  });
 });
 
 // ============================================================================
@@ -1121,5 +1603,105 @@ describe('computeExpandSubgraph', () => {
     expect(result.reconnectEdges).toEqual([]);
     expect(result.restoreEntities).toHaveLength(2);
     expect(result.restoreEdges).toHaveLength(1);
+  });
+
+  it('handles frame with only input connections', () => {
+    const edges = [edge('e-in', 'A', 'frame-1', 'out', 'gin-0')];
+    const entities = [
+      entity('A'),
+      { ...entity('frame-1'), type: 'frame' },
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    const result = computeExpandSubgraph(
+      'frame-1',
+      [entity('B')],
+      [],
+      entities,
+      index,
+      {
+        inputs: [{ framePortId: 'gin-0', originalEntityId: 'B', originalSocketId: 'in' }],
+        outputs: [],
+      }
+    );
+
+    expect(result.removeEdgeIds).toEqual(['e-in']);
+    expect(result.reconnectEdges).toHaveLength(1);
+    expect(result.reconnectEdges[0].source).toBe('A');
+    expect(result.reconnectEdges[0].target).toBe('B');
+    expect(result.reconnectEdges[0].targetSocket).toBe('in');
+  });
+
+  it('handles frame with only output connections', () => {
+    const edges = [edge('e-out', 'frame-1', 'D', 'gout-0', 'in')];
+    const entities = [
+      { ...entity('frame-1'), type: 'frame' },
+      entity('D'),
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    const result = computeExpandSubgraph(
+      'frame-1',
+      [entity('C')],
+      [],
+      entities,
+      index,
+      {
+        inputs: [],
+        outputs: [{ framePortId: 'gout-0', originalEntityId: 'C', originalSocketId: 'out' }],
+      }
+    );
+
+    expect(result.removeEdgeIds).toEqual(['e-out']);
+    expect(result.reconnectEdges).toHaveLength(1);
+    expect(result.reconnectEdges[0].source).toBe('C');
+    expect(result.reconnectEdges[0].sourceSocket).toBe('out');
+    expect(result.reconnectEdges[0].target).toBe('D');
+  });
+
+  it('handles missing port mapping gracefully', () => {
+    // Edge connects to frame port not in the mapping
+    const edges = [edge('e-in', 'A', 'frame-1', 'out', 'unmapped-port')];
+    const entities = [
+      entity('A'),
+      { ...entity('frame-1'), type: 'frame' },
+    ];
+    const index = buildAdjacencyIndex(edges);
+
+    const result = computeExpandSubgraph(
+      'frame-1',
+      [entity('B')],
+      [],
+      entities,
+      index,
+      { inputs: [], outputs: [] } // no mapping for 'unmapped-port'
+    );
+
+    expect(result.removeEdgeIds).toEqual(['e-in']);
+    // No reconnect because port has no mapping
+    expect(result.reconnectEdges).toEqual([]);
+  });
+
+  it('restores multiple children with internal edges', () => {
+    const entities = [{ ...entity('frame-1'), type: 'frame' }];
+    const index = buildAdjacencyIndex([]);
+
+    const children = [entity('B'), entity('C'), entity('D')];
+    const internalEdges = [
+      edge('e1', 'B', 'C', 'out', 'in'),
+      edge('e2', 'C', 'D', 'out', 'in'),
+    ];
+
+    const result = computeExpandSubgraph(
+      'frame-1',
+      children,
+      internalEdges,
+      entities,
+      index,
+      { inputs: [], outputs: [] }
+    );
+
+    expect(result.restoreEntities).toHaveLength(3);
+    expect(result.restoreEdges).toHaveLength(2);
   });
 });
