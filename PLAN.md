@@ -1997,29 +1997,76 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 - [x] Add `frame` as proper built-in type (upgrade from current `group`)
 - [x] Ensure draw, text, image, video, mesh entity types are structurally supported
 
+### Phase 9.5: Selection Box + Resize Handles
+
+**Goal:** Standardized selection indicator and resize interaction across all entity types. All entities are resizable by default.
+
+Currently selection is handled per-renderer (border color changes in the SDF node body shader). This phase extracts selection into a universal, consistent visual system that works for every entity type — including ones with no visible body (text, image). It also makes `entity.height` a first-class stored value rather than a computed-only field.
+
+**Selection box:**
+- [ ] Selection box renderer: instanced mesh for selection outlines (lightweight SDF outline, no fill)
+- [ ] Selection outline renders at constant screen-space thickness (zoom-independent)
+- [ ] Multi-select: selection box visible on all selected entities
+- [ ] Remove per-renderer selection visuals (node body `aSelected`/`aHovered` border color change → universal box)
+- [ ] Hover indicator also moves to selection box layer (thin outline on hover)
+
+**Resize handles:**
+- [ ] All entities are resizable by default (X and Y)
+- [ ] Corner handle interaction: drag to resize both width and height
+- [ ] Edge handle interaction: drag to resize single axis
+- [ ] `resizable` property on Entity: `boolean | { width?: boolean; height?: boolean }` for opt-out
+- [ ] Emit `EntityChange` of type `'dimensions'` on resize
+
+**Height as first-class stored value:**
+- [ ] `entity.height` becomes a persisted field (currently computed-only for default nodes)
+- [ ] Socket layout computation becomes a **minimum height constraint**, not the actual height
+- [ ] Render height: `entity.height ?? computedMinHeight` — explicit height takes precedence
+- [ ] Same for width: `entity.width ?? DEFAULT_ENTITY_WIDTH`, with min width from content
+- [ ] When user resizes via handles, explicit `entity.width`/`entity.height` are written
+- [ ] "Fit to content" action: clears explicit height, reverts to computed minimum
+
+**Minimum size constraints:**
+- [ ] Default entities: min height = socket layout computed height, min width = reasonable minimum
+- [ ] Frame entities: absolute minimum (e.g. 100x60)
+- [ ] Text entities: depends on sizing mode (Phase 10)
+- [ ] Comment entities: absolute minimum (e.g. 80x40)
+- [ ] Constraints enforced during resize drag (clamped before committing)
+
 ### Phase 10: Text Entity
 
-**Goal:** Rich text block entity done really well. Accessibility, keyboard navigation, screen reader support.
+**Goal:** Standalone text entity — plain text on canvas with word wrap, auto-sizing, and inline editing. No visual container (no rounded rect body), just text within a bounding box.
 
-- [ ] Text entity type: rich text blocks on canvas
-- [ ] MSDF rendering for display mode (read-only, GPU-rendered)
-- [ ] DOM contenteditable overlay for edit mode (on double-click / focus)
-- [ ] Keyboard navigation: Tab between entities, Enter to edit, Escape to exit
-- [ ] Screen reader: ARIA labels, live regions for status changes
+Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedded" pattern. A Text entity exists independently on canvas. The same `TextEntityData` interface is reused when text appears as a shape inside a Draw entity (`data.shapes[{ type: 'text', ...TextEntityData }]`). This phase covers the standalone entity only.
+
+- [ ] Text entity type: renders text content directly on canvas, no body rectangle
+- [ ] Expand `TextEntityData`: add `lineHeight`, `letterSpacing`, `autoWidth`, `autoHeight`, `overflow`
+- [ ] Overflow modes: `'visible' | 'hidden' | 'clip' | 'truncate'`
+- [ ] Sizing logic:
+  - Auto height (default): fixed width, height grows with content (word wrap)
+  - Auto width: width = longest line, no wrap
+  - Fixed: both width and height locked, text wraps, overflow behavior applies
+- [ ] Multi-line word wrap in MSDF text layout engine (`text-layout.ts`)
+- [ ] MSDF rendering for display mode (extends `text-renderer.tsx` with word-wrapped text blocks)
+- [ ] Skip text entities in node body renderer (`nodes.tsx` — no rounded rect for text)
+- [ ] DOM overlay (textarea) for edit mode: double-click to enter, Escape to exit
+- [ ] Auto-sizing: recalculate entity dimensions on content change based on sizing mode
+- [ ] Resizable via Phase 9.5 infrastructure (drag handles to set fixed width/height)
 - [ ] Copy/paste text content
-- [ ] Text as shape type inside draw entities (`data.shapes[]`)
-- [ ] Font selection (within supported MSDF fonts)
+- [ ] Optional ports for graph participation (text as data source/sink)
+- [ ] Later: style runs (bold/italic/underline), contenteditable, emoji support, font selection
 
 ### Phase 11: Image Entity
 
 **Goal:** Image on canvas done really well. Proper loading, resolution management, LOD.
+
+Architecture note: Same "standalone vs. embedded" pattern as Text. `ImageEntityData` is reused when an image appears as a shape inside a Draw entity.
 
 - [ ] Image entity type: image rendered as Three.js textured quad
 - [ ] Async image loading with placeholder/skeleton
 - [ ] Resolution management: thumbnail at zoom-out, full res when zoomed in
 - [ ] Drag-and-drop from filesystem
 - [ ] Paste from clipboard
-- [ ] Image resize handles
+- [ ] Resizable via Phase 9.5 infrastructure (drag handles, aspect ratio lock option)
 - [ ] Optional ports for graph participation (source node with image output)
 - [ ] Memory management: dispose textures when off-screen
 
@@ -2027,12 +2074,15 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 
 **Goal:** 3D object on canvas. Orbit controls, proper lighting.
 
+Architecture note: Same "standalone vs. embedded" pattern. `MeshEntityData` reused inside Draw entities.
+
 - [ ] Mesh entity type: Three.js scene-in-scene
 - [ ] Orbit controls (rotate, zoom, pan within the entity bounds)
 - [ ] Default lighting setup (ambient + directional)
 - [ ] Display mode: static thumbnail (rendered to texture)
 - [ ] Interactive mode: live Three.js scene as DOM overlay
 - [ ] glTF/GLB loading
+- [ ] Resizable via Phase 9.5 infrastructure
 - [ ] Optional ports for graph participation
 - [ ] Lazy loading: Three.js scene only mounted when needed
 
@@ -2040,11 +2090,14 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 
 **Goal:** Video on canvas. Playback controls, lazy loading.
 
+Architecture note: Same "standalone vs. embedded" pattern. `VideoEntityData` reused inside Draw entities.
+
 - [ ] Video entity type: `<video>` element as DOM overlay
 - [ ] Display mode: poster frame / thumbnail in WebGL
 - [ ] Interactive mode: live `<video>` with playback controls
 - [ ] Lazy loading: video element mounted only when visible + active
 - [ ] Multiple video entities: only ~5 live `<video>` elements at a time
+- [ ] Resizable via Phase 9.5 infrastructure
 - [ ] Optional ports for graph participation
 - [ ] Seek, play/pause, volume controls
 
