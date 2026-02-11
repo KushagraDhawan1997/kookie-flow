@@ -211,7 +211,8 @@ export function getEntitySocketLayout(
       idCached.outputs === entity.outputs) {
     // Socket config unchanged — reuse layout, update WeakMap for future hits
     entityLayoutCache.set(entity, idCached.layout);
-    entityCacheKeys.set(entity, existingKey ?? '');
+    // Use '_' sentinel (truthy) so WeakMap fast path 1 fires on subsequent same-ref lookups
+    entityCacheKeys.set(entity, existingKey ?? '_');
     return idCached.layout;
   }
 
@@ -228,6 +229,13 @@ export function getEntitySocketLayout(
   const layout = computeEntitySocketLayout(entity, socketLayout);
   entityLayoutCache.set(entity, layout);
   entityCacheKeys.set(entity, currentKey);
+
+  // Prevent unbounded growth from deleted entities (Map doesn't auto-GC like WeakMap).
+  // Entries are tiny (~100 bytes each), but clear if unreasonably large. Entries for
+  // active entities are lazily re-added on next access.
+  if (entityIdCache.size > 5000) {
+    entityIdCache.clear();
+  }
   entityIdCache.set(entity.id, {
     inputs: entity.inputs,
     outputs: entity.outputs,

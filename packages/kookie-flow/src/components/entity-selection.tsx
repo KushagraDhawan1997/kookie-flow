@@ -409,7 +409,6 @@ export function EntitySelection() {
     // --- Handle mesh ---
     if (handleMesh && handleInitializedRef.current && handleDirtyRef.current) {
       const {
-        entities,
         viewport,
         selectedEntityIds,
         hiddenEntityIds,
