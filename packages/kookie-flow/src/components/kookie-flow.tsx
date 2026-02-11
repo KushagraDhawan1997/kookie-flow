@@ -559,6 +559,11 @@ function InputHandler({
   });
   const socketLayout = useSocketLayout();
 
+  // Sync socket layout to store so quadtree bounds use correct entity heights
+  useEffect(() => {
+    store.getState().setSocketLayout(socketLayout);
+  }, [store, socketLayout]);
+
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);

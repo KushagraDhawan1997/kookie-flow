@@ -31,6 +31,7 @@ import {
 } from '../utils/grouping';
 import * as graphEngine from './graph';
 import type { AdjacencyIndex, CachedAnalysis } from './graph';
+import type { ResolvedSocketLayout } from '../utils/style-resolver';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -125,10 +126,14 @@ export interface FlowState {
   /** Entity IDs excluded from execution (treated as pass-through). */
   mutedEntityIds: Set<string>;
 
+  /** Resolved socket layout from style context — used for correct entity height in quadtree bounds */
+  socketLayout: ResolvedSocketLayout | null;
+
   /** Internal actions */
   setEntities: (entities: Entity[]) => void;
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
+  setSocketLayout: (layout: ResolvedSocketLayout) => void;
   setHoveredEntityId: (id: string | null) => void;
   setHoveredSocketId: (socket: SocketHandle | null) => void;
   startConnection: (entityId: string, socketId: string) => void;
@@ -388,7 +393,8 @@ function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
 
 // Helper to rebuild derived state from entities
 // collapsedGroupIds is used to filter children of collapsed groups from quadtrees
-function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>) {
+// socketLayout is used for correct entity height in quadtree bounds
+function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>, socketLayout?: ResolvedSocketLayout | null) {
   const entityMap = new Map<string, Entity>();
   const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
   const socketQuadtree = new SocketQuadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
@@ -450,7 +456,7 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
     }
   }
 
-  quadtree.rebuild(visibleEntities);
+  quadtree.rebuild(visibleEntities, socketLayout ?? undefined);
 
   return { entityMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenEntityIds };
 }
@@ -514,9 +520,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       topologyVersion: 0,
       mutedEntityIds: new Set<string>(),
 
+      // Socket layout (synced from React context for correct quadtree bounds)
+      socketLayout: null,
+
       // Setters - rebuild derived state when entities change
       setEntities: (entities) => {
-        const derived = rebuildDerivedState(entities);
+        const derived = rebuildDerivedState(entities, undefined, get().socketLayout);
         cachedAnalysis = null;
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
@@ -531,6 +540,19 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
           topologyVersion: get().topologyVersion + 1,
         });
+      },
+      setSocketLayout: (layout) => {
+        const prev = get().socketLayout;
+        // Skip if layout values haven't changed (avoids unnecessary quadtree rebuilds)
+        if (prev && prev.rowHeight === layout.rowHeight && prev.marginTop === layout.marginTop &&
+            prev.padding === layout.padding && prev.widgetHeight === layout.widgetHeight &&
+            prev.socketSize === layout.socketSize) {
+          return;
+        }
+        // Rebuild quadtree with correct entity heights
+        const { entities, collapsedGroupIds } = get();
+        const derived = rebuildDerivedState(entities, collapsedGroupIds, layout);
+        set({ socketLayout: layout, ...derived });
       },
       setViewport: (viewport) => set({ viewport }),
       setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
@@ -660,7 +682,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Rebuild derived state (entityMap, quadtree, socketQuadtree) to stay in sync
         const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
-        const derived = rebuildDerivedState(nextEntities, finalCollapsed);
+        const derived = rebuildDerivedState(nextEntities, finalCollapsed, get().socketLayout);
         if (topologyChanged) cachedAnalysis = null;
         set({
           entities: nextEntities,
@@ -892,7 +914,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Updates positions and quadtree incrementally without full rebuild
       // O(n+k) where n=entities, k=updates (builds index map once, then O(1) per update)
       updateEntityPositions: (updates) => {
-        const { entities, entityMap, quadtree, socketQuadtree, positionVersion } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
         const nextEntities = [...entities];
 
         // Build id->index map once: O(n)
@@ -914,7 +936,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             const entity = { ...nextEntities[index], position };
             nextEntities[index] = entity;
             entityMap.set(id, entity);
-            quadtree.update(id, getEntityBounds(entity));
+            quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
             // Update socket positions in socketQuadtree
             const entityWidth = entity.width ?? 200;
@@ -940,7 +962,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       updateEntityDimensions: (id, width, height, position) => {
-        const { entities, entityMap, quadtree, socketQuadtree, positionVersion } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
 
         // O(1) existence check via entityMap
         const existing = entityMap.get(id);
@@ -963,7 +985,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         };
         nextEntities[index] = entity;
         entityMap.set(id, entity);
-        quadtree.update(id, getEntityBounds(entity));
+        quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
         // Populate moved entity IDs side-channel so edges/sockets fast-path picks this up
         _movedEntityIds.clear();
@@ -993,7 +1015,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       fitEntityToContent: (id) => {
-        const { entities, entityMap, quadtree } = get();
+        const { entities, entityMap, quadtree, socketLayout } = get();
         const existing = entityMap.get(id);
         if (!existing) return;
 
@@ -1009,7 +1031,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const entity = rest as Entity;
         nextEntities[index] = entity;
         entityMap.set(id, entity);
-        quadtree.update(id, getEntityBounds(entity));
+        quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
         set({ entities: nextEntities });
       },
@@ -1101,7 +1123,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       addElements: (batch) => {
-        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree } = get();
+        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout } = get();
         const { entities: newEntities = [], edges: newEdges = [] } = batch;
 
         if (newEntities.length === 0 && newEdges.length === 0) return;
@@ -1115,7 +1137,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         for (const entity of newEntities) {
           entityMap.set(entity.id, entity);
         }
-        quadtree.incrementalAdd(newEntities);
+        quadtree.incrementalAdd(newEntities, socketLayout ?? undefined);
 
         // Add new sockets to socket quadtree
         for (const entity of newEntities) {
@@ -1520,7 +1542,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           .filter((e) => e.id !== changes.removeEdgeId)
           .concat(changes.newEdges);
 
-        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
         set({
           entities: nextEntities,
@@ -1542,7 +1564,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           .concat(changes.newEdges);
         const nextEntities = state.entities.filter((n) => n.id !== changes.removeEntityId);
 
-        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
 
         // Update selection
@@ -1651,7 +1673,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           .filter((e) => !removeEdgeIdSet.has(e.id))
           .concat(result.newEdges);
 
-        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
         set({
           entities: nextEntities,
@@ -1685,7 +1707,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           .concat(result.restoreEdges)
           .concat(result.reconnectEdges);
 
-        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds);
+        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
 
         // Update selection

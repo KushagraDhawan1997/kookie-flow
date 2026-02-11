@@ -1,5 +1,7 @@
 import type { Entity, Socket } from '../types';
 import { DEFAULT_ENTITY_WIDTH, DEFAULT_ENTITY_HEIGHT, SOCKET_RADIUS } from './constants';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import type { ResolvedSocketLayout } from '../utils/style-resolver';
 
 /** Axis-aligned bounding box */
 export interface Bounds {
@@ -225,7 +227,7 @@ export class Quadtree {
    * Rebuild the quadtree from a list of entities.
    * Call this on bulk changes (initial load, paste, etc.)
    */
-  rebuild(entities: Entity[]): void {
+  rebuild(entities: Entity[], socketLayout?: ResolvedSocketLayout): void {
     this.clear();
 
     // Compute world bounds from all entities
@@ -239,12 +241,11 @@ export class Quadtree {
     let maxY = -Infinity;
 
     for (const entity of entities) {
-      const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
-      const h = entity.height ?? DEFAULT_ENTITY_HEIGHT;
-      minX = Math.min(minX, entity.position.x);
-      minY = Math.min(minY, entity.position.y);
-      maxX = Math.max(maxX, entity.position.x + w);
-      maxY = Math.max(maxY, entity.position.y + h);
+      const b = getEntityBounds(entity, socketLayout);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.width);
+      maxY = Math.max(maxY, b.y + b.height);
     }
 
     // Add padding to bounds
@@ -258,8 +259,7 @@ export class Quadtree {
 
     // Insert all entities
     for (const entity of entities) {
-      const bounds = getEntityBounds(entity);
-      this.insert(entity.id, bounds);
+      this.insert(entity.id, getEntityBounds(entity, socketLayout));
     }
   }
 
@@ -298,13 +298,13 @@ export class Quadtree {
    * Uses large fixed bounds so expansion is rarely needed.
    * O(k log n) where k = number of entities to add
    */
-  incrementalAdd(entities: Entity[]): void {
+  incrementalAdd(entities: Entity[], socketLayout?: ResolvedSocketLayout): void {
     if (entities.length === 0) return;
 
     // Fast path: insert new entities individually
     // Our initial bounds are large (-10000 to 10000) so most entities will fit
     for (const entity of entities) {
-      this.insert(entity.id, getEntityBounds(entity));
+      this.insert(entity.id, getEntityBounds(entity, socketLayout));
     }
   }
 
@@ -392,13 +392,21 @@ export class Quadtree {
 
 /**
  * Get bounding box for an entity.
+ * When socketLayout is provided, uses the computed height from socket layout cache
+ * instead of DEFAULT_ENTITY_HEIGHT. This ensures hit testing bounds match rendered bounds.
  */
-export function getEntityBounds(entity: Entity): Bounds {
+export function getEntityBounds(entity: Entity, socketLayout?: ResolvedSocketLayout): Bounds {
+  let height = entity.height;
+  if (height == null) {
+    height = socketLayout
+      ? getEntitySocketLayout(entity, socketLayout).computedHeight
+      : DEFAULT_ENTITY_HEIGHT;
+  }
   return {
     x: entity.position.x,
     y: entity.position.y,
     width: entity.width ?? DEFAULT_ENTITY_WIDTH,
-    height: entity.height ?? DEFAULT_ENTITY_HEIGHT,
+    height,
   };
 }
 
