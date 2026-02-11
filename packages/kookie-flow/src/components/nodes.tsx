@@ -34,8 +34,8 @@ const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 256;
 
 // Render order constants for z-index layering across components
-const RENDER_ORDER_BG = 2; // Non-selected entities
-const RENDER_ORDER_FG = 5; // Selected entities (above selected sockets/edges)
+const RENDER_ORDER_BG = 1; // Non-selected entities
+const RENDER_ORDER_FG = 4; // Selected entities (above selected edges)
 
 interface InstanceBuffers {
   sizes: Float32Array;

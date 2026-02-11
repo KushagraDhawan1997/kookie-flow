@@ -22,8 +22,8 @@ const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 512;
 
 // Render order constants for z-index layering across components
-const RENDER_ORDER_BG = 1; // Non-selected sockets
-const RENDER_ORDER_FG = 4; // Selected sockets (above non-selected entities)
+const RENDER_ORDER_BG = 2; // Non-selected sockets (above non-selected entities)
+const RENDER_ORDER_FG = 5; // Selected sockets (above selected entities)
 
 interface SocketBuffers {
   colors: Float32Array;
