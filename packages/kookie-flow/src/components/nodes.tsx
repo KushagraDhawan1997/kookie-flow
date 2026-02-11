@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
-import type { Entity, EntityStatus } from '../types';
+import type { EntityStatus } from '../types';
 
 // Status enum encoding for GPU (matches aStatus attribute)
 const STATUS_NONE = 0;
@@ -33,8 +33,56 @@ const tempMatrix = new THREE.Matrix4();
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 256;
 
+// Render order constants for z-index layering across components
+const RENDER_ORDER_BG = 2; // Non-selected entities
+const RENDER_ORDER_FG = 5; // Selected entities (above selected sockets/edges)
+
+interface InstanceBuffers {
+  sizes: Float32Array;
+  accentColor: Float32Array;
+  status: Float32Array;
+  sizeAttr: THREE.InstancedBufferAttribute | null;
+  accentColorAttr: THREE.InstancedBufferAttribute | null;
+  statusAttr: THREE.InstancedBufferAttribute | null;
+}
+
+function createBuffers(capacity: number): InstanceBuffers {
+  return {
+    sizes: new Float32Array(capacity * 2),
+    accentColor: new Float32Array(capacity * 3),
+    status: new Float32Array(capacity),
+    sizeAttr: null,
+    accentColorAttr: null,
+    statusAttr: null,
+  };
+}
+
+function initMeshBuffers(mesh: THREE.InstancedMesh, bufs: InstanceBuffers) {
+  bufs.sizeAttr = new THREE.InstancedBufferAttribute(bufs.sizes, 2);
+  bufs.sizeAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.accentColorAttr = new THREE.InstancedBufferAttribute(bufs.accentColor, 3);
+  bufs.accentColorAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.statusAttr = new THREE.InstancedBufferAttribute(bufs.status, 1);
+  bufs.statusAttr.setUsage(THREE.DynamicDrawUsage);
+
+  mesh.geometry.setAttribute('aSize', bufs.sizeAttr);
+  mesh.geometry.setAttribute('aAccentColor', bufs.accentColorAttr);
+  mesh.geometry.setAttribute('aStatus', bufs.statusAttr);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+}
+
+function markBuffersForUpload(bufs: InstanceBuffers) {
+  if (bufs.sizeAttr) bufs.sizeAttr.needsUpdate = true;
+  if (bufs.accentColorAttr) bufs.accentColorAttr.needsUpdate = true;
+  if (bufs.statusAttr) bufs.statusAttr.needsUpdate = true;
+}
+
 /**
  * High-performance instanced mesh renderer for entities.
+ *
+ * Renders two InstancedMeshes (background + foreground) so that selected
+ * entities appear above non-selected sockets and edges via renderOrder.
+ *
  * Key optimizations:
  * - Pre-allocated, reusable buffers (no GC pressure)
  * - Direct GPU buffer updates (bypasses React)
@@ -43,7 +91,8 @@ const MIN_CAPACITY = 256;
  */
 export function Entities() {
   const store = useFlowStoreApi();
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const bgMeshRef = useRef<THREE.InstancedMesh>(null);
+  const fgMeshRef = useRef<THREE.InstancedMesh>(null);
   const resolvedStyle = useResolvedStyle();
   const socketLayout = useSocketLayout();
   const tokens = useTheme();
@@ -58,10 +107,11 @@ export function Entities() {
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
 
-  // Create geometry once
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  // Each mesh needs its own geometry (attributes are per-geometry)
+  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
-  // Create material with resolved style
+  // Create material with resolved style (shared between both meshes)
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
@@ -257,44 +307,23 @@ export function Entities() {
     });
   }, [resolvedStyle]);
 
-  // Buffers created with current capacity - recreated when capacity changes
-  const buffers = useMemo(() => ({
-    sizes: new Float32Array(capacity * 2),
-    accentColor: new Float32Array(capacity * 3), // Per-entity accent color (RGB)
-    status: new Float32Array(capacity), // Per-entity status (0=none, 1=error, 2=warning, 3=running, 4=success)
-    sizeAttr: null as THREE.InstancedBufferAttribute | null,
-    accentColorAttr: null as THREE.InstancedBufferAttribute | null,
-    statusAttr: null as THREE.InstancedBufferAttribute | null,
-  }), [capacity]);
+  // Buffers for background (non-selected) and foreground (selected) meshes
+  const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
+  const fgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
 
-  // Reset initialized flag when buffers change (mesh will be recreated due to key change)
-  // This prevents useFrame from running before attributes are set up
+  // Reset initialized flag when capacity changes (meshes will be recreated via key)
   useEffect(() => {
     initializedRef.current = false;
-  }, [buffers]);
+  }, [capacity]);
 
-  // Initialize attributes when mesh is ready or capacity changes
+  // Initialize attributes when meshes are ready
   useEffect(() => {
-    if (!meshRef.current) return;
-
-    const mesh = meshRef.current;
-
-    // Create attributes with DynamicDrawUsage for frequent updates
-    buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.sizes, 2);
-    buffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.accentColorAttr = new THREE.InstancedBufferAttribute(buffers.accentColor, 3);
-    buffers.accentColorAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.statusAttr = new THREE.InstancedBufferAttribute(buffers.status, 1);
-    buffers.statusAttr.setUsage(THREE.DynamicDrawUsage);
-
-    mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
-    mesh.geometry.setAttribute('aAccentColor', buffers.accentColorAttr);
-    mesh.geometry.setAttribute('aStatus', buffers.statusAttr);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
+    if (!bgMeshRef.current || !fgMeshRef.current) return;
+    initMeshBuffers(bgMeshRef.current, bgBuffers);
+    initMeshBuffers(fgMeshRef.current, fgBuffers);
     initializedRef.current = true;
     dirtyRef.current = true;
-  }, [buffers]);
+  }, [bgBuffers, fgBuffers]);
 
   // Subscribe to store changes
   useEffect(() => {
@@ -317,7 +346,7 @@ export function Entities() {
       (state) => state.hiddenEntityIds,
       () => { dirtyRef.current = true; }
     );
-    // Subscribe to selection changes so selected entities render on top
+    // Subscribe to selection changes so selected entities render in foreground mesh
     const unsubSelection = store.subscribe(
       (state) => state.selectedEntityIds,
       () => { dirtyRef.current = true; }
@@ -336,9 +365,10 @@ export function Entities() {
 
   // Use R3F's useFrame for RAF-synchronized updates
   useFrame(({ size, clock }) => {
-    const mesh = meshRef.current;
+    const bgMesh = bgMeshRef.current;
+    const fgMesh = fgMeshRef.current;
 
-    if (!mesh || !initializedRef.current) return;
+    if (!bgMesh || !fgMesh || !initializedRef.current) return;
 
     // Always update time uniform for animated statuses
     if (hasAnimatedStatusRef.current) {
@@ -349,7 +379,8 @@ export function Entities() {
 
     const { entities, viewport, hiddenEntityIds, selectedEntityIds } = store.getState();
     if (entities.length === 0) {
-      mesh.count = 0;
+      bgMesh.count = 0;
+      fgMesh.count = 0;
       dirtyRef.current = false;
       return;
     }
@@ -364,18 +395,18 @@ export function Entities() {
     // Padding for entities partially in view
     const cullPadding = 300;
 
-    let visibleCount = 0;
-    const maxVisible = capacity;
+    let bgCount = 0;
+    let fgCount = 0;
+    let hasAnimated = false;
 
-    // Write a single entity's instance data. Returns false when buffer is full.
-    const writeEntity = (entity: Entity) => {
-      if (visibleCount >= maxVisible) return false;
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
 
       // Skip special entity types (handled by separate renderers)
-      if (entity.type === 'comment' || entity.type === 'reroute') return true;
+      if (entity.type === 'comment' || entity.type === 'reroute') continue;
 
       // Skip entities inside collapsed frames - O(1) lookup
-      if (hiddenEntityIds.has(entity.id)) return true;
+      if (hiddenEntityIds.has(entity.id)) continue;
 
       const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
       const entityLayout = getEntitySocketLayout(entity, socketLayout);
@@ -390,7 +421,15 @@ export function Entities() {
         entity.position.x > viewRight + cullPadding ||
         entityBottom < viewTop - cullPadding ||
         entity.position.y > viewBottom + cullPadding
-      ) return true;
+      ) continue;
+
+      // Route to foreground (selected) or background (non-selected) mesh
+      const isSelected = selectedEntityIds.has(entity.id);
+      const mesh = isSelected ? fgMesh : bgMesh;
+      const bufs = isSelected ? fgBuffers : bgBuffers;
+      const idx = isSelected ? fgCount : bgCount;
+
+      if (idx >= capacity) continue;
 
       // Update matrix for visible entity
       tempMatrix.identity();
@@ -399,70 +438,56 @@ export function Entities() {
         -(entity.position.y + height / 2),
         0
       );
-      mesh.setMatrixAt(visibleCount, tempMatrix);
+      mesh.setMatrixAt(idx, tempMatrix);
 
       // Update attributes
-      buffers.sizes[visibleCount * 2] = width;
-      buffers.sizes[visibleCount * 2 + 1] = height;
+      bufs.sizes[idx * 2] = width;
+      bufs.sizes[idx * 2 + 1] = height;
 
       const accentRGB = resolveAccentColorRGB(entity.color, tokens);
-      buffers.accentColor[visibleCount * 3] = accentRGB[0];
-      buffers.accentColor[visibleCount * 3 + 1] = accentRGB[1];
-      buffers.accentColor[visibleCount * 3 + 2] = accentRGB[2];
+      bufs.accentColor[idx * 3] = accentRGB[0];
+      bufs.accentColor[idx * 3 + 1] = accentRGB[1];
+      bufs.accentColor[idx * 3 + 2] = accentRGB[2];
 
-      buffers.status[visibleCount] = encodeStatus(entity.data?.status);
+      const status = encodeStatus(entity.data?.status);
+      bufs.status[idx] = status;
+      if (status > 2.5) hasAnimated = true;
 
-      visibleCount++;
-      return true;
-    };
-
-    // Pass 1: Non-selected entities (rendered behind)
-    for (let i = 0; i < entities.length; i++) {
-      if (selectedEntityIds.has(entities[i].id)) continue;
-      if (!writeEntity(entities[i])) break;
+      if (isSelected) fgCount++;
+      else bgCount++;
     }
 
-    // Pass 2: Selected entities (rendered on top)
-    if (selectedEntityIds.size > 0) {
-      for (let i = 0; i < entities.length; i++) {
-        if (!selectedEntityIds.has(entities[i].id)) continue;
-        if (!writeEntity(entities[i])) break;
-      }
-    }
-
-    // Update instance matrix
-    mesh.instanceMatrix.needsUpdate = true;
-
-    // Update attributes
-    if (buffers.sizeAttr && buffers.accentColorAttr && buffers.statusAttr) {
-      buffers.sizeAttr.needsUpdate = true;
-      buffers.accentColorAttr.needsUpdate = true;
-      buffers.statusAttr.needsUpdate = true;
-    }
-
-    // Check if any visible entity has animated status
-    let hasAnimated = false;
-    for (let j = 0; j < visibleCount; j++) {
-      const s = buffers.status[j];
-      if (s > 2.5) { // running (3) or success (4)
-        hasAnimated = true;
-        break;
-      }
-    }
     hasAnimatedStatusRef.current = hasAnimated;
 
+    // Update GPU buffers for both meshes
+    bgMesh.instanceMatrix.needsUpdate = true;
+    fgMesh.instanceMatrix.needsUpdate = true;
+    markBuffersForUpload(bgBuffers);
+    markBuffersForUpload(fgBuffers);
+
     // Safety: never exceed buffer capacity to prevent WebGL errors
-    mesh.count = Math.min(visibleCount, capacity);
+    bgMesh.count = Math.min(bgCount, capacity);
+    fgMesh.count = Math.min(fgCount, capacity);
     dirtyRef.current = false;
   });
 
-  // Key forces remount when capacity changes to get a new InstancedMesh
+  // Key forces remount when capacity changes to get new InstancedMeshes
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-    />
+    <>
+      <instancedMesh
+        key={`bg-${capacity}`}
+        ref={bgMeshRef}
+        args={[bgGeometry, material, capacity]}
+        renderOrder={RENDER_ORDER_BG}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        key={`fg-${capacity}`}
+        ref={fgMeshRef}
+        args={[fgGeometry, material, capacity]}
+        renderOrder={RENDER_ORDER_FG}
+        frustumCulled={false}
+      />
+    </>
   );
 }

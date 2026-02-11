@@ -13,13 +13,73 @@ import {
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
-import type { SocketType } from '../types';
+import type { Entity, SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
 
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 512;
+
+// Render order constants for z-index layering across components
+const RENDER_ORDER_BG = 1; // Non-selected sockets
+const RENDER_ORDER_FG = 4; // Selected sockets (above non-selected entities)
+
+interface SocketBuffers {
+  colors: Float32Array;
+  hovered: Float32Array;
+  connected: Float32Array;
+  validTarget: Float32Array;
+  invalidHover: Float32Array;
+  colorAttr: THREE.InstancedBufferAttribute | null;
+  hoveredAttr: THREE.InstancedBufferAttribute | null;
+  connectedAttr: THREE.InstancedBufferAttribute | null;
+  validTargetAttr: THREE.InstancedBufferAttribute | null;
+  invalidHoverAttr: THREE.InstancedBufferAttribute | null;
+}
+
+function createSocketBuffers(capacity: number): SocketBuffers {
+  return {
+    colors: new Float32Array(capacity * 3),
+    hovered: new Float32Array(capacity),
+    connected: new Float32Array(capacity),
+    validTarget: new Float32Array(capacity),
+    invalidHover: new Float32Array(capacity),
+    colorAttr: null,
+    hoveredAttr: null,
+    connectedAttr: null,
+    validTargetAttr: null,
+    invalidHoverAttr: null,
+  };
+}
+
+function initSocketMesh(mesh: THREE.InstancedMesh, bufs: SocketBuffers) {
+  bufs.colorAttr = new THREE.InstancedBufferAttribute(bufs.colors, 3);
+  bufs.colorAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.hoveredAttr = new THREE.InstancedBufferAttribute(bufs.hovered, 1);
+  bufs.hoveredAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.connectedAttr = new THREE.InstancedBufferAttribute(bufs.connected, 1);
+  bufs.connectedAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.validTargetAttr = new THREE.InstancedBufferAttribute(bufs.validTarget, 1);
+  bufs.validTargetAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.invalidHoverAttr = new THREE.InstancedBufferAttribute(bufs.invalidHover, 1);
+  bufs.invalidHoverAttr.setUsage(THREE.DynamicDrawUsage);
+
+  mesh.geometry.setAttribute('aColor', bufs.colorAttr);
+  mesh.geometry.setAttribute('aHovered', bufs.hoveredAttr);
+  mesh.geometry.setAttribute('aConnected', bufs.connectedAttr);
+  mesh.geometry.setAttribute('aValidTarget', bufs.validTargetAttr);
+  mesh.geometry.setAttribute('aInvalidHover', bufs.invalidHoverAttr);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+}
+
+function markSocketBuffersForUpload(bufs: SocketBuffers) {
+  if (bufs.colorAttr) bufs.colorAttr.needsUpdate = true;
+  if (bufs.hoveredAttr) bufs.hoveredAttr.needsUpdate = true;
+  if (bufs.connectedAttr) bufs.connectedAttr.needsUpdate = true;
+  if (bufs.validTargetAttr) bufs.validTargetAttr.needsUpdate = true;
+  if (bufs.invalidHoverAttr) bufs.invalidHoverAttr.needsUpdate = true;
+}
 
 interface SocketsProps {
   socketTypes?: Record<string, SocketType>;
@@ -31,7 +91,8 @@ export function Sockets({
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const bgMeshRef = useRef<THREE.InstancedMesh>(null);
+  const fgMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
@@ -39,8 +100,9 @@ export function Sockets({
   const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
 
-  // Reverse index: entityId → { instanceStart, instanceCount } for O(K) position updates
-  const entitySocketRangesRef = useRef<Map<string, { start: number; count: number }>>(new Map());
+  // Reverse index: entityId → { mesh: 'bg'|'fg', instanceStart, instanceCount }
+  // for O(K) position updates
+  const entitySocketRangesRef = useRef<Map<string, { mesh: 'bg' | 'fg'; start: number; count: number }>>(new Map());
 
   // Derive colors from semantic theme config
   const invalidColor = tokens[THEME_COLORS.socket.invalid];
@@ -68,10 +130,11 @@ export function Sockets({
     dirtyRef.current = true;
   }, [invalidColor, validTargetColor, fallbackSocketColor]);
 
-  // Circle geometry
-  const geometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
+  // Circle geometry — separate per mesh (attributes are per-geometry)
+  const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
+  const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
-  // Shader material for socket rendering
+  // Shader material for socket rendering (shared between both meshes)
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -155,22 +218,9 @@ export function Sockets({
     [invalidColor, validTargetColor]
   );
 
-  // Pre-allocated buffers
-  const buffers = useMemo(
-    () => ({
-      colors: new Float32Array(capacity * 3),
-      hovered: new Float32Array(capacity),
-      connected: new Float32Array(capacity),
-      validTarget: new Float32Array(capacity),
-      invalidHover: new Float32Array(capacity),
-      colorAttr: null as THREE.InstancedBufferAttribute | null,
-      hoveredAttr: null as THREE.InstancedBufferAttribute | null,
-      connectedAttr: null as THREE.InstancedBufferAttribute | null,
-      validTargetAttr: null as THREE.InstancedBufferAttribute | null,
-      invalidHoverAttr: null as THREE.InstancedBufferAttribute | null,
-    }),
-    [capacity]
-  );
+  // Buffer sets for bg (non-selected entities) and fg (selected entities)
+  const bgBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
+  const fgBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
 
   // Cleanup RAF on unmount
   useEffect(() => {
@@ -182,41 +232,19 @@ export function Sockets({
     };
   }, []);
 
+  // Reset initialized flag on capacity change
+  useEffect(() => {
+    initializedRef.current = false;
+  }, [capacity]);
+
   // Initialize attributes
   useEffect(() => {
-    if (!meshRef.current) return;
-    const mesh = meshRef.current;
-
-    buffers.colorAttr = new THREE.InstancedBufferAttribute(buffers.colors, 3);
-    buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.hoveredAttr = new THREE.InstancedBufferAttribute(buffers.hovered, 1);
-    buffers.hoveredAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.connectedAttr = new THREE.InstancedBufferAttribute(
-      buffers.connected,
-      1
-    );
-    buffers.connectedAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.validTargetAttr = new THREE.InstancedBufferAttribute(
-      buffers.validTarget,
-      1
-    );
-    buffers.validTargetAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.invalidHoverAttr = new THREE.InstancedBufferAttribute(
-      buffers.invalidHover,
-      1
-    );
-    buffers.invalidHoverAttr.setUsage(THREE.DynamicDrawUsage);
-
-    mesh.geometry.setAttribute('aColor', buffers.colorAttr);
-    mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
-    mesh.geometry.setAttribute('aConnected', buffers.connectedAttr);
-    mesh.geometry.setAttribute('aValidTarget', buffers.validTargetAttr);
-    mesh.geometry.setAttribute('aInvalidHover', buffers.invalidHoverAttr);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
+    if (!bgMeshRef.current || !fgMeshRef.current) return;
+    initSocketMesh(bgMeshRef.current, bgBuffers);
+    initSocketMesh(fgMeshRef.current, fgBuffers);
     initializedRef.current = true;
     dirtyRef.current = true;
-  }, [buffers]);
+  }, [bgBuffers, fgBuffers]);
 
   // Store subscriptions
   useEffect(() => {
@@ -265,6 +293,13 @@ export function Sockets({
         dirtyRef.current = true;
       }
     );
+    // Selection changes require full rebuild (sockets move between bg/fg meshes)
+    const unsubSelection = store.subscribe(
+      (state) => state.selectedEntityIds,
+      () => {
+        dirtyRef.current = true;
+      }
+    );
 
     // Initialize connected sockets from current edges
     const { edges: initialEdges } = store.getState();
@@ -282,13 +317,146 @@ export function Sockets({
       unsubHoveredSocket();
       unsubConnectionDraft();
       unsubEdges();
+      unsubSelection();
     };
   }, [store]);
 
+  // Helper: write all sockets for one entity into the target mesh/buffers
+  const writeEntitySockets = (
+    entity: Entity,
+    mesh: THREE.InstancedMesh,
+    bufs: SocketBuffers,
+    startIdx: number,
+    hoveredSocketId: { entityId: string; socketId: string; isInput: boolean } | null,
+    connectionDraft: { source: { entityId: string; socketId: string; isInput: boolean } } | null,
+    sourceSocketType: string | null,
+    connectedSockets: Set<string>,
+  ): number => {
+    let idx = startIdx;
+    const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+    const entityLayout = getEntitySocketLayout(entity, socketLayout);
+    const height = entity.height ?? entityLayout.computedHeight;
+
+    // Render input sockets
+    if (entity.inputs) {
+      for (let i = 0; i < entity.inputs.length; i++) {
+        if (idx >= capacity) break;
+
+        const socket = entity.inputs[i];
+        const cachedPos = entityLayout.inputs[i];
+        const yOffset =
+          socket.position !== undefined
+            ? socket.position * height
+            : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+
+        tempMatrix.identity();
+        tempMatrix.setPosition(
+          entity.position.x,
+          -(entity.position.y + yOffset),
+          0.5
+        );
+        mesh.setMatrixAt(idx, tempMatrix);
+
+        const typeConfig =
+          socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
+        tempColor.set(typeConfig.color);
+        bufs.colors[idx * 3] = tempColor.r;
+        bufs.colors[idx * 3 + 1] = tempColor.g;
+        bufs.colors[idx * 3 + 2] = tempColor.b;
+
+        const isHovered =
+          hoveredSocketId?.entityId === entity.id &&
+          hoveredSocketId?.socketId === socket.id &&
+          hoveredSocketId?.isInput === true;
+        bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
+
+        const socketKey = `${entity.id}:${socket.id}:input`;
+        bufs.connected[idx] = connectedSockets.has(socketKey) ? 1.0 : 0.0;
+
+        let isValidTarget = 0.0;
+        if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
+          const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
+          const isTypeCompatible = areTypesCompatible(
+            sourceSocketType,
+            socket.type,
+            socketTypes
+          );
+          isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
+        }
+        bufs.validTarget[idx] = isValidTarget;
+
+        const isInvalidHover =
+          isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
+        bufs.invalidHover[idx] = isInvalidHover;
+
+        idx++;
+      }
+    }
+
+    // Render output sockets
+    if (entity.outputs) {
+      for (let i = 0; i < entity.outputs.length; i++) {
+        if (idx >= capacity) break;
+
+        const socket = entity.outputs[i];
+        const cachedPos = entityLayout.outputs[i];
+        const yOffset =
+          socket.position !== undefined
+            ? socket.position * height
+            : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+
+        tempMatrix.identity();
+        tempMatrix.setPosition(
+          entity.position.x + width,
+          -(entity.position.y + yOffset),
+          0.5
+        );
+        mesh.setMatrixAt(idx, tempMatrix);
+
+        const typeConfig =
+          socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
+        tempColor.set(typeConfig.color);
+        bufs.colors[idx * 3] = tempColor.r;
+        bufs.colors[idx * 3 + 1] = tempColor.g;
+        bufs.colors[idx * 3 + 2] = tempColor.b;
+
+        const isHovered =
+          hoveredSocketId?.entityId === entity.id &&
+          hoveredSocketId?.socketId === socket.id &&
+          hoveredSocketId?.isInput === false;
+        bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
+
+        const socketKey = `${entity.id}:${socket.id}:output`;
+        bufs.connected[idx] = connectedSockets.has(socketKey) ? 1.0 : 0.0;
+
+        let isValidTarget = 0.0;
+        if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
+          const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
+          const isTypeCompatible = areTypesCompatible(
+            sourceSocketType,
+            socket.type,
+            socketTypes
+          );
+          isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
+        }
+        bufs.validTarget[idx] = isValidTarget;
+
+        const isInvalidHover =
+          isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
+        bufs.invalidHover[idx] = isInvalidHover;
+
+        idx++;
+      }
+    }
+
+    return idx;
+  };
+
   // RAF-synchronized updates
   useFrame(({ size }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current) return;
+    const bgMesh = bgMeshRef.current;
+    const fgMesh = fgMeshRef.current;
+    if (!bgMesh || !fgMesh || !initializedRef.current) return;
 
     // Mark dirty on canvas resize (prevents ghosting)
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -313,6 +481,7 @@ export function Sockets({
           const entity = entityMap.get(entityId);
           if (!entity) continue;
 
+          const mesh = range.mesh === 'fg' ? fgMesh : bgMesh;
           const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
           const height = entity.height ?? entityLayout.computedHeight;
@@ -356,7 +525,8 @@ export function Sockets({
           }
         }
 
-        mesh.instanceMatrix.needsUpdate = true;
+        bgMesh.instanceMatrix.needsUpdate = true;
+        fgMesh.instanceMatrix.needsUpdate = true;
       }
 
       positionDirtyRef.current = false;
@@ -365,7 +535,7 @@ export function Sockets({
 
     if (!dirtyRef.current) return;
 
-    const { entities, entityMap, hoveredSocketId, connectionDraft } =
+    const { entities, entityMap, hoveredSocketId, connectionDraft, selectedEntityIds } =
       store.getState();
 
     // Use cached connected sockets Set (rebuilt only when edges change)
@@ -376,10 +546,8 @@ export function Sockets({
     if (connectionDraft) {
       const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
       if (sourceSocketCacheRef.current?.key === cacheKey) {
-        // Cache hit - O(1)
         sourceSocketType = sourceSocketCacheRef.current.type;
       } else {
-        // Cache miss - O(n) but only once per connection draft
         const sourceEntity = entityMap.get(connectionDraft.source.entityId);
         if (sourceEntity) {
           const sourceSockets = connectionDraft.source.isInput
@@ -395,167 +563,43 @@ export function Sockets({
         }
       }
     } else {
-      // Clear cache when no connection draft
       sourceSocketCacheRef.current = null;
     }
 
-    // Note: CPU-side frustum culling removed - GPU handles clipping efficiently
-    // This allows zoom/pan without geometry rebuilds
-
-    let visibleCount = 0;
+    let bgCount = 0;
+    let fgCount = 0;
     const socketRanges = entitySocketRangesRef.current;
     socketRanges.clear();
 
     for (const entity of entities) {
-      const entitySocketStart = visibleCount;
-      const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-      // Get cached socket layout (supports variable heights)
-      const entityLayout = getEntitySocketLayout(entity, socketLayout);
-      const height = entity.height ?? entityLayout.computedHeight;
+      const isSelected = selectedEntityIds.has(entity.id);
+      const mesh = isSelected ? fgMesh : bgMesh;
+      const bufs = isSelected ? fgBuffers : bgBuffers;
+      const startIdx = isSelected ? fgCount : bgCount;
 
-      // Render input sockets (after outputs in layout order)
-      if (entity.inputs) {
-        for (let i = 0; i < entity.inputs.length; i++) {
-          if (visibleCount >= capacity) break;
+      const entitySocketStart = startIdx;
+      const newIdx = writeEntitySockets(
+        entity, mesh, bufs, startIdx,
+        hoveredSocketId, connectionDraft, sourceSocketType, connectedSockets,
+      );
 
-          const socket = entity.inputs[i];
-          // Use cached position (supports variable row heights and stacked layouts)
-          const cachedPos = entityLayout.inputs[i];
-          const yOffset =
-            socket.position !== undefined
-              ? socket.position * height
-              : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+      const socketsWritten = newIdx - startIdx;
+      socketRanges.set(entity.id, {
+        mesh: isSelected ? 'fg' : 'bg',
+        start: entitySocketStart,
+        count: socketsWritten,
+      });
 
-          // Position matrix
-          tempMatrix.identity();
-          tempMatrix.setPosition(
-            entity.position.x,
-            -(entity.position.y + yOffset), // Negate Y for WebGL
-            0.5 // Above edges
-          );
-          mesh.setMatrixAt(visibleCount, tempMatrix);
-
-          // Color from socket type
-          const typeConfig =
-            socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
-          tempColor.set(typeConfig.color);
-          buffers.colors[visibleCount * 3] = tempColor.r;
-          buffers.colors[visibleCount * 3 + 1] = tempColor.g;
-          buffers.colors[visibleCount * 3 + 2] = tempColor.b;
-
-          // Hovered state
-          const isHovered =
-            hoveredSocketId?.entityId === entity.id &&
-            hoveredSocketId?.socketId === socket.id &&
-            hoveredSocketId?.isInput === true;
-          buffers.hovered[visibleCount] = isHovered ? 1.0 : 0.0;
-
-          // Connected state
-          const socketKey = `${entity.id}:${socket.id}:input`;
-          buffers.connected[visibleCount] = connectedSockets.has(socketKey)
-            ? 1.0
-            : 0.0;
-
-          // Valid target (during connection draft from an output)
-          // Fast path: use cached sourceSocketType and areTypesCompatible
-          let isValidTarget = 0.0;
-          if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
-            // Must connect output to input (not same entity)
-            const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
-            const isTypeCompatible = areTypesCompatible(
-              sourceSocketType,
-              socket.type,
-              socketTypes
-            );
-            isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
-          }
-          buffers.validTarget[visibleCount] = isValidTarget;
-
-          // Invalid hover: this socket is hovered AND is NOT a valid target
-          // Reuses the isValidTarget computation (no extra isSocketCompatible call)
-          const isInvalidHover =
-            isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
-          buffers.invalidHover[visibleCount] = isInvalidHover;
-
-          visibleCount++;
-        }
-      }
-
-      // Render output sockets (first in layout order)
-      if (entity.outputs) {
-        for (let i = 0; i < entity.outputs.length; i++) {
-          if (visibleCount >= capacity) break;
-
-          const socket = entity.outputs[i];
-          // Use cached position (supports variable row heights and stacked layouts)
-          const cachedPos = entityLayout.outputs[i];
-          const yOffset =
-            socket.position !== undefined
-              ? socket.position * height
-              : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
-
-          tempMatrix.identity();
-          tempMatrix.setPosition(
-            entity.position.x + width,
-            -(entity.position.y + yOffset),
-            0.5
-          );
-          mesh.setMatrixAt(visibleCount, tempMatrix);
-
-          const typeConfig =
-            socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
-          tempColor.set(typeConfig.color);
-          buffers.colors[visibleCount * 3] = tempColor.r;
-          buffers.colors[visibleCount * 3 + 1] = tempColor.g;
-          buffers.colors[visibleCount * 3 + 2] = tempColor.b;
-
-          const isHovered =
-            hoveredSocketId?.entityId === entity.id &&
-            hoveredSocketId?.socketId === socket.id &&
-            hoveredSocketId?.isInput === false;
-          buffers.hovered[visibleCount] = isHovered ? 1.0 : 0.0;
-
-          const socketKey = `${entity.id}:${socket.id}:output`;
-          buffers.connected[visibleCount] = connectedSockets.has(socketKey)
-            ? 1.0
-            : 0.0;
-
-          // Valid target (during connection draft from an input)
-          // Fast path: use cached sourceSocketType and areTypesCompatible
-          let isValidTarget = 0.0;
-          if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
-            // Must connect input to output (not same entity)
-            const isStructurallyValid = connectionDraft.source.entityId !== entity.id;
-            const isTypeCompatible = areTypesCompatible(
-              sourceSocketType,
-              socket.type,
-              socketTypes
-            );
-            isValidTarget = isStructurallyValid && isTypeCompatible ? 1.0 : 0.0;
-          }
-          buffers.validTarget[visibleCount] = isValidTarget;
-
-          // Invalid hover: this socket is hovered AND is NOT a valid target
-          // Reuses the isValidTarget computation (no extra isSocketCompatible call)
-          const isInvalidHover =
-            isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
-          buffers.invalidHover[visibleCount] = isInvalidHover;
-
-          visibleCount++;
-        }
-      }
-
-      // Record entity → socket instance range for O(K) position updates
-      socketRanges.set(entity.id, { start: entitySocketStart, count: visibleCount - entitySocketStart });
+      if (isSelected) fgCount = newIdx;
+      else bgCount = newIdx;
     }
 
     // Check capacity - defer state update to avoid React re-render inside useFrame
-    // Schedule RAF only when needed (not a continuous loop)
-    if (visibleCount >= capacity) {
-      const newCapacity = Math.ceil(visibleCount * BUFFER_GROWTH_FACTOR);
+    const totalCount = bgCount + fgCount;
+    if (totalCount >= capacity) {
+      const newCapacity = Math.ceil(totalCount * BUFFER_GROWTH_FACTOR);
       if (pendingCapacityRef.current === null || newCapacity > pendingCapacityRef.current) {
         pendingCapacityRef.current = newCapacity;
-        // Schedule RAF to apply the capacity update (if not already scheduled)
         if (capacityRafIdRef.current === null) {
           capacityRafIdRef.current = requestAnimationFrame(() => {
             capacityRafIdRef.current = null;
@@ -568,26 +612,34 @@ export function Sockets({
       }
     }
 
-    // Update GPU buffers
-    mesh.instanceMatrix.needsUpdate = true;
-    if (buffers.colorAttr) buffers.colorAttr.needsUpdate = true;
-    if (buffers.hoveredAttr) buffers.hoveredAttr.needsUpdate = true;
-    if (buffers.connectedAttr) buffers.connectedAttr.needsUpdate = true;
-    if (buffers.validTargetAttr) buffers.validTargetAttr.needsUpdate = true;
-    if (buffers.invalidHoverAttr) buffers.invalidHoverAttr.needsUpdate = true;
+    // Update GPU buffers for both meshes
+    bgMesh.instanceMatrix.needsUpdate = true;
+    fgMesh.instanceMatrix.needsUpdate = true;
+    markSocketBuffersForUpload(bgBuffers);
+    markSocketBuffersForUpload(fgBuffers);
 
-    // Safety: never exceed buffer capacity to prevent WebGL errors
-    mesh.count = Math.min(visibleCount, capacity);
+    bgMesh.count = Math.min(bgCount, capacity);
+    fgMesh.count = Math.min(fgCount, capacity);
     dirtyRef.current = false;
     positionDirtyRef.current = false;
   });
 
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-    />
+    <>
+      <instancedMesh
+        key={`bg-${capacity}`}
+        ref={bgMeshRef}
+        args={[bgGeometry, material, capacity]}
+        renderOrder={RENDER_ORDER_BG}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        key={`fg-${capacity}`}
+        ref={fgMeshRef}
+        args={[fgGeometry, material, capacity]}
+        renderOrder={RENDER_ORDER_FG}
+        frustumCulled={false}
+      />
+    </>
   );
 }

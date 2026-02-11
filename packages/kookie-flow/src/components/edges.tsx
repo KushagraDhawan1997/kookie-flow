@@ -112,20 +112,27 @@ export function Edges({
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
-  const meshRef = useRef<THREE.Mesh>(null);
+  const bgMeshRef = useRef<THREE.Mesh>(null);
+  const fgMeshRef = useRef<THREE.Mesh>(null);
 
-  // Pre-allocated buffers
+  // Render order constants for z-index layering across components
+  const RENDER_ORDER_BG = 0; // Non-selected edges
+  const RENDER_ORDER_FG = 3; // Selected edges (above non-selected entities)
+
+  // Pre-allocated buffers (shared between bg/fg meshes via draw ranges)
   const buffersRef = useRef<{
     capacity: number;
     positions: Float32Array;
     uvs: Float32Array;
     colors: Float32Array;
     perpendiculars: Float32Array;
+    // Attributes (shared between bg/fg geometries — same GPU buffer, different draw ranges)
     positionAttr: THREE.BufferAttribute | null;
     uvAttr: THREE.BufferAttribute | null;
     colorAttr: THREE.BufferAttribute | null;
     perpAttr: THREE.BufferAttribute | null;
     lastVertexCount: number;
+    bgVertexCount: number; // split point between bg and fg in shared buffer
     // Pre-allocated points buffer for curve tessellation (avoids GC in hot path)
     points: Float32Array;
   }>({
@@ -139,6 +146,7 @@ export function Edges({
     colorAttr: null,
     perpAttr: null,
     lastVertexCount: 0,
+    bgVertexCount: 0,
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
@@ -223,7 +231,7 @@ export function Edges({
   }, []);
 
   // Ensure buffer capacity
-  const ensureCapacity = (neededEdges: number, mesh: THREE.Mesh): boolean => {
+  const ensureCapacity = (neededEdges: number): boolean => {
     const buffers = buffersRef.current;
     if (neededEdges <= buffers.capacity) return false;
 
@@ -261,20 +269,24 @@ export function Edges({
     buffers.perpAttr = new THREE.BufferAttribute(newPerpendiculars, 2);
     buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
 
-    mesh.geometry.setAttribute('position', buffers.positionAttr);
-    mesh.geometry.setAttribute('uv2', buffers.uvAttr);
-    mesh.geometry.setAttribute('aColor', buffers.colorAttr);
-    mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+    // Set shared attributes on both geometries
+    for (const ref of [bgMeshRef, fgMeshRef]) {
+      if (ref.current) {
+        ref.current.geometry.setAttribute('position', buffers.positionAttr);
+        ref.current.geometry.setAttribute('uv2', buffers.uvAttr);
+        ref.current.geometry.setAttribute('aColor', buffers.colorAttr);
+        ref.current.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+      }
+    }
 
     return true;
   };
 
   // Initialize and subscribe
   useEffect(() => {
-    if (!meshRef.current) return;
+    if (!bgMeshRef.current || !fgMeshRef.current) return;
 
     const buffers = buffersRef.current;
-    const mesh = meshRef.current;
 
     // Create initial attributes
     buffers.positionAttr = new THREE.BufferAttribute(buffers.positions, 3);
@@ -286,10 +298,13 @@ export function Edges({
     buffers.perpAttr = new THREE.BufferAttribute(buffers.perpendiculars, 2);
     buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
 
-    mesh.geometry.setAttribute('position', buffers.positionAttr);
-    mesh.geometry.setAttribute('uv2', buffers.uvAttr);
-    mesh.geometry.setAttribute('aColor', buffers.colorAttr);
-    mesh.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+    // Set shared attributes on both geometries
+    for (const ref of [bgMeshRef, fgMeshRef]) {
+      ref.current!.geometry.setAttribute('position', buffers.positionAttr);
+      ref.current!.geometry.setAttribute('uv2', buffers.uvAttr);
+      ref.current!.geometry.setAttribute('aColor', buffers.colorAttr);
+      ref.current!.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+    }
 
     // Helper to rebuild socket index map (only called on add/remove, not position changes)
     const rebuildSocketIndexMap = (entities: Entity[]) => {
@@ -345,6 +360,14 @@ export function Edges({
         colorDirtyRef.current = true;
       }
     );
+    // Entity selection changes require geometry rebuild (edges move between bg/fg layers)
+    const unsubEntitySelection = store.subscribe(
+      (state) => state.selectedEntityIds,
+      () => {
+        geometryDirtyRef.current = true;
+        colorDirtyRef.current = true;
+      }
+    );
 
     // Initialize entityMap ref and socket index map
     const { entities, entityMap } = store.getState();
@@ -360,15 +383,16 @@ export function Edges({
       unsubPositions();
       unsubEdges();
       unsubSelection();
+      unsubEntitySelection();
       material.dispose();
     };
   }, [store, material]);
 
   // RAF-synchronized updates
   useFrame(({ size }) => {
-    if (!meshRef.current) return;
+    if (!bgMeshRef.current || !fgMeshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds, positionVersion, entityMap } = store.getState();
+    const { edges, viewport, selectedEdgeIds, selectedEntityIds, positionVersion, entityMap } = store.getState();
     // Always read entityMap from store (not cached ref) because setEntities
     // creates a new Map without changing entities.length, which would leave
     // entityMapRef stale. The store's getState() is synchronous and cheap.
@@ -389,10 +413,10 @@ export function Edges({
 
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
-    const mesh = meshRef.current;
 
     if (edges.length === 0 || entityMap.size === 0) {
-      mesh.geometry.setDrawRange(0, 0);
+      bgMeshRef.current.geometry.setDrawRange(0, 0);
+      fgMeshRef.current.geometry.setDrawRange(0, 0);
       geometryDirtyRef.current = false;
       positionDirtyRef.current = false;
       colorDirtyRef.current = false;
@@ -400,18 +424,20 @@ export function Edges({
     }
 
     // Ensure capacity
-    ensureCapacity(edges.length, mesh);
+    ensureCapacity(edges.length);
 
     // Fast path: color-only update (selection changed but positions didn't)
     // Only update colors without re-tessellating geometry
     if (!geometryDirtyRef.current && !positionDirtyRef.current && colorDirtyRef.current) {
-      // Update colors for all edges based on current selection state
-      let vertexOffset = 0;
+      // Update colors for all edges using recorded vertex layout (works with two-pass ordering)
+      const evStarts = edgeVertexStartsRef.current;
+      const evCounts = edgeVertexCountsRef.current;
+
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
-        const sourceEntity = entityMap.get(edge.source);
-        const targetEntity = entityMap.get(edge.target);
-        if (!sourceEntity || !targetEntity) continue;
+        const vertexStart = evStarts[i];
+        const vertexCount = evCounts[i];
+        if (vertexCount === 0) continue;
 
         // Determine color
         let cr: number, cg: number, cb: number;
@@ -446,30 +472,13 @@ export function Edges({
           }
         }
 
-        // Calculate vertex count for this edge (same logic as tessellation)
-        const edgeType = edge.type ?? defaultEdgeType;
-        const markerStart = normalizeMarker(edge.markerStart);
-        const markerEnd = normalizeMarker(edge.markerEnd);
-        let segmentCount: number;
-        if (edgeType === 'step') {
-          segmentCount = 3;
-        } else if (edgeType === 'straight') {
-          segmentCount = 1;
-        } else {
-          segmentCount = SEGMENTS_PER_EDGE;
-        }
-        let edgeVertexCount = segmentCount * 6; // 6 vertices per segment (2 triangles)
-        if (markerEnd) edgeVertexCount += 3;
-        if (markerStart) edgeVertexCount += 3;
-
         // Update colors for all vertices of this edge
-        for (let v = 0; v < edgeVertexCount; v++) {
-          const colIdx = (vertexOffset + v) * 3;
+        for (let v = 0; v < vertexCount; v++) {
+          const colIdx = (vertexStart + v) * 3;
           buffers.colors[colIdx] = cr;
           buffers.colors[colIdx + 1] = cg;
           buffers.colors[colIdx + 2] = cb;
         }
-        vertexOffset += edgeVertexCount;
       }
 
       // Mark color attribute for update
@@ -523,13 +532,23 @@ export function Edges({
     }
 
     // Full geometry rebuild or partial position update path
+    // Two-pass for full rebuild: non-selected edges first (bg), then selected (fg)
+    // Single pass for partial update: selection stable, use evStarts for positioning
     let vertexIndex = 0;
+    const passes = isPartialUpdate ? 1 : 2;
 
+    for (let pass = 0; pass < passes; pass++) {
     for (let i = 0; i < edges.length; i++) {
-      // O(K) fast skip: non-affected edges during partial update
-      if (affectedEdgeIndices !== null && !affectedEdgeIndices.has(i)) {
-        vertexIndex += evCounts[i];
-        continue;
+      // Two-pass skip: bg edges in pass 0, fg edges in pass 1
+      if (!isPartialUpdate) {
+        const isEdgeFg = selectedEntityIds.has(edges[i].source) || selectedEntityIds.has(edges[i].target);
+        if ((pass === 0) === isEdgeFg) continue;
+      }
+
+      // Partial update: skip non-affected edges, jump to recorded position
+      if (isPartialUpdate) {
+        if (affectedEdgeIndices !== null && !affectedEdgeIndices.has(i)) continue;
+        vertexIndex = evStarts[i];
       }
 
       const edge = edges[i];
@@ -593,7 +612,6 @@ export function Edges({
           // Fallback: compare endpoints when reverse index isn't available
           if (epCache[epBase] === x0 && epCache[epBase + 1] === y0 &&
               epCache[epBase + 2] === x1 && epCache[epBase + 3] === y1) {
-            vertexIndex += evCounts[i];
             continue;
           }
         }
@@ -1063,6 +1081,11 @@ export function Edges({
         dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
       }
     }
+    // Record bg/fg split point after pass 0 (non-selected edges)
+    if (!isPartialUpdate && pass === 0) {
+      buffers.bgVertexCount = vertexIndex;
+    }
+    } // end pass loop
 
     // Build reverse index: entityId → edge array indices (during full rebuild only)
     if (!isPartialUpdate) {
@@ -1104,17 +1127,25 @@ export function Edges({
       }
     }
 
-    // Set draw range
-    mesh.geometry.setDrawRange(0, vertexIndex);
-    buffers.lastVertexCount = vertexIndex;
+    // Set draw ranges on both geometries
+    if (!isPartialUpdate) {
+      bgMeshRef.current!.geometry.setDrawRange(0, buffers.bgVertexCount);
+      fgMeshRef.current!.geometry.setDrawRange(buffers.bgVertexCount, vertexIndex - buffers.bgVertexCount);
+      buffers.lastVertexCount = vertexIndex;
+    }
     geometryDirtyRef.current = false;
     positionDirtyRef.current = false;
     colorDirtyRef.current = false;
   });
 
   return (
-    <mesh ref={meshRef} material={material} frustumCulled={false}>
-      <bufferGeometry />
-    </mesh>
+    <>
+      <mesh ref={bgMeshRef} material={material} frustumCulled={false} renderOrder={RENDER_ORDER_BG}>
+        <bufferGeometry />
+      </mesh>
+      <mesh ref={fgMeshRef} material={material} frustumCulled={false} renderOrder={RENDER_ORDER_FG}>
+        <bufferGeometry />
+      </mesh>
+    </>
   );
 }

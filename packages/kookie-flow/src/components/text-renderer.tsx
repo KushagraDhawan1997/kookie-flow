@@ -193,6 +193,7 @@ function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeigh
       ref={meshRef}
       args={[geometry, material, capacity]}
       frustumCulled={false}
+      renderOrder={6}
     />
   );
 }

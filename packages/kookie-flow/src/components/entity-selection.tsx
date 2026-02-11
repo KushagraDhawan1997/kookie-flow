@@ -524,12 +524,14 @@ export function EntitySelection() {
         ref={outlineMeshRef}
         args={[outlineGeometry, outlineMaterial, outlineCapacity]}
         frustumCulled={false}
+        renderOrder={7}
       />
       <instancedMesh
         key={`handle-${handleCapacity}`}
         ref={handleMeshRef}
         args={[handleGeometry, handleMaterial, handleCapacity]}
         frustumCulled={false}
+        renderOrder={8}
       />
     </>
   );

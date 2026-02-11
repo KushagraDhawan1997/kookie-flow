@@ -153,6 +153,6 @@ export function SelectionBox() {
   });
 
   return (
-    <mesh ref={meshRef} geometry={geometry} material={material} visible={false} />
+    <mesh ref={meshRef} geometry={geometry} material={material} visible={false} renderOrder={9} />
   );
 }
