@@ -68,6 +68,15 @@ export const MIN_FRAME_WIDTH = 100;
 export const MIN_FRAME_HEIGHT = 60;
 export const MIN_COMMENT_WIDTH = 80;
 export const MIN_COMMENT_HEIGHT = 40;
+export const MIN_TEXT_WIDTH = 40;
+export const MIN_TEXT_HEIGHT = 20;
+
+/** Default text entity settings */
+export const DEFAULT_TEXT_WIDTH = 200;
+export const DEFAULT_TEXT_HEIGHT = 40;
+export const DEFAULT_TEXT_FONT_SIZE = 16;
+export const DEFAULT_TEXT_LINE_HEIGHT = 1.5;
+export const DEFAULT_TEXT_PADDING = 4;
 
 /** Selection outline + resize handle settings (screen pixels) */
 export const RESIZE_HANDLE_SIZE = 8;

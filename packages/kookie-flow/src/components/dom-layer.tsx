@@ -8,7 +8,8 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
-import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData } from '../types';
+import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData, EntityChange } from '../types';
+import { TextEditOverlay } from './text-edit-overlay';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
@@ -27,6 +28,8 @@ export interface DOMLayerProps {
   showEdgeLabels?: boolean;
   /** Show comment entities. Default: true */
   showComments?: boolean;
+  /** Callback when entities change (for text editing) */
+  onEntitiesChange?: (changes: EntityChange[]) => void;
   children?: ReactNode;
 }
 
@@ -62,6 +65,7 @@ export function DOMLayer({
   showSocketLabels = true,
   showEdgeLabels = true,
   showComments = true,
+  onEntitiesChange,
   children,
 }: DOMLayerProps) {
   if (scaleTextWithZoom) {
@@ -71,6 +75,7 @@ export function DOMLayer({
         {showSocketLabels && <SocketLabelsContainer />}
         {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
         {showComments && <CommentsContainer />}
+        <TextEditOverlay onEntitiesChange={onEntitiesChange} />
         {children}
       </div>
     );
@@ -82,6 +87,7 @@ export function DOMLayer({
       {showSocketLabels && <SocketLabelsContainer />}
       {showEdgeLabels && <EdgeLabelsContainer defaultEdgeType={defaultEdgeType} />}
       {showComments && <CommentsContainer />}
+      <TextEditOverlay onEntitiesChange={onEntitiesChange} />
       {children}
     </div>
   );

@@ -19,6 +19,8 @@ import { Entities } from './nodes';
 import { Edges } from './edges';
 import { Sockets } from './sockets';
 import { RerouteNodes } from './reroute-nodes';
+import { TextEntities } from './text-entities';
+import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
@@ -42,9 +44,19 @@ import {
   MIN_FRAME_HEIGHT,
   MIN_COMMENT_WIDTH,
   MIN_COMMENT_HEIGHT,
+  MIN_TEXT_WIDTH,
+  MIN_TEXT_HEIGHT,
+  DEFAULT_TEXT_WIDTH,
+  DEFAULT_TEXT_HEIGHT,
   MIN_ZOOM,
   MAX_ZOOM,
 } from '../core/constants';
+import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
+import { useFont } from '../contexts/FontContext';
+import { buildGlyphMap, buildKerningMap, type GlyphMap, type KerningMap } from '../utils/text-layout';
+import { buildCharPositionsForEntity, hitTestCharOffset } from '../utils/text-cursor-layout';
+import { getEditingTextarea } from './text-edit-overlay';
+import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
@@ -342,6 +354,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               showEntityLabels={textRenderMode === 'dom'}
               showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false}
               showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}
+              onEntitiesChange={onEntitiesChange}
             >
               {children}
             </DOMLayer>
@@ -561,6 +574,18 @@ function InputHandler({
   });
   const socketLayout = useSocketLayout();
 
+  // Font data for MSDF text measurement (used in resize handler)
+  const fontContext = useFont();
+  const regularFont = fontContext.regular;
+  const glyphMapRef = useRef<GlyphMap>(new Map());
+  const kerningMapRef = useRef<KerningMap>(new Map());
+  useEffect(() => {
+    if (regularFont) {
+      glyphMapRef.current = buildGlyphMap(regularFont.metrics);
+      kerningMapRef.current = buildKerningMap(regularFont.metrics);
+    }
+  }, [regularFont]);
+
   // Sync socket layout to store so quadtree bounds use correct entity heights
   useEffect(() => {
     store.getState().setSocketLayout(socketLayout);
@@ -593,6 +618,11 @@ function InputHandler({
     clickedEntityId: string;
     cursorOffset: { x: number; y: number }; // cursor position - entity position at click time
   } | null>(null);
+
+  // Double-click detection for text entity editing
+  const lastClickRef = useRef<{ entityId: string; time: number; x: number; y: number } | null>(null);
+  const DOUBLE_CLICK_TIMEOUT = 300; // ms
+  const DOUBLE_CLICK_DISTANCE = 5; // px screen distance
 
   // Auto-scroll state for dragging near viewport edges
   const autoScrollRef = useRef<{
@@ -808,6 +838,8 @@ function InputHandler({
         return { minWidth: MIN_FRAME_WIDTH, minHeight: MIN_FRAME_HEIGHT };
       case 'comment':
         return { minWidth: MIN_COMMENT_WIDTH, minHeight: MIN_COMMENT_HEIGHT };
+      case 'text':
+        return { minWidth: MIN_TEXT_WIDTH, minHeight: MIN_TEXT_HEIGHT };
       default: {
         // Default entities: min height from socket layout
         const layout = getEntitySocketLayout(entity, socketLayout);
@@ -1148,6 +1180,25 @@ function InputHandler({
           const diff = rs.minHeight - newH;
           newH = rs.minHeight;
           if (h === 'n' || h === 'ne' || h === 'nw') newY -= diff;
+        }
+
+        // Text entities: auto-height — recompute height from content after width change
+        const resizedEntity = store.getState().entityMap.get(rs.entityId);
+        if (resizedEntity?.type === 'text') {
+          const data = resizedEntity.data as TextEntityData;
+          const style = resolveTextStyle(data);
+          if (regularFont && glyphMapRef.current.size > 0) {
+            newH = calculateTextAutoHeightMSDF(
+              data.content, style, newW,
+              regularFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
+            );
+          } else {
+            // Fallback: single line height + padding
+            newH = Math.max(
+              style.fontSize * style.lineHeight + 2 * style.padding,
+              style.fontSize * style.lineHeight + 2 * style.padding
+            );
+          }
         }
 
         // Update entity dimensions and position
@@ -1563,6 +1614,77 @@ function InputHandler({
           queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedEntity) {
+          // Click-to-position: if already editing this text entity, reposition cursor
+          const currentEditingId = store.getState().editingEntityId;
+          if (
+            currentEditingId === clickedEntity.id &&
+            clickedEntity.type === 'text' &&
+            regularFont && glyphMapRef.current.size > 0
+          ) {
+            const data = clickedEntity.data as TextEntityData;
+            const content = store.getState().editingContent ?? (data.content ?? '');
+            const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
+            const fontSize = data.fontSize ?? 16;
+            const lineHeightMul = data.lineHeight ?? 1.5;
+            const letterSp = data.letterSpacing ?? 0;
+            const textAlignVal = data.textAlign ?? 'left';
+            const pad = 4; // DEFAULT_TEXT_PADDING
+
+            const table = buildCharPositionsForEntity(
+              content, fontSize, lineHeightMul, textAlignVal,
+              w, pad, clickedEntity.position.x, clickedEntity.position.y,
+              regularFont.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
+            );
+
+            const offset = hitTestCharOffset(
+              clickPos.x, clickPos.y, table,
+              clickedEntity.position.x, clickedEntity.position.y, pad
+            );
+
+            store.getState().setEditingCursor(offset, offset);
+
+            // Sync textarea
+            const ta = getEditingTextarea();
+            if (ta) {
+              ta.selectionStart = offset;
+              ta.selectionEnd = offset;
+              ta.focus();
+            }
+
+            // Don't proceed to selection logic
+            containerRef.current?.releasePointerCapture(e.pointerId);
+            return;
+          }
+
+          // If editing a different entity, stop editing
+          if (currentEditingId && currentEditingId !== clickedEntity.id) {
+            store.getState().stopEditing();
+          }
+
+          // Double-click detection for text entity editing
+          const now = performance.now();
+          const lastClick = lastClickRef.current;
+          if (
+            lastClick &&
+            lastClick.entityId === clickedEntity.id &&
+            now - lastClick.time < DOUBLE_CLICK_TIMEOUT &&
+            Math.abs(e.clientX - lastClick.x) < DOUBLE_CLICK_DISTANCE &&
+            Math.abs(e.clientY - lastClick.y) < DOUBLE_CLICK_DISTANCE
+          ) {
+            // Double-click detected
+            if (clickedEntity.type === 'text') {
+              store.getState().startEditing(clickedEntity.id);
+            }
+            lastClickRef.current = null;
+          } else {
+            lastClickRef.current = {
+              entityId: clickedEntity.id,
+              time: now,
+              x: e.clientX,
+              y: e.clientY,
+            };
+          }
+
           // Click on entity: select it
           const additive = e.ctrlKey || e.metaKey;
           store.getState().selectEntity(clickedEntity.id, additive);
@@ -1647,9 +1769,11 @@ function InputHandler({
         store.getState().selectAll();
       }
 
-      // Escape: cancel connection, box selection, or deselect all
+      // Escape: exit text editing, cancel connection, box selection, or deselect all
       if (e.code === 'Escape') {
-        if (isConnecting) {
+        if (store.getState().editingEntityId) {
+          store.getState().stopEditing();
+        } else if (isConnecting) {
           store.getState().cancelConnectionDraft();
           setIsConnecting(false);
         } else if (isBoxSelecting) {
@@ -1696,6 +1820,29 @@ function InputHandler({
 
         // Clear selection
         store.getState().deselectAll();
+      }
+
+      // T key: create text entity at viewport center
+      if (e.code === 'KeyT' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const { viewport } = store.getState();
+        const rect = cachedRectRef.current;
+        const centerX = (-viewport.x + rect.width / 2) / viewport.zoom - DEFAULT_TEXT_WIDTH / 2;
+        const centerY = (-viewport.y + rect.height / 2) / viewport.zoom - DEFAULT_TEXT_HEIGHT / 2;
+
+        const newEntity = {
+          id: `kf-text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: 'text' as const,
+          position: { x: centerX, y: centerY },
+          width: DEFAULT_TEXT_WIDTH,
+          height: DEFAULT_TEXT_HEIGHT,
+          data: { content: '' } as TextEntityData,
+          resizable: { width: true, height: false },
+        };
+
+        onEntitiesChange?.([{ type: 'add', entity: newEntity }]);
+        store.getState().applyEntityChanges([{ type: 'add', entity: newEntity }]);
+        store.getState().selectEntity(newEntity.id);
+        store.getState().startEditing(newEntity.id);
       }
     };
 
@@ -1953,6 +2100,8 @@ function FlowCanvas({
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Entities />
+      <TextEntities />
+      <TextEditCursor />
       <RerouteNodes />
       <EntitySelection />
       <SelectionBox />

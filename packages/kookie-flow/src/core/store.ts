@@ -100,6 +100,15 @@ export interface FlowState {
   /** Internal clipboard (holds references, no serialization) */
   internalClipboard: InternalClipboard | null;
 
+  /** ID of the text entity currently being edited, or null if not editing */
+  editingEntityId: string | null;
+
+  /** Live text content while editing (null = not editing) */
+  editingContent: string | null;
+
+  /** Cursor/selection character offsets while editing (null = not editing) */
+  editingCursor: { start: number; end: number } | null;
+
   // ============================================================================
   // Grouping State (Phase 7C)
   // ============================================================================
@@ -139,6 +148,11 @@ export interface FlowState {
   startConnection: (entityId: string, socketId: string) => void;
   endConnection: () => void;
   setSelectionBox: (box: { start: XYPosition; end: XYPosition } | null) => void;
+  setEditingEntityId: (id: string | null) => void;
+  setEditingContent: (content: string) => void;
+  setEditingCursor: (start: number, end: number) => void;
+  startEditing: (entityId: string) => void;
+  stopEditing: () => void;
 
   /** Connection draft actions */
   startConnectionDraft: (source: SocketHandle, mouseWorld: XYPosition) => void;
@@ -511,6 +525,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Internal clipboard
       internalClipboard: null,
 
+      // Text editing state (Phase 10)
+      editingEntityId: null,
+      editingContent: null,
+      editingCursor: null,
+
       // Grouping state (Phase 7C)
       collapsedGroupIds,
       hiddenEntityIds,
@@ -561,6 +580,27 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({ connectionStart: { entityId, socketId } }),
       endConnection: () => set({ connectionStart: null }),
       setSelectionBox: (selectionBox) => set({ selectionBox }),
+      setEditingEntityId: (editingEntityId) => set({ editingEntityId }),
+      setEditingContent: (editingContent) => set({ editingContent }),
+      setEditingCursor: (start, end) => set({ editingCursor: { start, end } }),
+      startEditing: (entityId) => {
+        const entity = get().entityMap.get(entityId);
+        if (!entity || entity.type !== 'text') return;
+        const data = entity.data as { content?: string };
+        const content = data.content ?? '';
+        set({
+          editingEntityId: entityId,
+          editingContent: content,
+          editingCursor: { start: content.length, end: content.length },
+        });
+      },
+      stopEditing: () => {
+        set({
+          editingEntityId: null,
+          editingContent: null,
+          editingCursor: null,
+        });
+      },
 
       // Connection draft actions
       startConnectionDraft: (source, mouseWorld) => {

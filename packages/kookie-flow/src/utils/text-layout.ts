@@ -487,6 +487,372 @@ export function countGlyphs(entries: TextEntry[], glyphMap: GlyphMap): number {
   return count;
 }
 
+// ============================================================================
+// Multi-line word wrap (for text entities)
+// ============================================================================
+
+/**
+ * Word-wrap text using MSDF glyph widths.
+ * Splits by \n first, then wraps each paragraph at whitespace boundaries.
+ *
+ * @param content - Text to wrap
+ * @param maxWidthFontUnits - Maximum line width in font units
+ * @param glyphMap - Pre-built glyph lookup
+ * @param kerningMap - Pre-built kerning lookup
+ * @param letterSpacing - Extra spacing between characters (font units)
+ * @returns Array of line strings
+ */
+const wrapCache = new Map<string, string[]>();
+const WRAP_CACHE_MAX_SIZE = 500;
+
+export function wrapTextMSDF(
+  content: string,
+  maxWidthFontUnits: number,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap,
+  letterSpacing: number = 0
+): string[] {
+  if (!content) return [''];
+
+  const cacheKey = `${content}|${maxWidthFontUnits}|${letterSpacing}`;
+  const cached = wrapCache.get(cacheKey);
+  if (cached) return cached;
+
+  const paragraphs = content.split('\n');
+  const lines: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    if (paragraph === '') {
+      lines.push('');
+      continue;
+    }
+
+    const words = paragraph.split(/(\s+)/); // keep whitespace tokens
+    let currentLine = '';
+    let currentWidth = 0;
+    let prevCharCode: number | null = null;
+
+    for (const word of words) {
+      // Measure word width
+      let wordWidth = 0;
+      let wordPrevChar: number | null = prevCharCode;
+      for (let i = 0; i < word.length; i++) {
+        const charCode = word.charCodeAt(i);
+        const glyph = glyphMap.get(charCode);
+        if (!glyph) continue;
+
+        if (wordPrevChar !== null) {
+          const kern = kerningMap.get(`${wordPrevChar}:${charCode}`);
+          if (kern) wordWidth += kern;
+          wordWidth += letterSpacing;
+        }
+        wordWidth += glyph.xadvance;
+        wordPrevChar = charCode;
+      }
+
+      const testWidth = currentWidth + wordWidth;
+
+      if (testWidth > maxWidthFontUnits && currentLine !== '') {
+        lines.push(currentLine);
+        // Skip leading whitespace on new line
+        const trimmed = word.trimStart();
+        if (trimmed) {
+          // Re-measure trimmed word
+          currentWidth = 0;
+          prevCharCode = null;
+          for (let i = 0; i < trimmed.length; i++) {
+            const charCode = trimmed.charCodeAt(i);
+            const glyph = glyphMap.get(charCode);
+            if (!glyph) continue;
+            if (prevCharCode !== null) {
+              const kern = kerningMap.get(`${prevCharCode}:${charCode}`);
+              if (kern) currentWidth += kern;
+              currentWidth += letterSpacing;
+            }
+            currentWidth += glyph.xadvance;
+            prevCharCode = charCode;
+          }
+          currentLine = trimmed;
+        } else {
+          currentLine = '';
+          currentWidth = 0;
+          prevCharCode = null;
+        }
+      } else {
+        currentLine += word;
+        currentWidth = testWidth;
+        prevCharCode = wordPrevChar;
+      }
+    }
+
+    lines.push(currentLine);
+  }
+
+  // Cache result
+  if (wrapCache.size >= WRAP_CACHE_MAX_SIZE) {
+    const keys = Array.from(wrapCache.keys());
+    for (let i = 0; i < keys.length / 2; i++) {
+      wrapCache.delete(keys[i]);
+    }
+  }
+  wrapCache.set(cacheKey, lines);
+
+  return lines;
+}
+
+/**
+ * Clear the wrap cache. Call when font changes.
+ */
+export function clearWrapCache(): void {
+  wrapCache.clear();
+}
+
+/**
+ * Measure a multi-line text block using MSDF glyph widths.
+ *
+ * @param content - Text to measure
+ * @param fontSize - Font size in world units
+ * @param lineHeight - Line height multiplier (e.g. 1.5)
+ * @param entityWidth - Entity width in world units (for wrapping)
+ * @param padding - Padding in world units
+ * @param baseFontSize - Base font size from metrics (info.size)
+ * @param glyphMap - Pre-built glyph lookup
+ * @param kerningMap - Pre-built kerning lookup
+ * @param letterSpacing - Letter spacing in world units
+ * @returns Measurement result
+ */
+export interface TextBlockMeasurement {
+  width: number;
+  height: number;
+  lineCount: number;
+  lines: string[];
+}
+
+export function measureTextBlockMSDF(
+  content: string,
+  fontSize: number,
+  lineHeight: number,
+  entityWidth: number,
+  padding: number,
+  baseFontSize: number,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap,
+  letterSpacing: number = 0
+): TextBlockMeasurement {
+  const innerWidth = Math.max(1, entityWidth - 2 * padding);
+  // Convert world-space inner width to font units
+  const maxWidthFontUnits = innerWidth * baseFontSize / fontSize;
+  const letterSpacingFontUnits = letterSpacing * baseFontSize / fontSize;
+
+  const lines = wrapTextMSDF(content, maxWidthFontUnits, glyphMap, kerningMap, letterSpacingFontUnits);
+  const scale = fontSize / baseFontSize;
+
+  let maxWidth = 0;
+  for (const line of lines) {
+    const w = measureText(line, glyphMap, kerningMap) * scale;
+    if (w > maxWidth) maxWidth = w;
+  }
+
+  const lineHeightPx = fontSize * lineHeight;
+
+  return {
+    width: maxWidth,
+    height: lines.length * lineHeightPx,
+    lineCount: lines.length,
+    lines,
+  };
+}
+
+/**
+ * Input for a multi-line text entry (text entities).
+ */
+export interface MultiLineTextEntry {
+  /** Unique ID */
+  id: string;
+  /** Pre-wrapped line strings */
+  lines: string[];
+  /** Top-left of text block (world coords) */
+  position: [number, number, number];
+  /** Font size in world units */
+  fontSize: number;
+  /** Line height multiplier (e.g. 1.5) */
+  lineHeight: number;
+  /** Text alignment */
+  textAlign: 'left' | 'center' | 'right';
+  /** Inner width for alignment (world units) */
+  constrainedWidth: number;
+  /** Text color (hex or rgb string) */
+  color: string;
+  /** Opacity (0-1). Default: 1 */
+  opacity?: number;
+  /** Letter spacing in world units */
+  letterSpacing?: number;
+}
+
+/**
+ * Count visible glyphs in multi-line text entries for capacity estimation.
+ */
+export function countMultiLineGlyphs(
+  entries: MultiLineTextEntry[],
+  glyphMap: GlyphMap
+): number {
+  let count = 0;
+  for (const entry of entries) {
+    for (const line of entry.lines) {
+      for (let i = 0; i < line.length; i++) {
+        const charCode = line.charCodeAt(i);
+        const glyph = glyphMap.get(charCode);
+        if (glyph && glyph.width > 0 && glyph.height > 0) {
+          count++;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Populate pre-allocated buffers with multi-line text glyph data.
+ * Same buffer layout as populateGlyphBuffers.
+ *
+ * @returns Number of glyphs written
+ */
+export function populateMultiLineGlyphBuffers(
+  entries: MultiLineTextEntry[],
+  metrics: FontMetrics,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap,
+  matrices: Float32Array,
+  uvOffsets: Float32Array,
+  colors: Float32Array,
+  opacities: Float32Array,
+  capacity: number
+): number {
+  const atlasWidth = metrics.common.scaleW;
+  const atlasHeight = metrics.common.scaleH;
+  const baseFontSize = metrics.info.size;
+
+  let glyphIndex = 0;
+
+  for (const entry of entries) {
+    if (glyphIndex >= capacity) break;
+
+    const [px, py, pz] = entry.position;
+    const scale = entry.fontSize / baseFontSize;
+    const opacity = entry.opacity ?? 1;
+    const [r, g, b] = parseColor(entry.color);
+    const lineHeightPx = entry.fontSize * entry.lineHeight;
+    const letterSpacingFontUnits = (entry.letterSpacing ?? 0) / scale;
+
+    // Half-leading: CSS centers the font's metric height within the line box.
+    // BMFont lineHeight (scaled) is the font's natural line height; CSS lineHeight
+    // is the user-specified line box. The difference / 2 shifts glyphs down to
+    // match where CSS would place the text baseline.
+    const bmfontLineHeightScaled = metrics.common.lineHeight * scale;
+    const halfLeading = (lineHeightPx - bmfontLineHeightScaled) / 2;
+
+    for (let lineIdx = 0; lineIdx < entry.lines.length; lineIdx++) {
+      const line = entry.lines[lineIdx];
+      if (!line) continue;
+
+      // Measure line width for alignment
+      let lineWidthFontUnits = measureText(line, glyphMap, kerningMap);
+      // Add letter spacing
+      let charCount = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (glyphMap.has(line.charCodeAt(i))) charCount++;
+      }
+      if (charCount > 1) {
+        lineWidthFontUnits += (charCount - 1) * letterSpacingFontUnits;
+      }
+      const lineWidth = lineWidthFontUnits * scale;
+
+      // Compute startX from textAlign
+      let startX = px;
+      if (entry.textAlign === 'center') {
+        startX = px + (entry.constrainedWidth - lineWidth) / 2;
+      } else if (entry.textAlign === 'right') {
+        startX = px + entry.constrainedWidth - lineWidth;
+      }
+
+      // Y position: line top + half-leading (to match CSS line box centering)
+      const lineY = py + lineIdx * lineHeightPx + halfLeading;
+
+      let cursorX = startX;
+      let prevCharCode: number | null = null;
+
+      for (let i = 0; i < line.length; i++) {
+        if (glyphIndex >= capacity) break;
+
+        const charCode = line.charCodeAt(i);
+        const glyph = glyphMap.get(charCode);
+
+        if (!glyph) {
+          if (charCode === 32) cursorX += baseFontSize * scale * 0.25;
+          continue;
+        }
+
+        // Apply kerning + letter spacing
+        if (prevCharCode !== null) {
+          const kern = kerningMap.get(`${prevCharCode}:${charCode}`);
+          if (kern) cursorX += kern * scale;
+          cursorX += (entry.letterSpacing ?? 0);
+        }
+
+        // Render visible glyphs
+        if (glyph.width > 0 && glyph.height > 0) {
+          const glyphW = glyph.width * scale;
+          const glyphH = glyph.height * scale;
+          const glyphX = cursorX + glyph.xoffset * scale + glyphW / 2;
+          const glyphY = lineY + glyph.yoffset * scale + glyphH / 2;
+
+          // Write instance matrix (4x4, column-major)
+          const mi = glyphIndex * 16;
+          matrices[mi + 0] = glyphW;
+          matrices[mi + 1] = 0;
+          matrices[mi + 2] = 0;
+          matrices[mi + 3] = 0;
+          matrices[mi + 4] = 0;
+          matrices[mi + 5] = glyphH;
+          matrices[mi + 6] = 0;
+          matrices[mi + 7] = 0;
+          matrices[mi + 8] = 0;
+          matrices[mi + 9] = 0;
+          matrices[mi + 10] = 1;
+          matrices[mi + 11] = 0;
+          matrices[mi + 12] = glyphX;
+          matrices[mi + 13] = -glyphY; // Flip Y for Three.js (Y-up)
+          matrices[mi + 14] = pz;
+          matrices[mi + 15] = 1;
+
+          // Write UV offset
+          const uvi = glyphIndex * 4;
+          uvOffsets[uvi + 0] = glyph.x / atlasWidth;
+          uvOffsets[uvi + 1] = glyph.y / atlasHeight;
+          uvOffsets[uvi + 2] = glyph.width / atlasWidth;
+          uvOffsets[uvi + 3] = glyph.height / atlasHeight;
+
+          // Write color
+          const ci = glyphIndex * 3;
+          colors[ci + 0] = r;
+          colors[ci + 1] = g;
+          colors[ci + 2] = b;
+
+          // Write opacity
+          opacities[glyphIndex] = opacity;
+
+          glyphIndex++;
+        }
+
+        cursorX += glyph.xadvance * scale;
+        prevCharCode = charCode;
+      }
+    }
+  }
+
+  return glyphIndex;
+}
+
 /**
  * Populate pre-allocated buffers with glyph data.
  * More efficient than creating new array - zero allocations.

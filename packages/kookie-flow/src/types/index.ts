@@ -231,16 +231,24 @@ export interface DrawEntityData extends EntityData {
   }>;
 }
 
-/** Data for text entities (rich text blocks) */
+/** Data for text entities (standalone text blocks on canvas) */
 export interface TextEntityData extends EntityData {
-  /** Text content */
-  content?: string;
-  /** Font size in pixels */
+  /** Text content (required for text entities) */
+  content: string;
+  /** Font size in pixels (default: 16) */
   fontSize?: number;
-  /** Text color */
+  /** Font family (default: system-ui) */
+  fontFamily?: string;
+  /** Font weight (default: 400) */
+  fontWeight?: number;
+  /** Text color as CSS color string (default: from theme) */
   textColor?: string;
-  /** Text alignment */
+  /** Text alignment (default: 'left') */
   textAlign?: 'left' | 'center' | 'right';
+  /** Line height multiplier (default: 1.5) */
+  lineHeight?: number;
+  /** Letter spacing in pixels (default: 0) */
+  letterSpacing?: number;
 }
 
 /** Data for image entities */
@@ -328,6 +336,11 @@ export function isCommentEntity(entity: Entity): entity is CommentEntity {
 /** Helper type guard for reroute entities */
 export function isRerouteEntity(entity: Entity): entity is RerouteEntity {
   return entity.type === 'reroute';
+}
+
+/** Helper type guard for text entities */
+export function isTextEntity(entity: Entity): entity is TextEntity {
+  return entity.type === 'text';
 }
 
 /** Entity in the graph */
@@ -462,7 +475,8 @@ export type EntityChange =
   | { type: 'add'; entity: Entity }
   | { type: 'dimensions'; id: string; dimensions: Dimensions }
   | { type: 'collapse'; id: string; collapsed: boolean }
-  | { type: 'parent'; id: string; parentId: string | null };
+  | { type: 'parent'; id: string; parentId: string | null }
+  | { type: 'data'; id: string; data: EntityData };
 
 /** Edge change event */
 export type EdgeChange =

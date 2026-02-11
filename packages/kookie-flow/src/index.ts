@@ -192,7 +192,12 @@ export {
   isFrameEntity,
   isCommentEntity,
   isRerouteEntity,
+  isTextEntity,
 } from './types';
+
+// Text entity utilities
+export { resolveTextStyle } from './utils/text-texture';
+export type { TextStyleConfig } from './utils/text-texture';
 
 // Grouping utilities
 export {

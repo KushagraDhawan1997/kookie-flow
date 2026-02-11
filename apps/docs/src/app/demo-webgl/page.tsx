@@ -70,7 +70,7 @@ function generateEntities(count: number): Entity[] {
   const cols = Math.ceil(Math.sqrt(count));
   const spacing = 300;
 
-  return Array.from({ length: count }, (_, i) => {
+  const entities: Entity[] = Array.from({ length: count }, (_, i) => {
     const pattern = socketPatterns[i % socketPatterns.length];
     const entity: Entity = {
       id: `node-${i}`,
@@ -96,6 +96,30 @@ function generateEntities(count: number): Entity[] {
     }
     return entity;
   });
+
+  // Add sample text entities with sockets — text nodes are first-class graph participants
+  entities.push({
+    id: 'text-prompt',
+    type: 'text',
+    position: { x: -400, y: 0 },
+    width: 240,
+    height: 60,
+    data: { content: 'A photorealistic mountain landscape at golden hour with dramatic clouds' },
+    resizable: { width: true, height: false },
+    outputs: [{ id: 'text-prompt-out', name: 'Prompt', type: 'string' }],
+  });
+  entities.push({
+    id: 'text-notes',
+    type: 'text',
+    position: { x: -400, y: 200 },
+    width: 200,
+    height: 40,
+    data: { content: '' },
+    resizable: { width: true, height: false },
+    inputs: [{ id: 'text-notes-in', name: 'Log', type: 'string' }],
+  });
+
+  return entities;
 }
 
 function findCompatibleSockets(
@@ -183,6 +207,22 @@ function generateEdges(nodeCount: number): Edge[] {
       }
     }
   }
+
+  // Connect text entities into the graph
+  edges.push({
+    id: 'edge-text-prompt',
+    source: 'text-prompt',
+    target: 'node-0',
+    sourceSocket: 'text-prompt-out',
+    targetSocket: 'node-0-in-0',
+  });
+  edges.push({
+    id: 'edge-text-notes',
+    source: 'node-0',
+    target: 'text-notes',
+    sourceSocket: 'node-0-out-0',
+    targetSocket: 'text-notes-in',
+  });
 
   return edges;
 }
