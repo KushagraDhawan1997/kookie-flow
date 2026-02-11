@@ -249,11 +249,6 @@ export function MultiWeightTextRenderer({
   const regularFont = regularFontProp ?? fontContext.regular;
   const semiboldFont = semiboldFontProp ?? fontContext.semibold;
 
-  // If no fonts available, render nothing (graceful degradation to DOM mode)
-  if (!regularFont) {
-    return null;
-  }
-
   // Derive text colors from theme tokens
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
   const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
@@ -309,6 +304,9 @@ export function MultiWeightTextRenderer({
     ): { regular: TextEntry[]; semibold: TextEntry[] } => {
       const regular: TextEntry[] = [];
       const semibold: TextEntry[] = [];
+
+      if (!regularFont) return { regular, semibold };
+
       const { entities, edges, entityMap } = store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
@@ -389,7 +387,7 @@ export function MultiWeightTextRenderer({
               // Truncate output labels to fit available space (mirror of input label width)
               const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
               const truncatedName =
-                regularFont && regularGlyphMap.size > 0
+                regularGlyphMap.size > 0
                   ? truncateText(
                       socket.name,
                       outputLabelMaxWidth,
@@ -422,7 +420,7 @@ export function MultiWeightTextRenderer({
               // Truncate input labels to fit before widget area
               const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
               const truncatedName =
-                regularFont && regularGlyphMap.size > 0
+                regularGlyphMap.size > 0
                   ? truncateText(
                       socket.name,
                       inputLabelMaxWidth,
@@ -528,7 +526,7 @@ export function MultiWeightTextRenderer({
   useFrame(({ size }) => {
     const { viewport, entities } = store.getState();
 
-    if (viewport.zoom < MIN_TEXT_ZOOM) {
+    if (!regularFont || viewport.zoom < MIN_TEXT_ZOOM) {
       regularEntriesRef.current = [];
       semiboldEntriesRef.current = [];
       if (hasSemiboldEntries) setHasSemiboldEntries(false);
@@ -563,6 +561,11 @@ export function MultiWeightTextRenderer({
       setHasSemiboldEntries(hasSemibold);
     }
   });
+
+  // If no fonts available, render nothing (graceful degradation to DOM mode)
+  if (!regularFont) {
+    return null;
+  }
 
   return (
     <>
