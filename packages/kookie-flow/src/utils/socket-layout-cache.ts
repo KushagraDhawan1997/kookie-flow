@@ -62,6 +62,17 @@ const entityLayoutCache = new WeakMap<Entity, EntitySocketLayoutCache>();
 // Stable cache key to detect config changes within same entity reference
 const entityCacheKeys = new WeakMap<Entity, string>();
 
+// ID-based cache for cross-reference reuse (e.g. entity spread during resize).
+// When updateEntityDimensions creates { ...existing, width, height }, the new
+// object misses the WeakMap but socket arrays are the same references. This cache
+// detects that and reuses the layout without calling buildCacheKey (which does
+// O(sockets) string concatenation).
+const entityIdCache = new Map<string, {
+  inputs: Socket[] | undefined;
+  outputs: Socket[] | undefined;
+  layout: EntitySocketLayoutCache;
+}>();
+
 /**
  * Build a stable cache key from socket configuration.
  * Key includes all properties that affect socket positioning.
@@ -183,19 +194,45 @@ export function getEntitySocketLayout(
   entity: Entity,
   socketLayout: ResolvedSocketLayout
 ): EntitySocketLayoutCache {
+  // Fast path 1: WeakMap hit (same entity reference, e.g. during pan/zoom)
   const existingKey = entityCacheKeys.get(entity);
+  if (existingKey) {
+    const cached = entityLayoutCache.get(entity);
+    if (cached) return cached;
+  }
+
+  // Fast path 2: ID-based reference check (entity spread during resize).
+  // Socket arrays keep same references when only width/height/position change,
+  // so reference equality is an O(1) check that avoids buildCacheKey's O(sockets)
+  // string concatenation.
+  const idCached = entityIdCache.get(entity.id);
+  if (idCached &&
+      idCached.inputs === entity.inputs &&
+      idCached.outputs === entity.outputs) {
+    // Socket config unchanged — reuse layout, update WeakMap for future hits
+    entityLayoutCache.set(entity, idCached.layout);
+    entityCacheKeys.set(entity, existingKey ?? '');
+    return idCached.layout;
+  }
+
+  // Slow path: compute key and layout
   const currentKey = buildCacheKey(entity);
 
-  // Return cached if key matches
+  // Check if key matches a previous computation for this entity ref
+  // (handles the case where WeakMap entry existed but cache was cleared)
   if (existingKey === currentKey) {
     const cached = entityLayoutCache.get(entity);
     if (cached) return cached;
   }
 
-  // Compute new layout
   const layout = computeEntitySocketLayout(entity, socketLayout);
   entityLayoutCache.set(entity, layout);
   entityCacheKeys.set(entity, currentKey);
+  entityIdCache.set(entity.id, {
+    inputs: entity.inputs,
+    outputs: entity.outputs,
+    layout,
+  });
 
   return layout;
 }
@@ -206,4 +243,5 @@ export function getEntitySocketLayout(
 export function clearEntityLayoutCache(entity: Entity): void {
   entityLayoutCache.delete(entity);
   entityCacheKeys.delete(entity);
+  entityIdCache.delete(entity.id);
 }

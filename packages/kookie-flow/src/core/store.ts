@@ -162,6 +162,12 @@ export interface FlowState {
   /** Efficient batch position update for dragging */
   updateEntityPositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
 
+  /** Efficient dimension update for resizing (avoids full applyEntityChanges rebuild) */
+  updateEntityDimensions: (id: string, width: number, height: number, position?: XYPosition) => void;
+
+  /** Clear explicit width/height to revert to computed minimum from socket layout */
+  fitEntityToContent: (id: string) => void;
+
   // ========================================
   // Phase 6: Core Operations
   // ========================================
@@ -512,7 +518,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setEntities: (entities) => {
         const derived = rebuildDerivedState(entities);
         cachedAnalysis = null;
-        set({ entities, ...derived, topologyVersion: get().topologyVersion + 1 });
+        // Bump both topologyVersion and positionVersion so ALL downstream
+        // renderers (edges, sockets, widgets) detect the full replacement
+        const state = get();
+        set({ entities, ...derived, topologyVersion: state.topologyVersion + 1, positionVersion: state.positionVersion + 1 });
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
@@ -928,6 +937,81 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Increment positionVersion so subscribers know positions changed
         set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+      },
+
+      updateEntityDimensions: (id, width, height, position) => {
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion } = get();
+
+        // O(1) existence check via entityMap
+        const existing = entityMap.get(id);
+        if (!existing) return;
+
+        // Find index via id comparison (avoids reference equality issues after spread)
+        let index = -1;
+        for (let i = 0; i < entities.length; i++) {
+          if (entities[i].id === id) { index = i; break; }
+        }
+        if (index === -1) return;
+
+        const nextEntities = [...entities];
+
+        const entity = {
+          ...existing,
+          width,
+          height,
+          ...(position ? { position } : {}),
+        };
+        nextEntities[index] = entity;
+        entityMap.set(id, entity);
+        quadtree.update(id, getEntityBounds(entity));
+
+        // Populate moved entity IDs side-channel so edges/sockets fast-path picks this up
+        _movedEntityIds.clear();
+        _movedEntityIds.add(id);
+
+        // Always update socket quadtree — width changes move output sockets,
+        // position changes move all sockets
+        const pos = entity.position;
+        const entityWidth = entity.width ?? 200;
+        if (entity.inputs) {
+          for (let i = 0; i < entity.inputs.length; i++) {
+            const socket = entity.inputs[i];
+            const yOffset = getSocketYOffset(entity, i, true);
+            socketQuadtree.update(id, socket.id, true, pos.x, pos.y + yOffset);
+          }
+        }
+        if (entity.outputs) {
+          for (let i = 0; i < entity.outputs.length; i++) {
+            const socket = entity.outputs[i];
+            const yOffset = getSocketYOffset(entity, i, false);
+            socketQuadtree.update(id, socket.id, false, pos.x + entityWidth, pos.y + yOffset);
+          }
+        }
+
+        // Bump positionVersion so sockets, edges, and widgets detect the change
+        set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+      },
+
+      fitEntityToContent: (id) => {
+        const { entities, entityMap, quadtree } = get();
+        const existing = entityMap.get(id);
+        if (!existing) return;
+
+        let index = -1;
+        for (let i = 0; i < entities.length; i++) {
+          if (entities[i].id === id) { index = i; break; }
+        }
+        if (index === -1) return;
+
+        const nextEntities = [...entities];
+        // Clear explicit dimensions to revert to computed minimum
+        const { width: _w, height: _h, ...rest } = existing;
+        const entity = rest as Entity;
+        nextEntities[index] = entity;
+        entityMap.set(id, entity);
+        quadtree.update(id, getEntityBounds(entity));
+
+        set({ entities: nextEntities });
       },
 
       // ========================================

@@ -66,11 +66,7 @@ export function Entities() {
     return new THREE.ShaderMaterial({
       uniforms: {
         uBackgroundColor: { value: new THREE.Color(...resolvedStyle.background) },
-        uHoveredColor: { value: new THREE.Color(...resolvedStyle.backgroundHover) },
-        uSelectedColor: { value: new THREE.Color(...resolvedStyle.background) }, // Same as bg, border shows selection
         uBorderColor: { value: new THREE.Color(...resolvedStyle.borderColor) },
-        uHoveredBorderColor: { value: new THREE.Color(...resolvedStyle.borderColorHover) },
-        uSelectedBorderColor: { value: new THREE.Color(...resolvedStyle.selectedBorderColor) },
         uCornerRadius: { value: resolvedStyle.borderRadius },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
@@ -90,8 +86,6 @@ export function Entities() {
         uStatusSuccessColor: { value: new THREE.Color(0.30, 0.75, 0.39) },  // green-9
       },
       vertexShader: /* glsl */ `
-        attribute float aSelected;
-        attribute float aHovered;
         attribute vec2 aSize;
         attribute vec3 aAccentColor; // Per-entity accent color override (-1 = use global)
         attribute float aStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
@@ -100,8 +94,6 @@ export function Entities() {
         uniform float uShadowOffsetY;
 
         varying vec2 vUv;
-        varying float vSelected;
-        varying float vHovered;
         varying vec2 vSize;
         varying vec2 vExpandedSize;
         varying vec3 vAccentColor;
@@ -109,8 +101,6 @@ export function Entities() {
 
         void main() {
           vUv = uv;
-          vSelected = aSelected;
-          vHovered = aHovered;
           vSize = aSize;
           vAccentColor = aAccentColor;
           vStatus = aStatus;
@@ -131,11 +121,7 @@ export function Entities() {
         precision highp float;
 
         uniform vec3 uBackgroundColor;
-        uniform vec3 uHoveredColor;
-        uniform vec3 uSelectedColor;
         uniform vec3 uBorderColor;
-        uniform vec3 uHoveredBorderColor;
-        uniform vec3 uSelectedBorderColor;
         uniform float uCornerRadius;
         uniform float uBorderWidth;
         uniform float uBackgroundAlpha;
@@ -155,8 +141,6 @@ export function Entities() {
         uniform vec3 uStatusSuccessColor;
 
         varying vec2 vUv;
-        varying float vSelected;
-        varying float vHovered;
         varying vec2 vSize;
         varying vec2 vExpandedSize;
         varying vec3 vAccentColor; // Per-entity accent color override (-1 = use global)
@@ -188,12 +172,8 @@ export function Entities() {
           float maxExtent = max(uBorderWidth, uShadowBlur + abs(uShadowOffsetY)) + 1.0;
           if (d > maxExtent && shadowAlpha < 0.01) discard;
 
-          // Background: selected > hovered > default
-          vec3 bgColor = mix(
-            mix(uBackgroundColor, uHoveredColor, vHovered),
-            uSelectedColor,
-            vSelected
-          );
+          // Background color (selection/hover handled by EntitySelection layer)
+          vec3 bgColor = uBackgroundColor;
 
           // Resolve header color: per-entity override if r >= 0, else global uniform
           // For per-entity colors, create a subtle tint by mixing with background (like --accent-3)
@@ -212,17 +192,10 @@ export function Entities() {
             bgColor = mix(bgColor, resolvedHeaderColor, headerMask);
           }
 
-          // Resolve selected border color: per-entity override if r >= 0, else global uniform
-          vec3 resolvedSelectedBorderColor = vAccentColor.r < 0.0 ? uSelectedBorderColor : vAccentColor;
+          // Border color (selection/hover handled by EntitySelection layer)
+          vec3 borderColor = uBorderColor;
 
-          // Border: selected > hovered > default
-          vec3 borderColor = mix(
-            mix(uBorderColor, uHoveredBorderColor, vHovered),
-            resolvedSelectedBorderColor,
-            vSelected
-          );
-
-          // Status border override (takes priority over selection/hover)
+          // Status border override
           float statusBorderWidth = uBorderWidth;
           if (vStatus > 0.5) {
             vec3 statusColor = uBorderColor;
@@ -286,13 +259,9 @@ export function Entities() {
 
   // Buffers created with current capacity - recreated when capacity changes
   const buffers = useMemo(() => ({
-    selected: new Float32Array(capacity),
-    hovered: new Float32Array(capacity),
     sizes: new Float32Array(capacity * 2),
     accentColor: new Float32Array(capacity * 3), // Per-entity accent color (RGB)
     status: new Float32Array(capacity), // Per-entity status (0=none, 1=error, 2=warning, 3=running, 4=success)
-    selectedAttr: null as THREE.InstancedBufferAttribute | null,
-    hoveredAttr: null as THREE.InstancedBufferAttribute | null,
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
     accentColorAttr: null as THREE.InstancedBufferAttribute | null,
     statusAttr: null as THREE.InstancedBufferAttribute | null,
@@ -311,10 +280,6 @@ export function Entities() {
     const mesh = meshRef.current;
 
     // Create attributes with DynamicDrawUsage for frequent updates
-    buffers.selectedAttr = new THREE.InstancedBufferAttribute(buffers.selected, 1);
-    buffers.selectedAttr.setUsage(THREE.DynamicDrawUsage);
-    buffers.hoveredAttr = new THREE.InstancedBufferAttribute(buffers.hovered, 1);
-    buffers.hoveredAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.sizes, 2);
     buffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.accentColorAttr = new THREE.InstancedBufferAttribute(buffers.accentColor, 3);
@@ -322,8 +287,6 @@ export function Entities() {
     buffers.statusAttr = new THREE.InstancedBufferAttribute(buffers.status, 1);
     buffers.statusAttr.setUsage(THREE.DynamicDrawUsage);
 
-    mesh.geometry.setAttribute('aSelected', buffers.selectedAttr);
-    mesh.geometry.setAttribute('aHovered', buffers.hoveredAttr);
     mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
     mesh.geometry.setAttribute('aAccentColor', buffers.accentColorAttr);
     mesh.geometry.setAttribute('aStatus', buffers.statusAttr);
@@ -349,14 +312,6 @@ export function Entities() {
       (state) => state.viewport,
       () => { dirtyRef.current = true; }
     );
-    const unsubHovered = store.subscribe(
-      (state) => state.hoveredEntityId,
-      () => { dirtyRef.current = true; }
-    );
-    const unsubSelection = store.subscribe(
-      (state) => state.selectedEntityIds,
-      () => { dirtyRef.current = true; }
-    );
     // Subscribe to hidden entity changes (Phase 7C) - O(1) lookup in hot path
     const unsubHidden = store.subscribe(
       (state) => state.hiddenEntityIds,
@@ -366,8 +321,6 @@ export function Entities() {
     return () => {
       unsubEntities();
       unsubViewport();
-      unsubHovered();
-      unsubSelection();
       unsubHidden();
     };
   }, [store, capacity]);
@@ -388,7 +341,7 @@ export function Entities() {
 
     if (!dirtyRef.current) return;
 
-    const { entities, viewport, hoveredEntityId, selectedEntityIds, hiddenEntityIds } = store.getState();
+    const { entities, viewport, hiddenEntityIds } = store.getState();
     if (entities.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -448,9 +401,7 @@ export function Entities() {
       );
       mesh.setMatrixAt(visibleCount, tempMatrix);
 
-      // Update attributes - query selection Set for O(1) lookup
-      buffers.selected[visibleCount] = selectedEntityIds.has(entity.id) ? 1.0 : 0.0;
-      buffers.hovered[visibleCount] = entity.id === hoveredEntityId ? 1.0 : 0.0;
+      // Update attributes
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;
 
@@ -470,9 +421,7 @@ export function Entities() {
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
-    if (buffers.selectedAttr && buffers.hoveredAttr && buffers.sizeAttr && buffers.accentColorAttr && buffers.statusAttr) {
-      buffers.selectedAttr.needsUpdate = true;
-      buffers.hoveredAttr.needsUpdate = true;
+    if (buffers.sizeAttr && buffers.accentColorAttr && buffers.statusAttr) {
       buffers.sizeAttr.needsUpdate = true;
       buffers.accentColorAttr.needsUpdate = true;
       buffers.statusAttr.needsUpdate = true;

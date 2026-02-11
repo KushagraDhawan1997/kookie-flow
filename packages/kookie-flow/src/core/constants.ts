@@ -61,6 +61,21 @@ export const DEFAULT_SOCKET_TYPES = {
   vae: { name: 'VAE', color: '--red-9' },
 };
 
+/** Minimum entity sizes (enforced during resize) */
+export const MIN_ENTITY_WIDTH = 120;
+export const MIN_ENTITY_HEIGHT = 40;
+export const MIN_FRAME_WIDTH = 100;
+export const MIN_FRAME_HEIGHT = 60;
+export const MIN_COMMENT_WIDTH = 80;
+export const MIN_COMMENT_HEIGHT = 40;
+
+/** Selection outline + resize handle settings (screen pixels) */
+export const RESIZE_HANDLE_SIZE = 8;
+export const RESIZE_HANDLE_HIT_TOLERANCE = 4;
+export const SELECTION_OUTLINE_WIDTH = 1.5;
+export const SELECTION_OUTLINE_PADDING = 3;
+export const HOVER_OUTLINE_WIDTH = 1.0;
+
 /** Auto-scroll settings */
 export const AUTO_SCROLL_EDGE_THRESHOLD = 50; // pixels from edge to trigger
 export const AUTO_SCROLL_MAX_SPEED = 15; // screen pixels per frame at max proximity

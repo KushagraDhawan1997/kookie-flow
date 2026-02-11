@@ -22,6 +22,7 @@ import { RerouteNodes } from './reroute-nodes';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
 import { SelectionBox } from './selection-box';
+import { EntitySelection } from './entity-selection';
 import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
 import { WidgetsLayer } from './widgets-layer';
@@ -30,18 +31,30 @@ import { resolveSocketTypes } from '../utils/socket-types';
 import {
   DEFAULT_VIEWPORT,
   DEFAULT_SOCKET_TYPES,
+  DEFAULT_ENTITY_WIDTH,
   AUTO_SCROLL_EDGE_THRESHOLD,
   AUTO_SCROLL_MAX_SPEED,
+  RESIZE_HANDLE_SIZE,
+  RESIZE_HANDLE_HIT_TOLERANCE,
+  MIN_ENTITY_WIDTH,
+  MIN_ENTITY_HEIGHT,
+  MIN_FRAME_WIDTH,
+  MIN_FRAME_HEIGHT,
+  MIN_COMMENT_WIDTH,
+  MIN_COMMENT_HEIGHT,
 } from '../core/constants';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
+import { setInteractionMode } from './interaction-state';
 import type {
   KookieFlowProps,
   KookieFlowInstance,
   FitViewOptions,
   Entity,
   Edge,
+  EntityChange,
   SocketType,
   Connection,
   ConnectionMode,
@@ -503,6 +516,15 @@ interface InputHandlerProps {
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
 
+/** Resize handle direction */
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+/** Cursor CSS value for each resize handle */
+const RESIZE_CURSORS: Record<ResizeHandle, string> = {
+  nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize',
+  se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize',
+};
+
 function InputHandler({
   children,
   minZoom,
@@ -571,6 +593,22 @@ function InputHandler({
     lastScreenPos: { x: number; y: number } | null;
     active: boolean;
   }>({ rafId: 0, lastScreenPos: null, active: false });
+
+  // Track resize state for entity resizing
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeState = useRef<{
+    entityId: string;
+    handle: ResizeHandle;
+    initialBounds: { x: number; y: number; width: number; height: number };
+    initialPointer: { x: number; y: number };
+    minWidth: number;
+    minHeight: number;
+  } | null>(null);
+  // Tracks which resize handle (if any) is hovered for cursor changes.
+  // Ref for comparison in handlePointerMove (avoids recreating the callback on every handle change).
+  // State for cursor rendering (triggers re-render only on null↔handle transitions).
+  const hoveredHandleRef = useRef<ResizeHandle | null>(null);
+  const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
 
   // Pre-allocated array for quadtree queries (avoids GC in hot paths)
   const queryResultsRef = useRef<string[]>([]);
@@ -756,6 +794,81 @@ function InputHandler({
     };
   }, []);
 
+  // Get minimum size constraints for an entity type
+  const getMinSize = useCallback((entity: Entity) => {
+    switch (entity.type) {
+      case 'frame':
+        return { minWidth: MIN_FRAME_WIDTH, minHeight: MIN_FRAME_HEIGHT };
+      case 'comment':
+        return { minWidth: MIN_COMMENT_WIDTH, minHeight: MIN_COMMENT_HEIGHT };
+      default: {
+        // Default entities: min height from socket layout
+        const layout = getEntitySocketLayout(entity, socketLayout);
+        return { minWidth: MIN_ENTITY_WIDTH, minHeight: Math.max(MIN_ENTITY_HEIGHT, layout.computedHeight) };
+      }
+    }
+  }, [socketLayout]);
+
+  // Check if a world position hits a resize handle on any selected entity
+  const getResizeHandleAt = useCallback((worldX: number, worldY: number): { entityId: string; handle: ResizeHandle } | null => {
+    const { selectedEntityIds, entityMap, viewport, hiddenEntityIds } = store.getState();
+    if (selectedEntityIds.size === 0) return null;
+
+    const hitRadius = (RESIZE_HANDLE_SIZE + RESIZE_HANDLE_HIT_TOLERANCE) / (2 * viewport.zoom);
+
+    for (const entityId of selectedEntityIds) {
+      const entity = entityMap.get(entityId);
+      if (!entity || hiddenEntityIds.has(entity.id)) continue;
+
+      // Skip non-resizable entities
+      if (entity.resizable === false) continue;
+
+      const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+      const layout = getEntitySocketLayout(entity, socketLayout);
+      const h = entity.height ?? layout.computedHeight;
+      const x = entity.position.x;
+      const y = entity.position.y;
+
+      const resizable = entity.resizable;
+      const canW = resizable === undefined || resizable === true ||
+        (typeof resizable === 'object' && resizable.width !== false);
+      const canH = resizable === undefined || resizable === true ||
+        (typeof resizable === 'object' && resizable.height !== false);
+
+      // Inline hit test — no array allocation. Check each handle position directly.
+      const r2 = hitRadius * hitRadius;
+      const halfW = w / 2;
+      const halfH = h / 2;
+
+      let dx: number, dy: number;
+
+      if (canW && canH) {
+        dx = worldX - x; dy = worldY - y;
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'nw' as ResizeHandle };
+        dx = worldX - (x + w); dy = worldY - y;
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'ne' as ResizeHandle };
+        dx = worldX - (x + w); dy = worldY - (y + h);
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'se' as ResizeHandle };
+        dx = worldX - x; dy = worldY - (y + h);
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'sw' as ResizeHandle };
+      }
+      if (canH) {
+        dx = worldX - (x + halfW); dy = worldY - y;
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'n' as ResizeHandle };
+        dx = worldX - (x + halfW); dy = worldY - (y + h);
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 's' as ResizeHandle };
+      }
+      if (canW) {
+        dx = worldX - (x + w); dy = worldY - (y + halfH);
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'e' as ResizeHandle };
+        dx = worldX - x; dy = worldY - (y + halfH);
+        if (dx * dx + dy * dy <= r2) return { entityId, handle: 'w' as ResizeHandle };
+      }
+    }
+
+    return null;
+  }, [store, socketLayout]);
+
   // Handle pointer down
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
@@ -793,6 +906,7 @@ function InputHandler({
           // Start connection draft with current mouse position
           store.getState().startConnectionDraft(socket, worldPos);
           setIsConnecting(true);
+          setInteractionMode('connecting');
           // Capture pointer to the container, not e.target, to ensure we receive move events
           containerRef.current?.setPointerCapture(e.pointerId);
 
@@ -803,6 +917,31 @@ function InputHandler({
             isInput: socket.isInput,
           });
           return;
+        }
+
+        // Check for resize handle click (before entity drag)
+        const resizeHit = getResizeHandleAt(worldPos.x, worldPos.y);
+        if (resizeHit) {
+          const entity = store.getState().entityMap.get(resizeHit.entityId);
+          if (entity) {
+            const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+            const layout = getEntitySocketLayout(entity, socketLayout);
+            const h = entity.height ?? layout.computedHeight;
+            const { minWidth, minHeight } = getMinSize(entity);
+
+            resizeState.current = {
+              entityId: resizeHit.entityId,
+              handle: resizeHit.handle,
+              initialBounds: { x: entity.position.x, y: entity.position.y, width: w, height: h },
+              initialPointer: { x: worldPos.x, y: worldPos.y },
+              minWidth,
+              minHeight,
+            };
+            setIsResizing(true);
+            setInteractionMode('resizing');
+            containerRef.current?.setPointerCapture(e.pointerId);
+            return;
+          }
         }
 
         // Store the pointer down position
@@ -838,7 +977,7 @@ function InputHandler({
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown, store, socketLayout, onConnectStart]
+    [isSpaceDown, store, socketLayout, onConnectStart, getResizeHandleAt, getMinSize]
   );
 
   // Handle pointer move
@@ -854,6 +993,7 @@ function InputHandler({
       if (!primaryButtonDown && e.buttons === 0) {
         if (
           dragState.current ||
+          resizeState.current ||
           selectionBox ||
           connectionDraft ||
           pointerDownPos.current ||
@@ -878,10 +1018,15 @@ function InputHandler({
           if (dragState.current) {
             setIsDragging(false);
           }
+          if (resizeState.current) {
+            setIsResizing(false);
+            resizeState.current = null;
+          }
           if (lastPointerPos.current) {
             setIsPanning(false);
           }
 
+          setInteractionMode('idle');
           dragState.current = null;
           pendingDragRef.current = null;
           pointerDownPos.current = null;
@@ -956,6 +1101,60 @@ function InputHandler({
         return;
       }
 
+      // Handle active resize drag
+      if (resizeState.current && primaryButtonDown) {
+        const rect = cachedRectRef.current;
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const { viewport } = store.getState();
+        const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+        const rs = resizeState.current;
+        let dx = worldPos.x - rs.initialPointer.x;
+        let dy = worldPos.y - rs.initialPointer.y;
+
+        // Apply snap to grid if enabled
+        if (snapToGrid) {
+          dx = Math.round(dx / snapGrid[0]) * snapGrid[0];
+          dy = Math.round(dy / snapGrid[1]) * snapGrid[1];
+        }
+
+        let newX = rs.initialBounds.x;
+        let newY = rs.initialBounds.y;
+        let newW = rs.initialBounds.width;
+        let newH = rs.initialBounds.height;
+
+        // Compute new bounds based on handle direction
+        const h = rs.handle;
+        if (h === 'e' || h === 'ne' || h === 'se') newW = rs.initialBounds.width + dx;
+        if (h === 'w' || h === 'nw' || h === 'sw') { newW = rs.initialBounds.width - dx; newX = rs.initialBounds.x + dx; }
+        if (h === 's' || h === 'se' || h === 'sw') newH = rs.initialBounds.height + dy;
+        if (h === 'n' || h === 'ne' || h === 'nw') { newH = rs.initialBounds.height - dy; newY = rs.initialBounds.y + dy; }
+
+        // Clamp to minimum sizes
+        if (newW < rs.minWidth) {
+          const diff = rs.minWidth - newW;
+          newW = rs.minWidth;
+          if (h === 'w' || h === 'nw' || h === 'sw') newX -= diff;
+        }
+        if (newH < rs.minHeight) {
+          const diff = rs.minHeight - newH;
+          newH = rs.minHeight;
+          if (h === 'n' || h === 'ne' || h === 'nw') newY -= diff;
+        }
+
+        // Update entity dimensions and position
+        const posChanged = newX !== rs.initialBounds.x || newY !== rs.initialBounds.y;
+        store.getState().updateEntityDimensions(
+          rs.entityId,
+          newW,
+          newH,
+          posChanged ? { x: newX, y: newY } : undefined
+        );
+
+        return;
+      }
+
       // Check for drag threshold to start box selection or entity dragging
       // Use refs to check state: dragState.current for dragging, selectionBox for box selection
       if (pointerDownPos.current && !selectionBox && !dragState.current) {
@@ -1018,9 +1217,11 @@ function InputHandler({
               },
             };
             setIsDragging(true);
+            setInteractionMode('dragging');
           } else {
             // Start box selection
             setIsBoxSelecting(true);
+            setInteractionMode('boxSelecting');
             store.getState().setSelectionBox({
               start: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
               end: { x: pointerDownPos.current.x, y: pointerDownPos.current.y },
@@ -1112,6 +1313,14 @@ function InputHandler({
         const { viewport, hoveredEntityId, hoveredSocketId, entities, quadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
+        // Check resize handle hover first (for cursor feedback)
+        const handleHit = getResizeHandleAt(worldPos.x, worldPos.y);
+        const newHandle = handleHit?.handle ?? null;
+        if (newHandle !== hoveredHandleRef.current) {
+          hoveredHandleRef.current = newHandle;
+          setHoveredHandle(newHandle);
+        }
+
         // Check socket hover first
         const newHoveredSocket = getSocketAtPosition(
           worldPos,
@@ -1141,7 +1350,7 @@ function InputHandler({
         }
       }
     },
-    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout]
+    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout, getResizeHandleAt]
   );
 
   // Handle pointer up
@@ -1232,6 +1441,7 @@ function InputHandler({
         // Cancel the draft
         store.getState().cancelConnectionDraft();
         setIsConnecting(false);
+        setInteractionMode('idle');
         containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
         pendingDragRef.current = null;
@@ -1248,6 +1458,31 @@ function InputHandler({
         return;
       }
 
+      // End resize (check ref, not React state)
+      if (resizeState.current) {
+        // Emit dimension + position changes to external callback
+        const rs = resizeState.current;
+        const entity = store.getState().entityMap.get(rs.entityId);
+        if (entity && onEntitiesChange) {
+          const changes: EntityChange[] = [{
+            type: 'dimensions',
+            id: rs.entityId,
+            dimensions: { width: entity.width ?? rs.initialBounds.width, height: entity.height ?? rs.initialBounds.height },
+          }];
+          // Handles that move the entity origin (N/NW/NE/W/SW) also change position
+          if (entity.position.x !== rs.initialBounds.x || entity.position.y !== rs.initialBounds.y) {
+            changes.push({ type: 'position', id: rs.entityId, position: entity.position });
+          }
+          onEntitiesChange(changes);
+        }
+
+        setIsResizing(false);
+        setInteractionMode('idle');
+        resizeState.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
       // End entity dragging (check ref, not React state)
       if (dragState.current) {
         // Cancel auto-scroll
@@ -1258,7 +1493,21 @@ function InputHandler({
         autoScrollRef.current.active = false;
         autoScrollRef.current.lastScreenPos = null;
 
+        // Emit position changes to external callback so controlled state stays in sync
+        if (onEntitiesChange) {
+          const { entityMap } = store.getState();
+          const posChanges: EntityChange[] = [];
+          for (const id of dragState.current.entityIds) {
+            const entity = entityMap.get(id);
+            if (entity) {
+              posChanges.push({ type: 'position', id, position: entity.position });
+            }
+          }
+          if (posChanges.length > 0) onEntitiesChange(posChanges);
+        }
+
         setIsDragging(false);
+        setInteractionMode('idle');
         dragState.current = null;
         pendingDragRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
@@ -1289,6 +1538,7 @@ function InputHandler({
 
         store.getState().setSelectionBox(null);
         setIsBoxSelecting(false);
+        setInteractionMode('idle');
         containerRef.current?.releasePointerCapture(e.pointerId);
         pointerDownPos.current = null;
         pendingDragRef.current = null;
@@ -1355,6 +1605,7 @@ function InputHandler({
       onPaneClick,
       onConnect,
       onConnectEnd,
+      onEntitiesChange,
       socketLayout,
     ]
   );
@@ -1571,15 +1822,19 @@ function InputHandler({
         position: 'absolute',
         inset: 0,
         cursor:
-          isPanning || isDragging
-            ? 'grabbing'
-            : isSpaceDown
-              ? 'grab'
-              : isBoxSelecting
-                ? 'crosshair'
-                : isConnecting
+          isResizing
+            ? (resizeState.current ? RESIZE_CURSORS[resizeState.current.handle] : 'default')
+            : isPanning || isDragging
+              ? 'grabbing'
+              : isSpaceDown
+                ? 'grab'
+                : isBoxSelecting
                   ? 'crosshair'
-                  : 'default',
+                  : isConnecting
+                    ? 'crosshair'
+                    : hoveredHandle
+                      ? RESIZE_CURSORS[hoveredHandle]
+                      : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -1692,6 +1947,7 @@ function FlowCanvas({
       <Sockets socketTypes={socketTypes} />
       <Entities />
       <RerouteNodes />
+      <EntitySelection />
       <SelectionBox />
       <ConnectionLine socketTypes={socketTypes} />
       {textRenderMode === 'webgl' && (

@@ -199,6 +199,7 @@ At the Kookie Flow level, an edge is **purely structural metadata**:
 > "Port A on Entity X is linked to Port B on Entity Y."
 
 Kookie Flow:
+
 - **Stores** the edge: `{ source, sourcePort, target, targetPort }`
 - **Renders** the visual curve between the two ports
 - **Validates** compatibility (if `connectionMode="strict"` or `isValidConnection` provided)
@@ -237,7 +238,7 @@ entity.data.statusMessage = 'Missing required input: Model';
 | `comment` | Sticky note annotation                               | No                   | Annotation only                    |
 | `reroute` | Edge waypoint                                        | Yes (passthrough)    | Graph routing                      |
 
-`image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that *produce* visual output.
+`image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that _produce_ visual output.
 
 ### Entity Type Customization (Three Levels)
 
@@ -297,11 +298,11 @@ Kookie Flow still handles: entity frame/border, port hit testing, edge connectio
 
 Every `default` node can visualize data on its output ports. The preview system is **built-in**.
 
-| `preview.type` | Renderer                    | How              | Loaded              |
-| -------------- | --------------------------- | ---------------- | ------------------- |
-| `image`        | Three.js CanvasTexture      | Textured quad    | Always              |
-| `3d`           | Three.js scene-in-scene     | DOM overlay      | Lazy (on first use) |
-| `video`        | `<video>` element           | DOM overlay      | Lazy (on first use) |
+| `preview.type` | Renderer                | How           | Loaded              |
+| -------------- | ----------------------- | ------------- | ------------------- |
+| `image`        | Three.js CanvasTexture  | Textured quad | Always              |
+| `3d`           | Three.js scene-in-scene | DOM overlay   | Lazy (on first use) |
+| `video`        | `<video>` element       | DOM overlay   | Lazy (on first use) |
 
 Display mode (zoomed out / idle): thumbnail drawn in WebGL (nearly free). Interactive mode (zoomed in / active): live renderer mounted as DOM overlay. 200 video entities = ~5 live `<video>` elements.
 
@@ -1768,6 +1769,7 @@ This ensures widgets fit naturally in socket rows and scale properly.
 **Goal:** Callbacks for connection lifecycle (enables "add node on edge drop" pattern)
 
 Currently `onConnect` only fires when a connection succeeds. Users need events for:
+
 1. When connection drag starts (to show UI hints, prepare node creation)
 2. When connection drag ends (regardless of success, to create nodes on empty drop)
 
@@ -1791,13 +1793,14 @@ interface KookieFlowProps {
   onConnectEnd?: (
     event: PointerEvent,
     connectionState: {
-      isValid: boolean;           // Did it land on a valid socket?
-      source: {                   // Where the drag started
+      isValid: boolean; // Did it land on a valid socket?
+      source: {
+        // Where the drag started
         nodeId: string;
         socketId: string;
         isInput: boolean;
       };
-      position: XYPosition;       // World coordinates of drop point
+      position: XYPosition; // World coordinates of drop point
     }
   ) => void;
 }
@@ -1813,19 +1816,32 @@ interface KookieFlowProps {
       const id = `node-${Date.now()}`;
 
       // Add new node at drop position
-      setNodes(nodes => [...nodes, {
-        id,
-        position: state.position,
-        data: { label: 'New Node' },
-        inputs: [{ id: 'in', name: 'Input', type: 'any' }],
-      }]);
+      setNodes((nodes) => [
+        ...nodes,
+        {
+          id,
+          position: state.position,
+          data: { label: 'New Node' },
+          inputs: [{ id: 'in', name: 'Input', type: 'any' }],
+        },
+      ]);
 
       // Connect source to new node
       const edge = state.source.isInput
-        ? { source: id, sourceSocket: 'out', target: state.source.nodeId, targetSocket: state.source.socketId }
-        : { source: state.source.nodeId, sourceSocket: state.source.socketId, target: id, targetSocket: 'in' };
+        ? {
+            source: id,
+            sourceSocket: 'out',
+            target: state.source.nodeId,
+            targetSocket: state.source.socketId,
+          }
+        : {
+            source: state.source.nodeId,
+            sourceSocket: state.source.socketId,
+            target: id,
+            targetSocket: 'in',
+          };
 
-      setEdges(edges => [...edges, { id: `edge-${Date.now()}`, ...edge }]);
+      setEdges((edges) => [...edges, { id: `edge-${Date.now()}`, ...edge }]);
     }
   }}
 />
@@ -1852,6 +1868,7 @@ interface KookieFlowProps {
    - Thread `onConnectStart` and `onConnectEnd` through component layers
 
 **Performance Notes:**
+
 - No hot path impact - callbacks only fire on pointer up/down
 - `screenToWorld` is O(1) - simple math with viewport
 - No new store state needed - uses existing `connectionDraft`
@@ -1877,10 +1894,10 @@ Maintained incrementally alongside the entity/edge arrays in the Zustand store:
 
 ```typescript
 interface AdjacencyIndex {
-  outgoing: Map<string, Map<string, Edge[]>>;   // entityId → portId → edges leaving
-  incoming: Map<string, Map<string, Edge[]>>;   // entityId → portId → edges arriving
-  byEntity: Map<string, Edge[]>;                // all edges touching an entity
-  topologyVersion: number;                       // incremented ONLY on edge/entity add/remove
+  outgoing: Map<string, Map<string, Edge[]>>; // entityId → portId → edges leaving
+  incoming: Map<string, Map<string, Edge[]>>; // entityId → portId → edges arriving
+  byEntity: Map<string, Edge[]>; // all edges touching an entity
+  topologyVersion: number; // incremented ONLY on edge/entity add/remove
 }
 ```
 
@@ -1911,62 +1928,62 @@ flow.getConnectedComponents()        // independent subgraphs (Union-Find)
 **Topological Sort & Execution Levels** (Kahn's algorithm, cached against topologyVersion):
 
 ```typescript
-flow.topologicalSort()               // flat execution order — O(V+E), cached
-flow.executionLevels()               // grouped by level (parallel execution) — O(V+E), cached
-flow.getReadyEntities(completed)     // what can start next given completed set — O(k)
-flow.getExecutionOrder('output-1')   // subgraph needed for one specific node
+flow.topologicalSort(); // flat execution order — O(V+E), cached
+flow.executionLevels(); // grouped by level (parallel execution) — O(V+E), cached
+flow.getReadyEntities(completed); // what can start next given completed set — O(k)
+flow.getExecutionOrder('output-1'); // subgraph needed for one specific node
 ```
 
 **Cycle Detection & Prevention:**
 
 ```typescript
-flow.hasCycles()                     // O(1) if topo sort cached
-flow.findCycles()                    // string[][] (node IDs per cycle)
-flow.wouldCreateCycle(src, tgt)      // O(k) DFS, called every pointer move during connection drag
+flow.hasCycles(); // O(1) if topo sort cached
+flow.findCycles(); // string[][] (node IDs per cycle)
+flow.wouldCreateCycle(src, tgt); // O(k) DFS, called every pointer move during connection drag
 // Automatic prevention: <KookieFlow allowCycles={false} /> rejects cycle-creating connections
 ```
 
 **Dirty Propagation:**
 
 ```typescript
-flow.getAffectedEntities('node-3')   // downstream in topo order — O(k)
-flow.getAffectedEntities(['node-3', 'node-7']) // batch, deduplicated
+flow.getAffectedEntities('node-3'); // downstream in topo order — O(k)
+flow.getAffectedEntities(['node-3', 'node-7']); // batch, deduplicated
 ```
 
 **Node Muting/Bypass:**
 
 ```typescript
-flow.muteEntity('filter-1')          // logically bypass, inputs pass through to outputs
-flow.unmuteEntity('filter-1')
+flow.muteEntity('filter-1'); // logically bypass, inputs pass through to outputs
+flow.unmuteEntity('filter-1');
 // Visual: dimmed, dashed edges. Topo sort skips muted nodes.
 ```
 
 **Graph Mutations:**
 
 ```typescript
-flow.insertOnEdge('edge-5', newNode) // A→B becomes A→new→B
-flow.bypassEntity('filter-1')       // A→filter→B becomes A→B
-flow.collapseToSubgraph([...ids])    // create compound node
-flow.expandSubgraph('group-1')      // inverse
+flow.insertOnEdge('edge-5', newNode); // A→B becomes A→new→B
+flow.bypassEntity('filter-1'); // A→filter→B becomes A→B
+flow.collapseToSubgraph([...ids]); // create compound node
+flow.expandSubgraph('group-1'); // inverse
 ```
 
 **Graph Validation:**
 
 ```typescript
-flow.validate()                      // all structural issues
-flow.isGraphComplete()               // all required ports connected?
-flow.getCompatiblePorts(src, port)   // valid targets during connection drag
+flow.validate(); // all structural issues
+flow.isGraphComplete(); // all required ports connected?
+flow.getCompatiblePorts(src, port); // valid targets during connection drag
 ```
 
 **Performance:**
 
-| Operation | When | Cost |
-| --- | --- | --- |
-| Add/remove edge | User connects/disconnects | 3 Map ops + version++ |
-| `getIncomers`/`getOutgoers` | Connection drag, validation | O(1) |
-| `topologicalSort()` | Consumer evaluates graph | O(V+E), cached |
-| `wouldCreateCycle()` | Every pointer move during drag | O(k), early termination |
-| `getAffectedEntities()` | Consumer re-evaluates | O(k), uses cached topo sort |
+| Operation                   | When                           | Cost                        |
+| --------------------------- | ------------------------------ | --------------------------- |
+| Add/remove edge             | User connects/disconnects      | 3 Map ops + version++       |
+| `getIncomers`/`getOutgoers` | Connection drag, validation    | O(1)                        |
+| `topologicalSort()`         | Consumer evaluates graph       | O(V+E), cached              |
+| `wouldCreateCycle()`        | Every pointer move during drag | O(k), early termination     |
+| `getAffectedEntities()`     | Consumer re-evaluates          | O(k), uses cached topo sort |
 
 **Tasks:**
 
@@ -2004,33 +2021,65 @@ flow.getCompatiblePorts(src, port)   // valid targets during connection drag
 Currently selection is handled per-renderer (border color changes in the SDF node body shader). This phase extracts selection into a universal, consistent visual system that works for every entity type — including ones with no visible body (text, image). It also makes `entity.height` a first-class stored value rather than a computed-only field.
 
 **Selection box:**
-- [ ] Selection box renderer: instanced mesh for selection outlines (lightweight SDF outline, no fill)
-- [ ] Selection outline renders at constant screen-space thickness (zoom-independent)
-- [ ] Multi-select: selection box visible on all selected entities
-- [ ] Remove per-renderer selection visuals (node body `aSelected`/`aHovered` border color change → universal box)
-- [ ] Hover indicator also moves to selection box layer (thin outline on hover)
+
+- [x] Selection box renderer: instanced mesh for selection outlines (lightweight SDF outline, no fill)
+- [x] Selection outline renders at constant screen-space thickness (zoom-independent)
+- [x] Multi-select: selection box visible on all selected entities
+- [x] Remove per-renderer selection visuals (node body `aSelected`/`aHovered` border color change → universal box)
+- [x] Hover indicator also moves to selection box layer (thin outline on hover)
 
 **Resize handles:**
-- [ ] All entities are resizable by default (X and Y)
-- [ ] Corner handle interaction: drag to resize both width and height
-- [ ] Edge handle interaction: drag to resize single axis
-- [ ] `resizable` property on Entity: `boolean | { width?: boolean; height?: boolean }` for opt-out
-- [ ] Emit `EntityChange` of type `'dimensions'` on resize
+
+- [x] All entities are resizable by default (X and Y)
+- [x] Corner handle interaction: drag to resize both width and height
+- [x] Edge handle interaction: drag to resize single axis
+- [x] `resizable` property on Entity: `boolean | { width?: boolean; height?: boolean }` for opt-out
+- [x] Emit `EntityChange` of type `'dimensions'` on resize
 
 **Height as first-class stored value:**
-- [ ] `entity.height` becomes a persisted field (currently computed-only for default nodes)
-- [ ] Socket layout computation becomes a **minimum height constraint**, not the actual height
-- [ ] Render height: `entity.height ?? computedMinHeight` — explicit height takes precedence
-- [ ] Same for width: `entity.width ?? DEFAULT_ENTITY_WIDTH`, with min width from content
-- [ ] When user resizes via handles, explicit `entity.width`/`entity.height` are written
-- [ ] "Fit to content" action: clears explicit height, reverts to computed minimum
+
+- [x] `entity.height` becomes a persisted field (currently computed-only for default nodes)
+- [x] Socket layout computation becomes a **minimum height constraint**, not the actual height
+- [x] Render height: `entity.height ?? computedMinHeight` — explicit height takes precedence
+- [x] Same for width: `entity.width ?? DEFAULT_ENTITY_WIDTH`, with min width from content
+- [x] When user resizes via handles, explicit `entity.width`/`entity.height` are written
+- [x] "Fit to content" action: clears explicit height, reverts to computed minimum
 
 **Minimum size constraints:**
-- [ ] Default entities: min height = socket layout computed height, min width = reasonable minimum
-- [ ] Frame entities: absolute minimum (e.g. 100x60)
+
+- [x] Default entities: min height = socket layout computed height, min width = reasonable minimum
+- [x] Frame entities: absolute minimum (e.g. 100x60)
 - [ ] Text entities: depends on sizing mode (Phase 10)
-- [ ] Comment entities: absolute minimum (e.g. 80x40)
-- [ ] Constraints enforced during resize drag (clamped before committing)
+- [x] Comment entities: absolute minimum (e.g. 80x40)
+- [x] Constraints enforced during resize drag (clamped before committing)
+
+**Implementation notes (completed Feb 2026):**
+
+Files created:
+
+- `components/entity-selection.tsx` — Two instanced meshes: (1) SDF outline-only rounded-rect for selection/hover outlines with per-instance `aSize`, `aType`, `aOutlineWidth`, `aPadding`; (2) SDF filled rounded-rect for 8 resize handles per selected entity. Both use screen-space constant rendering (`size / viewport.zoom`). Dirty flag pattern with store subscriptions (`selectedEntityIds`, `hoveredEntityId`, `entities`, `viewport`). Pre-allocated buffers with 1.5x growth. Handles hidden during drag/connect/box-select via `getInteractionMode()` side-channel.
+- `components/interaction-state.ts` — Side-channel module (`getInteractionMode()`/`setInteractionMode()`) for communicating interaction state to renderers without Zustand state changes.
+
+Files modified:
+
+- `types/index.ts` — Added `resizable?: boolean | { width?: boolean; height?: boolean }` to Entity interface.
+- `core/constants.ts` — Added `MIN_ENTITY_WIDTH`, `MIN_ENTITY_HEIGHT`, `MIN_FRAME_WIDTH/HEIGHT`, `MIN_COMMENT_WIDTH/HEIGHT`, `RESIZE_HANDLE_SIZE`, `RESIZE_HANDLE_HIT_TOLERANCE`, `SELECTION_OUTLINE_WIDTH`, `SELECTION_OUTLINE_PADDING`, `HOVER_OUTLINE_WIDTH`.
+- `core/theme-colors.ts` — Added `entitySelection` semantic colors (selected, hover, handleFill, handleBorder).
+- `components/nodes.tsx` — Removed `aSelected`/`aHovered` attributes, `uHoveredColor`/`uSelectedColor`/`uHoveredBorderColor`/`uSelectedBorderColor` uniforms, selection/hover border logic from SDF shader. Status border rendering preserved.
+- `core/store.ts` — Added `updateEntityDimensions(id, width, height, position?)` (mutates entity, updates entityMap, quadtree, socket quadtree, bumps positionVersion, populates `_movedEntityIds`). Added `fitEntityToContent(id)`. Fixed `setEntities` to bump `positionVersion`.
+- `components/kookie-flow.tsx` — Full resize interaction: `getResizeHandleAt()` hit testing, resize state machine in pointer handlers, per-handle resize math (8 directions with min-size clamping and snap-to-grid), cursor feedback (`nwse-resize`/`nesw-resize`/`ns-resize`/`ew-resize`), `setInteractionMode()` calls at all transitions. Emits both position + dimensions `EntityChange` on resize end. Also fixed: drag end now emits position changes via `onEntitiesChange`.
+- `components/edges.tsx` — Fixed stale `entityMapRef`: now reads `entityMap` from `store.getState()` in useFrame instead of caching as ref (was only updating on `entities.length` change, missed same-length `setEntities` calls).
+- `index.ts` — Exported new constants.
+
+Bugs found and fixed during implementation:
+
+1. **DOM/socket/edge desync during resize**: `updateEntityDimensions` initially didn't bump `positionVersion`, populate `_movedEntityIds`, or update socket quadtree for width changes. Edges/sockets/widgets depend on these signals. Fixed by adding all three.
+2. **Position jumps on mouse release (top/left handles)**: Resize end only emitted 'dimensions' change. External state (via controlled component pattern) only updated dimensions, then FlowSync synced stale positions back. Fixed by emitting both position and dimensions changes.
+3. **Move-then-resize causes jump to original position**: Drag end never emitted position changes to `onEntitiesChange`. External state retained original positions. Any subsequent `onEntitiesChange` round-trip overwrote the store. Fixed by emitting position changes on drag end.
+4. **`setEntities` missing positionVersion bump**: When FlowSync calls `setEntities` with same-length entities but different positions, edges (subscribing to `entities.length` + `positionVersion`) never detected the change. Fixed.
+5. **Edges permanently stuck after resize-then-move**: `entityMapRef` in edges.tsx was only updated when `entities.length` changed. `setEntities` creates a new Map without changing count. All entity lookups returned stale data. Fixed by reading entityMap from `store.getState()` in useFrame.
+
+Performance: No regressions. Resize has same per-frame cost as drag (O(1) entity update + O(k) edge updates via `_movedEntityIds`). Net savings from removing 2 per-instance attributes + 2 store subscriptions from nodes.tsx. EntitySelection outline rendering is O(selected + hovered), not O(total entities).
 
 ### Phase 10: Text Entity
 
@@ -2452,6 +2501,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] `getNodes()`, `getEdges()`, `getSelectedNodes()`, `getSelectedEdges()`
 
 **Phase 8: Graph Engine**
+
 - [x] Adjacency index with incremental O(1) updates, maintained alongside store
 - [x] Graph queries: `getIncomers`, `getOutgoers`, `getNodeEdges`, `getInputEdges`, `getOutputEdges`, `getEdgesBetween`
 - [x] Traversal: `walkUpstream`, `walkDownstream` (iterator-based, O(k))
@@ -2468,6 +2518,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Comprehensive test suite (71+ tests) in `graph.test.ts`
 
 **Phase 7C: Grouping & Annotations**
+
 - [x] Node grouping/frames (`parentId`, `collapsed` on Node interface)
 - [x] Group types: `GroupNode`, `CommentNode`, `RerouteNode` with type guards
 - [x] Store: `collapsedGroupIds: Set<string>`, group actions (`toggleGroupCollapse`, `expandGroup`, `collapseGroup`, etc.)
@@ -2478,18 +2529,35 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] Edge interface: `reroutes?: string[]` for waypoint support
 - [x] Imperative API: Group methods on `KookieFlowInstance`
 
+**Phase 9.5: Selection Box + Resize Handles**
+
+- [x] `EntitySelection` component: instanced mesh for universal selection outlines (SDF outline, no fill, zoom-independent thickness)
+- [x] Hover indicator on selection box layer (gray outline on hover, accent outline on selected)
+- [x] Removed per-renderer selection visuals from `nodes.tsx` shader
+- [x] Resize handles: 8 handles per selected entity (NW, N, NE, E, SE, S, SW, W), constant screen-space size
+- [x] `resizable` property on Entity (`boolean | { width?: boolean; height?: boolean }`)
+- [x] `updateEntityDimensions()` store action (fast-path O(1), bumps positionVersion, updates quadtree + socket quadtree)
+- [x] `fitEntityToContent()` store action (clears explicit width/height)
+- [x] Full resize interaction in InputHandler (8-direction resize math, min-size clamping, snap-to-grid, cursor feedback)
+- [x] Interaction mode side-channel (`interaction-state.ts`) for hiding handles during drag/connect/box-select
+- [x] Position + dimensions `EntityChange` emission on resize end; position emission on drag end
+- [x] Fixed `setEntities` to bump `positionVersion` (prevents stale edge state on external sync)
+- [x] Fixed stale `entityMapRef` in edges.tsx (read from `store.getState()` in useFrame)
+
 > **Note:** Full styling plan and remaining tasks tracked in [STYLING.md](./STYLING.md)
 
 ### Next Immediate Tasks
 
 **Phase 7E: Connection Events** (core implemented, demo/docs remaining)
+
 - [x] `onConnectStart` callback when connection drag begins
 - [x] `onConnectEnd` callback with drop position and validity
 - Enables "add node on edge drop" pattern
 - Remaining: demo example, README docs
 
-**Phase 9+: Entity pivot** (next major work)
-- Entity model refactor → Text → Image → 3D Mesh → Video → Draw → Preview System → Customization
+**Phase 10+: Entity types** (next major work)
+
+- Text → Image → 3D Mesh → Video → Draw → Preview System → Customization
 - Each entity type done well before moving to the next
 
 ---

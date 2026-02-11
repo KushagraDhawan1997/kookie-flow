@@ -368,8 +368,11 @@ export function Edges({
   useFrame(({ size }) => {
     if (!meshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds, positionVersion } = store.getState();
-    const entityMap = entityMapRef.current;
+    const { edges, viewport, selectedEdgeIds, positionVersion, entityMap } = store.getState();
+    // Always read entityMap from store (not cached ref) because setEntities
+    // creates a new Map without changing entities.length, which would leave
+    // entityMapRef stale. The store's getState() is synchronous and cheap.
+    entityMapRef.current = entityMap;
 
     // Always update zoom uniform (cheap operation)
     material.uniforms.uZoom.value = viewport.zoom;

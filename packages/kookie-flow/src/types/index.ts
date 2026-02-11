@@ -344,6 +344,13 @@ export interface Entity<T extends EntityData = EntityData> {
   outputs?: Socket[];
   /** Per-entity accent color override (matches Kookie UI accent colors) */
   color?: AccentColor;
+  /**
+   * Whether this entity is resizable via drag handles.
+   * - true (default): resizable in both width and height
+   * - false: not resizable
+   * - { width?: boolean; height?: boolean }: per-axis control
+   */
+  resizable?: boolean | { width?: boolean; height?: boolean };
 
   // ============================================================================
   // Grouping / Hierarchy

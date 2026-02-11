@@ -70,11 +70,21 @@ export const THEME_COLORS = {
   },
 
   // ============================================
-  // Selection Box
+  // Selection Box (drag-to-select)
   // ============================================
   selectionBox: {
     fill: '--accent-9',
     border: '--accent-9',
+  },
+
+  // ============================================
+  // Entity Selection Outline + Resize Handles
+  // ============================================
+  entitySelection: {
+    selected: '--accent-9',
+    hover: '--gray-8',
+    handleFill: '--gray-1',
+    handleBorder: '--accent-9',
   },
 
   // ============================================
