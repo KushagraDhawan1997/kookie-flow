@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
-import type { EntityStatus } from '../types';
+import type { Entity, EntityStatus } from '../types';
 
 // Status enum encoding for GPU (matches aStatus attribute)
 const STATUS_NONE = 0;
@@ -317,11 +317,17 @@ export function Entities() {
       (state) => state.hiddenEntityIds,
       () => { dirtyRef.current = true; }
     );
+    // Subscribe to selection changes so selected entities render on top
+    const unsubSelection = store.subscribe(
+      (state) => state.selectedEntityIds,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubEntities();
       unsubViewport();
       unsubHidden();
+      unsubSelection();
     };
   }, [store, capacity]);
 
@@ -341,7 +347,7 @@ export function Entities() {
 
     if (!dirtyRef.current) return;
 
-    const { entities, viewport, hiddenEntityIds } = store.getState();
+    const { entities, viewport, hiddenEntityIds, selectedEntityIds } = store.getState();
     if (entities.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
@@ -361,21 +367,17 @@ export function Entities() {
     let visibleCount = 0;
     const maxVisible = capacity;
 
-    for (let i = 0; i < entities.length && visibleCount < maxVisible; i++) {
-      const entity = entities[i];
+    // Write a single entity's instance data. Returns false when buffer is full.
+    const writeEntity = (entity: Entity) => {
+      if (visibleCount >= maxVisible) return false;
 
       // Skip special entity types (handled by separate renderers)
-      if (entity.type === 'comment' || entity.type === 'reroute') {
-        continue;
-      }
+      if (entity.type === 'comment' || entity.type === 'reroute') return true;
 
-      // Skip entities inside collapsed frames (Phase 7C) - O(1) lookup
-      if (hiddenEntityIds.has(entity.id)) {
-        continue;
-      }
+      // Skip entities inside collapsed frames - O(1) lookup
+      if (hiddenEntityIds.has(entity.id)) return true;
 
       const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-      // Calculate height from cached socket layout (supports variable heights)
       const entityLayout = getEntitySocketLayout(entity, socketLayout);
       const height = entity.height ?? entityLayout.computedHeight;
 
@@ -388,9 +390,7 @@ export function Entities() {
         entity.position.x > viewRight + cullPadding ||
         entityBottom < viewTop - cullPadding ||
         entity.position.y > viewBottom + cullPadding
-      ) {
-        continue; // Skip this entity - not visible
-      }
+      ) return true;
 
       // Update matrix for visible entity
       tempMatrix.identity();
@@ -405,16 +405,29 @@ export function Entities() {
       buffers.sizes[visibleCount * 2] = width;
       buffers.sizes[visibleCount * 2 + 1] = height;
 
-      // Per-entity accent color override (or sentinel for global)
       const accentRGB = resolveAccentColorRGB(entity.color, tokens);
       buffers.accentColor[visibleCount * 3] = accentRGB[0];
       buffers.accentColor[visibleCount * 3 + 1] = accentRGB[1];
       buffers.accentColor[visibleCount * 3 + 2] = accentRGB[2];
 
-      // Per-entity status
       buffers.status[visibleCount] = encodeStatus(entity.data?.status);
 
       visibleCount++;
+      return true;
+    };
+
+    // Pass 1: Non-selected entities (rendered behind)
+    for (let i = 0; i < entities.length; i++) {
+      if (selectedEntityIds.has(entities[i].id)) continue;
+      if (!writeEntity(entities[i])) break;
+    }
+
+    // Pass 2: Selected entities (rendered on top)
+    if (selectedEntityIds.size > 0) {
+      for (let i = 0; i < entities.length; i++) {
+        if (!selectedEntityIds.has(entities[i].id)) continue;
+        if (!writeEntity(entities[i])) break;
+      }
     }
 
     // Update instance matrix
