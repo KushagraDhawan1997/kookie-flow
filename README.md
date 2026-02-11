@@ -17,12 +17,14 @@ The result: 10,000 entities at 80-120fps during aggressive pan/zoom.
 
 ```
 ┌─────────────────────────────────────────┐
-│  DOM Layer (interactive widgets)        │
+│  DOM Layer (widgets, hidden textarea)   │
 ├─────────────────────────────────────────┤
 │  WebGL Canvas                           │
 │  ├── Instanced entities (1 draw call)   │
+│  ├── Text entities (instanced MSDF)     │
+│  ├── Text cursor & selection (WebGL)    │
 │  ├── Edges (batched geometry)           │
-│  ├── MSDF text (instanced glyphs)       │
+│  ├── MSDF labels (instanced glyphs)     │
 │  ├── Grid (shader-based)                │
 │  └── Selection box                      │
 └─────────────────────────────────────────┘
@@ -33,8 +35,8 @@ The result: 10,000 entities at 80-120fps during aggressive pan/zoom.
 Entities are the fundamental building blocks. Every object on the canvas is an entity — graph nodes with ports, frames, comments, images, text blocks, 3D meshes, and more.
 
 1. **Graph entities** — Entities with `inputs`/`outputs` sockets that participate in the graph
-2. **Spatial entities** — Entities without ports (frames, comments, text, images) that exist on the canvas
-3. **Hybrid entities** — WebGL container with DOM portal for custom React content
+2. **Spatial entities** — Entities without ports (frames, comments, images) that exist on the canvas
+3. **Hybrid entities** — Any entity type can optionally have ports. A text entity can be a standalone annotation *or* a prompt source with output sockets wired into the graph. Everything is a node.
 
 ## Installation
 
@@ -155,8 +157,10 @@ flowRef.current?.fitView({
 - **Click to select** — Single entity selection
 - **Ctrl+click** — Add to selection
 - **Box select** — Drag on empty space to select multiple entities
-- **Keyboard shortcuts** — Ctrl+A select all, Escape deselect
+- **Keyboard shortcuts** — Ctrl+A select all, Escape deselect, T create text entity
 - **Entity dragging** — Move selected entities with snap-to-grid support
+- **Double-click** — Enter inline editing on text entities
+- **Entity resizing** — 8-direction resize handles with min-size clamping
 
 ### Socket System
 - **Typed sockets** — Input/output sockets with type-based colors
@@ -276,11 +280,11 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `frame` | Spatial container / group with collapsible children | No |
 | `comment` | Sticky note annotation | No |
 | `reroute` | Edge waypoint for cleaner routing | No |
-| `draw` | Shapes, SVG paths, freeform drawing | No |
-| `text` | Rich text blocks | No |
-| `image` | Image display | No |
-| `video` | Video display | No |
-| `mesh` | 3D mesh viewer | No |
+| `text` | Text block with inline editing | Optional |
+| `draw` | Shapes, SVG paths, freeform drawing | Optional |
+| `image` | Image display | Optional |
+| `video` | Video display | Optional |
+| `mesh` | 3D mesh viewer | Optional |
 
 ```tsx
 // Frame entity with children
@@ -300,9 +304,30 @@ const entities = [
   },
 ];
 
+// Text entity — standalone annotation
+const textNote = {
+  id: 'note-1',
+  type: 'text',
+  position: { x: 0, y: 0 },
+  width: 240,
+  data: { content: 'Double-click to edit this text' },
+  resizable: { width: true, height: false }, // Auto-height
+};
+
+// Text entity with ports — participates in the graph
+const promptNode = {
+  id: 'prompt-1',
+  type: 'text',
+  position: { x: 0, y: 0 },
+  width: 240,
+  data: { content: 'A photorealistic mountain landscape' },
+  outputs: [{ id: 'prompt-out', name: 'Prompt', type: 'string' }],
+  resizable: { width: true, height: false },
+};
+
 // Comment entity
 const comment = {
-  id: 'note-1',
+  id: 'comment-1',
   type: 'comment',
   position: { x: 300, y: 0 },
   data: {
@@ -329,12 +354,13 @@ const reroute = {
 - **Edge markers** — Arrows at edge endpoints (start/end)
 
 ### Performance Optimizations
-- **Instanced rendering** — All entities in a single draw call
-- **Frustum culling** — Only render visible entities/edges
+- **Instanced rendering** — Entities, text labels, and text entities each in a single draw call
+- **Frustum culling** — Only render visible entities/edges/text
 - **Quadtree spatial indexing** — O(log n) hit testing for 10,000+ entities
 - **Pre-allocated GPU buffers** — Zero GC pressure during pan/zoom
 - **O(1) index lookups** — Entity map for instant ID-based access
-- **Dirty flags** — Skip unnecessary updates
+- **Dirty flags** — Skip unnecessary updates per frame
+- **Zero React re-renders** — All position/transform updates via refs during interactions
 - **Safari optimizations** — MSAA disabled, simplified shaders
 
 ### Text Rendering
@@ -342,6 +368,39 @@ const reroute = {
 - **DOM mode** — Traditional DOM text for maximum compatibility
 - **LOD (Level of Detail)** — Labels hide when zoomed out (configurable thresholds)
 - **Selective updates** — Text only rebuilds when entities/edges/viewport change, not on hover
+
+### Text Entities
+
+Text entities are standalone text blocks on the canvas with Figma-quality inline editing. All rendering happens in WebGL — no DOM overlay is ever visible.
+
+- **MSDF rendering** — Instanced glyph rendering, crisp at any zoom level
+- **Inline editing** — Double-click to edit. Hidden `<textarea>` captures keyboard, IME, and clipboard natively while cursor and selection render in WebGL (same pattern as Figma/Monaco)
+- **Word wrap** — Automatic word wrapping using BMFont glyph metrics
+- **Auto-height** — Height adjusts to fit content. Width is user-resizable.
+- **Click-to-position** — Click within text to reposition the cursor
+- **Selection** — Shift+click and keyboard selection with visual highlight rectangles
+- **Arrow key navigation** — Full support for navigating across word-wrapped lines
+- **Optional ports** — Add `inputs`/`outputs` to make text entities participate in the graph
+- **`T` shortcut** — Press T to create a new text entity at viewport center
+
+```tsx
+// Text entity with custom styling
+const text = {
+  id: 'styled-text',
+  type: 'text',
+  position: { x: 0, y: 0 },
+  width: 300,
+  data: {
+    content: 'Hello world',
+    fontSize: 18,
+    lineHeight: 1.6,
+    letterSpacing: 0.5,
+    textAlign: 'center',    // 'left' | 'center' | 'right'
+    textColor: '#E0E0E0',
+  },
+  resizable: { width: true, height: false },
+};
+```
 
 ### Font Configuration
 
@@ -531,7 +590,8 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Connection events (onConnectStart, onConnectEnd)
 - [x] Graph engine (topology, cycles, execution levels)
 - [x] Entity model refactor (nodes->entities, status rendering)
-- [ ] Text entities (rich text blocks)
+- [x] Text entities (MSDF rendering, word wrap, auto-height)
+- [x] WebGL-native text editing (hidden textarea, cursor, selection)
 - [ ] Image entities (texture previews)
 - [ ] 3D mesh entity previews
 - [ ] Hybrid entity portals
