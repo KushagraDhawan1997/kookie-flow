@@ -42,6 +42,8 @@ import {
   MIN_FRAME_HEIGHT,
   MIN_COMMENT_WIDTH,
   MIN_COMMENT_HEIGHT,
+  MIN_ZOOM,
+  MAX_ZOOM,
 } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
@@ -90,8 +92,8 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     onPaneClick,
     edgesSelectable = true,
     defaultViewport = DEFAULT_VIEWPORT,
-    minZoom = 0.1,
-    maxZoom = 4,
+    minZoom = MIN_ZOOM,
+    maxZoom = MAX_ZOOM,
     showGrid = true,
     showMinimap = false,
     minimapProps,

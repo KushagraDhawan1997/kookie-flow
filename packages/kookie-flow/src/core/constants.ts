@@ -13,8 +13,8 @@ export const DEFAULT_VIEWPORT = {
 };
 
 /** Zoom limits */
-export const MIN_ZOOM = 0.1;
-export const MAX_ZOOM = 4;
+export const MIN_ZOOM = 0.01;
+export const MAX_ZOOM = 16;
 
 /** Grid settings */
 export const DEFAULT_GRID_SIZE = 20;
