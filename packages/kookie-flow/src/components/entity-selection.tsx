@@ -436,6 +436,13 @@ export function EntitySelection() {
 
       const halfHandle = RESIZE_HANDLE_SIZE / (2 * viewport.zoom);
       let handleCount = 0;
+
+      // Pre-grow buffer to fit all selected entities in one step
+      const neededCapacity = selectedEntityIds.size * 8;
+      if (neededCapacity > handleCapacity) {
+        setHandleCapacity(Math.ceil(neededCapacity * BUFFER_GROWTH_FACTOR));
+        // Continue rendering what fits this frame; next frame will have full capacity
+      }
       const maxHandles = handleCapacity;
 
       for (const entityId of selectedEntityIds) {
@@ -498,11 +505,6 @@ export function EntitySelection() {
           writeHandle(x + width, y + halfH);    // E
           writeHandle(x, y + halfH);            // W
         }
-      }
-
-      // Grow capacity if needed
-      if (handleCount >= handleCapacity) {
-        setHandleCapacity(Math.ceil(handleCount * BUFFER_GROWTH_FACTOR));
       }
 
       handleMesh.instanceMatrix.needsUpdate = true;
