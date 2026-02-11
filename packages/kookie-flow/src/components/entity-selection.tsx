@@ -66,7 +66,7 @@ export function EntitySelection() {
       uniforms: {
         uSelectedColor: { value: new THREE.Color(selectedColor[0], selectedColor[1], selectedColor[2]) },
         uHoverColor: { value: new THREE.Color(hoverColor[0], hoverColor[1], hoverColor[2]) },
-        uCornerRadius: { value: resolvedStyle.borderRadius },
+        uCornerRadius: { value: 0 },
         uZoom: { value: 1.0 },
       },
       vertexShader: /* glsl */ `
@@ -478,6 +478,8 @@ export function EntitySelection() {
 
         // Write handle instances inline — no intermediate array allocation.
         // 8 handle positions: NW, N, NE, E, SE, S, SW, W
+        // Handles are placed centered on the selection outline stroke
+        const pad = (SELECTION_OUTLINE_PADDING - SELECTION_OUTLINE_WIDTH / 2) * invZoom;
         const halfW = width / 2;
         const halfH = height / 2;
         tempScale.set(halfHandle * 2, halfHandle * 2, 1);
@@ -492,18 +494,18 @@ export function EntitySelection() {
         };
 
         if (canResizeW && canResizeH) {
-          writeHandle(x, y);                    // NW
-          writeHandle(x + width, y);            // NE
-          writeHandle(x + width, y + height);   // SE
-          writeHandle(x, y + height);           // SW
+          writeHandle(x - pad, y - pad);                    // NW
+          writeHandle(x + width + pad, y - pad);            // NE
+          writeHandle(x + width + pad, y + height + pad);   // SE
+          writeHandle(x - pad, y + height + pad);           // SW
         }
         if (canResizeH) {
-          writeHandle(x + halfW, y);            // N
-          writeHandle(x + halfW, y + height);   // S
+          writeHandle(x + halfW, y - pad);            // N
+          writeHandle(x + halfW, y + height + pad);   // S
         }
         if (canResizeW) {
-          writeHandle(x + width, y + halfH);    // E
-          writeHandle(x, y + halfH);            // W
+          writeHandle(x + width + pad, y + halfH);    // E
+          writeHandle(x - pad, y + halfH);            // W
         }
       }
 
