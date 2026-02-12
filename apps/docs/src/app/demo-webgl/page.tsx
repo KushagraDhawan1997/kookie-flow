@@ -68,7 +68,7 @@ const NODE_COUNT_OPTIONS = [100, 500, 1_000, 2_500, 5_000, 10_000] as const;
 
 function generateEntities(count: number): Entity[] {
   const cols = Math.ceil(Math.sqrt(count));
-  const spacing = 300;
+  const spacing = 450;
 
   const entities: Entity[] = Array.from({ length: count }, (_, i) => {
     const pattern = socketPatterns[i % socketPatterns.length];

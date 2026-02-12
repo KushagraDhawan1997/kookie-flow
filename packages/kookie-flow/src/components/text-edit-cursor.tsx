@@ -35,7 +35,8 @@ import {
 } from '../utils/text-cursor-layout';
 import type { TextEntityData } from '../types';
 
-const CURSOR_WIDTH = 1.5; // pixels (world units before zoom)
+const CURSOR_WIDTH = 1.0; // pixels (world units before zoom)
+const CURSOR_GAP = 1; // gap between last character and cursor (world units)
 const CURSOR_BLINK_MS = 530;
 const CURSOR_Z = 0.15; // slightly above text (at 0.1)
 const SELECTION_Z = 0.05; // behind text
@@ -97,14 +98,15 @@ export function TextEditCursor() {
   const dirtyRef = useRef(true);
   const lastCursorRef = useRef<{ start: number; end: number } | null>(null);
 
-  // Accent color for cursor
+  // Theme colors
   const accentColor = tokens[THEME_COLORS.entitySelection.selected];
+  const primaryTextColor = tokens[THEME_COLORS.text.primary];
 
   // Cursor material (single mesh, not instanced)
   const cursorMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(1, 1, 1) }, // white cursor
+        uColor: { value: new THREE.Color(primaryTextColor[0], primaryTextColor[1], primaryTextColor[2]) },
         uOpacity: { value: 1.0 },
       },
       vertexShader: cursorVertexShader,
@@ -113,7 +115,7 @@ export function TextEditCursor() {
       depthWrite: false,
       depthTest: false,
     });
-  }, []);
+  }, [primaryTextColor]);
 
   // Selection material (instanced)
   const selectionMaterial = useMemo(() => {
@@ -142,7 +144,7 @@ export function TextEditCursor() {
     return () => { unsubEntity(); unsubContent(); unsubCursor(); unsubViewport(); };
   }, [store]);
 
-  useFrame(({ clock }) => {
+  useFrame((_state, delta) => {
     const cursorMesh = cursorMeshRef.current;
     const selectionMesh = selectionMeshRef.current;
     if (!cursorMesh || !selectionMesh || !regularFont) return;
@@ -192,6 +194,15 @@ export function TextEditCursor() {
     const textAlign = data.textAlign ?? 'left';
     const pad = DEFAULT_TEXT_PADDING;
 
+    // Sync cursor color with entity text color (custom or theme default)
+    if (data.textColor) {
+      const c = cursorMaterial.uniforms.uColor.value as THREE.Color;
+      c.set(data.textColor);
+    } else {
+      const c = cursorMaterial.uniforms.uColor.value as THREE.Color;
+      c.setRGB(primaryTextColor[0], primaryTextColor[1], primaryTextColor[2]);
+    }
+
     // Build character position table (only when dirty)
     // In practice this runs every frame during editing — acceptable since
     // buildCharPositionsForEntity is fast (no GPU work, just array math)
@@ -234,8 +245,9 @@ export function TextEditCursor() {
       // --- Cursor rendering (blinking) ---
       selectionMesh.count = 0;
 
-      // Blink timer
-      const dt = clock.getDelta() * 1000;
+      // Blink timer — use R3F's delta (seconds) instead of clock.getDelta()
+      // which can return 0 if another component calls it first
+      const dt = delta * 1000;
       blinkTimerRef.current += dt;
       if (blinkTimerRef.current >= CURSOR_BLINK_MS) {
         blinkVisibleRef.current = !blinkVisibleRef.current;
@@ -250,11 +262,18 @@ export function TextEditCursor() {
           entity.position.x, entity.position.y, pad
         );
 
-        // Scale: CURSOR_WIDTH wide, lineHeight tall
-        cursorMesh.scale.set(CURSOR_WIDTH, cursorPos.height, 1);
+        // Add gap when cursor is after a character (not at position 0 on empty text)
+        const gap = (editingCursor.start > 0 || content.length > 0) ? CURSOR_GAP : 0;
+
+        // Use actual BMFont glyph height (not full lineHeight which includes leading)
+        // cursorPos.y already starts at halfLeading offset, so this aligns with glyphs
+        const scale = fontSize / regularFont.metrics.info.size;
+        const glyphHeight = regularFont.metrics.common.lineHeight * scale;
+
+        cursorMesh.scale.set(CURSOR_WIDTH, glyphHeight, 1);
         cursorMesh.position.set(
-          cursorPos.x + CURSOR_WIDTH / 2,
-          -(cursorPos.y + cursorPos.height / 2), // flip Y
+          cursorPos.x + gap + CURSOR_WIDTH / 2,
+          -(cursorPos.y + glyphHeight / 2), // flip Y, center on glyph height
           CURSOR_Z
         );
       }
