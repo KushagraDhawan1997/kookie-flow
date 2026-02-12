@@ -224,18 +224,19 @@ export function buildGlyphMap(metrics: FontMetrics): GlyphMap {
 
 /**
  * Pre-built kerning lookup for O(1) pair lookup.
- * Key is `${first}:${second}`.
+ * Key packs two 16-bit char codes into one number: (first << 16) | second.
+ * Avoids string allocation in hot paths.
  */
-export type KerningMap = Map<string, number>;
+export type KerningMap = Map<number, number>;
 
 /**
  * Build kerning lookup map.
  */
 export function buildKerningMap(metrics: FontMetrics): KerningMap {
-  const map = new Map<string, number>();
+  const map = new Map<number, number>();
   if (metrics.kernings) {
     for (const kern of metrics.kernings) {
-      map.set(`${kern.first}:${kern.second}`, kern.amount);
+      map.set((kern.first << 16) | kern.second, kern.amount);
     }
   }
   return map;
@@ -260,7 +261,7 @@ export function measureText(
 
     // Apply kerning if available
     if (prevCharCode !== null) {
-      const kerning = kerningMap.get(`${prevCharCode}:${charCode}`);
+      const kerning = kerningMap.get((prevCharCode << 16) | charCode);
       if (kerning) width += kerning;
     }
 
@@ -420,7 +421,7 @@ export function layoutText(
 
       // Apply kerning
       if (prevCharCode !== null) {
-        const kerning = kerningMap.get(`${prevCharCode}:${charCode}`);
+        const kerning = kerningMap.get((prevCharCode << 16) | charCode);
         if (kerning) cursorX += kerning * scale;
       }
 
@@ -542,7 +543,7 @@ export function wrapTextMSDF(
         if (!glyph) continue;
 
         if (wordPrevChar !== null) {
-          const kern = kerningMap.get(`${wordPrevChar}:${charCode}`);
+          const kern = kerningMap.get((wordPrevChar << 16) | charCode);
           if (kern) wordWidth += kern;
           wordWidth += letterSpacing;
         }
@@ -565,7 +566,7 @@ export function wrapTextMSDF(
             const glyph = glyphMap.get(charCode);
             if (!glyph) continue;
             if (prevCharCode !== null) {
-              const kern = kerningMap.get(`${prevCharCode}:${charCode}`);
+              const kern = kerningMap.get((prevCharCode << 16) | charCode);
               if (kern) currentWidth += kern;
               currentWidth += letterSpacing;
             }
@@ -794,7 +795,7 @@ export function populateMultiLineGlyphBuffers(
 
         // Apply kerning + letter spacing
         if (prevCharCode !== null) {
-          const kern = kerningMap.get(`${prevCharCode}:${charCode}`);
+          const kern = kerningMap.get((prevCharCode << 16) | charCode);
           if (kern) cursorX += kern * scale;
           cursorX += (entry.letterSpacing ?? 0);
         }
@@ -919,7 +920,7 @@ export function populateGlyphBuffers(
 
       // Apply kerning
       if (prevCharCode !== null) {
-        const kerning = kerningMap.get(`${prevCharCode}:${charCode}`);
+        const kerning = kerningMap.get((prevCharCode << 16) | charCode);
         if (kerning) cursorX += kerning * scale;
       }
 

@@ -173,7 +173,7 @@ export function buildCharPositions(
         charWidth = charCode === 32 ? baseFontSize * scale * 0.25 : 0;
       } else {
         if (prevCharCode !== null) {
-          const kern = kerningMap.get(`${prevCharCode}:${charCode}`);
+          const kern = kerningMap.get((prevCharCode << 16) | charCode);
           if (kern) cursorX += kern * scale;
           cursorX += letterSpacing;
         }
