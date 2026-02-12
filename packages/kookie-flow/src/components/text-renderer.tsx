@@ -316,7 +316,7 @@ export function MultiWeightTextRenderer({
 
       // Entity headers (semibold) — skip types that render their own content
       for (const entity of entities) {
-        if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text') continue;
+        if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text' || entity.type === 'image') continue;
 
         const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const entityLayout = getEntitySocketLayout(entity, socketLayout);

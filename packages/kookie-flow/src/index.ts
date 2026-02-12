@@ -193,6 +193,7 @@ export {
   isCommentEntity,
   isRerouteEntity,
   isTextEntity,
+  isImageEntity,
 } from './types';
 
 // Text entity utilities

@@ -403,7 +403,7 @@ export function Entities() {
       const entity = entities[i];
 
       // Skip special entity types (handled by separate renderers)
-      if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text') continue;
+      if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text' || entity.type === 'image') continue;
 
       // Skip entities inside collapsed frames - O(1) lookup
       if (hiddenEntityIds.has(entity.id)) continue;

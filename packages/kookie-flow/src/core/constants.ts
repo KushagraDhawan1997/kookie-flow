@@ -92,6 +92,14 @@ export const DEFAULT_TEXT_FONT_SIZE = 16;
 export const DEFAULT_TEXT_LINE_HEIGHT = 1.5;
 export const DEFAULT_TEXT_PADDING = 4;
 
+/** Image entity settings */
+export const DEFAULT_IMAGE_WIDTH = 240;
+export const DEFAULT_IMAGE_HEIGHT = 160;
+export const MIN_IMAGE_WIDTH = 60;
+export const MIN_IMAGE_HEIGHT = 40;
+/** Maximum texture dimension — matches Figma's cap; keeps worst-case VRAM per image at 64 MB */
+export const MAX_IMAGE_TEXTURE_SIZE = 4096;
+
 /** Selection outline + resize handle settings (screen pixels) */
 export const RESIZE_HANDLE_SIZE = 8;
 export const RESIZE_HANDLE_HIT_TOLERANCE = 4;

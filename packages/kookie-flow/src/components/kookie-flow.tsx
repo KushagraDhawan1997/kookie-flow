@@ -20,6 +20,7 @@ import { Edges } from './edges';
 import { Sockets } from './sockets';
 import { RerouteNodes } from './reroute-nodes';
 import { TextEntities } from './text-entities';
+import { ImageEntities } from './image-entities';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -46,6 +47,8 @@ import {
   MIN_COMMENT_HEIGHT,
   MIN_TEXT_WIDTH,
   MIN_TEXT_HEIGHT,
+  MIN_IMAGE_WIDTH,
+  MIN_IMAGE_HEIGHT,
   DEFAULT_TEXT_WIDTH,
   DEFAULT_TEXT_HEIGHT,
   MIN_ZOOM,
@@ -858,6 +861,8 @@ function InputHandler({
         return { minWidth: MIN_COMMENT_WIDTH, minHeight: MIN_COMMENT_HEIGHT };
       case 'text':
         return { minWidth: MIN_TEXT_WIDTH, minHeight: MIN_TEXT_HEIGHT };
+      case 'image':
+        return { minWidth: MIN_IMAGE_WIDTH, minHeight: MIN_IMAGE_HEIGHT };
       default: {
         // Default entities: min height from socket layout
         const layout = getEntitySocketLayout(entity, socketLayout);
@@ -2228,6 +2233,7 @@ function FlowCanvas({
       <CameraController />
       {showGrid && <Grid />}
       <TextEntities />
+      <ImageEntities />
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Entities />
