@@ -174,13 +174,13 @@ One primitive: **Entity**. Spatial presence and graph participation are orthogon
 ```
 Entity
 ├── position, size, rotation     (always — everything lives on the canvas)
-├── ports[]                      (optional — graph participation)
+├── inputs[], outputs[]          (optional — graph participation via sockets)
 ├── parentId                     (optional — spatial hierarchy)
 ├── type                         (determines rendering + behavior)
 ├── data                         (type-specific payload)
 │   ├── status                   (optional — 'error' | 'warning' | 'running' | 'success')
 │   └── statusMessage            (optional — human-readable status text)
-└── preview                      (optional — data visualization config)
+└── preview                      (planned — data visualization config)
 ```
 
 ### Two Independent Layers
@@ -188,7 +188,7 @@ Entity
 | Layer                 | Controls                           | Example                              |
 | --------------------- | ---------------------------------- | ------------------------------------ |
 | **Spatial hierarchy** | Parent/child, containment, z-order | A Frame contains nodes visually      |
-| **Graph topology**    | Ports, edges, data resolution      | Node A's output feeds Node B's input |
+| **Graph topology**    | Sockets, edges, data resolution    | Node A's output feeds Node B's input |
 
 These coexist but don't implicitly affect each other. Dragging a node out of a frame doesn't disconnect its edges. Deleting an edge doesn't move the node.
 
@@ -196,12 +196,12 @@ These coexist but don't implicitly affect each other. Dragging a node out of a f
 
 At the Kookie Flow level, an edge is **purely structural metadata**:
 
-> "Port A on Entity X is linked to Port B on Entity Y."
+> "Socket A on Entity X is linked to Socket B on Entity Y."
 
 Kookie Flow:
 
-- **Stores** the edge: `{ source, sourcePort, target, targetPort }`
-- **Renders** the visual curve between the two ports
+- **Stores** the edge: `{ source, sourceSocket, target, targetSocket }`
+- **Renders** the visual curve between the two sockets
 - **Validates** compatibility (if `connectionMode="strict"` or `isValidConnection` provided)
 - **Notifies** via `onConnect`, `onEdgesChange`
 
@@ -226,77 +226,59 @@ entity.data.statusMessage = 'Missing required input: Model';
 
 ### Built-in Entity Types
 
-| Type      | What It Renders                                      | Ports?               | Notes                              |
-| --------- | ---------------------------------------------------- | -------------------- | ---------------------------------- |
-| `default` | Standard node (header + sockets + widgets + preview) | Yes (inputs/outputs) | The classic node graph node        |
-| `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Contains shapes as `data.shapes[]` |
-| `text`    | Rich text block                                      | Optional             | MSDF display, hidden textarea edit |
-| `image`   | Image on canvas                                      | Optional             | Three.js texture on quad           |
-| `video`   | Video on canvas                                      | Optional             | DOM overlay, lazy-loaded           |
-| `mesh`    | 3D object on canvas                                  | Optional             | Three.js scene-in-scene            |
-| `frame`   | Spatial container / group                            | Optional             | Parent for other entities          |
-| `comment` | Sticky note annotation                               | No                   | Annotation only                    |
-| `reroute` | Edge waypoint                                        | Yes (passthrough)    | Graph routing                      |
+| Type      | What It Renders                                      | Sockets?             | Status      | Notes                              |
+| --------- | ---------------------------------------------------- | -------------------- | ----------- | ---------------------------------- |
+| `default` | Standard node (header + sockets + widgets + preview) | Yes (inputs/outputs) | Implemented | The classic node graph node        |
+| `text`    | Rich text block                                      | Optional             | Implemented | MSDF display, hidden textarea edit |
+| `frame`   | Spatial container / group                            | Optional             | Implemented | Parent for other entities          |
+| `comment` | Sticky note annotation                               | No                   | Implemented | Annotation only                    |
+| `reroute` | Edge waypoint                                        | Yes (passthrough)    | Implemented | Graph routing                      |
+| `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Planned     | Contains shapes as `data.shapes[]` |
+| `image`   | Image on canvas                                      | Optional             | Planned     | Three.js texture on quad           |
+| `video`   | Video on canvas                                      | Optional             | Planned     | DOM overlay, lazy-loaded           |
+| `mesh`    | 3D object on canvas                                  | Optional             | Planned     | Three.js scene-in-scene            |
 
 `image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that _produce_ visual output.
 
 ### Entity Type Customization (Three Levels)
 
-**Level 1: Pure Declaration (80% of nodes).** Consumer declares ports, widgets, and preview. Kookie Flow renders everything.
+**Level 1: Pure Declaration (80% of nodes).** Consumer declares sockets, widgets, and preview. Kookie Flow renders everything.
 
 ```tsx
-const Gen3DNode = {
+const Gen3DNode: EntityTypeDefinition = {
+  type: 'gen3d',
   inputs: [
-    { id: 'prompt', name: 'Prompt', type: 'string' },
-    { id: 'model', name: 'Model', type: 'enum', options: ['shap-e', 'point-e', 'meshy'] },
+    { name: 'Prompt', type: 'string' },
+    { name: 'Model', type: 'enum', widget: { type: 'select', options: ['shap-e', 'point-e', 'meshy'] } },
   ],
-  outputs: [{ id: 'mesh', name: 'Mesh', type: 'mesh' }],
-  preview: { source: 'mesh', type: '3d' },
+  outputs: [{ name: 'Mesh', type: 'mesh' }],
 };
 ```
 
-**Level 2: Slots (15% of nodes).** Consumer injects custom UI between Kookie Flow's building blocks.
+**Level 2: Slots (15% of nodes).** _(Planned — not yet implemented.)_ Consumer injects custom UI between Kookie Flow's building blocks via slot props.
+
+**Level 3: Full Escape Hatch (5% of nodes).** Consumer provides a `component` and owns the interior.
 
 ```tsx
-const Gen3DNode = {
-  inputs: [...],
-  outputs: [...],
-  preview: { source: 'mesh', type: '3d' },
-  Content: ({ entity, slots }) => (
-    <>
-      {slots.preview}
-      <button onClick={() => generate(entity)}>Generate</button>
-      <ProgressBar value={entity.data.progress} />
-      {slots.widgets}
-    </>
-  ),
-};
-```
-
-Available slots: `slots.preview`, `slots.widgets`, `slots.outputs`, `slots.inputs`. Consumer controls layout. Kookie Flow still owns preview lifecycle, widget rendering, port positioning, hit testing.
-
-**Level 3: Full Escape Hatch (5% of nodes).** Consumer owns the interior.
-
-```tsx
-const WildNode = {
-  inputs: [{ id: 'in', name: 'In', type: 'any' }],
-  outputs: [{ id: 'out', name: 'Out', type: 'any' }],
-  render: 'custom',
-  Component: ({ entity, ports }) => (
+const WildNode: EntityTypeDefinition = {
+  type: 'wild',
+  inputs: [{ name: 'In', type: 'any' }],
+  outputs: [{ name: 'Out', type: 'any' }],
+  component: ({ id, data, selected, onChange }) => (
     <div className="my-wild-layout">
-      {ports.input('in')}
-      <MyEntirelyCustomThing />
-      {ports.output('out')}
+      <MyEntirelyCustomThing data={data} onChange={onChange} />
     </div>
   ),
 };
 ```
 
-Kookie Flow still handles: entity frame/border, port hit testing, edge connections, selection, dragging, status rendering. Consumer controls what's inside.
+Kookie Flow still handles: entity frame/border, socket hit testing, edge connections, selection, dragging, status rendering. Consumer controls what's inside.
 
-### Preview System
+### Preview System _(Planned)_
 
-Every `default` node can visualize data on its output ports. The preview system is **built-in**.
+> Not yet implemented. The type definition exists (`preview` on `EntityTypeDefinition`) but no rendering is wired up.
+
+Every `default` node will be able to visualize data on its output sockets. Planned design:
 
 | `preview.type` | Renderer                | How           | Loaded              |
 | -------------- | ----------------------- | ------------- | ------------------- |
@@ -306,7 +288,7 @@ Every `default` node can visualize data on its output ports. The preview system 
 
 Display mode (zoomed out / idle): thumbnail drawn in WebGL (nearly free). Interactive mode (zoomed in / active): live renderer mounted as DOM overlay. 200 video entities = ~5 live `<video>` elements.
 
-Consumers can register additional preview renderers:
+Consumers will be able to register additional preview renderers:
 
 ```tsx
 <KookieFlow
