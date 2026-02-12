@@ -112,6 +112,8 @@ export function ImageEntities() {
   });
 
   const dirtyRef = useRef(true);
+  // Separate flag for entity add/remove — gates the cleanup loop in useFrame
+  const topologyDirtyRef = useRef(true);
 
   // Refs for each mesh, keyed by entity ID
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -161,6 +163,7 @@ export function ImageEntities() {
     // topologyVersion doesn't change during drag, so filter/map only runs when needed.
     const unsubTopology = store.subscribe((s) => s.topologyVersion, () => {
       markDirty();
+      topologyDirtyRef.current = true;
       const { entities } = store.getState();
       const ids = entities.filter((e) => e.type === 'image').map((e) => e.id);
       setImageEntityIds((prev) => {
@@ -305,19 +308,23 @@ export function ImageEntities() {
       mesh.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
     }
 
-    // Clean up materials and ref callbacks for removed entities
-    for (const [id] of materialRefs.current) {
-      if (!meshRefs.current.has(id)) {
-        const mat = materialRefs.current.get(id);
-        mat?.dispose();
-        materialRefs.current.delete(id);
-        refCallbacksRef.current.delete(id);
-        const src = loadedSrcRefs.current.get(id);
-        if (src) {
-          texManager.release(src);
-          loadedSrcRefs.current.delete(id);
+    // Clean up materials and ref callbacks for removed entities.
+    // Only needed after topology changes (entity add/remove), not on every pan/zoom.
+    if (topologyDirtyRef.current) {
+      for (const [id] of materialRefs.current) {
+        if (!meshRefs.current.has(id)) {
+          const mat = materialRefs.current.get(id);
+          mat?.dispose();
+          materialRefs.current.delete(id);
+          refCallbacksRef.current.delete(id);
+          const src = loadedSrcRefs.current.get(id);
+          if (src) {
+            texManager.release(src);
+            loadedSrcRefs.current.delete(id);
+          }
         }
       }
+      topologyDirtyRef.current = false;
     }
 
     dirtyRef.current = false;
