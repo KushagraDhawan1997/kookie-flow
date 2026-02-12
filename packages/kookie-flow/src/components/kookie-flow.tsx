@@ -637,6 +637,11 @@ function InputHandler({
   const DOUBLE_CLICK_TIMEOUT = 300; // ms
   const DOUBLE_CLICK_DISTANCE = 5; // px screen distance
 
+  // Drag-to-select: anchor offset and cached CharPositionTable for the editing entity
+  const textSelectAnchorRef = useRef<number | null>(null);
+  const textSelectTableRef = useRef<ReturnType<typeof buildCharPositionsForEntity> | null>(null);
+  const textSelectEntityRef = useRef<{ x: number; y: number; pad: number } | null>(null);
+
   // Auto-scroll state for dragging near viewport edges
   const autoScrollRef = useRef<{
     rafId: number;
@@ -1013,22 +1018,62 @@ function InputHandler({
           queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedEntity) {
-          // Suppress textarea blur when clicking on the entity being edited
-          // (prevents editing from exiting between clicks of a double-click)
-          if (store.getState().editingEntityId === clickedEntity.id) {
-            suppressEditBlur();
-          }
+          const editingId = store.getState().editingEntityId;
 
-          // Store cursor offset from entity position (React Flow style)
-          // This ensures the entity doesn't "jump" when drag threshold is crossed
-          pendingDragRef.current = {
-            clickedEntityId: clickedEntity.id,
-            cursorOffset: {
-              x: worldPos.x - clickedEntity.position.x,
-              y: worldPos.y - clickedEntity.position.y,
-            },
-          };
+          if (editingId === clickedEntity.id && clickedEntity.type === 'text') {
+            // Clicking on the entity being edited — set up drag-to-select anchor
+            suppressEditBlur();
+            const font = regularFontRef.current;
+            if (font && glyphMapRef.current.size > 0) {
+              const data = clickedEntity.data as TextEntityData;
+              const content = store.getState().editingContent ?? (data.content ?? '');
+              const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
+              const fontSize = data.fontSize ?? 16;
+              const lineHeightMul = data.lineHeight ?? 1.5;
+              const letterSp = data.letterSpacing ?? 0;
+              const textAlignVal = data.textAlign ?? 'left';
+              const pad = 4;
+
+              const table = buildCharPositionsForEntity(
+                content, fontSize, lineHeightMul, textAlignVal,
+                w, pad, clickedEntity.position.x, clickedEntity.position.y,
+                font.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
+              );
+              const anchor = hitTestCharOffset(
+                worldPos.x, worldPos.y, table,
+                clickedEntity.position.x, clickedEntity.position.y, pad
+              );
+
+              textSelectAnchorRef.current = anchor;
+              textSelectTableRef.current = table;
+              textSelectEntityRef.current = {
+                x: clickedEntity.position.x, y: clickedEntity.position.y, pad,
+              };
+            }
+            // Don't set pendingDragRef — prevent entity dragging while editing
+            pendingDragRef.current = null;
+          } else {
+            // Suppress blur for double-click sequence on editing entity
+            if (editingId === clickedEntity.id) {
+              suppressEditBlur();
+            }
+            textSelectAnchorRef.current = null;
+            textSelectTableRef.current = null;
+            textSelectEntityRef.current = null;
+
+            // Store cursor offset from entity position (React Flow style)
+            pendingDragRef.current = {
+              clickedEntityId: clickedEntity.id,
+              cursorOffset: {
+                x: worldPos.x - clickedEntity.position.x,
+                y: worldPos.y - clickedEntity.position.y,
+              },
+            };
+          }
         } else {
+          textSelectAnchorRef.current = null;
+          textSelectTableRef.current = null;
+          textSelectEntityRef.current = null;
           pendingDragRef.current = null;
         }
 
@@ -1242,6 +1287,33 @@ function InputHandler({
 
         if (distance > DRAG_THRESHOLD) {
           hasDragged.current = true;
+
+          // Drag-to-select: if text select anchor is set, update selection range
+          if (textSelectAnchorRef.current !== null && textSelectTableRef.current && textSelectEntityRef.current) {
+            const rect = cachedRectRef.current;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const { viewport } = store.getState();
+            const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
+
+            const ent = textSelectEntityRef.current;
+            const offset = hitTestCharOffset(
+              worldPos.x, worldPos.y, textSelectTableRef.current,
+              ent.x, ent.y, ent.pad
+            );
+
+            const anchor = textSelectAnchorRef.current;
+            const start = Math.min(anchor, offset);
+            const end = Math.max(anchor, offset);
+            store.getState().setEditingCursor(start, end);
+
+            const ta = getEditingTextarea();
+            if (ta) {
+              ta.selectionStart = start;
+              ta.selectionEnd = end;
+            }
+            return;
+          }
 
           // Check if we're clicking on an entity or empty space
           // Use quadtree for O(log n) hit testing
@@ -1622,6 +1694,20 @@ function InputHandler({
         pendingDragRef.current = null;
         return;
       }
+
+      // End text drag-to-select (selection already applied during pointerMove)
+      if (textSelectAnchorRef.current !== null && hasDragged.current) {
+        textSelectAnchorRef.current = null;
+        textSelectTableRef.current = null;
+        textSelectEntityRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        pointerDownPos.current = null;
+        return;
+      }
+      // Clear text select refs even if no drag (single click handled below)
+      textSelectAnchorRef.current = null;
+      textSelectTableRef.current = null;
+      textSelectEntityRef.current = null;
 
       // Handle click (no drag occurred)
       if (pointerDownPos.current && !hasDragged.current && e.button === 0) {
