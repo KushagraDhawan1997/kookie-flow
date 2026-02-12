@@ -198,13 +198,26 @@ export function ImageEntities() {
     };
   }, [store]);
 
-  // Get or create a stable ref callback for a given entity ID
+  // Get or create a stable ref callback for a given entity ID.
+  // Pre-creates the material at mount time so useFrame never allocates.
   function getRefCallback(id: string): (mesh: THREE.Mesh | null) => void {
     let cb = refCallbacksRef.current.get(id);
     if (!cb) {
       cb = (mesh: THREE.Mesh | null) => {
-        if (mesh) meshRefs.current.set(id, mesh);
-        else meshRefs.current.delete(id);
+        if (mesh) {
+          meshRefs.current.set(id, mesh);
+          // Pre-create material so useFrame only assigns textures, never allocates
+          if (!materialRefs.current.has(id)) {
+            materialRefs.current.set(id, new THREE.MeshBasicMaterial({
+              transparent: true,
+              depthWrite: false,
+              depthTest: false,
+              side: THREE.DoubleSide,
+            }));
+          }
+        } else {
+          meshRefs.current.delete(id);
+        }
       };
       refCallbacksRef.current.set(id, cb);
     }
@@ -310,29 +323,21 @@ export function ImageEntities() {
       const texture = src ? texManager.getTexture(src, screenWidth) : null;
 
       if (texture) {
-        // Get or create material for this entity
-        let mat = materialRefs.current.get(entity.id);
-        if (!mat) {
-          mat = new THREE.MeshBasicMaterial({
-            transparent: true,
-            depthWrite: false,
-            depthTest: false,
-            side: THREE.DoubleSide,
-          });
-          materialRefs.current.set(entity.id, mat);
-        }
-
-        // Update texture if it changed
-        if (mat.map !== texture) {
-          mat.map = texture;
-          mat.needsUpdate = true;
-          // Debug: queue for mip colorization after GPU upload
-          if (DEBUG_MIP_LEVELS && !colorizedRef.current.has(texture)) {
-            pendingColorizeRef.current.add(texture);
+        // Material pre-created in ref callback — just look it up
+        const mat = materialRefs.current.get(entity.id);
+        if (mat) {
+          // Update texture if it changed
+          if (mat.map !== texture) {
+            mat.map = texture;
+            mat.needsUpdate = true;
+            // Debug: queue for mip colorization after GPU upload
+            if (DEBUG_MIP_LEVELS && !colorizedRef.current.has(texture)) {
+              pendingColorizeRef.current.add(texture);
+            }
           }
+          mat.opacity = 1;
+          mesh.material = mat;
         }
-        mat.opacity = 1;
-        mesh.material = mat;
       } else {
         // Show placeholder
         mesh.material = placeholderMat;
