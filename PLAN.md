@@ -1365,40 +1365,33 @@ interface NodeData {
 **Library Default Widget Mappings:**
 
 ```typescript
-// In constants.ts - extend DEFAULT_SOCKET_TYPES
+// In constants.ts — DEFAULT_SOCKET_TYPES grouped by similarity, scale-10 tokens
 export const DEFAULT_SOCKET_TYPES = {
-  float: {
-    name: 'Float',
-    color: '--teal-9',
-    widget: 'slider',
-    min: 0,
-    max: 1,
-  },
-  int: {
-    name: 'Integer',
-    color: '--blue-9',
-    widget: 'number',
-    step: 1,
-  },
-  boolean: {
-    name: 'Boolean',
-    color: '--orange-9',
-    widget: 'checkbox',
-  },
-  string: {
-    name: 'String',
-    color: '--green-9',
-    widget: 'text',
-  },
-  enum: {
-    name: 'Enum',
-    color: '--amber-9',
-    widget: 'select', // options provided per-socket
-  },
-  // Types with no default widget (connection-only)
-  image: { name: 'Image', color: '--purple-9' },
-  mesh: { name: 'Mesh', color: '--pink-9' },
-  any: { name: 'Any', color: '--gray-9' },
+  // Numeric — blue
+  float: { name: 'Float', color: '--blue-10', widget: 'slider', min: 0, max: 1, step: 0.01 },
+  int:   { name: 'Integer', color: '--blue-10', widget: 'number', min: 0, max: 100, step: 1 },
+  // Text — amber
+  string: { name: 'String', color: '--amber-10', widget: 'text' },
+  enum:   { name: 'Enum', color: '--amber-10', widget: 'select' }, // options per-socket
+  // Toggle — orange
+  boolean: { name: 'Boolean', color: '--orange-10', widget: 'checkbox' },
+  // Color — pink
+  color: { name: 'Color', color: '--pink-10', widget: 'color' },
+  // Media — purple (connection-only, no widget)
+  image: { name: 'Image', color: '--purple-10' },
+  mask:  { name: 'Mask', color: '--purple-10' },
+  // 3D — violet
+  mesh: { name: 'Mesh', color: '--violet-10' },
+  // Signal — cyan
+  signal: { name: 'Signal', color: '--cyan-10' },
+  // ML pipeline — teal
+  latent: { name: 'Latent', color: '--teal-10' },
+  model:  { name: 'Model', color: '--teal-10' },
+  conditioning: { name: 'Conditioning', color: '--teal-10' },
+  clip: { name: 'CLIP', color: '--teal-10' },
+  vae:  { name: 'VAE', color: '--teal-10' },
+  // Wildcard — gray
+  any: { name: 'Any', color: '--gray-10' },
 };
 ```
 
@@ -2080,6 +2073,7 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 - **Editing:** Hidden `<textarea>` captures keyboard/IME/clipboard natively. All visual rendering (text, cursor, selection) in WebGL. Zero visual shift entering/exiting edit mode
 - **Word wrap:** `wrapTextMSDF()` in `text-layout.ts` using BMFont glyph metrics — same measurements for display and editing cursor positioning
 - **Z-order:** MSDF quads participate in scene draw order like any other entity
+- **Graph participation:** Text entities can have optional `inputs`/`outputs` sockets, making them first-class graph participants (e.g., a prompt text feeding into a model node). Sockets are vertically centered within the text entity bounds via bidirectional `centerOffset = (entityHeight - computedHeight) / 2` in all rendering paths (sockets, edges, labels, widgets)
 
 **Why not DOM?** DOM elements in `DOMLayer` always render on top of the WebGL canvas. A DOM-based text entity can never appear behind a WebGL-rendered node. Z-ordering is broken — dealbreaker for a freeform canvas where entities overlap.
 
@@ -2173,6 +2167,14 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 - [x] Edge-to-edge selection rects (Figma-style): full entity width, logical line Y positioning
 - [x] `'data'` entity change type handled in `useGraph` hook and store's `applyEntityChanges` — text edits persist
 - [x] Break long words that exceed entity width (`overflow-wrap: break-word`) — `breakWordByChars` helper in `wrapTextMSDF`
+
+**10I: Socket Positioning & Graph Participation** ✅
+- [x] Text entities can have optional `inputs`/`outputs` for graph participation
+- [x] Bidirectional vertical centering: `centerOffset = (entityHeight - computedHeight) / 2` applied in sockets, edges, connection-line, text-renderer, dom-layer, widgets-layer
+- [x] Headerless entity types (text, comment, reroute) use `padding` instead of `marginTop` in `socket-layout-cache.ts`
+- [x] Render tree reorder: `<TextEntities />` moved before `<Edges />` and `<Sockets />` so auto-sizing runs first in `useFrame` order
+- [x] `_movedEntityIds` race condition fix: `updateEntityDimensions` now accumulates (doesn't clear) the set, so multiple auto-size calls in the same frame all appear in the fast-path set
+- [x] Demo: text entity connections wired as string→string (valid type match)
 
 **10-Later: Deferred**
 - Auto-width mode (width grows with content, no wrap)
@@ -2591,6 +2593,8 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - [x] 26 accent colors support (`AccentColor` type)
 - [x] Style resolution (`resolveNodeStyle()`, `style-resolver.ts`)
 - [x] Semantic color tokenization (grid, edges, sockets, selection box, text)
+- [x] Socket type colors regrouped by similarity using scale-10 tokens (9 visual groups: blue, amber, orange, pink, purple, violet, cyan, teal, gray)
+- [x] Scale-10 theme tokens (`--color-10`) added to ThemeTokens, fallbacks, and DOM reader
 - [x] Fallback tokens for standalone mode (no Kookie UI required)
 - [x] Typography tokens (`--font-size-N`, `--line-height-N`) in ThemeTokens
 - [x] Socket layout tokenization (`--space-6`, `--space-7` for row/widget heights)
