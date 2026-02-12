@@ -182,8 +182,10 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
 
       // Arrow Up/Down need special handling for wrapped lines
       // (textarea sees flat text, but visual lines are word-wrapped)
+      // Let Ctrl/Cmd+Arrow fall through for native paragraph navigation
       if (
         (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+        !e.ctrlKey && !e.metaKey &&
         regularFont && glyphMap.size > 0
       ) {
         const ta = textareaRef.current;
@@ -248,6 +250,69 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
 
         if (e.shiftKey) {
           // Extend selection
+          const anchor = ta.selectionDirection === 'backward'
+            ? ta.selectionEnd
+            : ta.selectionStart;
+          const newStart = Math.min(anchor, newOffset);
+          const newEnd = Math.max(anchor, newOffset);
+          ta.selectionStart = newStart;
+          ta.selectionEnd = newEnd;
+          store.getState().setEditingCursor(newStart, newEnd);
+        } else {
+          ta.selectionStart = newOffset;
+          ta.selectionEnd = newOffset;
+          store.getState().setEditingCursor(newOffset, newOffset);
+        }
+
+        return;
+      }
+
+      // Home/End: navigate to visual (wrapped) line start/end, not content line
+      if (
+        (e.key === 'Home' || e.key === 'End') &&
+        !e.ctrlKey && !e.metaKey &&
+        regularFont && glyphMap.size > 0
+      ) {
+        const ta = textareaRef.current;
+        if (!ta) return;
+
+        const entityId = store.getState().editingEntityId;
+        if (!entityId) return;
+
+        const entity = store.getState().entityMap.get(entityId);
+        if (!entity || entity.type !== 'text') return;
+
+        const data = entity.data as TextEntityData;
+        const content = ta.value;
+        const w = entity.width ?? DEFAULT_TEXT_WIDTH;
+        const fontSize = data.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
+        const lineHeightMul = data.lineHeight ?? 1.5;
+        const letterSpacing = data.letterSpacing ?? 0;
+        const textAlign = data.textAlign ?? 'left';
+        const pad = DEFAULT_TEXT_PADDING;
+
+        const table = buildCharPositionsForEntity(
+          content, fontSize, lineHeightMul, textAlign,
+          w, pad, entity.position.x, entity.position.y,
+          regularFont.metrics, glyphMap, kerningMap, letterSpacing
+        );
+
+        if (table.lineCount <= 1) {
+          // Single line — let textarea handle natively
+          e.stopPropagation();
+          return;
+        }
+
+        e.preventDefault();
+
+        const cursorOffset = ta.selectionStart;
+        const { line } = contentOffsetToLineColumn(cursorOffset, table);
+
+        const newOffset = e.key === 'Home'
+          ? lineColumnToContentOffset(line, 0, table)
+          : lineColumnToContentOffset(line, table.lineLengths[line], table);
+
+        if (e.shiftKey) {
           const anchor = ta.selectionDirection === 'backward'
             ? ta.selectionEnd
             : ta.selectionStart;
