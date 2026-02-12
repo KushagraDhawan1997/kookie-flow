@@ -2425,10 +2425,10 @@ Architecture note: Same "standalone vs. embedded" pattern as Text. `ImageEntityD
 - [x] Memory management: ref-counted textures, disposed when no longer referenced
 - [x] Viewport frustum culling (skip off-screen images)
 - [x] Object-fit modes: contain, cover, fill
-- [ ] Drag-and-drop from filesystem
+- [x] Drag-and-drop from filesystem (`onFileDrop` callback prop, native event listeners)
 - [ ] Paste from clipboard
 - [ ] Resizable via Phase 9.5 infrastructure (drag handles, aspect ratio lock option)
-- [ ] Optional ports for graph participation (source node with image output)
+- [x] Optional ports for graph participation (entity-level `inputs`/`outputs` arrays, demo wired up)
 
 ### Phase 12: 3D Mesh Entity
 
@@ -2925,7 +2925,8 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 **Phase 11: Image Entity** (in progress)
 
 - [x] Standalone image entity: Three.js textured quad, `ImageTextureManager`, LOD, frustum culling
-- [ ] Drag-and-drop, paste, resize, optional ports
+- [x] Drag-and-drop from filesystem, optional ports for graph participation
+- [ ] Paste from clipboard, resize with aspect ratio lock
 - Shared `ImageTextureManager` will also power node preview blocks (Phase 15)
 
 **Phase 11+: Remaining entity types**
