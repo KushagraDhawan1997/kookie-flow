@@ -59,9 +59,9 @@ function bitmapToTexture(bitmap: ImageBitmap): THREE.Texture {
   // across browsers/WebGL versions. We flip the shared quad UVs instead.
   tex.flipY = false;
   tex.needsUpdate = true;
-  tex.minFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = false;
+  tex.generateMipmaps = true;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }

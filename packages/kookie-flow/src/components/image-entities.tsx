@@ -28,6 +28,53 @@ import type { ImageEntityData } from '../types';
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
 
+// ---- Debug: colorize mip levels to visualize GPU LOD selection ----
+// Set to true to replace mip levels with solid colors.
+// Level 0 = original image, 1 = red, 2 = green, 3 = blue, 4 = yellow, etc.
+const DEBUG_MIP_LEVELS = false;
+
+const MIP_COLORS = [
+  [255, 0, 0],     // Level 1: red
+  [0, 255, 0],     // Level 2: green
+  [0, 0, 255],     // Level 3: blue
+  [255, 255, 0],   // Level 4: yellow
+  [255, 0, 255],   // Level 5: magenta
+  [0, 255, 255],   // Level 6: cyan
+  [128, 64, 0],    // Level 7: brown
+  [255, 128, 0],   // Level 8: orange
+];
+
+/** Replace auto-generated mip levels with solid colors for debugging. */
+function colorizeMipLevels(
+  gl: THREE.WebGLRenderer,
+  texture: THREE.Texture
+): void {
+  const glCtx = gl.getContext() as WebGL2RenderingContext;
+  const props = gl.properties.get(texture);
+  const glTex = props.__webglTexture;
+  if (!glTex) return;
+
+  glCtx.bindTexture(glCtx.TEXTURE_2D, glTex);
+
+  let w = texture.image.width;
+  let h = texture.image.height;
+
+  for (let level = 1; w > 1 || h > 1; level++) {
+    w = Math.max(1, w >> 1);
+    h = Math.max(1, h >> 1);
+    const c = MIP_COLORS[(level - 1) % MIP_COLORS.length];
+    const data = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 4] = c[0];
+      data[i * 4 + 1] = c[1];
+      data[i * 4 + 2] = c[2];
+      data[i * 4 + 3] = 255;
+    }
+    glCtx.texSubImage2D(glCtx.TEXTURE_2D, level, 0, 0, w, h, glCtx.RGBA, glCtx.UNSIGNED_BYTE, data);
+  }
+}
+// ---- End debug ----
+
 /** Shared unit quad geometry — reused by all image meshes (never disposed) */
 const sharedGeometry = (() => {
   const geo = new THREE.PlaneGeometry(1, 1);
@@ -73,6 +120,9 @@ export function ImageEntities() {
   const materialRefs = useRef<Map<string, THREE.MeshBasicMaterial>>(new Map());
   // Track which src each entity currently has loaded (for detecting src changes)
   const loadedSrcRefs = useRef<Map<string, string>>(new Map());
+  // Debug: track textures pending mip colorization (need one frame for GPU upload)
+  const pendingColorizeRef = useRef<Set<THREE.Texture>>(new Set());
+  const colorizedRef = useRef<WeakSet<THREE.Texture>>(new WeakSet());
 
   // Texture manager — singleton for component lifetime.
   // onLoad callback marks dirty so textures appear as soon as they're ready.
@@ -230,6 +280,10 @@ export function ImageEntities() {
         if (mat.map !== texture) {
           mat.map = texture;
           mat.needsUpdate = true;
+          // Debug: queue for mip colorization after GPU upload
+          if (DEBUG_MIP_LEVELS && !colorizedRef.current.has(texture)) {
+            pendingColorizeRef.current.add(texture);
+          }
         }
         mat.opacity = 1;
         mesh.material = mat;
@@ -257,6 +311,24 @@ export function ImageEntities() {
     }
 
     dirtyRef.current = false;
+  });
+
+  // Debug: colorize mip levels one frame after GPU upload
+  useFrame(({ gl }) => {
+    if (!DEBUG_MIP_LEVELS || pendingColorizeRef.current.size === 0) return;
+    for (const texture of pendingColorizeRef.current) {
+      // Force texture upload if initTexture is available (Three.js r152+)
+      if ('initTexture' in gl) {
+        (gl as unknown as { initTexture: (t: THREE.Texture) => void }).initTexture(texture);
+      }
+      const props = gl.properties.get(texture);
+      const glTex = props.__webglTexture;
+      if (glTex) {
+        colorizeMipLevels(gl, texture);
+        colorizedRef.current.add(texture);
+        pendingColorizeRef.current.delete(texture);
+      }
+    }
   });
 
   return (
