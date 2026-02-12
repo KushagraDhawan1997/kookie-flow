@@ -105,6 +105,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     onEntityClick,
     onEdgeClick,
     onPaneClick,
+    onFileDrop,
     edgesSelectable = true,
     defaultViewport = DEFAULT_VIEWPORT,
     minZoom = MIN_ZOOM,
@@ -180,6 +181,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             onConnectEnd={onConnectEnd}
             onEntitiesChange={onEntitiesChange}
             onEdgesChange={onEdgesChange}
+            onFileDrop={onFileDrop}
             showGrid={showGrid}
             showStats={showStats}
             textRenderMode={textRenderMode}
@@ -230,6 +232,7 @@ interface ThemedFlowContainerProps {
   onConnectEnd?: KookieFlowProps['onConnectEnd'];
   onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
+  onFileDrop?: KookieFlowProps['onFileDrop'];
   showGrid: boolean;
   showStats: boolean;
   textRenderMode: TextRenderMode;
@@ -274,6 +277,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       onConnectEnd,
       onEntitiesChange,
       onEdgesChange,
+      onFileDrop,
       showGrid,
       showStats,
       textRenderMode,
@@ -340,6 +344,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             onConnectEnd={onConnectEnd}
             onEntitiesChange={onEntitiesChange}
             onEdgesChange={onEdgesChange}
+            onFileDrop={onFileDrop}
           >
             <FlowCanvas
               showGrid={showGrid}
@@ -529,6 +534,7 @@ interface InputHandlerProps {
   onConnectEnd?: KookieFlowProps['onConnectEnd'];
   onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
+  onFileDrop?: KookieFlowProps['onFileDrop'];
 }
 
 // Minimum distance (in pixels) to consider a pointer move as a drag
@@ -563,6 +569,7 @@ function InputHandler({
   onConnectEnd,
   onEntitiesChange,
   onEdgesChange,
+  onFileDrop,
 }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
@@ -2141,6 +2148,18 @@ function InputHandler({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
+      onDragOver={onFileDrop ? (e) => e.preventDefault() : undefined}
+      onDrop={onFileDrop ? (e) => {
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+        if (files.length === 0) return;
+        const rect = cachedRectRef.current;
+        const worldPos = screenToWorld(
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          store.getState().viewport,
+        );
+        onFileDrop(files, worldPos);
+      } : undefined}
       tabIndex={0}
     >
       {children}

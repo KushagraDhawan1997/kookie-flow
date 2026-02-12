@@ -738,6 +738,8 @@ export interface KookieFlowProps {
   onEdgeClick?: (edge: Edge) => void;
   /** Callback when empty space is clicked */
   onPaneClick?: () => void;
+  /** Callback when image files are dropped from the filesystem onto the canvas */
+  onFileDrop?: (files: File[], position: XYPosition) => void;
   /** Whether edges can be selected by clicking. Default: true */
   edgesSelectable?: boolean;
   /** Connection validation mode. 'strict' enforces socket type compatibility. Default: 'loose' */
