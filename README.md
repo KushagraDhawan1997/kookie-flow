@@ -1,5 +1,7 @@
 # Kookie Flow
 
+> **Not ready for use.** This is an active experiment — APIs are unstable, features are incomplete, and breaking changes happen without notice. If you're curious, feel free to look around, but don't depend on this for anything real yet.
+
 WebGL-native node graph library for React.
 
 [![In Development](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/KushagraDhawan1997/kookie-flow)
