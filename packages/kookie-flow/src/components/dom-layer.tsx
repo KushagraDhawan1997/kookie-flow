@@ -252,6 +252,9 @@ function CrispLabelsContainer({ entityTypes }: { entityTypes: Record<string, Ent
   return (
     <div ref={containerRef}>
       {entities.map((entity) => {
+        // Skip entity types that render their own content (no header label)
+        if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text') return null;
+
         const entityType = entityTypes[entity.type];
         const label = entityType?.label ?? entity.data.label ?? entity.type;
 

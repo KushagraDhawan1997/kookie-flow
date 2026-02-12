@@ -314,8 +314,10 @@ export function MultiWeightTextRenderer({
 
       const cullPadding = 100;
 
-      // Entity headers (semibold)
+      // Entity headers (semibold) — skip types that render their own content
       for (const entity of entities) {
+        if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text') continue;
+
         const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const entityLayout = getEntitySocketLayout(entity, socketLayout);
         const height = entity.height ?? entityLayout.computedHeight;
