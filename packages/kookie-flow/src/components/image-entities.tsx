@@ -114,11 +114,14 @@ export function ImageEntities() {
         return prev;
       });
     });
+    // Viewport changes affect frustum culling and LOD selection (zoom-dependent)
+    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
 
     return () => {
       unsubEntities();
+      unsubViewport();
       unsubSelection();
       unsubHidden();
     };
