@@ -19,7 +19,7 @@ import type {
   EntityData,
   FitViewOptions,
 } from '../types';
-import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING } from './constants';
+import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING, SOCKET_OFFSET } from './constants';
 import { Quadtree, SocketQuadtree, getEntityBounds, type SocketEntry } from './spatial';
 import {
   getGroupChildren as utilGetGroupChildren,
@@ -440,7 +440,7 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
 
   // Only add visible entities to quadtrees
   for (const entity of visibleEntities) {
-    // Insert sockets into socket quadtree
+    // Insert sockets into socket quadtree (positioned outside entity body)
     const entityWidth = entity.width ?? 200;
     if (entity.inputs) {
       for (let i = 0; i < entity.inputs.length; i++) {
@@ -450,7 +450,7 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
           entityId: entity.id,
           socketId: socket.id,
           isInput: true,
-          x: entity.position.x,
+          x: entity.position.x - SOCKET_OFFSET,
           y: entity.position.y + yOffset,
         });
       }
@@ -463,7 +463,7 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
           entityId: entity.id,
           socketId: socket.id,
           isInput: false,
-          x: entity.position.x + entityWidth,
+          x: entity.position.x + entityWidth + SOCKET_OFFSET,
           y: entity.position.y + yOffset,
         });
       }
@@ -1179,7 +1179,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
         quadtree.incrementalAdd(newEntities, socketLayout ?? undefined);
 
-        // Add new sockets to socket quadtree
+        // Add new sockets to socket quadtree (positioned outside entity body)
         for (const entity of newEntities) {
           const entityWidth = entity.width ?? 200;
           if (entity.inputs) {
@@ -1190,7 +1190,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 entityId: entity.id,
                 socketId: socket.id,
                 isInput: true,
-                x: entity.position.x,
+                x: entity.position.x - SOCKET_OFFSET,
                 y: entity.position.y + yOffset,
               });
             }
@@ -1203,7 +1203,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 entityId: entity.id,
                 socketId: socket.id,
                 isInput: false,
-                x: entity.position.x + entityWidth,
+                x: entity.position.x + entityWidth + SOCKET_OFFSET,
                 y: entity.position.y + yOffset,
               });
             }

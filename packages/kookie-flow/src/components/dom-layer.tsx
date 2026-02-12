@@ -10,7 +10,7 @@ import { useFlowStoreApi } from './context';
 import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
 import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData, EntityChange } from '../types';
 import { TextEditOverlay } from './text-edit-overlay';
-import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
+import { DEFAULT_ENTITY_WIDTH, SOCKET_OFFSET } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
@@ -794,7 +794,7 @@ function SocketLabelsContainer() {
         ? entityLayout.inputs[socketIndex]
         : entityLayout.outputs[socketIndex];
       const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
-      const socketX = side === 'input' ? entity.position.x : entity.position.x + width;
+      const socketX = side === 'input' ? entity.position.x - SOCKET_OFFSET : entity.position.x + width + SOCKET_OFFSET;
 
       // Label offset from socket (in world space)
       const labelOffset = side === 'input' ? 12 : -12;

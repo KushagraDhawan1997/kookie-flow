@@ -7,6 +7,7 @@ import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
   DEFAULT_ENTITY_WIDTH,
+  SOCKET_OFFSET,
 } from '../core/constants';
 import { calculateMinEntityHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -211,8 +212,8 @@ export function ConnectionLine({
         : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
 
     const sourceX = connectionDraft.source.isInput
-      ? sourceEntity.position.x
-      : sourceEntity.position.x + sourceWidth;
+      ? sourceEntity.position.x - SOCKET_OFFSET
+      : sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
     const sourceY = sourceEntity.position.y + yOffset;
 
     // Target is current mouse position

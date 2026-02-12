@@ -8,6 +8,7 @@ import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_ENTITY_WIDTH,
   DEFAULT_SOCKET_TYPES,
+  SOCKET_OFFSET,
 } from '../core/constants';
 import { calculateMinEntityHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -598,10 +599,10 @@ export function Edges({
         }
       }
 
-      // Edge endpoints at actual socket positions
-      const x0 = sourceEntity.position.x + sourceWidth;
+      // Edge endpoints at actual socket positions (outside entity body)
+      const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
       const y0 = sourceEntity.position.y + sourceYOffset;
-      const x1 = targetEntity.position.x;
+      const x1 = targetEntity.position.x - SOCKET_OFFSET;
       const y1 = targetEntity.position.y + targetYOffset;
 
       // Partial update: check if this edge's endpoints changed

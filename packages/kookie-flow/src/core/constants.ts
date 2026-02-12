@@ -22,6 +22,7 @@ export const DEFAULT_SNAP_GRID: [number, number] = [20, 20];
 
 /** Socket visual settings */
 export const SOCKET_RADIUS = 6;
+export const SOCKET_OFFSET = 8; // Distance from entity edge to socket center (outside the body)
 export const SOCKET_SPACING = 24;
 export const SOCKET_MARGIN_TOP = 30;
 export const SOCKET_HIT_TOLERANCE = 4;

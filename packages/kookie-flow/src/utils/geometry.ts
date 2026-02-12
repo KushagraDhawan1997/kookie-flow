@@ -3,6 +3,7 @@ import {
   DEFAULT_ENTITY_WIDTH,
   DEFAULT_ENTITY_HEIGHT,
   SOCKET_RADIUS,
+  SOCKET_OFFSET,
   SOCKET_SPACING,
   SOCKET_MARGIN_TOP,
   SOCKET_HIT_TOLERANCE,
@@ -167,7 +168,7 @@ export function getSocketPosition(
   }
 
   return {
-    x: isInput ? entity.position.x : entity.position.x + width,
+    x: isInput ? entity.position.x - SOCKET_OFFSET : entity.position.x + width + SOCKET_OFFSET,
     y: entity.position.y + yOffset,
   };
 }
@@ -523,9 +524,9 @@ export function getEdgeAtPosition(
     const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
     const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-    const x0 = sourceEntity.position.x + sourceWidth;
+    const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
     const y0 = sourceEntity.position.y + sourceYOffset;
-    const x1 = targetEntity.position.x;
+    const x1 = targetEntity.position.x - SOCKET_OFFSET;
     const y1 = targetEntity.position.y + targetYOffset;
 
     // Quick bounding box check
@@ -614,9 +615,9 @@ export function getEdgePointAtT(
   const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
   const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-  const x0 = sourceEntity.position.x + sourceWidth;
+  const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
   const y0 = sourceEntity.position.y + sourceYOffset;
-  const x1 = targetEntity.position.x;
+  const x1 = targetEntity.position.x - SOCKET_OFFSET;
   const y1 = targetEntity.position.y + targetYOffset;
 
   const edgeType = edge.type ?? defaultEdgeType;

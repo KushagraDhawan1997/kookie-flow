@@ -9,6 +9,7 @@ import {
   DEFAULT_SOCKET_TYPES,
   DEFAULT_ENTITY_WIDTH,
   SOCKET_RADIUS,
+  SOCKET_OFFSET,
 } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
@@ -351,7 +352,7 @@ export function Sockets({
 
         tempMatrix.identity();
         tempMatrix.setPosition(
-          entity.position.x,
+          entity.position.x - SOCKET_OFFSET,
           -(entity.position.y + yOffset),
           0.5
         );
@@ -407,7 +408,7 @@ export function Sockets({
 
         tempMatrix.identity();
         tempMatrix.setPosition(
-          entity.position.x + width,
+          entity.position.x + width + SOCKET_OFFSET,
           -(entity.position.y + yOffset),
           0.5
         );
@@ -497,7 +498,7 @@ export function Sockets({
                   ? socket.position * height
                   : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
               tempMatrix.setPosition(
-                entity.position.x,
+                entity.position.x - SOCKET_OFFSET,
                 -(entity.position.y + yOffset),
                 0.5
               );
@@ -515,7 +516,7 @@ export function Sockets({
                   ? socket.position * height
                   : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
               tempMatrix.setPosition(
-                entity.position.x + width,
+                entity.position.x + width + SOCKET_OFFSET,
                 -(entity.position.y + yOffset),
                 0.5
               );
