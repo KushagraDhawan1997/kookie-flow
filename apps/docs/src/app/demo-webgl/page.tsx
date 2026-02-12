@@ -166,6 +166,27 @@ function generateEntities(count: number): Entity[] {
     inputs: [{ id: 'image-result-in', name: 'Image', type: 'image' }],
   });
 
+  // Standalone image entity with both input and output sockets
+  entities.push({
+    id: 'image-standalone',
+    type: 'image',
+    position: { x: -100, y: 600 },
+    width: 300,
+    height: 220,
+    data: {
+      src: '/image-2.jpg',
+      alt: 'Standalone image with sockets',
+    },
+    inputs: [
+      { id: 'image-standalone-in-1', name: 'Image', type: 'image' },
+      { id: 'image-standalone-in-2', name: 'Mask', type: 'image' },
+    ],
+    outputs: [
+      { id: 'image-standalone-out-1', name: 'Result', type: 'image' },
+      { id: 'image-standalone-out-2', name: 'Alpha', type: 'float' },
+    ],
+  });
+
   return entities;
 }
 
