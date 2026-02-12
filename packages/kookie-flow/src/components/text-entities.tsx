@@ -215,7 +215,10 @@ export function TextEntities() {
         measurement.height + 2 * padding,
         fontSize * lineHeight + 2 * padding
       );
-      if (Math.abs(h - expectedH) > 0.5) {
+      // Skip store write for the entity being edited — its height is already
+      // maintained by TextEditOverlay.handleInput, avoiding a redundant
+      // entities array spread + quadtree update inside the render loop.
+      if (editingEntityId !== entity.id && Math.abs(h - expectedH) > 0.5) {
         store.getState().updateEntityDimensions(entity.id, w, expectedH);
         h = expectedH;
       }
