@@ -147,13 +147,20 @@ export class ImageTextureManager {
 
       // Thumbnail (off-main-thread resize via createImageBitmap)
       const thumbBitmap = await downscale(bitmap, THUMBNAIL_SIZE);
-      if (signal?.aborted) return;
+      if (signal?.aborted) { thumbBitmap.close(); if (thumbBitmap !== bitmap) bitmap.close(); return; }
       entry.thumbnail = bitmapToTexture(thumbBitmap);
 
       // Full resolution (capped at MAX_IMAGE_TEXTURE_SIZE)
       const fullBitmap = await downscale(bitmap, MAX_IMAGE_TEXTURE_SIZE);
-      if (signal?.aborted) return;
+      if (signal?.aborted) { fullBitmap.close(); if (fullBitmap !== bitmap) bitmap.close(); return; }
       entry.full = bitmapToTexture(fullBitmap);
+
+      // Close the original bitmap if downscale created separate copies.
+      // downscale() returns the same bitmap when it's already within bounds,
+      // so only close if neither LOD tier is reusing the original.
+      if (bitmap !== thumbBitmap && bitmap !== fullBitmap) {
+        bitmap.close();
+      }
 
       entry.state = 'loaded';
       entry.abort = null;
