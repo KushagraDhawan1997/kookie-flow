@@ -1,6 +1,6 @@
 # Kookie Flow
 
-> **Not ready for use.** This is an active experiment — APIs are unstable, features are incomplete, and breaking changes happen without notice. If you're curious, feel free to look around, but don't depend on this for anything real yet.
+> **Not ready for use.** This is an active experiment — APIs are unstable, features are incomplete, and breaking changes happen without notice. If you're curious, feel free to look around, but don't depend on this for anything real yet. See [PLAN.md](PLAN.md) for the full implementation plan and current progress.
 
 WebGL-native node graph library for React.
 
