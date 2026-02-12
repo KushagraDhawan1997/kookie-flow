@@ -88,6 +88,16 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
             }
             break;
           }
+          case 'data': {
+            const index = idToIndex.get(change.id);
+            if (index !== undefined) {
+              nextEntities[index] = {
+                ...nextEntities[index],
+                data: { ...nextEntities[index].data, ...change.data },
+              };
+            }
+            break;
+          }
         }
       }
 

@@ -2163,15 +2163,23 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
   - `<TextEditCursor />` mounted in Canvas between TextEntities and RerouteNodes
   - All `setEditingEntityId` calls migrated to `startEditing()`/`stopEditing()`
 
-**10H: Later (not this phase)**
+**10H: Text Editing Polish & Performance** ✅
+- [x] Perf: numeric kerning map keys — `(first << 16) | second` eliminates string allocation per char per frame
+- [x] Perf: skip redundant `updateEntityDimensions` in useFrame for the entity being edited (already maintained by `handleInput`)
+- [x] Multi-click selection in edit mode: double-click → word, triple-click → visual line, quad-click → entire block
+- [x] Drag-to-select: click and drag within editing text entity to create selection
+- [x] Home/End navigate wrapped (visual) lines, not content lines; Ctrl+Up/Down passes through for paragraph nav
+- [x] Overflow clipping: fixed-height entities clip text at entity bounds (line-level skip in `populateMultiLineGlyphBuffers`)
+- [x] Edge-to-edge selection rects (Figma-style): full entity width, logical line Y positioning
+- [x] `'data'` entity change type handled in `useGraph` hook and store's `applyEntityChanges` — text edits persist
+
+**10-Later: Deferred**
 - Auto-width mode (width grows with content, no wrap)
-- Fixed mode (both locked, overflow handling)
 - Style runs (bold/italic/underline within text)
 - Emoji support (limited to MSDF atlas character set for now)
 - Font selection UI
 - Nested text inside Draw entities (`data.shapes[{ type: 'text' }]`)
 - IME popup positioning (currently shows near 0,0 instead of cursor position)
-- Double-click word selection, triple-click line selection
 - Double-click on empty canvas to create text entity
 
 ### Phase 11: Image Entity
@@ -2653,9 +2661,10 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 - Rendering: Instanced MSDF via `text-entities.tsx` — single draw call, crisp at any zoom
 - Editing: Hidden textarea + WebGL cursor/selection (Figma pattern) — zero visual shift
-- Sizing: Auto-height mode (v1). Auto-width and fixed modes deferred to 10H
+- Sizing: Auto-height mode (v1). Auto-width and fixed modes deferred
+- Polish (10H): Multi-click word/line/block selection, drag-to-select, Home/End on wrapped lines, overflow clipping, edge-to-edge selection rects, numeric kerning keys, entity data change persistence
 - Key files: `text-entities.tsx`, `text-edit-overlay.tsx`, `text-edit-cursor.tsx`, `text-cursor-layout.ts`, `text-layout.ts`
-- Implementation order: 10A → 10B → 10D → 10C → 10E → 10F → 10G (10G supersedes 10E's contenteditable)
+- Implementation order: 10A → 10B → 10D → 10C → 10E → 10F → 10G → 10H
 
 **Phase 11+: Remaining entity types** (after Phase 10)
 

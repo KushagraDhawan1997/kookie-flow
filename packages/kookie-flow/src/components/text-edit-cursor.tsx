@@ -31,6 +31,7 @@ import {
 import {
   type CharPositionTable,
   type SelectionRect,
+  type SelectionEntityBounds,
   buildCharPositionsForEntity,
   getCursorXY,
   getSelectionRects,
@@ -262,8 +263,14 @@ export function TextEditCursor() {
       );
 
       if (selChanged) {
+        const selBounds: SelectionEntityBounds = {
+          x: entity.position.x,
+          y: entity.position.y,
+          width: w,
+          padding: pad,
+        };
         cachedRectsRef.current = getSelectionRects(
-          editingCursor.start, editingCursor.end, table
+          editingCursor.start, editingCursor.end, table, selBounds
         );
         sk.start = editingCursor.start;
         sk.end = editingCursor.end;

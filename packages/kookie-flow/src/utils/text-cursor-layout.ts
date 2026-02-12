@@ -343,10 +343,23 @@ export function getCursorXY(
  * Get selection highlight rectangles for a content offset range.
  * Returns one rectangle per visual line that the selection spans.
  */
+/**
+ * Entity bounds for edge-to-edge selection rects (Figma-style).
+ * When provided, selection rects extend to the full entity width and
+ * use logical line positions (no half-leading offset).
+ */
+export interface SelectionEntityBounds {
+  x: number;
+  y: number;
+  width: number;
+  padding: number;
+}
+
 export function getSelectionRects(
   startContentOffset: number,
   endContentOffset: number,
-  table: CharPositionTable
+  table: CharPositionTable,
+  entityBounds?: SelectionEntityBounds
 ): SelectionRect[] {
   if (startContentOffset === endContentOffset || table.positions.length === 0) return [];
 
@@ -381,15 +394,26 @@ export function getSelectionRects(
 
     const firstChar = positions[selStart];
     const lastChar = positions[selEnd - 1];
-    const rectWidth = (lastChar.x + lastChar.width) - firstChar.x;
 
-    if (rectWidth > 0) {
+    if (entityBounds) {
+      // Figma-style: full entity width, logical line Y (no half-leading)
+      const lineY = entityBounds.y + entityBounds.padding + lineIdx * lineHeightPx;
       rects.push({
-        x: firstChar.x,
-        y: firstChar.y,
-        width: rectWidth,
+        x: entityBounds.x,
+        y: lineY,
+        width: entityBounds.width,
         height: lineHeightPx,
       });
+    } else {
+      const rectWidth = (lastChar.x + lastChar.width) - firstChar.x;
+      if (rectWidth > 0) {
+        rects.push({
+          x: firstChar.x,
+          y: firstChar.y,
+          width: rectWidth,
+          height: lineHeightPx,
+        });
+      }
     }
   }
 
