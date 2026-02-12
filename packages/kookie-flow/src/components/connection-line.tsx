@@ -207,7 +207,7 @@ export function ConnectionLine({
       ? outputCount + socketIndex
       : socketIndex;
     // Headerless entity types use padding-only marginTop
-    const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
+    const HEADERLESS_TYPES = ['text', 'comment', 'reroute', 'image'];
     const connMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
       ? socketLayout.padding : socketLayout.marginTop;
     const connComputedH = connMarginTop +

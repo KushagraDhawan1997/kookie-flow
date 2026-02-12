@@ -9,6 +9,7 @@ import {
   SOCKET_HIT_TOLERANCE,
 } from '../core/constants';
 import type { ResolvedSocketLayout } from './style-resolver';
+import { getEntitySocketLayout } from './socket-layout-cache';
 import type { SocketQuadtree, SocketEntry } from '../core/spatial';
 
 /**
@@ -147,35 +148,31 @@ export function getSocketPosition(
   if (index === -1) return null;
 
   const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-  const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
-
-  // Use socket.position if defined (0-1 range), otherwise calculate from index
   const socket = sockets[index];
   let yOffset: number;
 
-  if (socket.position !== undefined) {
-    // Explicit position overrides layout calculation
-    yOffset = socket.position * height;
-  } else if (layout) {
-    // Headerless entity types use padding-only marginTop
-    const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
-    const marginTop = HEADERLESS_TYPES.includes(entity.type)
-      ? layout.padding
-      : layout.marginTop;
+  if (layout) {
+    const entityLayout = getEntitySocketLayout(entity, layout);
+    const height = entity.height ?? entityLayout.computedHeight;
 
-    // New tokenized layout: outputs first, then inputs
-    // Y = marginTop + (rowIndex * rowHeight) + (rowHeight / 2) for vertical centering
-    const outputCount = entity.outputs?.length ?? 0;
-    const rowIndex = isInput ? outputCount + index : index;
-    yOffset = marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
-
-    // Center sockets vertically within entity height (bidirectional)
-    const totalRows = (entity.outputs?.length ?? 0) + (entity.inputs?.length ?? 0);
-    const computedHeight = marginTop + Math.max(1, totalRows) * layout.rowHeight + layout.padding;
-    yOffset += (height - computedHeight) / 2;
+    if (socket.position !== undefined) {
+      yOffset = socket.position * height;
+    } else {
+      const centerOffset = (height - entityLayout.computedHeight) / 2;
+      const positions = isInput ? entityLayout.inputs : entityLayout.outputs;
+      const cachedPos = positions[index];
+      yOffset = cachedPos
+        ? cachedPos.yOffset + centerOffset
+        : layout.marginTop + layout.rowHeight / 2 + centerOffset;
+    }
   } else {
-    // Legacy fallback for backward compatibility
-    yOffset = SOCKET_MARGIN_TOP + index * SOCKET_SPACING;
+    const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+    if (socket.position !== undefined) {
+      yOffset = socket.position * height;
+    } else {
+      // Legacy fallback for backward compatibility
+      yOffset = SOCKET_MARGIN_TOP + index * SOCKET_SPACING;
+    }
   }
 
   return {
@@ -453,11 +450,47 @@ function calculateSocketYOffset(
   socketIndexMap?: SocketIndexMap,
   layout?: ResolvedSocketLayout
 ): number {
-  const entityHeight = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+  if (layout) {
+    const entityLayout = getEntitySocketLayout(entity, layout);
+    const height = entity.height ?? entityLayout.computedHeight;
 
-  if (!socketId) {
-    return entityHeight / 2;
+    if (!socketId) return height / 2;
+
+    const centerOffset = (height - entityLayout.computedHeight) / 2;
+
+    // Try socketIndexMap for explicit position override (O(1))
+    if (socketIndexMap) {
+      const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+      const socketInfo = socketIndexMap.get(key);
+      if (socketInfo?.socket.position !== undefined) {
+        return socketInfo.socket.position * height;
+      }
+    }
+
+    // Use cached layout positions (includes HEADERLESS handling)
+    const positions = isInput ? entityLayout.inputs : entityLayout.outputs;
+    // Find by socketId via socketIndexMap or findIndex
+    let index = -1;
+    if (socketIndexMap) {
+      const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+      const socketInfo = socketIndexMap.get(key);
+      if (socketInfo) index = socketInfo.index;
+    }
+    if (index === -1) {
+      const sockets = isInput ? entity.inputs : entity.outputs;
+      if (sockets) index = sockets.findIndex(s => s.id === socketId);
+    }
+
+    if (index !== -1 && positions[index]) {
+      return positions[index].yOffset + centerOffset;
+    }
+
+    return height / 2;
   }
+
+  // Legacy fallback (no layout available)
+  const entityHeight = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+  if (!socketId) return entityHeight / 2;
 
   const sockets = isInput ? entity.inputs : entity.outputs;
 
@@ -469,13 +502,6 @@ function calculateSocketYOffset(
       if (socketInfo.socket.position !== undefined) {
         return socketInfo.socket.position * entityHeight;
       }
-      if (layout) {
-        // New tokenized layout: outputs first, then inputs
-        const outputCount = entity.outputs?.length ?? 0;
-        const rowIndex = isInput ? outputCount + socketInfo.index : socketInfo.index;
-        return layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
-      }
-      // Legacy fallback
       return SOCKET_MARGIN_TOP + socketInfo.index * SOCKET_SPACING;
     }
   }
@@ -488,12 +514,6 @@ function calculateSocketYOffset(
       if (socket.position !== undefined) {
         return socket.position * entityHeight;
       }
-      if (layout) {
-        const outputCount = entity.outputs?.length ?? 0;
-        const rowIndex = isInput ? outputCount + socketIndex : socketIndex;
-        return layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
-      }
-      // Legacy fallback
       return SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
     }
   }

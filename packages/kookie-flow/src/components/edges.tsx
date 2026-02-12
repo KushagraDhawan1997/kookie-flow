@@ -631,8 +631,8 @@ export function Edges({
 
         // Calculate source socket position - O(1) lookup via socketIndexMap
         // Source socket is always an output (rowIndex = outputIndex)
-        // Headerless entity types (text, comment, reroute) use padding-only marginTop
-        const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
+        // Headerless entity types use padding-only marginTop
+        const HEADERLESS_TYPES = ['text', 'comment', 'reroute', 'image'];
         const sourceMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
           ? socketLayout.padding : socketLayout.marginTop;
         const sourceComputedH = sourceMarginTop +
