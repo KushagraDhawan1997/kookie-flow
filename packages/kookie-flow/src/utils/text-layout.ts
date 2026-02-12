@@ -506,6 +506,54 @@ export function countGlyphs(entries: TextEntry[], glyphMap: GlyphMap): number {
 const wrapCache = new Map<string, string[]>();
 const WRAP_CACHE_MAX_SIZE = 500;
 
+/** Mutable state bag for breakWordByChars — avoids allocations. */
+interface WrapState {
+  line: string;
+  width: number;
+  prevChar: number | null;
+}
+
+/**
+ * Break a word character-by-character when it exceeds maxWidth.
+ * Pushes completed lines and leaves the remainder in state.
+ * When the word fits within maxWidth, no line is pushed (same as normal append).
+ */
+function breakWordByChars(
+  word: string,
+  maxWidth: number,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap,
+  letterSpacing: number,
+  lines: string[],
+  state: WrapState
+): void {
+  for (let i = 0; i < word.length; i++) {
+    const charCode = word.charCodeAt(i);
+    const glyph = glyphMap.get(charCode);
+
+    let charWidth = 0;
+    if (glyph) {
+      charWidth = glyph.xadvance;
+      if (state.prevChar !== null) {
+        const kern = kerningMap.get((state.prevChar << 16) | charCode);
+        if (kern) charWidth += kern;
+        charWidth += letterSpacing;
+      }
+    }
+
+    if (state.width + charWidth > maxWidth && state.line !== '') {
+      lines.push(state.line);
+      state.line = word[i];
+      state.width = glyph ? glyph.xadvance : 0;
+      state.prevChar = charCode;
+    } else {
+      state.line += word[i];
+      state.width += charWidth;
+      if (glyph) state.prevChar = charCode;
+    }
+  }
+}
+
 export function wrapTextMSDF(
   content: string,
   maxWidthFontUnits: number,
@@ -532,6 +580,7 @@ export function wrapTextMSDF(
     let currentLine = '';
     let currentWidth = 0;
     let prevCharCode: number | null = null;
+    const wrapState: WrapState = { line: '', width: 0, prevChar: null };
 
     for (const word of words) {
       // Measure word width
@@ -558,27 +607,28 @@ export function wrapTextMSDF(
         // Skip leading whitespace on new line
         const trimmed = word.trimStart();
         if (trimmed) {
-          // Re-measure trimmed word
-          currentWidth = 0;
-          prevCharCode = null;
-          for (let i = 0; i < trimmed.length; i++) {
-            const charCode = trimmed.charCodeAt(i);
-            const glyph = glyphMap.get(charCode);
-            if (!glyph) continue;
-            if (prevCharCode !== null) {
-              const kern = kerningMap.get((prevCharCode << 16) | charCode);
-              if (kern) currentWidth += kern;
-              currentWidth += letterSpacing;
-            }
-            currentWidth += glyph.xadvance;
-            prevCharCode = charCode;
-          }
-          currentLine = trimmed;
+          // Break char-by-char if word alone exceeds maxWidth (overflow-wrap: break-word)
+          wrapState.line = '';
+          wrapState.width = 0;
+          wrapState.prevChar = null;
+          breakWordByChars(trimmed, maxWidthFontUnits, glyphMap, kerningMap, letterSpacing, lines, wrapState);
+          currentLine = wrapState.line;
+          currentWidth = wrapState.width;
+          prevCharCode = wrapState.prevChar;
         } else {
           currentLine = '';
           currentWidth = 0;
           prevCharCode = null;
         }
+      } else if (wordWidth > maxWidthFontUnits && currentLine === '') {
+        // First word on empty line exceeds width — break char by char
+        wrapState.line = currentLine;
+        wrapState.width = currentWidth;
+        wrapState.prevChar = prevCharCode;
+        breakWordByChars(word, maxWidthFontUnits, glyphMap, kerningMap, letterSpacing, lines, wrapState);
+        currentLine = wrapState.line;
+        currentWidth = wrapState.width;
+        prevCharCode = wrapState.prevChar;
       } else {
         currentLine += word;
         currentWidth = testWidth;
