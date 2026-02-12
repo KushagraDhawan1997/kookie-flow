@@ -54,7 +54,7 @@ import {
 import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
 import { useFont } from '../contexts/FontContext';
 import { buildGlyphMap, buildKerningMap, type GlyphMap, type KerningMap } from '../utils/text-layout';
-import { buildCharPositionsForEntity, hitTestCharOffset } from '../utils/text-cursor-layout';
+import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -630,8 +630,10 @@ function InputHandler({
     cursorOffset: { x: number; y: number }; // cursor position - entity position at click time
   } | null>(null);
 
-  // Double-click detection for text entity editing
-  const lastClickRef = useRef<{ entityId: string; time: number; x: number; y: number } | null>(null);
+  // Multi-click detection for text entity editing and word/line/block selection
+  const clickCountRef = useRef<{
+    count: number; time: number; x: number; y: number; entityId: string;
+  } | null>(null);
   const DOUBLE_CLICK_TIMEOUT = 300; // ms
   const DOUBLE_CLICK_DISTANCE = 5; // px screen distance
 
@@ -1632,15 +1634,33 @@ function InputHandler({
           queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedEntity) {
-          // Click-to-position: if already editing this text entity, reposition cursor
+          // Track multi-click count (for double/triple/quad click detection)
+          const now = performance.now();
+          const prev = clickCountRef.current;
+          let clickCount = 1;
+          if (
+            prev &&
+            prev.entityId === clickedEntity.id &&
+            now - prev.time < DOUBLE_CLICK_TIMEOUT &&
+            Math.abs(e.clientX - prev.x) < DOUBLE_CLICK_DISTANCE &&
+            Math.abs(e.clientY - prev.y) < DOUBLE_CLICK_DISTANCE
+          ) {
+            clickCount = prev.count + 1;
+          }
+          clickCountRef.current = {
+            count: clickCount, time: now,
+            x: e.clientX, y: e.clientY, entityId: clickedEntity.id,
+          };
+
           const currentEditingId = store.getState().editingEntityId;
           const font = regularFontRef.current;
+
+          // Already editing this text entity — handle click/multi-click
           if (
             currentEditingId === clickedEntity.id &&
             clickedEntity.type === 'text' &&
             font && glyphMapRef.current.size > 0
           ) {
-            // Single click while editing: reposition cursor
             const data = clickedEntity.data as TextEntityData;
             const content = store.getState().editingContent ?? (data.content ?? '');
             const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
@@ -1661,17 +1681,38 @@ function InputHandler({
               clickedEntity.position.x, clickedEntity.position.y, pad
             );
 
-            store.getState().setEditingCursor(offset, offset);
+            let selStart: number;
+            let selEnd: number;
 
-            // Sync textarea
+            if (clickCount >= 4) {
+              // Quad+ click: select entire block
+              selStart = 0;
+              selEnd = content.length;
+            } else if (clickCount === 3) {
+              // Triple-click: select visual (wrapped) line
+              const bounds = getLineBoundary(offset, table);
+              selStart = bounds.start;
+              selEnd = bounds.end;
+            } else if (clickCount === 2) {
+              // Double-click: select word
+              const bounds = getWordBoundary(offset, content);
+              selStart = bounds.start;
+              selEnd = bounds.end;
+            } else {
+              // Single click: reposition cursor
+              selStart = offset;
+              selEnd = offset;
+            }
+
+            store.getState().setEditingCursor(selStart, selEnd);
+
             const ta = getEditingTextarea();
             if (ta) {
-              ta.selectionStart = offset;
-              ta.selectionEnd = offset;
+              ta.selectionStart = selStart;
+              ta.selectionEnd = selEnd;
               ta.focus();
             }
 
-            // Don't proceed to selection logic
             containerRef.current?.releasePointerCapture(e.pointerId);
             return;
           }
@@ -1681,28 +1722,9 @@ function InputHandler({
             store.getState().stopEditing();
           }
 
-          // Double-click detection for text entity editing
-          const now = performance.now();
-          const lastClick = lastClickRef.current;
-          if (
-            lastClick &&
-            lastClick.entityId === clickedEntity.id &&
-            now - lastClick.time < DOUBLE_CLICK_TIMEOUT &&
-            Math.abs(e.clientX - lastClick.x) < DOUBLE_CLICK_DISTANCE &&
-            Math.abs(e.clientY - lastClick.y) < DOUBLE_CLICK_DISTANCE
-          ) {
-            // Double-click detected
-            if (clickedEntity.type === 'text') {
-              store.getState().startEditing(clickedEntity.id);
-            }
-            lastClickRef.current = null;
-          } else {
-            lastClickRef.current = {
-              entityId: clickedEntity.id,
-              time: now,
-              x: e.clientX,
-              y: e.clientY,
-            };
+          // Double-click on non-editing text entity: enter edit mode
+          if (clickCount >= 2 && clickedEntity.type === 'text') {
+            store.getState().startEditing(clickedEntity.id);
           }
 
           // Click on entity: select it

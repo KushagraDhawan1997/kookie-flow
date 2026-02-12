@@ -509,6 +509,60 @@ export function lineColumnToContentOffset(
 }
 
 // ============================================================================
+// Word / line boundary helpers (for multi-click selection)
+// ============================================================================
+
+/** Test if a character is a "word" character (letters, digits, underscore). */
+function isWordChar(ch: string): boolean {
+  return /\w/.test(ch);
+}
+
+/**
+ * Find the word boundary around a content offset.
+ * Double-click behavior: selects the word under cursor, or whitespace run if on whitespace.
+ */
+export function getWordBoundary(
+  offset: number,
+  content: string
+): { start: number; end: number } {
+  if (content.length === 0) return { start: 0, end: 0 };
+
+  const clampedOffset = Math.max(0, Math.min(offset, content.length));
+
+  // Pick the character at or before cursor to determine class
+  const charIdx = clampedOffset > 0 ? clampedOffset - 1 : 0;
+  const isWord = isWordChar(content[charIdx]);
+
+  // Walk backward
+  let start = clampedOffset;
+  while (start > 0 && isWordChar(content[start - 1]) === isWord) {
+    start--;
+  }
+
+  // Walk forward
+  let end = clampedOffset;
+  while (end < content.length && isWordChar(content[end]) === isWord) {
+    end++;
+  }
+
+  return { start, end };
+}
+
+/**
+ * Find visual line boundary as content offsets.
+ * Triple-click behavior: selects the entire visual (wrapped) line.
+ */
+export function getLineBoundary(
+  offset: number,
+  table: CharPositionTable
+): { start: number; end: number } {
+  const { line } = contentOffsetToLineColumn(offset, table);
+  const start = lineColumnToContentOffset(line, 0, table);
+  const end = lineColumnToContentOffset(line, table.lineLengths[line], table);
+  return { start, end };
+}
+
+// ============================================================================
 // Convenience: build table from entity data
 // ============================================================================
 
