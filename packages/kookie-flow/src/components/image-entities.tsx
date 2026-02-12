@@ -141,6 +141,7 @@ export function ImageEntities() {
 
   // Placeholder color from theme (muted text color for subtle placeholder)
   const surfaceColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
+  const errorColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
 
   // Placeholder material (shared for unloaded images)
   const placeholderMat = useMemo(
@@ -148,15 +149,22 @@ export function ImageEntities() {
     [surfaceColor]
   );
 
+  // Error material (shared for failed image loads)
+  const errorMat = useMemo(
+    () => createPlaceholderMaterial(errorColor),
+    [errorColor]
+  );
+
   // Cleanup texture manager on unmount
   useEffect(() => {
     return () => {
       texManager.disposeAll();
       placeholderMat.dispose();
+      errorMat.dispose();
       materialRefs.current.forEach((m) => m.dispose());
       materialRefs.current.clear();
     };
-  }, [texManager, placeholderMat]);
+  }, [texManager, placeholderMat, errorMat]);
 
   // Subscribe to store changes with fine-grained dirty flags.
   // - topologyVersion: entity add/remove → rebuild image ID list + full update
@@ -339,8 +347,9 @@ export function ImageEntities() {
           mesh.material = mat;
         }
       } else {
-        // Show placeholder
-        mesh.material = placeholderMat;
+        // Show placeholder or error state
+        const entry = src ? texManager.getEntry(src) : undefined;
+        mesh.material = entry?.state === 'error' ? errorMat : placeholderMat;
       }
 
       mesh.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
