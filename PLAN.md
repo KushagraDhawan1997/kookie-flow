@@ -2172,6 +2172,7 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 - [x] Overflow clipping: fixed-height entities clip text at entity bounds (line-level skip in `populateMultiLineGlyphBuffers`)
 - [x] Edge-to-edge selection rects (Figma-style): full entity width, logical line Y positioning
 - [x] `'data'` entity change type handled in `useGraph` hook and store's `applyEntityChanges` — text edits persist
+- [x] Break long words that exceed entity width (`overflow-wrap: break-word`) — `breakWordByChars` helper in `wrapTextMSDF`
 
 **10-Later: Deferred**
 - Auto-width mode (width grows with content, no wrap)
