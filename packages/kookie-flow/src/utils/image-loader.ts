@@ -33,10 +33,12 @@ export interface TextureEntry {
 }
 
 /**
- * Downscale an ImageBitmap to `maxDim` on its longest side using OffscreenCanvas.
- * Returns a new ImageBitmap at the smaller size.
+ * Downscale an ImageBitmap to `maxDim` on its longest side.
+ * Uses createImageBitmap resize (off-main-thread, no OffscreenCanvas).
+ * Keeping all LOD tiers as ImageBitmap avoids flipY inconsistencies —
+ * WebGL's UNPACK_FLIP_Y has no effect on ImageBitmap but does flip canvas sources.
  */
-function downscale(bitmap: ImageBitmap, maxDim: number): ImageBitmap | OffscreenCanvas {
+async function downscale(bitmap: ImageBitmap, maxDim: number): Promise<ImageBitmap> {
   const { width, height } = bitmap;
   if (width <= maxDim && height <= maxDim) return bitmap;
 
@@ -44,15 +46,18 @@ function downscale(bitmap: ImageBitmap, maxDim: number): ImageBitmap | Offscreen
   const tw = Math.round(width * scale);
   const th = Math.round(height * scale);
 
-  const canvas = new OffscreenCanvas(tw, th);
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(bitmap, 0, 0, tw, th);
-  return canvas;
+  return createImageBitmap(bitmap, 0, 0, width, height, {
+    resizeWidth: tw,
+    resizeHeight: th,
+    resizeQuality: 'medium',
+  });
 }
 
-function bitmapToTexture(source: ImageBitmap | OffscreenCanvas): THREE.Texture {
-  // Three.js CanvasTexture accepts OffscreenCanvas via any — this is safe
-  const tex = new THREE.Texture(source as unknown as HTMLCanvasElement);
+function bitmapToTexture(bitmap: ImageBitmap): THREE.Texture {
+  const tex = new THREE.Texture(bitmap as unknown as HTMLCanvasElement);
+  // Disable Three.js flipY — UNPACK_FLIP_Y_WEBGL is unreliable for ImageBitmap
+  // across browsers/WebGL versions. We flip the shared quad UVs instead.
+  tex.flipY = false;
   tex.needsUpdate = true;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -63,6 +68,11 @@ function bitmapToTexture(source: ImageBitmap | OffscreenCanvas): THREE.Texture {
 
 export class ImageTextureManager {
   private cache = new Map<string, TextureEntry>();
+  private onLoad: (() => void) | undefined;
+
+  constructor(onLoad?: () => void) {
+    this.onLoad = onLoad;
+  }
 
   /** Get or start loading the entry for a given src. Returns the entry immediately. */
   acquire(src: string): TextureEntry {
@@ -135,22 +145,19 @@ export class ImageTextureManager {
       entry.naturalWidth = bitmap.width;
       entry.naturalHeight = bitmap.height;
 
-      // Thumbnail
-      const thumbSource = downscale(bitmap, THUMBNAIL_SIZE);
-      entry.thumbnail = bitmapToTexture(thumbSource);
-      // If downscale returned a new canvas, the original bitmap is still needed for full
-      // If it returned the same bitmap, we still keep it
+      // Thumbnail (off-main-thread resize via createImageBitmap)
+      const thumbBitmap = await downscale(bitmap, THUMBNAIL_SIZE);
+      if (signal?.aborted) return;
+      entry.thumbnail = bitmapToTexture(thumbBitmap);
 
-      // Full resolution (capped)
-      if (bitmap.width > MAX_IMAGE_TEXTURE_SIZE || bitmap.height > MAX_IMAGE_TEXTURE_SIZE) {
-        const fullSource = downscale(bitmap, MAX_IMAGE_TEXTURE_SIZE);
-        entry.full = bitmapToTexture(fullSource);
-      } else {
-        entry.full = bitmapToTexture(bitmap);
-      }
+      // Full resolution (capped at MAX_IMAGE_TEXTURE_SIZE)
+      const fullBitmap = await downscale(bitmap, MAX_IMAGE_TEXTURE_SIZE);
+      if (signal?.aborted) return;
+      entry.full = bitmapToTexture(fullBitmap);
 
       entry.state = 'loaded';
       entry.abort = null;
+      this.onLoad?.();
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       entry.state = 'error';

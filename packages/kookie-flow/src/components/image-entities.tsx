@@ -11,9 +11,10 @@
  * - LOD: thumbnail texture when entity is small on screen, full res when zoomed in
  * - TextureManager: async loading, caching, ref-counted disposal
  * - Dirty flags: skip useFrame work when nothing changed
+ * - Load-complete callback: no per-frame polling for texture readiness
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -27,8 +28,17 @@ import type { ImageEntityData } from '../types';
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
 
-/** Shared unit quad geometry — reused by all image meshes */
-const sharedGeometry = new THREE.PlaneGeometry(1, 1);
+/** Shared unit quad geometry — reused by all image meshes (never disposed) */
+const sharedGeometry = (() => {
+  const geo = new THREE.PlaneGeometry(1, 1);
+  // Flip V coordinate so UV (0,0) = top-left (matches ImageBitmap origin).
+  // This compensates for tex.flipY = false on our ImageBitmap textures.
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setY(i, 1 - uv.getY(i));
+  }
+  return geo;
+})();
 
 /** Placeholder material for images that haven't loaded yet */
 function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
@@ -57,13 +67,18 @@ export function ImageEntities() {
 
   // Refs for each mesh, keyed by entity ID
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
+  // Stable ref callbacks cached per entity ID (avoids new closure per render)
+  const refCallbacksRef = useRef<Map<string, (mesh: THREE.Mesh | null) => void>>(new Map());
   // Material refs per entity (each has its own texture)
   const materialRefs = useRef<Map<string, THREE.MeshBasicMaterial>>(new Map());
   // Track which src each entity currently has loaded (for detecting src changes)
   const loadedSrcRefs = useRef<Map<string, string>>(new Map());
 
-  // Texture manager — singleton for component lifetime
-  const texManager = useMemo(() => new ImageTextureManager(), []);
+  // Texture manager — singleton for component lifetime.
+  // onLoad callback marks dirty so textures appear as soon as they're ready.
+  const texManager = useMemo(() => {
+    return new ImageTextureManager(() => { dirtyRef.current = true; });
+  }, []);
 
   // Placeholder color from theme (muted text color for subtle placeholder)
   const surfaceColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
@@ -99,26 +114,28 @@ export function ImageEntities() {
         return prev;
       });
     });
-    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
 
     return () => {
       unsubEntities();
-      unsubViewport();
       unsubSelection();
       unsubHidden();
     };
   }, [store]);
 
-  // Ref callback for mesh registration
-  const setMeshRef = useCallback((id: string) => (mesh: THREE.Mesh | null) => {
-    if (mesh) {
-      meshRefs.current.set(id, mesh);
-    } else {
-      meshRefs.current.delete(id);
+  // Get or create a stable ref callback for a given entity ID
+  function getRefCallback(id: string): (mesh: THREE.Mesh | null) => void {
+    let cb = refCallbacksRef.current.get(id);
+    if (!cb) {
+      cb = (mesh: THREE.Mesh | null) => {
+        if (mesh) meshRefs.current.set(id, mesh);
+        else meshRefs.current.delete(id);
+      };
+      refCallbacksRef.current.set(id, cb);
     }
-  }, []);
+    return cb;
+  }
 
   // ---- useFrame: update positions, textures, visibility (no React re-render) ----
   useFrame(({ size }) => {
@@ -137,8 +154,6 @@ export function ImageEntities() {
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
     const cullPadding = 100;
-
-    let anySelected = false;
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -220,20 +235,16 @@ export function ImageEntities() {
         mesh.material = placeholderMat;
       }
 
-      // Selection tracking
-      if (selectedEntityIds.has(entity.id)) {
-        anySelected = true;
-      }
-
       mesh.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
     }
 
-    // Clean up materials for removed entities
+    // Clean up materials and ref callbacks for removed entities
     for (const [id] of materialRefs.current) {
       if (!meshRefs.current.has(id)) {
         const mat = materialRefs.current.get(id);
         mat?.dispose();
         materialRefs.current.delete(id);
+        refCallbacksRef.current.delete(id);
         const src = loadedSrcRefs.current.get(id);
         if (src) {
           texManager.release(src);
@@ -245,24 +256,12 @@ export function ImageEntities() {
     dirtyRef.current = false;
   });
 
-  // Continuously mark dirty while images are loading (to pick up texture updates)
-  useFrame(() => {
-    // Check if any image is still loading — if so, stay dirty for next frame
-    for (const [, src] of loadedSrcRefs.current) {
-      const entry = texManager.getEntry(src);
-      if (entry && entry.state === 'loading') {
-        dirtyRef.current = true;
-        return;
-      }
-    }
-  });
-
   return (
     <group>
       {imageEntityIds.map((id) => (
         <mesh
           key={id}
-          ref={setMeshRef(id)}
+          ref={getRefCallback(id)}
           geometry={sharedGeometry}
           material={placeholderMat}
           frustumCulled={false}
