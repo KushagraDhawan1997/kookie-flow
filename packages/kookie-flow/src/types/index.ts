@@ -343,6 +343,11 @@ export function isTextEntity(entity: Entity): entity is TextEntity {
   return entity.type === 'text';
 }
 
+/** Helper type guard for image entities */
+export function isImageEntity(entity: Entity): entity is ImageEntity {
+  return entity.type === 'image';
+}
+
 /** Entity in the graph */
 export interface Entity<T extends EntityData = EntityData> {
   id: string;
