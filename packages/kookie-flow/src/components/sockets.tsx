@@ -32,11 +32,13 @@ interface SocketBuffers {
   connected: Float32Array;
   validTarget: Float32Array;
   invalidHover: Float32Array;
+  layers: Float32Array;
   colorAttr: THREE.InstancedBufferAttribute | null;
   hoveredAttr: THREE.InstancedBufferAttribute | null;
   connectedAttr: THREE.InstancedBufferAttribute | null;
   validTargetAttr: THREE.InstancedBufferAttribute | null;
   invalidHoverAttr: THREE.InstancedBufferAttribute | null;
+  layerAttr: THREE.InstancedBufferAttribute | null;
 }
 
 function createSocketBuffers(capacity: number): SocketBuffers {
@@ -46,15 +48,21 @@ function createSocketBuffers(capacity: number): SocketBuffers {
     connected: new Float32Array(capacity),
     validTarget: new Float32Array(capacity),
     invalidHover: new Float32Array(capacity),
+    layers: new Float32Array(capacity),
     colorAttr: null,
     hoveredAttr: null,
     connectedAttr: null,
     validTargetAttr: null,
     invalidHoverAttr: null,
+    layerAttr: null,
   };
 }
 
-function initSocketMesh(mesh: THREE.InstancedMesh, bufs: SocketBuffers) {
+function initSharedSocketBuffers(
+  bgMesh: THREE.InstancedMesh,
+  fgMesh: THREE.InstancedMesh,
+  bufs: SocketBuffers,
+) {
   bufs.colorAttr = new THREE.InstancedBufferAttribute(bufs.colors, 3);
   bufs.colorAttr.setUsage(THREE.DynamicDrawUsage);
   bufs.hoveredAttr = new THREE.InstancedBufferAttribute(bufs.hovered, 1);
@@ -65,13 +73,22 @@ function initSocketMesh(mesh: THREE.InstancedMesh, bufs: SocketBuffers) {
   bufs.validTargetAttr.setUsage(THREE.DynamicDrawUsage);
   bufs.invalidHoverAttr = new THREE.InstancedBufferAttribute(bufs.invalidHover, 1);
   bufs.invalidHoverAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.layerAttr = new THREE.InstancedBufferAttribute(bufs.layers, 1);
+  bufs.layerAttr.setUsage(THREE.DynamicDrawUsage);
 
-  mesh.geometry.setAttribute('aColor', bufs.colorAttr);
-  mesh.geometry.setAttribute('aHovered', bufs.hoveredAttr);
-  mesh.geometry.setAttribute('aConnected', bufs.connectedAttr);
-  mesh.geometry.setAttribute('aValidTarget', bufs.validTargetAttr);
-  mesh.geometry.setAttribute('aInvalidHover', bufs.invalidHoverAttr);
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // Set shared attributes on BOTH geometries
+  for (const mesh of [bgMesh, fgMesh]) {
+    mesh.geometry.setAttribute('aColor', bufs.colorAttr);
+    mesh.geometry.setAttribute('aHovered', bufs.hoveredAttr);
+    mesh.geometry.setAttribute('aConnected', bufs.connectedAttr);
+    mesh.geometry.setAttribute('aValidTarget', bufs.validTargetAttr);
+    mesh.geometry.setAttribute('aInvalidHover', bufs.invalidHoverAttr);
+    mesh.geometry.setAttribute('aLayer', bufs.layerAttr);
+  }
+
+  // Share instance matrix: both meshes use bgMesh's matrix buffer
+  bgMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  fgMesh.instanceMatrix = bgMesh.instanceMatrix;
 }
 
 function markSocketBuffersForUpload(bufs: SocketBuffers) {
@@ -80,6 +97,7 @@ function markSocketBuffersForUpload(bufs: SocketBuffers) {
   if (bufs.connectedAttr) bufs.connectedAttr.needsUpdate = true;
   if (bufs.validTargetAttr) bufs.validTargetAttr.needsUpdate = true;
   if (bufs.invalidHoverAttr) bufs.invalidHoverAttr.needsUpdate = true;
+  if (bufs.layerAttr) bufs.layerAttr.needsUpdate = true;
 }
 
 interface SocketsProps {
@@ -98,6 +116,7 @@ export function Sockets({
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
   const positionDirtyRef = useRef(false);
+  const selectionDirtyRef = useRef(false);
   const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
 
@@ -135,83 +154,112 @@ export function Sockets({
   const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
   const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
-  // Shader material for socket rendering (shared between both meshes)
-  const material = useMemo(
+  // Shared shader code for socket rendering
+  const vertexShader = /* glsl */ `
+    attribute vec3 aColor;
+    attribute float aHovered;
+    attribute float aConnected;
+    attribute float aValidTarget;
+    attribute float aInvalidHover;
+    attribute float aLayer;
+    uniform float uMeshLayer;
+
+    varying vec3 vColor;
+    varying float vHovered;
+    varying float vConnected;
+    varying float vValidTarget;
+    varying float vInvalidHover;
+    varying vec2 vUv;
+
+    void main() {
+      // Discard instances that don't belong to this mesh's layer
+      if (abs(aLayer - uMeshLayer) > 0.5) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+      }
+
+      vColor = aColor;
+      vHovered = aHovered;
+      vConnected = aConnected;
+      vValidTarget = aValidTarget;
+      vInvalidHover = aInvalidHover;
+      vUv = uv;
+
+      // Scale up when hovered
+      vec3 pos = position * (1.0 + aHovered * 0.3);
+
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+    }
+  `;
+  const fragmentShader = /* glsl */ `
+    precision highp float;
+
+    uniform vec3 uInvalidColor;
+    uniform vec3 uValidTargetColor;
+
+    varying vec3 vColor;
+    varying float vHovered;
+    varying float vConnected;
+    varying float vValidTarget;
+    varying float vInvalidHover;
+    varying vec2 vUv;
+
+    void main() {
+      // Distance from center for SDF circle
+      vec2 center = vec2(0.5, 0.5);
+      float dist = length(vUv - center) * 2.0;
+
+      // Anti-aliased circle
+      float aa = fwidth(dist) * 1.5;
+      float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
+
+      // Base color: socket type color or invalid color if hovering invalid target
+      vec3 color = mix(vColor, uInvalidColor, vInvalidHover);
+
+      // Only apply hover/valid brightening if NOT invalid
+      float notInvalid = 1.0 - vInvalidHover;
+      color = mix(color, color * 1.4, vHovered * notInvalid);
+      color = mix(color, uValidTargetColor, vValidTarget * 0.6 * notInvalid);
+
+      // Inner hollow for disconnected sockets (thinner ring = more visible hollow)
+      float innerRadius = 0.65;
+      float innerMask = smoothstep(innerRadius - aa, innerRadius, dist);
+
+      // vConnected=1 (connected): solid fill
+      // vConnected=0 (disconnected): hollow ring (innerMask makes center transparent)
+      float fillAlpha = mix(innerMask, 1.0, vConnected);
+
+      gl_FragColor = vec4(color, alpha * fillAlpha);
+    }
+  `;
+
+  // Two materials: same shader, different uMeshLayer uniform for layer filtering
+  const bgMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
         uniforms: {
           uInvalidColor: { value: new THREE.Color(invalidColor[0], invalidColor[1], invalidColor[2]) },
           uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
+          uMeshLayer: { value: 0.0 },
         },
-        vertexShader: /* glsl */ `
-          attribute vec3 aColor;
-          attribute float aHovered;
-          attribute float aConnected;
-          attribute float aValidTarget;
-          attribute float aInvalidHover;
-
-          varying vec3 vColor;
-          varying float vHovered;
-          varying float vConnected;
-          varying float vValidTarget;
-          varying float vInvalidHover;
-          varying vec2 vUv;
-
-          void main() {
-            vColor = aColor;
-            vHovered = aHovered;
-            vConnected = aConnected;
-            vValidTarget = aValidTarget;
-            vInvalidHover = aInvalidHover;
-            vUv = uv;
-
-            // Scale up when hovered
-            vec3 pos = position * (1.0 + aHovered * 0.3);
-
-            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          precision highp float;
-
-          uniform vec3 uInvalidColor;
-          uniform vec3 uValidTargetColor;
-
-          varying vec3 vColor;
-          varying float vHovered;
-          varying float vConnected;
-          varying float vValidTarget;
-          varying float vInvalidHover;
-          varying vec2 vUv;
-
-          void main() {
-            // Distance from center for SDF circle
-            vec2 center = vec2(0.5, 0.5);
-            float dist = length(vUv - center) * 2.0;
-
-            // Anti-aliased circle
-            float aa = fwidth(dist) * 1.5;
-            float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
-
-            // Base color: socket type color or invalid color if hovering invalid target
-            vec3 color = mix(vColor, uInvalidColor, vInvalidHover);
-
-            // Only apply hover/valid brightening if NOT invalid
-            float notInvalid = 1.0 - vInvalidHover;
-            color = mix(color, color * 1.4, vHovered * notInvalid);
-            color = mix(color, uValidTargetColor, vValidTarget * 0.6 * notInvalid);
-
-            // Inner hollow for disconnected sockets (thinner ring = more visible hollow)
-            float innerRadius = 0.65;
-            float innerMask = smoothstep(innerRadius - aa, innerRadius, dist);
-
-            // vConnected=1 (connected): solid fill
-            // vConnected=0 (disconnected): hollow ring (innerMask makes center transparent)
-            float fillAlpha = mix(innerMask, 1.0, vConnected);
-
-            gl_FragColor = vec4(color, alpha * fillAlpha);
-          }
-        `,
+        vertexShader,
+        fragmentShader,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    [invalidColor, validTargetColor]
+  );
+  const fgMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uInvalidColor: { value: new THREE.Color(invalidColor[0], invalidColor[1], invalidColor[2]) },
+          uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
+          uMeshLayer: { value: 1.0 },
+        },
+        vertexShader,
+        fragmentShader,
         transparent: true,
         depthWrite: false,
         depthTest: false,
@@ -219,9 +267,8 @@ export function Sockets({
     [invalidColor, validTargetColor]
   );
 
-  // Buffer sets for bg (non-selected entities) and fg (selected entities)
-  const bgBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
-  const fgBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
+  // Shared buffers for all sockets (layer attribute controls bg/fg visibility)
+  const sharedBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
 
   // Cleanup RAF on unmount
   useEffect(() => {
@@ -238,14 +285,13 @@ export function Sockets({
     initializedRef.current = false;
   }, [capacity]);
 
-  // Initialize attributes
+  // Initialize shared attributes on both meshes
   useEffect(() => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
-    initSocketMesh(bgMeshRef.current, bgBuffers);
-    initSocketMesh(fgMeshRef.current, fgBuffers);
+    initSharedSocketBuffers(bgMeshRef.current, fgMeshRef.current, sharedBuffers);
     initializedRef.current = true;
     dirtyRef.current = true;
-  }, [bgBuffers, fgBuffers]);
+  }, [sharedBuffers]);
 
   // Store subscriptions
   useEffect(() => {
@@ -294,11 +340,11 @@ export function Sockets({
         dirtyRef.current = true;
       }
     );
-    // Selection changes require full rebuild (sockets move between bg/fg meshes)
+    // Selection changes: only flip layer attribute (no full rebuild needed)
     const unsubSelection = store.subscribe(
       (state) => state.selectedEntityIds,
       () => {
-        dirtyRef.current = true;
+        selectionDirtyRef.current = true;
       }
     );
 
@@ -322,11 +368,11 @@ export function Sockets({
     };
   }, [store]);
 
-  // Helper: write all sockets for one entity into the target mesh/buffers
+  // Helper: write all sockets for one entity into the shared buffers
   const writeEntitySockets = (
     entity: Entity,
-    mesh: THREE.InstancedMesh,
     bufs: SocketBuffers,
+    matrixArray: Float32Array,
     startIdx: number,
     hoveredSocketId: { entityId: string; socketId: string; isInput: boolean } | null,
     connectionDraft: { source: { entityId: string; socketId: string; isInput: boolean } } | null,
@@ -356,7 +402,7 @@ export function Sockets({
           -(entity.position.y + yOffset),
           0.5
         );
-        mesh.setMatrixAt(idx, tempMatrix);
+        tempMatrix.toArray(matrixArray, idx * 16);
 
         const typeConfig =
           socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
@@ -412,7 +458,7 @@ export function Sockets({
           -(entity.position.y + yOffset),
           0.5
         );
-        mesh.setMatrixAt(idx, tempMatrix);
+        tempMatrix.toArray(matrixArray, idx * 16);
 
         const typeConfig =
           socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
@@ -482,7 +528,8 @@ export function Sockets({
           const entity = entityMap.get(entityId);
           if (!entity) continue;
 
-          const mesh = range.mesh === 'fg' ? fgMesh : bgMesh;
+          // Both meshes share bgMesh's instanceMatrix
+          const mesh = bgMesh;
           const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
           const height = entity.height ?? entityLayout.computedHeight;
@@ -527,10 +574,30 @@ export function Sockets({
         }
 
         bgMesh.instanceMatrix.needsUpdate = true;
-        fgMesh.instanceMatrix.needsUpdate = true;
       }
 
       positionDirtyRef.current = false;
+      return;
+    }
+
+    // Selection-only fast path: flip aLayer for changed entities (no full rebuild)
+    if (!dirtyRef.current && selectionDirtyRef.current && !positionDirtyRef.current) {
+      const { selectedEntityIds } = store.getState();
+      const socketRanges = entitySocketRangesRef.current;
+
+      for (const [entityId, range] of socketRanges) {
+        const newLayer = selectedEntityIds.has(entityId) ? 1 : 0;
+        const oldLayer = range.mesh === 'fg' ? 1 : 0;
+        if (newLayer !== oldLayer) {
+          range.mesh = newLayer === 1 ? 'fg' : 'bg';
+          for (let j = range.start; j < range.start + range.count; j++) {
+            sharedBuffers.layers[j] = newLayer;
+          }
+        }
+      }
+
+      if (sharedBuffers.layerAttr) sharedBuffers.layerAttr.needsUpdate = true;
+      selectionDirtyRef.current = false;
       return;
     }
 
@@ -567,36 +634,35 @@ export function Sockets({
       sourceSocketCacheRef.current = null;
     }
 
-    let bgCount = 0;
-    let fgCount = 0;
+    let totalCount = 0;
     const socketRanges = entitySocketRangesRef.current;
     socketRanges.clear();
+    const matrixArray = bgMesh.instanceMatrix.array as Float32Array;
 
     for (const entity of entities) {
       const isSelected = selectedEntityIds.has(entity.id);
-      const mesh = isSelected ? fgMesh : bgMesh;
-      const bufs = isSelected ? fgBuffers : bgBuffers;
-      const startIdx = isSelected ? fgCount : bgCount;
+      const entitySocketStart = totalCount;
 
-      const entitySocketStart = startIdx;
-      const newIdx = writeEntitySockets(
-        entity, mesh, bufs, startIdx,
+      totalCount = writeEntitySockets(
+        entity, sharedBuffers, matrixArray, totalCount,
         hoveredSocketId, connectionDraft, sourceSocketType, connectedSockets,
       );
 
-      const socketsWritten = newIdx - startIdx;
+      const socketsWritten = totalCount - entitySocketStart;
       socketRanges.set(entity.id, {
         mesh: isSelected ? 'fg' : 'bg',
         start: entitySocketStart,
         count: socketsWritten,
       });
 
-      if (isSelected) fgCount = newIdx;
-      else bgCount = newIdx;
+      // Set layer for this entity's socket instances
+      const layer = isSelected ? 1 : 0;
+      for (let j = entitySocketStart; j < totalCount; j++) {
+        sharedBuffers.layers[j] = layer;
+      }
     }
 
     // Check capacity - defer state update to avoid React re-render inside useFrame
-    const totalCount = bgCount + fgCount;
     if (totalCount >= capacity) {
       const newCapacity = Math.ceil(totalCount * BUFFER_GROWTH_FACTOR);
       if (pendingCapacityRef.current === null || newCapacity > pendingCapacityRef.current) {
@@ -613,16 +679,17 @@ export function Sockets({
       }
     }
 
-    // Update GPU buffers for both meshes
+    // Update GPU buffers (shared between both meshes)
     bgMesh.instanceMatrix.needsUpdate = true;
-    fgMesh.instanceMatrix.needsUpdate = true;
-    markSocketBuffersForUpload(bgBuffers);
-    markSocketBuffersForUpload(fgBuffers);
+    markSocketBuffersForUpload(sharedBuffers);
 
-    bgMesh.count = Math.min(bgCount, capacity);
-    fgMesh.count = Math.min(fgCount, capacity);
+    // Both meshes draw all instances; shader filters by layer
+    const clampedCount = Math.min(totalCount, capacity);
+    bgMesh.count = clampedCount;
+    fgMesh.count = clampedCount;
     dirtyRef.current = false;
     positionDirtyRef.current = false;
+    selectionDirtyRef.current = false;
   });
 
   return (
@@ -630,14 +697,14 @@ export function Sockets({
       <instancedMesh
         key={`bg-${capacity}`}
         ref={bgMeshRef}
-        args={[bgGeometry, material, capacity]}
+        args={[bgGeometry, bgMaterial, capacity]}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
       />
       <instancedMesh
         key={`fg-${capacity}`}
         ref={fgMeshRef}
-        args={[fgGeometry, material, capacity]}
+        args={[fgGeometry, fgMaterial, capacity]}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}
       />

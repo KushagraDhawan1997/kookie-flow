@@ -5,11 +5,7 @@ import { useFlowStoreApi } from './context';
 import { getMovedEntityIds } from '../core/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
-import {
-  DEFAULT_ENTITY_WIDTH,
-  DEFAULT_SOCKET_TYPES,
-  SOCKET_OFFSET,
-} from '../core/constants';
+import { DEFAULT_ENTITY_WIDTH, DEFAULT_SOCKET_TYPES, SOCKET_OFFSET } from '../core/constants';
 import { calculateMinEntityHeight } from '../utils/style-resolver';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
@@ -50,18 +46,27 @@ function normalizeMarker(marker: EdgeMarkerType | EdgeMarker | undefined): EdgeM
 }
 
 // Vertex shader - computes ribbon offset from center position + perpendicular
+// aLayer + uMeshLayer: per-vertex layer attribute for bg/fg visibility without buffer reordering
 const vertexShader = /* glsl */ `
   attribute vec2 uv2;
   attribute vec3 aColor;
   attribute vec2 aPerpendicular;
+  attribute float aLayer;
 
   uniform float uHalfWidth;
   uniform float uZoom;
+  uniform float uMeshLayer;
 
   varying vec2 vUv;
   varying vec3 vColor;
 
   void main() {
+    // Discard vertices not belonging to this mesh's layer
+    if (abs(aLayer - uMeshLayer) > 0.5) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
     vUv = uv2;
     vColor = aColor;
 
@@ -120,20 +125,21 @@ export function Edges({
   const RENDER_ORDER_BG = 0; // Non-selected edges
   const RENDER_ORDER_FG = 3; // Selected edges (above non-selected entities)
 
-  // Pre-allocated buffers (shared between bg/fg meshes via draw ranges)
+  // Pre-allocated buffers (shared between bg/fg meshes — same GPU buffer, shader handles visibility)
   const buffersRef = useRef<{
     capacity: number;
     positions: Float32Array;
     uvs: Float32Array;
     colors: Float32Array;
     perpendiculars: Float32Array;
-    // Attributes (shared between bg/fg geometries — same GPU buffer, different draw ranges)
+    layers: Float32Array; // per-vertex layer: 0=bg, 1=fg (shader discards non-matching)
+    // Attributes (shared between bg/fg geometries)
     positionAttr: THREE.BufferAttribute | null;
     uvAttr: THREE.BufferAttribute | null;
     colorAttr: THREE.BufferAttribute | null;
     perpAttr: THREE.BufferAttribute | null;
+    layerAttr: THREE.BufferAttribute | null;
     lastVertexCount: number;
-    bgVertexCount: number; // split point between bg and fg in shared buffer
     // Pre-allocated points buffer for curve tessellation (avoids GC in hot path)
     points: Float32Array;
   }>({
@@ -142,12 +148,13 @@ export function Edges({
     uvs: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 2),
     colors: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 3),
     perpendiculars: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE * 2),
+    layers: new Float32Array(INITIAL_EDGE_CAPACITY * VERTICES_PER_EDGE),
     positionAttr: null,
     uvAttr: null,
     colorAttr: null,
     perpAttr: null,
+    layerAttr: null,
     lastVertexCount: 0,
-    bgVertexCount: 0,
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
@@ -170,9 +177,10 @@ export function Edges({
     Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
   >(new Map());
 
-  // Dirty flags - separate geometry vs color-only updates
+  // Dirty flags - separate geometry vs color-only vs layer-only updates
   const geometryDirtyRef = useRef(true);
   const colorDirtyRef = useRef(true);
+  const layerDirtyRef = useRef(false); // entity selection changed (edges move between bg/fg layers)
 
   // Track last position version to detect actual position changes
   const lastPositionVersionRef = useRef(-1);
@@ -183,6 +191,9 @@ export function Edges({
 
   // Cached endpoint positions for dirty detection: flat [x0, y0, x1, y1] per edge
   const endpointCacheRef = useRef<Float64Array>(new Float64Array(0));
+
+  // Per-edge layer cache: 0=bg, 1=fg (for detecting layer changes on selection)
+  const edgeLayersRef = useRef<Uint8Array>(new Uint8Array(0));
 
   // Position-only dirty flag (enables partial update path, avoids full rebuild)
   const positionDirtyRef = useRef(false);
@@ -214,8 +225,8 @@ export function Edges({
     colorDirtyRef.current = true;
   }, [tokens]);
 
-  // Shader material
-  const material = useMemo(() => {
+  // Shader materials — separate instances for bg/fg with different uMeshLayer uniform
+  const bgMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
@@ -223,6 +234,23 @@ export function Edges({
         uAASmooth: { value: AA_SMOOTHNESS / 10 },
         uHalfWidth: { value: EDGE_WIDTH / 2 },
         uZoom: { value: 1 },
+        uMeshLayer: { value: 0.0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+    });
+  }, []);
+  const fgMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: {
+        uAASmooth: { value: AA_SMOOTHNESS / 10 },
+        uHalfWidth: { value: EDGE_WIDTH / 2 },
+        uZoom: { value: 1 },
+        uMeshLayer: { value: 1.0 },
       },
       transparent: true,
       depthWrite: false,
@@ -244,6 +272,7 @@ export function Edges({
     const newUvs = new Float32Array(vertexCount * 2);
     const newColors = new Float32Array(vertexCount * 3);
     const newPerpendiculars = new Float32Array(vertexCount * 2);
+    const newLayers = new Float32Array(vertexCount);
 
     // Copy existing data
     const existingVerts = buffers.lastVertexCount;
@@ -252,12 +281,14 @@ export function Edges({
       newUvs.set(buffers.uvs.subarray(0, existingVerts * 2));
       newColors.set(buffers.colors.subarray(0, existingVerts * 3));
       newPerpendiculars.set(buffers.perpendiculars.subarray(0, existingVerts * 2));
+      newLayers.set(buffers.layers.subarray(0, existingVerts));
     }
 
     buffers.positions = newPositions;
     buffers.uvs = newUvs;
     buffers.colors = newColors;
     buffers.perpendiculars = newPerpendiculars;
+    buffers.layers = newLayers;
     buffers.capacity = newCapacity;
 
     // Recreate attributes with new buffers
@@ -269,6 +300,8 @@ export function Edges({
     buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.perpAttr = new THREE.BufferAttribute(newPerpendiculars, 2);
     buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.layerAttr = new THREE.BufferAttribute(newLayers, 1);
+    buffers.layerAttr.setUsage(THREE.DynamicDrawUsage);
 
     // Set shared attributes on both geometries
     for (const ref of [bgMeshRef, fgMeshRef]) {
@@ -277,6 +310,7 @@ export function Edges({
         ref.current.geometry.setAttribute('uv2', buffers.uvAttr);
         ref.current.geometry.setAttribute('aColor', buffers.colorAttr);
         ref.current.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+        ref.current.geometry.setAttribute('aLayer', buffers.layerAttr);
       }
     }
 
@@ -298,6 +332,8 @@ export function Edges({
     buffers.colorAttr.setUsage(THREE.DynamicDrawUsage);
     buffers.perpAttr = new THREE.BufferAttribute(buffers.perpendiculars, 2);
     buffers.perpAttr.setUsage(THREE.DynamicDrawUsage);
+    buffers.layerAttr = new THREE.BufferAttribute(buffers.layers, 1);
+    buffers.layerAttr.setUsage(THREE.DynamicDrawUsage);
 
     // Set shared attributes on both geometries
     for (const ref of [bgMeshRef, fgMeshRef]) {
@@ -305,6 +341,7 @@ export function Edges({
       ref.current!.geometry.setAttribute('uv2', buffers.uvAttr);
       ref.current!.geometry.setAttribute('aColor', buffers.colorAttr);
       ref.current!.geometry.setAttribute('aPerpendicular', buffers.perpAttr);
+      ref.current!.geometry.setAttribute('aLayer', buffers.layerAttr);
     }
 
     // Helper to rebuild socket index map (only called on add/remove, not position changes)
@@ -357,16 +394,17 @@ export function Edges({
     // Selection changes only require color update, not geometry rebuild
     const unsubSelection = store.subscribe(
       (state) => state.selectedEdgeIds,
-      () => {
+      (newIds, prevIds) => {
+        // Skip when both empty (common: entity selection clears already-empty edge selection)
+        if (newIds.size === 0 && prevIds.size === 0) return;
         colorDirtyRef.current = true;
       }
     );
-    // Entity selection changes require geometry rebuild (edges move between bg/fg layers)
+    // Entity selection changes require layer update (edges move between bg/fg layers via shader)
     const unsubEntitySelection = store.subscribe(
       (state) => state.selectedEntityIds,
       () => {
-        geometryDirtyRef.current = true;
-        colorDirtyRef.current = true;
+        layerDirtyRef.current = true;
       }
     );
 
@@ -385,22 +423,25 @@ export function Edges({
       unsubEdges();
       unsubSelection();
       unsubEntitySelection();
-      material.dispose();
+      bgMaterial.dispose();
+      fgMaterial.dispose();
     };
-  }, [store, material]);
+  }, [store, bgMaterial, fgMaterial]);
 
   // RAF-synchronized updates
   useFrame(({ size }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds, selectedEntityIds, positionVersion, entityMap } = store.getState();
+    const { edges, viewport, selectedEdgeIds, selectedEntityIds, positionVersion, entityMap } =
+      store.getState();
     // Always read entityMap from store (not cached ref) because setEntities
     // creates a new Map without changing entities.length, which would leave
     // entityMapRef stale. The store's getState() is synchronous and cheap.
     entityMapRef.current = entityMap;
 
-    // Always update zoom uniform (cheap operation)
-    material.uniforms.uZoom.value = viewport.zoom;
+    // Always update zoom uniform on both materials (cheap operation)
+    bgMaterial.uniforms.uZoom.value = viewport.zoom;
+    fgMaterial.uniforms.uZoom.value = viewport.zoom;
 
     // Mark dirty on canvas resize (prevents ghosting)
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -410,7 +451,7 @@ export function Edges({
     }
 
     // Skip if nothing is dirty
-    if (!geometryDirtyRef.current && !positionDirtyRef.current && !colorDirtyRef.current) return;
+    if (!geometryDirtyRef.current && !positionDirtyRef.current && !colorDirtyRef.current && !layerDirtyRef.current) return;
 
     const socketIndexMap = socketIndexMapRef.current;
     const buffers = buffersRef.current;
@@ -421,72 +462,92 @@ export function Edges({
       geometryDirtyRef.current = false;
       positionDirtyRef.current = false;
       colorDirtyRef.current = false;
+      layerDirtyRef.current = false;
       return;
     }
 
     // Ensure capacity
     ensureCapacity(edges.length);
 
-    // Fast path: color-only update (selection changed but positions didn't)
-    // Only update colors without re-tessellating geometry
-    if (!geometryDirtyRef.current && !positionDirtyRef.current && colorDirtyRef.current) {
-      // Update colors for all edges using recorded vertex layout (works with two-pass ordering)
+    // Fast path: layer and/or color update only (no geometry or position changes)
+    if (!geometryDirtyRef.current && !positionDirtyRef.current && (layerDirtyRef.current || colorDirtyRef.current)) {
       const evStarts = edgeVertexStartsRef.current;
       const evCounts = edgeVertexCountsRef.current;
+      const edgeLayers = edgeLayersRef.current;
 
-      for (let i = 0; i < edges.length; i++) {
-        const edge = edges[i];
-        const vertexStart = evStarts[i];
-        const vertexCount = evCounts[i];
-        if (vertexCount === 0) continue;
-
-        // Determine color
-        let cr: number, cg: number, cb: number;
-        if (selectedEdgeIds.has(edge.id)) {
-          cr = selectedColor.r;
-          cg = selectedColor.g;
-          cb = selectedColor.b;
-        } else if (edge.invalid) {
-          cr = invalidColor.r;
-          cg = invalidColor.g;
-          cb = invalidColor.b;
-        } else {
-          let foundColor = false;
-          if (edge.sourceSocket) {
-            const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
-            if (socketInfo) {
-              const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
-              if (typeConfig) {
-                tempColor.set(typeConfig.color);
-                foundColor = true;
-              }
+      // Layer update: flip aLayer for edges whose bg/fg assignment changed
+      if (layerDirtyRef.current) {
+        for (let i = 0; i < edges.length; i++) {
+          const edge = edges[i];
+          const newLayer = (selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target)) ? 1 : 0;
+          if (newLayer !== edgeLayers[i]) {
+            edgeLayers[i] = newLayer;
+            const start = evStarts[i];
+            const count = evCounts[i];
+            for (let v = 0; v < count; v++) {
+              buffers.layers[start + v] = newLayer;
             }
           }
-          if (!foundColor) {
-            cr = defaultColor.r;
-            cg = defaultColor.g;
-            cb = defaultColor.b;
+        }
+        if (buffers.layerAttr) {
+          buffers.layerAttr.needsUpdate = true;
+        }
+        layerDirtyRef.current = false;
+      }
+
+      // Color update: update colors for all edges using recorded vertex layout
+      if (colorDirtyRef.current) {
+        for (let i = 0; i < edges.length; i++) {
+          const edge = edges[i];
+          const vertexStart = evStarts[i];
+          const vertexCount = evCounts[i];
+          if (vertexCount === 0) continue;
+
+          let cr: number, cg: number, cb: number;
+          if (selectedEdgeIds.has(edge.id)) {
+            cr = selectedColor.r;
+            cg = selectedColor.g;
+            cb = selectedColor.b;
+          } else if (edge.invalid) {
+            cr = invalidColor.r;
+            cg = invalidColor.g;
+            cb = invalidColor.b;
           } else {
-            cr = tempColor.r;
-            cg = tempColor.g;
-            cb = tempColor.b;
+            let foundColor = false;
+            if (edge.sourceSocket) {
+              const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+              if (socketInfo) {
+                const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
+                if (typeConfig) {
+                  tempColor.set(typeConfig.color);
+                  foundColor = true;
+                }
+              }
+            }
+            if (!foundColor) {
+              cr = defaultColor.r;
+              cg = defaultColor.g;
+              cb = defaultColor.b;
+            } else {
+              cr = tempColor.r;
+              cg = tempColor.g;
+              cb = tempColor.b;
+            }
+          }
+
+          for (let v = 0; v < vertexCount; v++) {
+            const colIdx = (vertexStart + v) * 3;
+            buffers.colors[colIdx] = cr;
+            buffers.colors[colIdx + 1] = cg;
+            buffers.colors[colIdx + 2] = cb;
           }
         }
-
-        // Update colors for all vertices of this edge
-        for (let v = 0; v < vertexCount; v++) {
-          const colIdx = (vertexStart + v) * 3;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+        if (buffers.colorAttr) {
+          buffers.colorAttr.needsUpdate = true;
         }
+        colorDirtyRef.current = false;
       }
 
-      // Mark color attribute for update
-      if (buffers.colorAttr) {
-        buffers.colorAttr.needsUpdate = true;
-      }
-      colorDirtyRef.current = false;
       return;
     }
 
@@ -533,560 +594,571 @@ export function Edges({
     }
 
     // Full geometry rebuild or partial position update path
-    // Two-pass for full rebuild: non-selected edges first (bg), then selected (fg)
-    // Single pass for partial update: selection stable, use evStarts for positioning
+    // Single pass: all edges in natural order, aLayer attribute controls bg/fg visibility
     let vertexIndex = 0;
-    const passes = isPartialUpdate ? 1 : 2;
+    const edgeLayers = edgeLayersRef.current;
 
-    for (let pass = 0; pass < passes; pass++) {
-    for (let i = 0; i < edges.length; i++) {
-      // Two-pass skip: bg edges in pass 0, fg edges in pass 1
-      if (!isPartialUpdate) {
-        const isEdgeFg = selectedEntityIds.has(edges[i].source) || selectedEntityIds.has(edges[i].target);
-        if ((pass === 0) === isEdgeFg) continue;
-      }
-
-      // Partial update: skip non-affected edges, jump to recorded position
-      if (isPartialUpdate) {
-        if (affectedEdgeIndices !== null && !affectedEdgeIndices.has(i)) continue;
-        vertexIndex = evStarts[i];
-      }
-
-      const edge = edges[i];
-      const sourceEntity = entityMap.get(edge.source);
-      const targetEntity = entityMap.get(edge.target);
-
-      if (!sourceEntity || !targetEntity) {
-        // Record zero-vertex layout for this edge
-        evStarts[i] = vertexIndex;
-        evCounts[i] = 0;
-        continue;
-      }
-
-      const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
-      const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
-      const sourceInputCount = sourceEntity.inputs?.length ?? 0;
-      const sourceHeight = sourceEntity.height ?? calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
-      const targetOutputCount = targetEntity.outputs?.length ?? 0;
-      const targetInputCount = targetEntity.inputs?.length ?? 0;
-      const targetHeight = targetEntity.height ?? calculateMinEntityHeight(targetOutputCount, targetInputCount, socketLayout);
-
-      // Calculate source socket position - O(1) lookup via socketIndexMap
-      // Source socket is always an output (rowIndex = outputIndex)
-      let sourceYOffset = sourceHeight / 2; // fallback to center
-      if (edge.sourceSocket) {
-        const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
-        if (socketInfo) {
-          sourceYOffset =
-            socketInfo.socket.position !== undefined
-              ? socketInfo.socket.position * sourceHeight
-              : socketLayout.marginTop + socketInfo.index * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+    {
+      for (let i = 0; i < edges.length; i++) {
+        // Partial update: skip non-affected edges, jump to recorded position
+        if (isPartialUpdate) {
+          if (affectedEdgeIndices !== null && !affectedEdgeIndices.has(i)) continue;
+          vertexIndex = evStarts[i];
         }
-      }
 
-      // Calculate target socket position - O(1) lookup via socketIndexMap
-      // Target socket is always an input (rowIndex = outputCount + inputIndex)
-      let targetYOffset = targetHeight / 2; // fallback to center
-      if (edge.targetSocket) {
-        const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
-        if (socketInfo) {
-          const targetOutputCount = targetEntity.outputs?.length ?? 0;
-          const rowIndex = targetOutputCount + socketInfo.index;
-          targetYOffset =
-            socketInfo.socket.position !== undefined
-              ? socketInfo.socket.position * targetHeight
-              : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+        const edge = edges[i];
+        const sourceEntity = entityMap.get(edge.source);
+        const targetEntity = entityMap.get(edge.target);
+
+        if (!sourceEntity || !targetEntity) {
+          // Record zero-vertex layout for this edge
+          evStarts[i] = vertexIndex;
+          evCounts[i] = 0;
+          continue;
         }
-      }
 
-      // Edge endpoints at actual socket positions (outside entity body)
-      const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
-      const y0 = sourceEntity.position.y + sourceYOffset;
-      const x1 = targetEntity.position.x - SOCKET_OFFSET;
-      const y1 = targetEntity.position.y + targetYOffset;
+        const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
+        const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
+        const sourceInputCount = sourceEntity.inputs?.length ?? 0;
+        const sourceHeight =
+          sourceEntity.height ??
+          calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
+        const targetOutputCount = targetEntity.outputs?.length ?? 0;
+        const targetInputCount = targetEntity.inputs?.length ?? 0;
+        const targetHeight =
+          targetEntity.height ??
+          calculateMinEntityHeight(targetOutputCount, targetInputCount, socketLayout);
 
-      // Partial update: check if this edge's endpoints changed
-      if (isPartialUpdate) {
-        const epBase = i * 4;
-        // When using affectedEdgeIndices, we already know this edge is affected — skip comparison
-        if (affectedEdgeIndices === null) {
-          // Fallback: compare endpoints when reverse index isn't available
-          if (epCache[epBase] === x0 && epCache[epBase + 1] === y0 &&
-              epCache[epBase + 2] === x1 && epCache[epBase + 3] === y1) {
-            continue;
-          }
-        }
-        // Update cache and mark dirty range
-        epCache[epBase] = x0;
-        epCache[epBase + 1] = y0;
-        epCache[epBase + 2] = x1;
-        epCache[epBase + 3] = y1;
-        dirtyRangeMin = Math.min(dirtyRangeMin, vertexIndex);
-      }
-
-      const edgeVertexStart = vertexIndex;
-
-      // Get edge type early - needed for control point calculation before culling
-      const edgeType = edge.type ?? defaultEdgeType;
-
-      // Calculate bezier control points BEFORE culling to get accurate bounding box
-      // Control points can extend beyond endpoints (especially when source is right of target)
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      const absDx = Math.abs(dx);
-
-      let cx1: number, cy1: number, cx2: number, cy2: number;
-
-      if (edgeType === 'straight') {
-        cx1 = x0;
-        cy1 = y0;
-        cx2 = x1;
-        cy2 = y1;
-      } else if (edgeType === 'step') {
-        // For step edges, the midpoint extends the bounds
-        const midX = x0 + dx / 2;
-        cx1 = midX;
-        cy1 = y0;
-        cx2 = midX;
-        cy2 = y1;
-      } else if (edgeType === 'smoothstep') {
-        // Smoothstep: constrained curve, scales with distance
-        const offset = Math.min(absDx * 0.5, 100);
-        cx1 = x0 + offset;
-        cy1 = y0;
-        cx2 = x1 - offset;
-        cy2 = y1;
-      } else {
-        // Bezier: adaptive offset based on distance
-        // - For close entities, use minimal offset for direct connection
-        // - For far entities, use proportional offset for nice curve
-        // - Consider vertical distance too
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
-        const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
-        cx1 = x0 + offset;
-        cy1 = y0;
-        cx2 = x1 - offset;
-        cy2 = y1;
-      }
-
-      // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
-      // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
-      let cr: number, cg: number, cb: number;
-      if (selectedEdgeIds.has(edge.id)) {
-        cr = selectedColor.r;
-        cg = selectedColor.g;
-        cb = selectedColor.b;
-      } else if (edge.invalid) {
-        // Invalid connection (incompatible types in loose mode)
-        cr = invalidColor.r;
-        cg = invalidColor.g;
-        cb = invalidColor.b;
-      } else {
-        // Get source socket type color - O(1) via socketIndexMap
-        let foundColor = false;
+        // Calculate source socket position - O(1) lookup via socketIndexMap
+        // Source socket is always an output (rowIndex = outputIndex)
+        let sourceYOffset = sourceHeight / 2; // fallback to center
         if (edge.sourceSocket) {
           const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
           if (socketInfo) {
-            const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
-            if (typeConfig) {
-              tempColor.set(typeConfig.color);
-              foundColor = true;
-            }
+            sourceYOffset =
+              socketInfo.socket.position !== undefined
+                ? socketInfo.socket.position * sourceHeight
+                : socketLayout.marginTop +
+                  socketInfo.index * socketLayout.rowHeight +
+                  socketLayout.rowHeight / 2;
           }
         }
-        if (!foundColor) {
-          cr = defaultColor.r;
-          cg = defaultColor.g;
-          cb = defaultColor.b;
+
+        // Calculate target socket position - O(1) lookup via socketIndexMap
+        // Target socket is always an input (rowIndex = outputCount + inputIndex)
+        let targetYOffset = targetHeight / 2; // fallback to center
+        if (edge.targetSocket) {
+          const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
+          if (socketInfo) {
+            const targetOutputCount = targetEntity.outputs?.length ?? 0;
+            const rowIndex = targetOutputCount + socketInfo.index;
+            targetYOffset =
+              socketInfo.socket.position !== undefined
+                ? socketInfo.socket.position * targetHeight
+                : socketLayout.marginTop +
+                  rowIndex * socketLayout.rowHeight +
+                  socketLayout.rowHeight / 2;
+          }
+        }
+
+        // Edge endpoints at actual socket positions (outside entity body)
+        const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
+        const y0 = sourceEntity.position.y + sourceYOffset;
+        const x1 = targetEntity.position.x - SOCKET_OFFSET;
+        const y1 = targetEntity.position.y + targetYOffset;
+
+        // Partial update: check if this edge's endpoints changed
+        if (isPartialUpdate) {
+          const epBase = i * 4;
+          // When using affectedEdgeIndices, we already know this edge is affected — skip comparison
+          if (affectedEdgeIndices === null) {
+            // Fallback: compare endpoints when reverse index isn't available
+            if (
+              epCache[epBase] === x0 &&
+              epCache[epBase + 1] === y0 &&
+              epCache[epBase + 2] === x1 &&
+              epCache[epBase + 3] === y1
+            ) {
+              continue;
+            }
+          }
+          // Update cache and mark dirty range
+          epCache[epBase] = x0;
+          epCache[epBase + 1] = y0;
+          epCache[epBase + 2] = x1;
+          epCache[epBase + 3] = y1;
+          dirtyRangeMin = Math.min(dirtyRangeMin, vertexIndex);
+        }
+
+        const edgeVertexStart = vertexIndex;
+
+        // Get edge type early - needed for control point calculation before culling
+        const edgeType = edge.type ?? defaultEdgeType;
+
+        // Calculate bezier control points BEFORE culling to get accurate bounding box
+        // Control points can extend beyond endpoints (especially when source is right of target)
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const absDx = Math.abs(dx);
+
+        let cx1: number, cy1: number, cx2: number, cy2: number;
+
+        if (edgeType === 'straight') {
+          cx1 = x0;
+          cy1 = y0;
+          cx2 = x1;
+          cy2 = y1;
+        } else if (edgeType === 'step') {
+          // For step edges, the midpoint extends the bounds
+          const midX = x0 + dx / 2;
+          cx1 = midX;
+          cy1 = y0;
+          cx2 = midX;
+          cy2 = y1;
+        } else if (edgeType === 'smoothstep') {
+          // Smoothstep: constrained curve, scales with distance
+          const offset = Math.min(absDx * 0.5, 100);
+          cx1 = x0 + offset;
+          cy1 = y0;
+          cx2 = x1 - offset;
+          cy2 = y1;
         } else {
-          cr = tempColor.r;
-          cg = tempColor.g;
-          cb = tempColor.b;
+          // Bezier: adaptive offset based on distance
+          // - For close entities, use minimal offset for direct connection
+          // - For far entities, use proportional offset for nice curve
+          // - Consider vertical distance too
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
+          const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
+          cx1 = x0 + offset;
+          cy1 = y0;
+          cx2 = x1 - offset;
+          cy2 = y1;
+        }
+
+        // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
+        // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
+        let cr: number, cg: number, cb: number;
+        if (selectedEdgeIds.has(edge.id)) {
+          cr = selectedColor.r;
+          cg = selectedColor.g;
+          cb = selectedColor.b;
+        } else if (edge.invalid) {
+          // Invalid connection (incompatible types in loose mode)
+          cr = invalidColor.r;
+          cg = invalidColor.g;
+          cb = invalidColor.b;
+        } else {
+          // Get source socket type color - O(1) via socketIndexMap
+          let foundColor = false;
+          if (edge.sourceSocket) {
+            const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
+            if (socketInfo) {
+              const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
+              if (typeConfig) {
+                tempColor.set(typeConfig.color);
+                foundColor = true;
+              }
+            }
+          }
+          if (!foundColor) {
+            cr = defaultColor.r;
+            cg = defaultColor.g;
+            cb = defaultColor.b;
+          } else {
+            cr = tempColor.r;
+            cg = tempColor.g;
+            cb = tempColor.b;
+          }
+        }
+
+        // Generate curve points into pre-allocated buffer (avoids GC)
+        // points buffer stores [x0, y0, x1, y1, ...] as flat array
+        const points = buffers.points;
+        let pointsCount = 0;
+
+        if (edgeType === 'step') {
+          // Step: horizontal → vertical → horizontal
+          const midX = x0 + dx / 2;
+          points[0] = x0;
+          points[1] = y0;
+          points[2] = midX;
+          points[3] = y0;
+          points[4] = midX;
+          points[5] = y1;
+          points[6] = x1;
+          points[7] = y1;
+          pointsCount = 4;
+        } else if (edgeType === 'straight') {
+          points[0] = x0;
+          points[1] = y0;
+          points[2] = x1;
+          points[3] = y1;
+          pointsCount = 2;
+        } else {
+          // Bezier/smoothstep - sample the curve
+          for (let s = 0; s <= SEGMENTS_PER_EDGE; s++) {
+            const t = s / SEGMENTS_PER_EDGE;
+            const mt = 1 - t;
+            const mt2 = mt * mt;
+            const mt3 = mt2 * mt;
+            const t2 = t * t;
+            const t3 = t2 * t;
+
+            const idx = s * 2;
+            points[idx] = mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x1;
+            points[idx + 1] = mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y1;
+          }
+          pointsCount = SEGMENTS_PER_EDGE + 1;
+        }
+
+        // Generate ribbon geometry from points
+        // Now stores CENTER positions + perpendicular vectors; shader computes final offset
+        for (let p = 0; p < pointsCount - 1; p++) {
+          const p0x = points[p * 2];
+          const p0y = points[p * 2 + 1];
+          const p1x = points[(p + 1) * 2];
+          const p1y = points[(p + 1) * 2 + 1];
+
+          // Direction vector
+          const dirX = p1x - p0x;
+          const dirY = p1y - p0y;
+          const len = Math.sqrt(dirX * dirX + dirY * dirY);
+
+          if (len < 0.001) continue; // Skip degenerate segments
+
+          // Perpendicular (normal) vector - Y negated to match Three.js coordinate system
+          const normX = -dirY / len;
+          const normY = -dirX / len; // Negated for Y-up coordinate system
+
+          // UV coordinates (u = progress, v = -1 to 1 across width)
+          const u0 = p / (pointsCount - 1);
+          const u1 = (p + 1) / (pointsCount - 1);
+
+          // Z position (above grid)
+          const z = 1;
+
+          // Triangle 1: p0_top, p0_bot, p1_top
+          // Vertex 1: p0, top side (uv.y = 1)
+          let posIdx = vertexIndex * 3;
+          let uvIdx = vertexIndex * 2;
+          let colIdx = vertexIndex * 3;
+          let perpIdx = vertexIndex * 2;
+
+          buffers.positions[posIdx] = p0x;
+          buffers.positions[posIdx + 1] = -p0y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u0;
+          buffers.uvs[uvIdx + 1] = 1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+
+          // Vertex 2: p0, bottom side (uv.y = -1)
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = p0x;
+          buffers.positions[posIdx + 1] = -p0y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u0;
+          buffers.uvs[uvIdx + 1] = -1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+
+          // Vertex 3: p1, top side (uv.y = 1)
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = p1x;
+          buffers.positions[posIdx + 1] = -p1y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u1;
+          buffers.uvs[uvIdx + 1] = 1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+
+          // Triangle 2: p1_top, p0_bot, p1_bot
+          // Vertex 4: p1, top side (uv.y = 1)
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = p1x;
+          buffers.positions[posIdx + 1] = -p1y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u1;
+          buffers.uvs[uvIdx + 1] = 1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+
+          // Vertex 5: p0, bottom side (uv.y = -1)
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = p0x;
+          buffers.positions[posIdx + 1] = -p0y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u0;
+          buffers.uvs[uvIdx + 1] = -1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+
+          // Vertex 6: p1, bottom side (uv.y = -1)
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = p1x;
+          buffers.positions[posIdx + 1] = -p1y;
+          buffers.positions[posIdx + 2] = z;
+          buffers.uvs[uvIdx] = u1;
+          buffers.uvs[uvIdx + 1] = -1;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = normX;
+          buffers.perpendiculars[perpIdx + 1] = normY;
+          vertexIndex++;
+        }
+
+        // Add arrow markers if defined
+        const markerStart = normalizeMarker(edge.markerStart);
+        const markerEnd = normalizeMarker(edge.markerEnd);
+
+        // Arrow dimensions in world space (scales with zoom like entities)
+        const arrowWidth = (markerEnd?.width ?? ARROW_WIDTH) / 2;
+        const arrowHeight = markerEnd?.height ?? ARROW_HEIGHT;
+
+        // Z position for arrows (slightly above edges)
+        const arrowZ = 1.5;
+
+        // markerEnd: arrow at target (pointing into target)
+        if (markerEnd) {
+          // Get last segment direction for arrow orientation
+          const lastIdx = (pointsCount - 1) * 2;
+          const prevIdx = (pointsCount - 2) * 2;
+          const tipX = points[lastIdx];
+          const tipY = points[lastIdx + 1];
+          const prevX = points[prevIdx];
+          const prevY = points[prevIdx + 1];
+
+          // Direction vector (from prev to tip)
+          const dirX = tipX - prevX;
+          const dirY = tipY - prevY;
+          const len = Math.sqrt(dirX * dirX + dirY * dirY);
+          const normDirX = len > 0 ? dirX / len : 1;
+          const normDirY = len > 0 ? dirY / len : 0;
+
+          // Perpendicular vector
+          const perpX = -normDirY;
+          const perpY = normDirX;
+
+          // Arrow tip at edge endpoint
+          const arrowTipX = tipX;
+          const arrowTipY = tipY;
+
+          // Arrow base (behind tip)
+          const baseX = tipX - normDirX * arrowHeight;
+          const baseY = tipY - normDirY * arrowHeight;
+
+          // Arrow corners
+          const corner1X = baseX + perpX * arrowWidth;
+          const corner1Y = baseY + perpY * arrowWidth;
+          const corner2X = baseX - perpX * arrowWidth;
+          const corner2Y = baseY - perpY * arrowWidth;
+
+          // Add triangle vertices (tip, corner1, corner2)
+          // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
+          let posIdx = vertexIndex * 3;
+          let uvIdx = vertexIndex * 2;
+          let colIdx = vertexIndex * 3;
+          let perpIdx = vertexIndex * 2;
+
+          buffers.positions[posIdx] = arrowTipX;
+          buffers.positions[posIdx + 1] = -arrowTipY;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 0.5;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = corner1X;
+          buffers.positions[posIdx + 1] = -corner1Y;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 0;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = corner2X;
+          buffers.positions[posIdx + 1] = -corner2Y;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 1;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+        }
+
+        // markerStart: arrow at source (pointing away from source)
+        if (markerStart) {
+          const startArrowWidth = (markerStart.width ?? ARROW_WIDTH) / 2;
+          const startArrowHeight = markerStart.height ?? ARROW_HEIGHT;
+
+          // Get first segment direction for arrow orientation
+          const tipX = points[0];
+          const tipY = points[1];
+          const nextX = points[2];
+          const nextY = points[3];
+
+          // Direction vector (from tip to next, then reversed for arrow pointing away)
+          const dirX = tipX - nextX;
+          const dirY = tipY - nextY;
+          const len = Math.sqrt(dirX * dirX + dirY * dirY);
+          const normDirX = len > 0 ? dirX / len : -1;
+          const normDirY = len > 0 ? dirY / len : 0;
+
+          // Perpendicular vector
+          const perpX = -normDirY;
+          const perpY = normDirX;
+
+          // Arrow tip at edge start
+          const arrowTipX = tipX;
+          const arrowTipY = tipY;
+
+          // Arrow base (behind tip, in direction of arrow)
+          const baseX = tipX - normDirX * startArrowHeight;
+          const baseY = tipY - normDirY * startArrowHeight;
+
+          // Arrow corners
+          const corner1X = baseX + perpX * startArrowWidth;
+          const corner1Y = baseY + perpY * startArrowWidth;
+          const corner2X = baseX - perpX * startArrowWidth;
+          const corner2Y = baseY - perpY * startArrowWidth;
+
+          // Add triangle vertices
+          // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
+          let posIdx = vertexIndex * 3;
+          let uvIdx = vertexIndex * 2;
+          let colIdx = vertexIndex * 3;
+          let perpIdx = vertexIndex * 2;
+
+          buffers.positions[posIdx] = arrowTipX;
+          buffers.positions[posIdx + 1] = -arrowTipY;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 0.5;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = corner1X;
+          buffers.positions[posIdx + 1] = -corner1Y;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 0;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+
+          posIdx = vertexIndex * 3;
+          uvIdx = vertexIndex * 2;
+          colIdx = vertexIndex * 3;
+          perpIdx = vertexIndex * 2;
+          buffers.positions[posIdx] = corner2X;
+          buffers.positions[posIdx + 1] = -corner2Y;
+          buffers.positions[posIdx + 2] = arrowZ;
+          buffers.uvs[uvIdx] = 1;
+          buffers.uvs[uvIdx + 1] = 0;
+          buffers.colors[colIdx] = cr;
+          buffers.colors[colIdx + 1] = cg;
+          buffers.colors[colIdx + 2] = cb;
+          buffers.perpendiculars[perpIdx] = 0;
+          buffers.perpendiculars[perpIdx + 1] = 0;
+          vertexIndex++;
+        }
+
+        // Record edge vertex layout for partial updates
+        evStarts[i] = edgeVertexStart;
+        evCounts[i] = vertexIndex - edgeVertexStart;
+
+        // Write layer attribute for this edge's vertices (full rebuild only)
+        if (!isPartialUpdate) {
+          const layer =
+            selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target) ? 1 : 0;
+          edgeLayers[i] = layer;
+          for (let v = edgeVertexStart; v < vertexIndex; v++) {
+            buffers.layers[v] = layer;
+          }
+        }
+
+        // Cache endpoints (full rebuild only — partial update caches above)
+        if (!isPartialUpdate) {
+          const epBase = i * 4;
+          epCache[epBase] = x0;
+          epCache[epBase + 1] = y0;
+          epCache[epBase + 2] = x1;
+          epCache[epBase + 3] = y1;
+        }
+
+        // Track dirty range end for partial GPU upload
+        if (isPartialUpdate) {
+          dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
         }
       }
-
-      // Generate curve points into pre-allocated buffer (avoids GC)
-      // points buffer stores [x0, y0, x1, y1, ...] as flat array
-      const points = buffers.points;
-      let pointsCount = 0;
-
-      if (edgeType === 'step') {
-        // Step: horizontal → vertical → horizontal
-        const midX = x0 + dx / 2;
-        points[0] = x0;
-        points[1] = y0;
-        points[2] = midX;
-        points[3] = y0;
-        points[4] = midX;
-        points[5] = y1;
-        points[6] = x1;
-        points[7] = y1;
-        pointsCount = 4;
-      } else if (edgeType === 'straight') {
-        points[0] = x0;
-        points[1] = y0;
-        points[2] = x1;
-        points[3] = y1;
-        pointsCount = 2;
-      } else {
-        // Bezier/smoothstep - sample the curve
-        for (let s = 0; s <= SEGMENTS_PER_EDGE; s++) {
-          const t = s / SEGMENTS_PER_EDGE;
-          const mt = 1 - t;
-          const mt2 = mt * mt;
-          const mt3 = mt2 * mt;
-          const t2 = t * t;
-          const t3 = t2 * t;
-
-          const idx = s * 2;
-          points[idx] = mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x1;
-          points[idx + 1] = mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y1;
-        }
-        pointsCount = SEGMENTS_PER_EDGE + 1;
-      }
-
-      // Generate ribbon geometry from points
-      // Now stores CENTER positions + perpendicular vectors; shader computes final offset
-      for (let p = 0; p < pointsCount - 1; p++) {
-        const p0x = points[p * 2];
-        const p0y = points[p * 2 + 1];
-        const p1x = points[(p + 1) * 2];
-        const p1y = points[(p + 1) * 2 + 1];
-
-        // Direction vector
-        const dirX = p1x - p0x;
-        const dirY = p1y - p0y;
-        const len = Math.sqrt(dirX * dirX + dirY * dirY);
-
-        if (len < 0.001) continue; // Skip degenerate segments
-
-        // Perpendicular (normal) vector - Y negated to match Three.js coordinate system
-        const normX = -dirY / len;
-        const normY = -dirX / len; // Negated for Y-up coordinate system
-
-        // UV coordinates (u = progress, v = -1 to 1 across width)
-        const u0 = p / (pointsCount - 1);
-        const u1 = (p + 1) / (pointsCount - 1);
-
-        // Z position (above grid)
-        const z = 1;
-
-        // Triangle 1: p0_top, p0_bot, p1_top
-        // Vertex 1: p0, top side (uv.y = 1)
-        let posIdx = vertexIndex * 3;
-        let uvIdx = vertexIndex * 2;
-        let colIdx = vertexIndex * 3;
-        let perpIdx = vertexIndex * 2;
-
-        buffers.positions[posIdx] = p0x;
-        buffers.positions[posIdx + 1] = -p0y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u0;
-        buffers.uvs[uvIdx + 1] = 1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-
-        // Vertex 2: p0, bottom side (uv.y = -1)
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = p0x;
-        buffers.positions[posIdx + 1] = -p0y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u0;
-        buffers.uvs[uvIdx + 1] = -1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-
-        // Vertex 3: p1, top side (uv.y = 1)
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = p1x;
-        buffers.positions[posIdx + 1] = -p1y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u1;
-        buffers.uvs[uvIdx + 1] = 1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-
-        // Triangle 2: p1_top, p0_bot, p1_bot
-        // Vertex 4: p1, top side (uv.y = 1)
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = p1x;
-        buffers.positions[posIdx + 1] = -p1y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u1;
-        buffers.uvs[uvIdx + 1] = 1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-
-        // Vertex 5: p0, bottom side (uv.y = -1)
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = p0x;
-        buffers.positions[posIdx + 1] = -p0y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u0;
-        buffers.uvs[uvIdx + 1] = -1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-
-        // Vertex 6: p1, bottom side (uv.y = -1)
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = p1x;
-        buffers.positions[posIdx + 1] = -p1y;
-        buffers.positions[posIdx + 2] = z;
-        buffers.uvs[uvIdx] = u1;
-        buffers.uvs[uvIdx + 1] = -1;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = normX;
-        buffers.perpendiculars[perpIdx + 1] = normY;
-        vertexIndex++;
-      }
-
-      // Add arrow markers if defined
-      const markerStart = normalizeMarker(edge.markerStart);
-      const markerEnd = normalizeMarker(edge.markerEnd);
-
-      // Arrow dimensions in world space (scales with zoom like entities)
-      const arrowWidth = (markerEnd?.width ?? ARROW_WIDTH) / 2;
-      const arrowHeight = markerEnd?.height ?? ARROW_HEIGHT;
-
-      // Z position for arrows (slightly above edges)
-      const arrowZ = 1.5;
-
-      // markerEnd: arrow at target (pointing into target)
-      if (markerEnd) {
-        // Get last segment direction for arrow orientation
-        const lastIdx = (pointsCount - 1) * 2;
-        const prevIdx = (pointsCount - 2) * 2;
-        const tipX = points[lastIdx];
-        const tipY = points[lastIdx + 1];
-        const prevX = points[prevIdx];
-        const prevY = points[prevIdx + 1];
-
-        // Direction vector (from prev to tip)
-        const dirX = tipX - prevX;
-        const dirY = tipY - prevY;
-        const len = Math.sqrt(dirX * dirX + dirY * dirY);
-        const normDirX = len > 0 ? dirX / len : 1;
-        const normDirY = len > 0 ? dirY / len : 0;
-
-        // Perpendicular vector
-        const perpX = -normDirY;
-        const perpY = normDirX;
-
-        // Arrow tip at edge endpoint
-        const arrowTipX = tipX;
-        const arrowTipY = tipY;
-
-        // Arrow base (behind tip)
-        const baseX = tipX - normDirX * arrowHeight;
-        const baseY = tipY - normDirY * arrowHeight;
-
-        // Arrow corners
-        const corner1X = baseX + perpX * arrowWidth;
-        const corner1Y = baseY + perpY * arrowWidth;
-        const corner2X = baseX - perpX * arrowWidth;
-        const corner2Y = baseY - perpY * arrowWidth;
-
-        // Add triangle vertices (tip, corner1, corner2)
-        // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
-        let posIdx = vertexIndex * 3;
-        let uvIdx = vertexIndex * 2;
-        let colIdx = vertexIndex * 3;
-        let perpIdx = vertexIndex * 2;
-
-        buffers.positions[posIdx] = arrowTipX;
-        buffers.positions[posIdx + 1] = -arrowTipY;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 0.5;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = corner1X;
-        buffers.positions[posIdx + 1] = -corner1Y;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 0;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = corner2X;
-        buffers.positions[posIdx + 1] = -corner2Y;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 1;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-      }
-
-      // markerStart: arrow at source (pointing away from source)
-      if (markerStart) {
-        const startArrowWidth = (markerStart.width ?? ARROW_WIDTH) / 2;
-        const startArrowHeight = markerStart.height ?? ARROW_HEIGHT;
-
-        // Get first segment direction for arrow orientation
-        const tipX = points[0];
-        const tipY = points[1];
-        const nextX = points[2];
-        const nextY = points[3];
-
-        // Direction vector (from tip to next, then reversed for arrow pointing away)
-        const dirX = tipX - nextX;
-        const dirY = tipY - nextY;
-        const len = Math.sqrt(dirX * dirX + dirY * dirY);
-        const normDirX = len > 0 ? dirX / len : -1;
-        const normDirY = len > 0 ? dirY / len : 0;
-
-        // Perpendicular vector
-        const perpX = -normDirY;
-        const perpY = normDirX;
-
-        // Arrow tip at edge start
-        const arrowTipX = tipX;
-        const arrowTipY = tipY;
-
-        // Arrow base (behind tip, in direction of arrow)
-        const baseX = tipX - normDirX * startArrowHeight;
-        const baseY = tipY - normDirY * startArrowHeight;
-
-        // Arrow corners
-        const corner1X = baseX + perpX * startArrowWidth;
-        const corner1Y = baseY + perpY * startArrowWidth;
-        const corner2X = baseX - perpX * startArrowWidth;
-        const corner2Y = baseY - perpY * startArrowWidth;
-
-        // Add triangle vertices
-        // Arrows use perpendicular = (0,0) since they don't need ribbon expansion
-        let posIdx = vertexIndex * 3;
-        let uvIdx = vertexIndex * 2;
-        let colIdx = vertexIndex * 3;
-        let perpIdx = vertexIndex * 2;
-
-        buffers.positions[posIdx] = arrowTipX;
-        buffers.positions[posIdx + 1] = -arrowTipY;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 0.5;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = corner1X;
-        buffers.positions[posIdx + 1] = -corner1Y;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 0;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-
-        posIdx = vertexIndex * 3;
-        uvIdx = vertexIndex * 2;
-        colIdx = vertexIndex * 3;
-        perpIdx = vertexIndex * 2;
-        buffers.positions[posIdx] = corner2X;
-        buffers.positions[posIdx + 1] = -corner2Y;
-        buffers.positions[posIdx + 2] = arrowZ;
-        buffers.uvs[uvIdx] = 1;
-        buffers.uvs[uvIdx + 1] = 0;
-        buffers.colors[colIdx] = cr;
-        buffers.colors[colIdx + 1] = cg;
-        buffers.colors[colIdx + 2] = cb;
-        buffers.perpendiculars[perpIdx] = 0;
-        buffers.perpendiculars[perpIdx + 1] = 0;
-        vertexIndex++;
-      }
-
-      // Record edge vertex layout for partial updates
-      evStarts[i] = edgeVertexStart;
-      evCounts[i] = vertexIndex - edgeVertexStart;
-
-      // Cache endpoints (full rebuild only — partial update caches above)
-      if (!isPartialUpdate) {
-        const epBase = i * 4;
-        epCache[epBase] = x0;
-        epCache[epBase + 1] = y0;
-        epCache[epBase + 2] = x1;
-        epCache[epBase + 3] = y1;
-      }
-
-      // Track dirty range end for partial GPU upload
-      if (isPartialUpdate) {
-        dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
-      }
-    }
-    // Record bg/fg split point after pass 0 (non-selected edges)
-    if (!isPartialUpdate && pass === 0) {
-      buffers.bgVertexCount = vertexIndex;
-    }
-    } // end pass loop
+    } // end edge loop
 
     // Build reverse index: entityId → edge array indices (during full rebuild only)
     if (!isPartialUpdate) {
@@ -1095,10 +1167,16 @@ export function Edges({
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
         let arr = entityEdgeMap.get(edge.source);
-        if (!arr) { arr = []; entityEdgeMap.set(edge.source, arr); }
+        if (!arr) {
+          arr = [];
+          entityEdgeMap.set(edge.source, arr);
+        }
         arr.push(i);
         arr = entityEdgeMap.get(edge.target);
-        if (!arr) { arr = []; entityEdgeMap.set(edge.target, arr); }
+        if (!arr) {
+          arr = [];
+          entityEdgeMap.set(edge.target, arr);
+        }
         arr.push(i);
       }
     }
@@ -1106,7 +1184,13 @@ export function Edges({
     // GPU buffer upload
     if (isPartialUpdate) {
       // Partial upload: only upload the vertex range containing dirty edges
-      if (dirtyRangeMin < dirtyRangeMax && buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
+      if (
+        dirtyRangeMin < dirtyRangeMax &&
+        buffers.positionAttr &&
+        buffers.uvAttr &&
+        buffers.colorAttr &&
+        buffers.perpAttr
+      ) {
         const start = dirtyRangeMin;
         const count = dirtyRangeMax - dirtyRangeMin;
         buffers.positionAttr.addUpdateRange(start * 3, count * 3);
@@ -1125,26 +1209,28 @@ export function Edges({
         buffers.uvAttr.needsUpdate = true;
         buffers.colorAttr.needsUpdate = true;
         buffers.perpAttr.needsUpdate = true;
+        if (buffers.layerAttr) buffers.layerAttr.needsUpdate = true;
       }
     }
 
-    // Set draw ranges on both geometries
+    // Set draw ranges on both geometries — both draw all vertices, shader filters by layer
     if (!isPartialUpdate) {
-      bgMeshRef.current!.geometry.setDrawRange(0, buffers.bgVertexCount);
-      fgMeshRef.current!.geometry.setDrawRange(buffers.bgVertexCount, vertexIndex - buffers.bgVertexCount);
+      bgMeshRef.current!.geometry.setDrawRange(0, vertexIndex);
+      fgMeshRef.current!.geometry.setDrawRange(0, vertexIndex);
       buffers.lastVertexCount = vertexIndex;
     }
     geometryDirtyRef.current = false;
     positionDirtyRef.current = false;
     colorDirtyRef.current = false;
+    layerDirtyRef.current = false;
   });
 
   return (
     <>
-      <mesh ref={bgMeshRef} material={material} frustumCulled={false} renderOrder={RENDER_ORDER_BG}>
+      <mesh ref={bgMeshRef} material={bgMaterial} frustumCulled={false} renderOrder={RENDER_ORDER_BG}>
         <bufferGeometry />
       </mesh>
-      <mesh ref={fgMeshRef} material={material} frustumCulled={false} renderOrder={RENDER_ORDER_FG}>
+      <mesh ref={fgMeshRef} material={fgMaterial} frustumCulled={false} renderOrder={RENDER_ORDER_FG}>
         <bufferGeometry />
       </mesh>
     </>
