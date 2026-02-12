@@ -1890,6 +1890,35 @@ function InputHandler({
     };
   }, []);
 
+  // Native drag/drop listeners for filesystem file drops.
+  // Must use native listeners because R3F's Canvas intercepts React synthetic drag events.
+  useEffect(() => {
+    if (!onFileDrop) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (!e.dataTransfer) return;
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      if (files.length === 0) return;
+      const rect = cachedRectRef.current;
+      const worldPos = screenToWorld(
+        { x: e.clientX - rect.left, y: e.clientY - rect.top },
+        store.getState().viewport,
+      );
+      onFileDrop(files, worldPos);
+    };
+
+    el.addEventListener('dragover', handleDragOver);
+    el.addEventListener('drop', handleDrop);
+    return () => {
+      el.removeEventListener('dragover', handleDragOver);
+      el.removeEventListener('drop', handleDrop);
+    };
+  }, [onFileDrop, store]);
+
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2148,18 +2177,6 @@ function InputHandler({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
-      onDragOver={onFileDrop ? (e) => e.preventDefault() : undefined}
-      onDrop={onFileDrop ? (e) => {
-        e.preventDefault();
-        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-        if (files.length === 0) return;
-        const rect = cachedRectRef.current;
-        const worldPos = screenToWorld(
-          { x: e.clientX - rect.left, y: e.clientY - rect.top },
-          store.getState().viewport,
-        );
-        onFileDrop(files, worldPos);
-      } : undefined}
       tabIndex={0}
     >
       {children}
