@@ -252,7 +252,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
       showMinimap={false}
       variant="surface"
       size="2"
-      header="inside"
+      header="outside"
     />
   );
 }
