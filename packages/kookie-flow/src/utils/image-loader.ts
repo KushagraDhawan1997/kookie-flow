@@ -53,15 +53,15 @@ async function downscale(bitmap: ImageBitmap, maxDim: number): Promise<ImageBitm
   });
 }
 
-function bitmapToTexture(bitmap: ImageBitmap): THREE.Texture {
+function bitmapToTexture(bitmap: ImageBitmap, generateMipmaps: boolean): THREE.Texture {
   const tex = new THREE.Texture(bitmap as unknown as HTMLCanvasElement);
   // Disable Three.js flipY — UNPACK_FLIP_Y_WEBGL is unreliable for ImageBitmap
   // across browsers/WebGL versions. We flip the shared quad UVs instead.
   tex.flipY = false;
   tex.needsUpdate = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.minFilter = generateMipmaps ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = true;
+  tex.generateMipmaps = generateMipmaps;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
@@ -148,12 +148,12 @@ export class ImageTextureManager {
       // Thumbnail (off-main-thread resize via createImageBitmap)
       const thumbBitmap = await downscale(bitmap, THUMBNAIL_SIZE);
       if (signal?.aborted) { thumbBitmap.close(); if (thumbBitmap !== bitmap) bitmap.close(); return; }
-      entry.thumbnail = bitmapToTexture(thumbBitmap);
+      entry.thumbnail = bitmapToTexture(thumbBitmap, false);
 
       // Full resolution (capped at MAX_IMAGE_TEXTURE_SIZE)
       const fullBitmap = await downscale(bitmap, MAX_IMAGE_TEXTURE_SIZE);
       if (signal?.aborted) { fullBitmap.close(); if (fullBitmap !== bitmap) bitmap.close(); return; }
-      entry.full = bitmapToTexture(fullBitmap);
+      entry.full = bitmapToTexture(fullBitmap, true);
 
       // Close the original bitmap if downscale created separate copies.
       // downscale() returns the same bitmap when it's already within bounds,
