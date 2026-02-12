@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { KookieFlow, useGraph, type Entity, type Edge } from '@kushagradhawan/kookie-flow';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { KookieFlow, useGraph, type Entity, type Edge, type XYPosition } from '@kushagradhawan/kookie-flow';
 
 // Socket type patterns for type-aware edge connections
 const socketPatterns = [
@@ -315,10 +315,30 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
   const initialEntities = useMemo(() => generateEntities(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
 
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect, addEntity } = useGraph({
     initialEntities,
     initialEdges,
   });
+
+  const dropCounterRef = useRef(0);
+
+  const handleFileDrop = useCallback((files: File[], position: XYPosition) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const src = URL.createObjectURL(file);
+      const id = `image-drop-${Date.now()}-${dropCounterRef.current++}`;
+      addEntity({
+        id,
+        type: 'image',
+        position: { x: position.x + i * 30, y: position.y + i * 30 },
+        width: 280,
+        height: 200,
+        data: { src, alt: file.name, objectFit: 'cover' },
+        inputs: [{ id: `${id}-in`, name: 'Image', type: 'image' }],
+        outputs: [{ id: `${id}-out`, name: 'Output', type: 'image' }],
+      });
+    }
+  }, [addEntity]);
 
   return (
     <KookieFlow
@@ -327,6 +347,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
       onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      onFileDrop={handleFileDrop}
       textRenderMode="webgl"
       showSocketLabels={false}
       showEdgeLabels={false}
