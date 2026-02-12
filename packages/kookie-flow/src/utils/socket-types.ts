@@ -9,20 +9,32 @@ import { rgbToHex, type RGBColor } from './color';
 
 /**
  * Token keys that can be used in socket type colors.
+ * Supports both scale-9 (legacy) and scale-10 (current default).
  */
 type ColorTokenKey =
   | '--gray-9'
+  | '--gray-10'
   | '--gray-12'
   | '--blue-9'
+  | '--blue-10'
   | '--purple-9'
+  | '--purple-10'
   | '--violet-9'
+  | '--violet-10'
   | '--green-9'
+  | '--green-10'
   | '--red-9'
+  | '--red-10'
   | '--amber-9'
+  | '--amber-10'
   | '--cyan-9'
+  | '--cyan-10'
   | '--pink-9'
+  | '--pink-10'
   | '--teal-9'
-  | '--orange-9';
+  | '--teal-10'
+  | '--orange-9'
+  | '--orange-10';
 
 /**
  * Check if a color string is a token reference.

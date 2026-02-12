@@ -32,34 +32,47 @@ export const STACKED_LABEL_HEIGHT = 20; // Label text height in stacked mode
 export const STACKED_GAP = 4; // Gap between label and widget in stacked mode
 
 /**
- * Default socket types with colors using theme token keys.
+ * Default socket types with colors using theme token keys (scale 10).
  * Colors starting with '--' are resolved from Kookie UI theme tokens.
  * Hex colors are used as-is (for backwards compatibility).
  *
- * Common types (diverse colors): image, string, int, float, boolean, mesh
- * ML-specific (cyan): latent, model
- * ML text-related (amber): conditioning, clip
+ * Grouped by similarity for visual clarity:
+ *   Numeric (blue)  — float, int
+ *   Text (amber)    — string, enum
+ *   Toggle (orange) — boolean
+ *   Color (pink)    — color
+ *   Media (purple)  — image, mask
+ *   3D (violet)     — mesh
+ *   Signal (cyan)   — signal
+ *   ML (teal)       — latent, model, conditioning, clip, vae
+ *   Wildcard (gray) — any
  */
 export const DEFAULT_SOCKET_TYPES = {
-  // Primitive types with widgets
-  float: { name: 'Float', color: '--teal-9', widget: 'slider' as const, min: 0, max: 1, step: 0.01 },
-  int: { name: 'Integer', color: '--blue-9', widget: 'number' as const, min: 0, max: 100, step: 1 },
-  boolean: { name: 'Boolean', color: '--orange-9', widget: 'checkbox' as const },
-  string: { name: 'String', color: '--green-9', widget: 'text' as const },
-  color: { name: 'Color', color: '--pink-9', widget: 'color' as const },
-  enum: { name: 'Enum', color: '--amber-9', widget: 'select' as const },
-  // Connection-only types (no widget)
-  image: { name: 'Image', color: '--purple-9' },
-  mesh: { name: 'Mesh', color: '--violet-9' },
-  signal: { name: 'Signal', color: '--cyan-9' },
-  any: { name: 'Any', color: '--gray-9' },
-  mask: { name: 'Mask', color: '--gray-12' },
-  // ML-specific types (no widget)
-  latent: { name: 'Latent', color: '--cyan-9' },
-  model: { name: 'Model', color: '--cyan-9' },
-  conditioning: { name: 'Conditioning', color: '--amber-9' },
-  clip: { name: 'CLIP', color: '--amber-9' },
-  vae: { name: 'VAE', color: '--red-9' },
+  // Numeric — blue
+  float: { name: 'Float', color: '--blue-10', widget: 'slider' as const, min: 0, max: 1, step: 0.01 },
+  int: { name: 'Integer', color: '--blue-10', widget: 'number' as const, min: 0, max: 100, step: 1 },
+  // Text — amber
+  string: { name: 'String', color: '--amber-10', widget: 'text' as const },
+  enum: { name: 'Enum', color: '--amber-10', widget: 'select' as const },
+  // Toggle — orange
+  boolean: { name: 'Boolean', color: '--orange-10', widget: 'checkbox' as const },
+  // Color — pink
+  color: { name: 'Color', color: '--pink-10', widget: 'color' as const },
+  // Media — purple
+  image: { name: 'Image', color: '--purple-10' },
+  mask: { name: 'Mask', color: '--purple-10' },
+  // 3D — violet
+  mesh: { name: 'Mesh', color: '--violet-10' },
+  // Signal — cyan
+  signal: { name: 'Signal', color: '--cyan-10' },
+  // ML pipeline — teal
+  latent: { name: 'Latent', color: '--teal-10' },
+  model: { name: 'Model', color: '--teal-10' },
+  conditioning: { name: 'Conditioning', color: '--teal-10' },
+  clip: { name: 'CLIP', color: '--teal-10' },
+  vae: { name: 'VAE', color: '--teal-10' },
+  // Wildcard — gray
+  any: { name: 'Any', color: '--gray-10' },
 };
 
 /** Minimum entity sizes (enforced during resize) */

@@ -793,7 +793,9 @@ function SocketLabelsContainer() {
       const cachedPos = side === 'input'
         ? entityLayout.inputs[socketIndex]
         : entityLayout.outputs[socketIndex];
-      const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+      // Center sockets vertically within entity height (bidirectional)
+      const domCenterOffset = (height - entityLayout.computedHeight) / 2;
+      const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + domCenterOffset;
       const socketX = side === 'input' ? entity.position.x - SOCKET_OFFSET : entity.position.x + width + SOCKET_OFFSET;
 
       // Label offset from socket (in world space)

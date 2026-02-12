@@ -342,11 +342,14 @@ export function WidgetsLayer({
         return;
       }
 
+      // Center sockets vertically within entity height (bidirectional)
+      const widgetCenterOffset = (height - entityLayout.computedHeight) / 2;
+
       // Widget world position from cache
       const widgetX = cachedPos.layout === 'stacked'
         ? entity.position.x + socketLayout.padding // Full width for stacked
         : entity.position.x + socketLayout.padding + labelWidth;
-      const widgetY = entity.position.y + cachedPos.widgetY;
+      const widgetY = entity.position.y + cachedPos.widgetY + widgetCenterOffset;
       const widgetWidth = cachedPos.layout === 'stacked'
         ? width - socketLayout.padding * 2 // Full width for stacked
         : width - socketLayout.padding * 2 - labelWidth;

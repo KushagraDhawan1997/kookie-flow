@@ -84,7 +84,7 @@ function buildCacheKey(entity: Entity): string {
   const outputs = (entity.outputs ?? [])
     .map((s) => `${s.id}:${s.layout ?? 'i'}:${s.rows ?? 1}:${s.height ?? 0}`)
     .join(',');
-  return `${inputs}|${outputs}`;
+  return `${entity.type}|${inputs}|${outputs}`;
 }
 
 /**
@@ -142,6 +142,9 @@ function computeSocketPosition(
   };
 }
 
+/** Entity types that have no header and should center sockets vertically */
+const HEADERLESS_TYPES = new Set(['text', 'comment', 'reroute']);
+
 /**
  * Compute the full socket layout for an entity.
  */
@@ -152,7 +155,11 @@ function computeEntitySocketLayout(
   const outputs: ComputedSocketPosition[] = [];
   const inputs: ComputedSocketPosition[] = [];
 
-  let currentY = baseLayout.marginTop;
+  // Headerless entity types use padding-only marginTop (no header row)
+  const marginTop = HEADERLESS_TYPES.has(entity.type)
+    ? baseLayout.padding
+    : baseLayout.marginTop;
+  let currentY = marginTop;
 
   // Process outputs first (they come before inputs in layout order)
   const outputSockets = entity.outputs ?? [];

@@ -206,10 +206,19 @@ export function ConnectionLine({
     const rowIndex = connectionDraft.source.isInput
       ? outputCount + socketIndex
       : socketIndex;
+    // Headerless entity types use padding-only marginTop
+    const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
+    const connMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
+      ? socketLayout.padding : socketLayout.marginTop;
+    const connComputedH = connMarginTop +
+      Math.max(1, sourceOutputCount + sourceInputCount) * socketLayout.rowHeight +
+      socketLayout.padding;
+    const connCenterOffset = (sourceHeight - connComputedH) / 2;
+
     const yOffset =
       socket.position !== undefined
         ? socket.position * sourceHeight
-        : socketLayout.marginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2;
+        : connMarginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2 + connCenterOffset;
 
     const sourceX = connectionDraft.source.isInput
       ? sourceEntity.position.x - SOCKET_OFFSET

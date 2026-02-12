@@ -2227,10 +2227,10 @@ function FlowCanvas({
       <Invalidator />
       <CameraController />
       {showGrid && <Grid />}
+      <TextEntities />
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Entities />
-      <TextEntities />
       <TextEditCursor />
       <RerouteNodes />
       <EntitySelection />

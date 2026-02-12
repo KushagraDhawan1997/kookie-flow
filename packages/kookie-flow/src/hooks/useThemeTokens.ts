@@ -72,9 +72,9 @@ export interface ThemeTokens {
   '--accent-9': RGBColor;
   '--accent-a3': RGBAColor;
 
-  // Radix color palette (all 26 AccentColor values at step 9)
+  // Radix color palette (all 26 AccentColor values at steps 9 and 10)
   // Used for socket types and per-entity color overrides
-  // Note: --gray-9 is already defined in gray scale above
+  // Note: --gray-9/10 are already defined in gray scale above
   '--gold-9': RGBColor;
   '--bronze-9': RGBColor;
   '--brown-9': RGBColor;
@@ -100,6 +100,33 @@ export interface ThemeTokens {
   '--lime-9': RGBColor;
   '--mint-9': RGBColor;
   '--sky-9': RGBColor;
+
+  // Step 10 (hovered solid backgrounds) — used by socket type colors
+  '--gold-10': RGBColor;
+  '--bronze-10': RGBColor;
+  '--brown-10': RGBColor;
+  '--yellow-10': RGBColor;
+  '--amber-10': RGBColor;
+  '--orange-10': RGBColor;
+  '--tomato-10': RGBColor;
+  '--red-10': RGBColor;
+  '--ruby-10': RGBColor;
+  '--crimson-10': RGBColor;
+  '--pink-10': RGBColor;
+  '--plum-10': RGBColor;
+  '--purple-10': RGBColor;
+  '--violet-10': RGBColor;
+  '--iris-10': RGBColor;
+  '--indigo-10': RGBColor;
+  '--blue-10': RGBColor;
+  '--cyan-10': RGBColor;
+  '--teal-10': RGBColor;
+  '--jade-10': RGBColor;
+  '--green-10': RGBColor;
+  '--grass-10': RGBColor;
+  '--lime-10': RGBColor;
+  '--mint-10': RGBColor;
+  '--sky-10': RGBColor;
 
   // Surfaces
   '--color-surface-solid': RGBColor;
@@ -203,6 +230,33 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--lime-9': [0.604, 0.773, 0.196], // #9ac532
   '--mint-9': [0.522, 0.839, 0.769], // #85d6c4
   '--sky-9': [0.494, 0.796, 0.988], // #7ecbfc
+
+  // Radix colors step 10 (hovered solid backgrounds, dark mode defaults)
+  '--gold-10': [0.937, 0.820, 0.451], // #efd173
+  '--bronze-10': [0.694, 0.573, 0.451], // #b19273
+  '--brown-10': [0.725, 0.573, 0.447], // #b99272
+  '--yellow-10': [1.0, 0.906, 0.357], // #ffe75b
+  '--amber-10': [1.0, 0.812, 0.341], // #ffcf57
+  '--orange-10': [1.0, 0.573, 0.267], // #ff9244
+  '--tomato-10': [0.937, 0.431, 0.373], // #ef6e5f
+  '--red-10': [0.937, 0.380, 0.416], // #ef616a
+  '--ruby-10': [0.906, 0.380, 0.459], // #e76175
+  '--crimson-10': [0.906, 0.357, 0.522], // #e75b85
+  '--pink-10': [0.906, 0.420, 0.627], // #e76ba0
+  '--plum-10': [0.773, 0.420, 0.745], // #c56bbe
+  '--purple-10': [0.612, 0.400, 0.988], // #9c66fc
+  '--violet-10': [0.494, 0.400, 0.863], // #7e66dc
+  '--iris-10': [0.420, 0.420, 0.906], // #6b6be7
+  '--indigo-10': [0.443, 0.455, 0.980], // #7174fa
+  '--blue-10': [0.235, 0.624, 1.0], // #3c9fff
+  '--cyan-10': [0.141, 0.694, 0.820], // #24b1d1
+  '--teal-10': [0.059, 0.706, 0.624], // #0fb49f
+  '--jade-10': [0.180, 0.694, 0.565], // #2eb190
+  '--green-10': [0.227, 0.757, 0.537], // #3ac189
+  '--grass-10': [0.325, 0.725, 0.427], // #53b96d
+  '--lime-10': [0.647, 0.804, 0.247], // #a5cd3f
+  '--mint-10': [0.573, 0.863, 0.800], // #92dccc
+  '--sky-10': [0.557, 0.831, 0.996], // #8ed4fe
 
   // Surfaces
   '--color-surface-solid': [0.098, 0.098, 0.098],
@@ -368,6 +422,33 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--lime-9': getCSSVarRGB(styles, '--lime-9', FALLBACK_TOKENS['--lime-9']),
     '--mint-9': getCSSVarRGB(styles, '--mint-9', FALLBACK_TOKENS['--mint-9']),
     '--sky-9': getCSSVarRGB(styles, '--sky-9', FALLBACK_TOKENS['--sky-9']),
+
+    // Radix colors step 10
+    '--gold-10': getCSSVarRGB(styles, '--gold-10', FALLBACK_TOKENS['--gold-10']),
+    '--bronze-10': getCSSVarRGB(styles, '--bronze-10', FALLBACK_TOKENS['--bronze-10']),
+    '--brown-10': getCSSVarRGB(styles, '--brown-10', FALLBACK_TOKENS['--brown-10']),
+    '--yellow-10': getCSSVarRGB(styles, '--yellow-10', FALLBACK_TOKENS['--yellow-10']),
+    '--amber-10': getCSSVarRGB(styles, '--amber-10', FALLBACK_TOKENS['--amber-10']),
+    '--orange-10': getCSSVarRGB(styles, '--orange-10', FALLBACK_TOKENS['--orange-10']),
+    '--tomato-10': getCSSVarRGB(styles, '--tomato-10', FALLBACK_TOKENS['--tomato-10']),
+    '--red-10': getCSSVarRGB(styles, '--red-10', FALLBACK_TOKENS['--red-10']),
+    '--ruby-10': getCSSVarRGB(styles, '--ruby-10', FALLBACK_TOKENS['--ruby-10']),
+    '--crimson-10': getCSSVarRGB(styles, '--crimson-10', FALLBACK_TOKENS['--crimson-10']),
+    '--pink-10': getCSSVarRGB(styles, '--pink-10', FALLBACK_TOKENS['--pink-10']),
+    '--plum-10': getCSSVarRGB(styles, '--plum-10', FALLBACK_TOKENS['--plum-10']),
+    '--purple-10': getCSSVarRGB(styles, '--purple-10', FALLBACK_TOKENS['--purple-10']),
+    '--violet-10': getCSSVarRGB(styles, '--violet-10', FALLBACK_TOKENS['--violet-10']),
+    '--iris-10': getCSSVarRGB(styles, '--iris-10', FALLBACK_TOKENS['--iris-10']),
+    '--indigo-10': getCSSVarRGB(styles, '--indigo-10', FALLBACK_TOKENS['--indigo-10']),
+    '--blue-10': getCSSVarRGB(styles, '--blue-10', FALLBACK_TOKENS['--blue-10']),
+    '--cyan-10': getCSSVarRGB(styles, '--cyan-10', FALLBACK_TOKENS['--cyan-10']),
+    '--teal-10': getCSSVarRGB(styles, '--teal-10', FALLBACK_TOKENS['--teal-10']),
+    '--jade-10': getCSSVarRGB(styles, '--jade-10', FALLBACK_TOKENS['--jade-10']),
+    '--green-10': getCSSVarRGB(styles, '--green-10', FALLBACK_TOKENS['--green-10']),
+    '--grass-10': getCSSVarRGB(styles, '--grass-10', FALLBACK_TOKENS['--grass-10']),
+    '--lime-10': getCSSVarRGB(styles, '--lime-10', FALLBACK_TOKENS['--lime-10']),
+    '--mint-10': getCSSVarRGB(styles, '--mint-10', FALLBACK_TOKENS['--mint-10']),
+    '--sky-10': getCSSVarRGB(styles, '--sky-10', FALLBACK_TOKENS['--sky-10']),
 
     // Surfaces
     '--color-surface-solid': getCSSVarRGB(

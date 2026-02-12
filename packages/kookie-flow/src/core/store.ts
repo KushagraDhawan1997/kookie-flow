@@ -1037,8 +1037,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         entityMap.set(id, entity);
         quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
-        // Populate moved entity IDs side-channel so edges/sockets fast-path picks this up
-        _movedEntityIds.clear();
+        // Accumulate (don't clear) moved entity IDs so that multiple
+        // updateEntityDimensions calls in the same frame (e.g. TextEntities
+        // auto-sizing two text nodes) all appear in the fast-path set.
+        // The set is cleared by updateEntityPositions on the next drag.
         _movedEntityIds.add(id);
 
         // Always update socket quadtree — width changes move output sockets,

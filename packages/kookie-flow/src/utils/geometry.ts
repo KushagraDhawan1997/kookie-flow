@@ -157,11 +157,22 @@ export function getSocketPosition(
     // Explicit position overrides layout calculation
     yOffset = socket.position * height;
   } else if (layout) {
+    // Headerless entity types use padding-only marginTop
+    const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
+    const marginTop = HEADERLESS_TYPES.includes(entity.type)
+      ? layout.padding
+      : layout.marginTop;
+
     // New tokenized layout: outputs first, then inputs
     // Y = marginTop + (rowIndex * rowHeight) + (rowHeight / 2) for vertical centering
     const outputCount = entity.outputs?.length ?? 0;
     const rowIndex = isInput ? outputCount + index : index;
-    yOffset = layout.marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
+    yOffset = marginTop + rowIndex * layout.rowHeight + layout.rowHeight / 2;
+
+    // Center sockets vertically within entity height (bidirectional)
+    const totalRows = (entity.outputs?.length ?? 0) + (entity.inputs?.length ?? 0);
+    const computedHeight = marginTop + Math.max(1, totalRows) * layout.rowHeight + layout.padding;
+    yOffset += (height - computedHeight) / 2;
   } else {
     // Legacy fallback for backward compatibility
     yOffset = SOCKET_MARGIN_TOP + index * SOCKET_SPACING;

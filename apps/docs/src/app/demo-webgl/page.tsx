@@ -7,12 +7,14 @@ import { KookieFlow, useGraph, type Entity, type Edge } from '@kushagradhawan/ko
 const socketPatterns = [
   {
     inputs: [
+      { name: 'Prompt', type: 'string' },
       { name: 'Input', type: 'float' },
       { name: 'Seed', type: 'int' },
     ],
     outputs: [
       { name: 'Value', type: 'float' },
       { name: 'Signal', type: 'signal' },
+      { name: 'Log', type: 'string' },
     ],
   },
   {
@@ -220,7 +222,7 @@ function generateEdges(nodeCount: number): Edge[] {
     id: 'edge-text-notes',
     source: 'node-0',
     target: 'text-notes',
-    sourceSocket: 'node-0-out-0',
+    sourceSocket: 'node-0-out-2',
     targetSocket: 'text-notes-in',
   });
 

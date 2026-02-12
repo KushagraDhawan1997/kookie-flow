@@ -379,13 +379,16 @@ export function MultiWeightTextRenderer({
             continue;
           }
 
+          // Center sockets vertically within entity height (bidirectional)
+          const centerOffset = (height - entityLayout.computedHeight) / 2;
+
           // Output sockets (first in layout order)
           if (entity.outputs) {
             for (let i = 0; i < entity.outputs.length; i++) {
               const socket = entity.outputs[i];
               // Use cached position (supports variable row heights and stacked layouts)
               const cachedPos = entityLayout.outputs[i];
-              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
               const textY = socketY - 7; // adjust for visual centering
               // Truncate output labels to fit available space (mirror of input label width)
               const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
@@ -418,7 +421,7 @@ export function MultiWeightTextRenderer({
               const socket = entity.inputs[i];
               // Use cached position (supports variable row heights and stacked layouts)
               const cachedPos = entityLayout.inputs[i];
-              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2);
+              const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
               const textY = socketY - 7; // adjust for visual centering
               // Truncate input labels to fit before widget area
               const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding

@@ -631,6 +631,15 @@ export function Edges({
 
         // Calculate source socket position - O(1) lookup via socketIndexMap
         // Source socket is always an output (rowIndex = outputIndex)
+        // Headerless entity types (text, comment, reroute) use padding-only marginTop
+        const HEADERLESS_TYPES = ['text', 'comment', 'reroute'];
+        const sourceMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
+          ? socketLayout.padding : socketLayout.marginTop;
+        const sourceComputedH = sourceMarginTop +
+          Math.max(1, sourceOutputCount + sourceInputCount) * socketLayout.rowHeight +
+          socketLayout.padding;
+        const sourceCenterOffset = (sourceHeight - sourceComputedH) / 2;
+
         let sourceYOffset = sourceHeight / 2; // fallback to center
         if (edge.sourceSocket) {
           const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
@@ -638,14 +647,22 @@ export function Edges({
             sourceYOffset =
               socketInfo.socket.position !== undefined
                 ? socketInfo.socket.position * sourceHeight
-                : socketLayout.marginTop +
+                : sourceMarginTop +
                   socketInfo.index * socketLayout.rowHeight +
-                  socketLayout.rowHeight / 2;
+                  socketLayout.rowHeight / 2 +
+                  sourceCenterOffset;
           }
         }
 
         // Calculate target socket position - O(1) lookup via socketIndexMap
         // Target socket is always an input (rowIndex = outputCount + inputIndex)
+        const targetMarginTop = HEADERLESS_TYPES.includes(targetEntity.type)
+          ? socketLayout.padding : socketLayout.marginTop;
+        const targetComputedH = targetMarginTop +
+          Math.max(1, targetOutputCount + targetInputCount) * socketLayout.rowHeight +
+          socketLayout.padding;
+        const targetCenterOffset = (targetHeight - targetComputedH) / 2;
+
         let targetYOffset = targetHeight / 2; // fallback to center
         if (edge.targetSocket) {
           const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
@@ -655,9 +672,10 @@ export function Edges({
             targetYOffset =
               socketInfo.socket.position !== undefined
                 ? socketInfo.socket.position * targetHeight
-                : socketLayout.marginTop +
+                : targetMarginTop +
                   rowIndex * socketLayout.rowHeight +
-                  socketLayout.rowHeight / 2;
+                  socketLayout.rowHeight / 2 +
+                  targetCenterOffset;
           }
         }
 

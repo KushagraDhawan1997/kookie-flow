@@ -384,6 +384,11 @@ export function Sockets({
     const entityLayout = getEntitySocketLayout(entity, socketLayout);
     const height = entity.height ?? entityLayout.computedHeight;
 
+    // Center sockets vertically within entity height.
+    // Positive when entity is taller than socket layout (tall text), negative when shorter
+    // (small text entity with explicit height). Both directions keep sockets centered.
+    const centerOffset = (height - entityLayout.computedHeight) / 2;
+
     // Render input sockets
     if (entity.inputs) {
       for (let i = 0; i < entity.inputs.length; i++) {
@@ -394,7 +399,7 @@ export function Sockets({
         const yOffset =
           socket.position !== undefined
             ? socket.position * height
-            : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+            : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
 
         tempMatrix.identity();
         tempMatrix.setPosition(
@@ -450,7 +455,7 @@ export function Sockets({
         const yOffset =
           socket.position !== undefined
             ? socket.position * height
-            : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+            : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
 
         tempMatrix.identity();
         tempMatrix.setPosition(
@@ -534,6 +539,8 @@ export function Sockets({
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
           const height = entity.height ?? entityLayout.computedHeight;
 
+          const moveCenterOffset = (height - entityLayout.computedHeight) / 2;
+
           let instanceIdx = range.start;
 
           if (entity.inputs) {
@@ -543,7 +550,7 @@ export function Sockets({
               const yOffset =
                 socket.position !== undefined
                   ? socket.position * height
-                  : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+                  : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + moveCenterOffset;
               tempMatrix.setPosition(
                 entity.position.x - SOCKET_OFFSET,
                 -(entity.position.y + yOffset),
@@ -561,7 +568,7 @@ export function Sockets({
               const yOffset =
                 socket.position !== undefined
                   ? socket.position * height
-                  : cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2;
+                  : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + moveCenterOffset;
               tempMatrix.setPosition(
                 entity.position.x + width + SOCKET_OFFSET,
                 -(entity.position.y + yOffset),
