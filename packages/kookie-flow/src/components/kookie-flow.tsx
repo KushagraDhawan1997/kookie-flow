@@ -599,6 +599,15 @@ function InputHandler({
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isEditingText, setIsEditingText] = useState(false);
+
+  // Subscribe to editingEntityId for cursor styling (text → default)
+  useEffect(() => {
+    return store.subscribe(
+      (s) => s.editingEntityId,
+      (id) => setIsEditingText(id !== null)
+    );
+  }, [store]);
   const lastPointerPos = useRef<{ x: number; y: number } | null>(null);
 
   // Track pointer down position to detect clicks vs drags
@@ -1999,7 +2008,9 @@ function InputHandler({
                     ? 'crosshair'
                     : hoveredHandle
                       ? RESIZE_CURSORS[hoveredHandle]
-                      : 'default',
+                      : isEditingText
+                        ? 'text'
+                        : 'default',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
