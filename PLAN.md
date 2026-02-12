@@ -175,12 +175,16 @@ One primitive: **Entity**. Spatial presence and graph participation are orthogon
 Entity
 ├── position, size, rotation     (always — everything lives on the canvas)
 ├── inputs[], outputs[]          (optional — graph participation via sockets)
+│   └── Socket
+│       ├── name, type, id
+│       ├── widget?              (inline DOM control — slider, text, select, etc.)
+│       ├── preview?             (inline or block data visualization — WebGL or custom)
+│       └── row?                 (custom row component — full escape hatch)
 ├── parentId                     (optional — spatial hierarchy)
 ├── type                         (determines rendering + behavior)
-├── data                         (type-specific payload)
-│   ├── status                   (optional — 'error' | 'warning' | 'running' | 'success')
-│   └── statusMessage            (optional — human-readable status text)
-└── preview                      (planned — data visualization config)
+└── data                         (type-specific payload)
+    ├── status                   (optional — 'error' | 'warning' | 'running' | 'success')
+    └── statusMessage            (optional — human-readable status text)
 ```
 
 ### Two Independent Layers
@@ -234,28 +238,42 @@ entity.data.statusMessage = 'Missing required input: Model';
 | `comment` | Sticky note annotation                               | No                   | Implemented | Annotation only                    |
 | `reroute` | Edge waypoint                                        | Yes (passthrough)    | Implemented | Graph routing                      |
 | `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Planned     | Contains shapes as `data.shapes[]` |
-| `image`   | Image on canvas                                      | Optional             | Planned     | Three.js texture on quad           |
+| `image`   | Image on canvas                                      | Optional             | In Progress | Three.js texture on quad           |
 | `video`   | Video on canvas                                      | Optional             | Planned     | DOM overlay, lazy-loaded           |
 | `mesh`    | 3D object on canvas                                  | Optional             | Planned     | Three.js scene-in-scene            |
 
-`image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that _produce_ visual output.
+`image`, `video`, `mesh` entities ARE the visual — they don't preview themselves. Preview is for `default` nodes (and custom consumer types) that _produce_ visual output. The standalone `image` entity and a node with `preview: true` on an image socket are different things that share the same `ImageTextureManager` infrastructure.
 
 ### Entity Type Customization (Three Levels)
 
-**Level 1: Pure Declaration (80% of nodes).** Consumer declares sockets, widgets, and preview. Kookie Flow renders everything.
+**Level 1: Pure Declaration (80% of nodes).** Consumer declares sockets with optional widgets and previews. Kookie Flow renders everything.
 
 ```tsx
-const Gen3DNode: EntityTypeDefinition = {
-  type: 'gen3d',
+const GenerateImageNode: EntityTypeDefinition = {
+  type: 'generate-image',
   inputs: [
-    { name: 'Prompt', type: 'string' },
-    { name: 'Model', type: 'enum', widget: { type: 'select', options: ['shap-e', 'point-e', 'meshy'] } },
+    { name: 'prompt', type: 'string', widget: 'textarea', rows: 3 },
+    { name: 'model', type: 'string', widget: 'select', options: ['DALL-E 3', 'SDXL'] },
   ],
-  outputs: [{ name: 'Mesh', type: 'mesh' }],
+  outputs: [
+    { name: 'image', type: 'image', preview: true },
+  ],
 };
 ```
 
-**Level 2: Slots (15% of nodes).** _(Planned — not yet implemented.)_ Consumer injects custom UI between Kookie Flow's building blocks via slot props.
+**Level 2: Custom Row / Preview Components (15% of nodes).** Consumer overrides specific parts — a socket row, or the block preview content — while Kookie Flow handles everything else.
+
+```tsx
+const CompareNode: EntityTypeDefinition = {
+  type: 'compare',
+  inputs: [
+    { name: 'reference', type: 'image', row: ReferenceImageRow },  // custom row component
+  ],
+  outputs: [
+    { name: 'images', type: 'image', preview: { component: ImageGridPreview } },  // custom preview
+  ],
+};
+```
 
 **Level 3: Full Escape Hatch (5% of nodes).** Consumer provides a `component` and owns the interior.
 
@@ -274,30 +292,71 @@ const WildNode: EntityTypeDefinition = {
 
 Kookie Flow still handles: entity frame/border, socket hit testing, edge connections, selection, dragging, status rendering. Consumer controls what's inside.
 
+### Socket Row Composition
+
+Every node is a vertical stack of **socket rows**. Each row is a container with optional slots:
+
+```
+[dot]  [label?]  [preview?]  [widget?]
+```
+
+The library handles layout, spacing, socket positioning, connection logic, and hide-when-connected behavior. The consumer controls which slots are active:
+
+```typescript
+// Geometry node — label + slider widget
+{ name: 'factor', type: 'float', widget: 'slider', min: 0, max: 1 }
+
+// AI node — label + inline preview + upload widget
+{ name: 'image', type: 'image', preview: 'inline', widget: 'file-upload' }
+
+// Minimal — just a connectable dot
+{ name: 'value', type: 'float', label: false }
+
+// Full override — consumer provides custom row component
+{ name: 'reference', type: 'image', row: ReferenceImageRow }
+```
+
+`widget` = how the user provides/edits a socket's value (DOM, interactive).
+`preview` = how the user sees a socket's value (WebGL default, visual).
+`row` = escape hatch, consumer replaces the entire row content (library still handles the socket dot and connections).
+
 ### Preview System _(Planned)_
 
-> Not yet implemented. The type definition exists (`preview` on `EntityTypeDefinition`) but no rendering is wired up.
+> Not yet implemented. Preview lives on **sockets**, not on the entity. It's the visual counterpart to `widget`: widget is "how you edit a value" (DOM), preview is "how you see a value" (WebGL default).
 
-Every `default` node will be able to visualize data on its output sockets. Planned design:
+**Preview is a socket-level opt-in.** The consumer adds `preview: true` (or `preview: { height: 300 }`) to any socket. The library handles rendering, positioning within the entity body, LOD, culling, and texture management.
 
-| `preview.type` | Renderer                | How           | Loaded              |
-| -------------- | ----------------------- | ------------- | ------------------- |
-| `image`        | Three.js CanvasTexture  | Textured quad | Always              |
-| `3d`           | Three.js scene-in-scene | DOM overlay   | Lazy (on first use) |
-| `video`        | `<video>` element       | DOM overlay   | Lazy (on first use) |
+```typescript
+// Consumer opts in — library handles everything
+outputs: [{ name: 'image', type: 'image', preview: true }]
 
-Display mode (zoomed out / idle): thumbnail drawn in WebGL (nearly free). Interactive mode (zoomed in / active): live renderer mounted as DOM overlay. 200 video entities = ~5 live `<video>` elements.
+// With explicit height
+outputs: [{ name: 'image', type: 'image', preview: { height: 300 } }]
 
-Consumers will be able to register additional preview renderers:
-
-```tsx
-<KookieFlow
-  previewRenderers={{
-    audio: AudioPreviewRenderer,
-    chart: ChartPreviewRenderer,
-  }}
-/>
+// Consumer overrides the preview content entirely
+outputs: [{ name: 'images', type: 'image', preview: { component: MultiImageGrid } }]
 ```
+
+**Two forms of preview:**
+
+| Form       | Where                     | Size             | Use case                              |
+| ---------- | ------------------------- | ---------------- | ------------------------------------- |
+| `'inline'` | Inside the socket row     | Small thumbnail  | Input socket showing what's flowing in |
+| `true`     | Block region in node body | Configurable     | Output socket showing produced data    |
+
+**Default rendering by socket type:**
+
+| Socket type | Default renderer          | Technique          | Loaded              |
+| ----------- | ------------------------- | ------------------ | ------------------- |
+| `image`     | WebGL textured quad       | ImageTextureManager | Always (shared w/ image entities) |
+| `mesh`      | Three.js scene-in-scene  | Render-to-texture  | Lazy (on first use) |
+| `video`     | `<video>` element        | DOM overlay        | Lazy (on first use) |
+
+The socket type defines the default renderer. The consumer doesn't choose the rendering strategy — the library does. The consumer overrides with `preview: { component: Custom }` only when they want something non-default (e.g., image grid, LLM text output, charts).
+
+**Shared infrastructure:** Block previews for `image` sockets use the same `ImageTextureManager` as standalone image entities — same LOD pipeline, same texture caching, same ref-counting. Different rendering component (`preview-layer.tsx` vs `image-entities.tsx`), shared utility.
+
+**The library provides the highway, not the car.** Kookie Flow imposes structure (socket rows, preview slot positioning, entity layout). It ships default WebGL renderers for common types. But the preview area is a slot the consumer can fill with anything: one image, four images, DOM content, a 3D viewport, scrollable text. The library lays down the highway — the consumer decides what car to drive.
 
 ### What Kookie Flow Does NOT Do
 
@@ -487,66 +546,79 @@ interface FlowState {
 ```typescript
 import { defineNode, Input, Output } from '@kushagradhawan/kookie-flow';
 
-// Simple node definition
+// Simple geometry node — pure declaration, label + widget per socket
 const AddNode = defineNode({
   type: 'math/add',
   label: 'Add',
   inputs: [
-    Input.float('a', { default: 0 }),
-    Input.float('b', { default: 0 }),
+    Input.float('a', { default: 0, widget: 'slider', min: -10, max: 10 }),
+    Input.float('b', { default: 0, widget: 'number' }),
   ],
   outputs: [
     Output.float('result'),
   ],
 });
 
-// Node with preview
-const ImageLoadNode = defineNode({
-  type: 'image/load',
-  label: 'Load Image',
+// AI node — output with block preview, input with upload widget
+const GenerateImageNode = defineNode({
+  type: 'ai/generate-image',
+  label: 'Generate Image',
   inputs: [
-    Input.string('path', { widget: 'file-picker' }),
+    Input.string('prompt', { widget: 'textarea', rows: 3 }),
+    Input.string('model', { widget: 'select', options: ['DALL-E 3', 'SDXL', 'Midjourney'] }),
   ],
   outputs: [
-    Output.image('image'),
+    Output.image('image', { preview: true }),  // block preview, WebGL default
   ],
-  preview: {
-    type: 'image',
-    source: 'image', // Output to preview
-  },
 });
 
-// Node with custom widget
-const TextPromptNode = defineNode({
-  type: 'text/prompt',
-  label: 'Text Prompt',
+// Image-to-image — input preview + output preview
+const Img2ImgNode = defineNode({
+  type: 'ai/img2img',
+  label: 'Image to Image',
   inputs: [
-    Input.string('prompt', {
-      widget: 'custom',
-      defaultHeight: 100,
-    }),
+    Input.image('image', { widget: 'file-upload', preview: 'inline' }),  // small thumbnail in row
+    Input.string('prompt', { widget: 'textarea' }),
+    Input.float('strength', { widget: 'slider', min: 0, max: 1 }),
   ],
   outputs: [
-    Output.string('text'),
+    Output.image('result', { preview: true }),
   ],
-  // Custom React component for the input widget
-  Widget: ({ value, onChange }) => (
-    <textarea
-      value={value.prompt}
-      onChange={e => onChange({ prompt: e.target.value })}
-    />
-  ),
 });
 
-// Full custom node (DOM escape hatch)
+// Custom preview content — consumer provides component for the preview area
+const MultiGenNode = defineNode({
+  type: 'ai/multi-gen',
+  label: 'Multi Generate',
+  inputs: [
+    Input.string('prompt', { widget: 'textarea' }),
+  ],
+  outputs: [
+    Output.image('images', { preview: { height: 400, component: ImageGridPreview } }),
+  ],
+});
+
+// Custom row — consumer overrides entire socket row
+const ReferenceNode = defineNode({
+  type: 'ai/reference',
+  label: 'Reference Image',
+  inputs: [
+    Input.image('reference', { row: ReferenceImageRow }),  // full row override
+    Input.float('weight', { widget: 'slider', min: 0, max: 1 }),
+  ],
+  outputs: [
+    Output.image('result', { preview: true }),
+  ],
+});
+
+// Full escape hatch — consumer owns entire interior
 const CustomNode = defineNode({
   type: 'custom/wild',
-  render: 'dom', // Entire node is DOM
-  Component: ({ node, inputs, outputs }) => (
-    <div className="my-custom-node">
-      <inputs.Handle id="in" />
-      <MyComplexComponent />
-      <outputs.Handle id="out" />
+  inputs: [{ name: 'In', type: 'any' }],
+  outputs: [{ name: 'Out', type: 'any' }],
+  component: ({ id, data, selected, onChange }) => (
+    <div className="my-wild-layout">
+      <MyEntirelyCustomThing data={data} onChange={onChange} />
     </div>
   ),
 });
@@ -2189,16 +2261,18 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 
 **Goal:** Image on canvas done really well. Proper loading, resolution management, LOD.
 
-Architecture note: Same "standalone vs. embedded" pattern as Text. `ImageEntityData` is reused when an image appears as a shape inside a Draw entity.
+Architecture note: Same "standalone vs. embedded" pattern as Text. `ImageEntityData` is reused when an image appears as a shape inside a Draw entity. The `ImageTextureManager` is shared infrastructure — standalone image entities and node preview blocks both use it.
 
-- [ ] Image entity type: image rendered as Three.js textured quad
-- [ ] Async image loading with placeholder/skeleton
-- [ ] Resolution management: thumbnail at zoom-out, full res when zoomed in
+- [x] Image entity type: image rendered as Three.js textured quad (`image-entities.tsx`)
+- [x] Async image loading via `ImageTextureManager` (`image-loader.ts`)
+- [x] Resolution management: thumbnail at zoom-out, full res when zoomed in (LOD threshold at 256px screen width)
+- [x] Memory management: ref-counted textures, disposed when no longer referenced
+- [x] Viewport frustum culling (skip off-screen images)
+- [x] Object-fit modes: contain, cover, fill
 - [ ] Drag-and-drop from filesystem
 - [ ] Paste from clipboard
 - [ ] Resizable via Phase 9.5 infrastructure (drag handles, aspect ratio lock option)
 - [ ] Optional ports for graph participation (source node with image output)
-- [ ] Memory management: dispose textures when off-screen
 
 ### Phase 12: 3D Mesh Entity
 
@@ -2247,28 +2321,49 @@ Architecture note: Same "standalone vs. embedded" pattern. `VideoEntityData` reu
 
 ### Phase 15: Preview System
 
-**Goal:** Built-in preview renderers for default nodes and consumer entity types.
+**Goal:** Socket-level data visualization inside nodes. The library provides structure and default renderers; the consumer fills the slot.
 
-- [ ] `PreviewRenderer` interface: `thumbnail()` + `mount()`
-- [ ] Image preview renderer (Three.js CanvasTexture on quad)
-- [ ] 3D preview renderer (Three.js scene-in-scene, lazy-loaded)
-- [ ] Video preview renderer (`<video>` DOM overlay, lazy-loaded)
-- [ ] Display/interactive mode switching (thumbnail when idle, live when active)
-- [ ] `previewRenderers` extension point for consumer-provided renderers
-- [ ] Preview caching (thumbnail textures cached, regenerated on data change)
-- [ ] `usePreview()` hook for Level 3 customization escape hatch
-- [ ] `slots.preview` for Level 2 customization
+Preview is the visual counterpart to widget: `widget` = "how you edit a value" (DOM), `preview` = "how you see a value" (WebGL default). Both live on sockets.
+
+**Two forms:**
+- **Inline** (`preview: 'inline'`): small thumbnail inside the socket row. Useful for input sockets.
+- **Block** (`preview: true` or `preview: { height }` or `preview: { component }`): large region in the node body below the socket. Useful for output sockets.
+
+**Tasks:**
+
+- [ ] `preview` field on Socket type: `boolean | 'inline' | { height?: number; component?: React.ComponentType }`
+- [ ] `preview-layer.tsx`: R3F component that renders block previews for entities with preview-enabled sockets
+- [ ] Shared `ImageTextureManager` between `image-entities.tsx` (standalone) and `preview-layer.tsx` (embedded)
+- [ ] Preview region layout: socket layout cache accounts for preview height, pushes subsequent sockets down
+- [ ] Default image preview renderer: WebGL textured quad positioned within entity bounds, using `ImageTextureManager`
+- [ ] Inline preview rendering: small thumbnail in socket row (DOM-based or WebGL, TBD)
+- [ ] Consumer override: `preview: { component: CustomPreview }` for custom content (image grid, text output, charts, etc.)
+- [ ] Preview data flow: preview reads from socket's value in entity data (source of truth TBD with execution model)
+- [ ] SDF clipping: preview clipped to entity bounds with rounded corners (shader mask)
+- [ ] Preview visibility: block previews always show (unlike input widgets which hide when connected)
+- [ ] DOM fallback: `widget: 'image-preview'` for consumers who prefer DOM-based image display over WebGL
 
 ### Phase 16: Entity Type Customization
 
-**Goal:** Three-level customization system for consumer entity types.
+**Goal:** Three-level customization system for consumer entity types. The library provides structure; the consumer decides what goes in it.
 
-- [ ] Level 1: Pure declaration rendering (ports + widgets + preview from config)
-- [ ] Level 2: Slots system (`slots.preview`, `slots.widgets`, `slots.outputs`, `slots.inputs`)
-- [ ] Level 3: Full escape hatch (`render: 'custom'`, `Component` prop)
-- [ ] `usePreview()` hook for Level 3
-- [ ] Auto-generated widgets from input declarations (Level 1)
-- [ ] Preview ownership: always Kookie Flow's responsibility regardless of level
+**Level 1: Pure Declaration (80% of nodes)**
+- [ ] Rendering pipeline for `EntityTypeDefinition`: sockets → rows → widgets → previews from config
+- [ ] Auto-generated widgets from socket declarations (type-to-widget mapping)
+- [ ] `preview: true` on sockets triggers default WebGL renderer (via Phase 15)
+- [ ] `preview: 'inline'` renders small thumbnail in socket row
+
+**Level 2: Custom Row / Preview Components (15% of nodes)**
+- [ ] `row` field on Socket: `React.ComponentType<RowProps>` — consumer replaces entire row content
+- [ ] Row component receives: `{ value, onChange, connected, socketId, entityId }` — library handles socket dot + connections
+- [ ] `preview: { component: CustomPreview }` — consumer fills the block preview slot with custom content
+- [ ] Preview component receives: `{ value, entityId, width, height }` — library handles positioning + culling
+
+**Level 3: Full Escape Hatch (5% of nodes)**
+- [ ] `component` field on `EntityTypeDefinition`: consumer owns the entire interior
+- [ ] Library still handles: entity frame, socket hit testing, edge connections, selection, dragging, status rendering
+
+**Design principle:** Kookie Flow imposes a socket + row pattern. It provides the highway (structure, layout, rendering pipeline). The consumer drives whatever car they want (custom rows, custom previews, DOM content, WebGL content). The library brings order to chaos.
 
 ### Phase 17: Polish & Production
 
@@ -2671,9 +2766,15 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 - Key files: `text-entities.tsx`, `text-edit-overlay.tsx`, `text-edit-cursor.tsx`, `text-cursor-layout.ts`, `text-layout.ts`
 - Implementation order: 10A → 10B → 10D → 10C → 10E → 10F → 10G → 10H
 
-**Phase 11+: Remaining entity types** (after Phase 10)
+**Phase 11: Image Entity** (in progress)
 
-- Image → 3D Mesh → Video → Draw → Preview System → Customization
+- [x] Standalone image entity: Three.js textured quad, `ImageTextureManager`, LOD, frustum culling
+- [ ] Drag-and-drop, paste, resize, optional ports
+- Shared `ImageTextureManager` will also power node preview blocks (Phase 15)
+
+**Phase 11+: Remaining entity types**
+
+- 3D Mesh → Video → Draw → Preview System → Entity Type Customization
 - Each entity type done well before moving to the next
 
 ---
