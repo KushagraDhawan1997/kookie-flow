@@ -258,7 +258,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
 }
 
 export default function DemoWebGLPage() {
-  const [nodeCount, setNodeCount] = useState<number>(1_000);
+  const [nodeCount, setNodeCount] = useState<number>(100);
 
   return (
     <main style={{ width: '100vw', height: '100vh' }}>

@@ -35,6 +35,12 @@ export function getEditingTextarea(): HTMLTextAreaElement | null {
   return _textareaEl;
 }
 
+// Suppress the next blur-triggered commit (set by InputHandler when clicking on editing entity)
+let _suppressNextBlur = false;
+export function suppressEditBlur(): void {
+  _suppressNextBlur = true;
+}
+
 interface TextEditOverlayProps {
   onEntitiesChange?: (changes: EntityChange[]) => void;
 }
@@ -92,13 +98,14 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
     const ta = textareaRef.current;
     ta.value = content;
     ta.focus();
-    // Place cursor at end
-    ta.selectionStart = content.length;
+    // Select all text on entry (Figma behavior: double-click selects all,
+    // then single click repositions cursor)
+    ta.selectionStart = 0;
     ta.selectionEnd = content.length;
 
     // Sync to store
     store.getState().setEditingContent(content);
-    store.getState().setEditingCursor(content.length, content.length);
+    store.getState().setEditingCursor(0, content.length);
 
     // Store module-level ref
     _textareaEl = ta;
@@ -264,10 +271,15 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
     [commitAndExit, store, regularFont, glyphMap, kerningMap]
   );
 
-  // Handle blur — commit and exit
+  // Handle blur — commit and exit (unless suppressed by click on editing entity)
   const handleBlur = useCallback(() => {
-    // Small delay to allow click-to-position in InputHandler to fire first
     requestAnimationFrame(() => {
+      if (_suppressNextBlur) {
+        _suppressNextBlur = false;
+        // Re-focus textarea since we're still editing
+        textareaRef.current?.focus();
+        return;
+      }
       if (store.getState().editingEntityId) {
         commitAndExit();
       }

@@ -55,7 +55,7 @@ import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-tex
 import { useFont } from '../contexts/FontContext';
 import { buildGlyphMap, buildKerningMap, type GlyphMap, type KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset } from '../utils/text-cursor-layout';
-import { getEditingTextarea } from './text-edit-overlay';
+import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
@@ -574,9 +574,11 @@ function InputHandler({
   });
   const socketLayout = useSocketLayout();
 
-  // Font data for MSDF text measurement (used in resize handler)
+  // Font data for MSDF text measurement (used in resize handler + click-to-position)
   const fontContext = useFont();
   const regularFont = fontContext.regular;
+  const regularFontRef = useRef(regularFont);
+  regularFontRef.current = regularFont;
   const glyphMapRef = useRef<GlyphMap>(new Map());
   const kerningMapRef = useRef<KerningMap>(new Map());
   useEffect(() => {
@@ -1000,6 +1002,12 @@ function InputHandler({
           queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
         if (clickedEntity) {
+          // Suppress textarea blur when clicking on the entity being edited
+          // (prevents editing from exiting between clicks of a double-click)
+          if (store.getState().editingEntityId === clickedEntity.id) {
+            suppressEditBlur();
+          }
+
           // Store cursor offset from entity position (React Flow style)
           // This ensures the entity doesn't "jump" when drag threshold is crossed
           pendingDragRef.current = {
@@ -1187,10 +1195,11 @@ function InputHandler({
         if (resizedEntity?.type === 'text') {
           const data = resizedEntity.data as TextEntityData;
           const style = resolveTextStyle(data);
-          if (regularFont && glyphMapRef.current.size > 0) {
+          const resizeFont = regularFontRef.current;
+          if (resizeFont && glyphMapRef.current.size > 0) {
             newH = calculateTextAutoHeightMSDF(
               data.content, style, newW,
-              regularFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
+              resizeFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
             );
           } else {
             // Fallback: single line height + padding
@@ -1616,11 +1625,13 @@ function InputHandler({
         if (clickedEntity) {
           // Click-to-position: if already editing this text entity, reposition cursor
           const currentEditingId = store.getState().editingEntityId;
+          const font = regularFontRef.current;
           if (
             currentEditingId === clickedEntity.id &&
             clickedEntity.type === 'text' &&
-            regularFont && glyphMapRef.current.size > 0
+            font && glyphMapRef.current.size > 0
           ) {
+            // Single click while editing: reposition cursor
             const data = clickedEntity.data as TextEntityData;
             const content = store.getState().editingContent ?? (data.content ?? '');
             const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
@@ -1633,7 +1644,7 @@ function InputHandler({
             const table = buildCharPositionsForEntity(
               content, fontSize, lineHeightMul, textAlignVal,
               w, pad, clickedEntity.position.x, clickedEntity.position.y,
-              regularFont.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
+              font.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
             );
 
             const offset = hitTestCharOffset(
