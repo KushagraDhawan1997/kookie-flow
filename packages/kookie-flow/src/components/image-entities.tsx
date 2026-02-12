@@ -150,12 +150,18 @@ export function ImageEntities() {
     };
   }, [texManager, placeholderMat]);
 
-  // Subscribe to store: update imageEntityIds only when the set of image IDs changes
+  // Subscribe to store changes.
+  // Split into two subscriptions:
+  // - topologyVersion: only fires on entity add/remove → runs filter/map to update React state
+  // - entities (reference): just marks dirty for useFrame (position/data changes during drag)
   useEffect(() => {
     const markDirty = () => { dirtyRef.current = true; };
 
-    const unsubEntities = store.subscribe((s) => s.entities, (entities) => {
+    // Topology changes (add/remove) — rebuild image ID list for React reconciliation.
+    // topologyVersion doesn't change during drag, so filter/map only runs when needed.
+    const unsubTopology = store.subscribe((s) => s.topologyVersion, () => {
       markDirty();
+      const { entities } = store.getState();
       const ids = entities.filter((e) => e.type === 'image').map((e) => e.id);
       setImageEntityIds((prev) => {
         if (prev.length !== ids.length) return ids;
@@ -165,12 +171,15 @@ export function ImageEntities() {
         return prev;
       });
     });
+    // Position/data changes — just mark dirty for useFrame, no allocations
+    const unsubEntities = store.subscribe((s) => s.entities, markDirty);
     // Viewport changes affect frustum culling and LOD selection (zoom-dependent)
     const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
 
     return () => {
+      unsubTopology();
       unsubEntities();
       unsubViewport();
       unsubSelection();
