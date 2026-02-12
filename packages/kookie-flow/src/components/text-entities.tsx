@@ -258,6 +258,15 @@ export function TextEntities() {
         continue;
       }
 
+      // Overflow clipping: if entity has user-controlled height (not auto-height),
+      // clip text that exceeds the entity bounds
+      const isAutoHeight = typeof entity.resizable === 'object'
+        ? !(entity.resizable.height ?? false)
+        : true;
+      const clipHeight = (!isAutoHeight && h < expectedH)
+        ? h - 2 * padding
+        : undefined;
+
       mlEntries.push({
         id: entity.id,
         lines: measurement.lines,
@@ -269,6 +278,7 @@ export function TextEntities() {
         color: textColor,
         opacity: 1,
         letterSpacing,
+        maxHeight: clipHeight,
       });
     }
 
