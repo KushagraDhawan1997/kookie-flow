@@ -29,6 +29,8 @@ import {
   buildKerningMap,
 } from '../utils/text-layout';
 import {
+  type CharPositionTable,
+  type SelectionRect,
   buildCharPositionsForEntity,
   getCursorXY,
   getSelectionRects,
@@ -98,6 +100,17 @@ export function TextEditCursor() {
   const dirtyRef = useRef(true);
   const lastCursorRef = useRef<{ start: number; end: number } | null>(null);
 
+  // Table & selection caching (avoid per-frame allocations)
+  const cachedTableRef = useRef<CharPositionTable | null>(null);
+  const tableVersionRef = useRef(0);
+  const lastTableKeyRef = useRef({
+    content: '', w: 0, x: 0, y: 0,
+    fontSize: 0, lineHeight: 0, textAlign: '' as string, letterSpacing: 0,
+  });
+  const cachedRectsRef = useRef<SelectionRect[]>([]);
+  const lastSelKeyRef = useRef({ start: -1, end: -1, ver: -1 });
+  const matrixTmpRef = useRef(new THREE.Matrix4());
+
   // Theme colors
   const accentColor = tokens[THEME_COLORS.entitySelection.selected];
   const primaryTextColor = tokens[THEME_COLORS.text.primary];
@@ -140,8 +153,7 @@ export function TextEditCursor() {
     const unsubEntity = store.subscribe((s) => s.editingEntityId, markDirty);
     const unsubContent = store.subscribe((s) => s.editingContent, markDirty);
     const unsubCursor = store.subscribe((s) => s.editingCursor, markDirty);
-    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
-    return () => { unsubEntity(); unsubContent(); unsubCursor(); unsubViewport(); };
+    return () => { unsubEntity(); unsubContent(); unsubCursor(); };
   }, [store]);
 
   useFrame((_state, delta) => {
@@ -163,6 +175,7 @@ export function TextEditCursor() {
       blinkTimerRef.current = 0;
       blinkVisibleRef.current = true;
       lastCursorRef.current = null;
+      cachedTableRef.current = null;
       return;
     }
 
@@ -203,14 +216,35 @@ export function TextEditCursor() {
       c.setRGB(primaryTextColor[0], primaryTextColor[1], primaryTextColor[2]);
     }
 
-    // Build character position table (only when dirty)
-    // In practice this runs every frame during editing — acceptable since
-    // buildCharPositionsForEntity is fast (no GPU work, just array math)
-    const table = buildCharPositionsForEntity(
-      content, fontSize, lineHeightMul, textAlign,
-      w, pad, entity.position.x, entity.position.y,
-      regularFont.metrics, glyphMap, kerningMap, letterSpacing
-    );
+    // Build character position table (cached — only rebuild when inputs change)
+    const tk = lastTableKeyRef.current;
+    if (
+      !cachedTableRef.current ||
+      content !== tk.content ||
+      w !== tk.w ||
+      entity.position.x !== tk.x ||
+      entity.position.y !== tk.y ||
+      fontSize !== tk.fontSize ||
+      lineHeightMul !== tk.lineHeight ||
+      textAlign !== tk.textAlign ||
+      letterSpacing !== tk.letterSpacing
+    ) {
+      cachedTableRef.current = buildCharPositionsForEntity(
+        content, fontSize, lineHeightMul, textAlign,
+        w, pad, entity.position.x, entity.position.y,
+        regularFont.metrics, glyphMap, kerningMap, letterSpacing
+      );
+      tk.content = content;
+      tk.w = w;
+      tk.x = entity.position.x;
+      tk.y = entity.position.y;
+      tk.fontSize = fontSize;
+      tk.lineHeight = lineHeightMul;
+      tk.textAlign = textAlign;
+      tk.letterSpacing = letterSpacing;
+      tableVersionRef.current++;
+    }
+    const table = cachedTableRef.current;
 
     const hasSelection = editingCursor.start !== editingCursor.end;
 
@@ -218,28 +252,42 @@ export function TextEditCursor() {
       // --- Selection rendering ---
       cursorMesh.visible = false;
 
-      const rects = getSelectionRects(
-        editingCursor.start, editingCursor.end, table
+      // Cache selection rects — only rebuild when range or table changed
+      const sk = lastSelKeyRef.current;
+      const tv = tableVersionRef.current;
+      const selChanged = (
+        editingCursor.start !== sk.start ||
+        editingCursor.end !== sk.end ||
+        tv !== sk.ver
       );
 
-      const count = Math.min(rects.length, MAX_SELECTION_INSTANCES);
-      const matrix = new THREE.Matrix4();
-
-      for (let i = 0; i < count; i++) {
-        const rect = rects[i];
-        // Position at rect center, scale to rect size
-        matrix.makeScale(rect.width, rect.height, 1);
-        matrix.setPosition(
-          rect.x + rect.width / 2,
-          -(rect.y + rect.height / 2), // flip Y for Three.js
-          SELECTION_Z
+      if (selChanged) {
+        cachedRectsRef.current = getSelectionRects(
+          editingCursor.start, editingCursor.end, table
         );
-        selectionMesh.setMatrixAt(i, matrix);
-      }
+        sk.start = editingCursor.start;
+        sk.end = editingCursor.end;
+        sk.ver = tv;
 
-      selectionMesh.count = count;
-      if (count > 0) {
-        selectionMesh.instanceMatrix.needsUpdate = true;
+        const rects = cachedRectsRef.current;
+        const count = Math.min(rects.length, MAX_SELECTION_INSTANCES);
+        const matrix = matrixTmpRef.current;
+
+        for (let i = 0; i < count; i++) {
+          const rect = rects[i];
+          matrix.makeScale(rect.width, rect.height, 1);
+          matrix.setPosition(
+            rect.x + rect.width / 2,
+            -(rect.y + rect.height / 2),
+            SELECTION_Z
+          );
+          selectionMesh.setMatrixAt(i, matrix);
+        }
+
+        selectionMesh.count = count;
+        if (count > 0) {
+          selectionMesh.instanceMatrix.needsUpdate = true;
+        }
       }
     } else {
       // --- Cursor rendering (blinking) ---

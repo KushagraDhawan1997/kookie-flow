@@ -145,7 +145,6 @@ export function TextEntities() {
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
     const unsubEditing = store.subscribe((s) => s.editingEntityId, markDirty);
     const unsubEditContent = store.subscribe((s) => s.editingContent, markDirty);
-    const unsubEditCursor = store.subscribe((s) => s.editingCursor, markDirty);
 
     return () => {
       unsubEntities();
@@ -154,7 +153,6 @@ export function TextEntities() {
       unsubHidden();
       unsubEditing();
       unsubEditContent();
-      unsubEditCursor();
     };
   }, [store]);
 
