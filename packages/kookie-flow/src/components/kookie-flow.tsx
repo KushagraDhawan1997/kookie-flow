@@ -56,7 +56,7 @@ import {
 } from '../core/constants';
 import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
 import { useFont } from '../contexts/FontContext';
-import { buildGlyphMap, buildKerningMap, type GlyphMap, type KerningMap } from '../utils/text-layout';
+import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
@@ -582,14 +582,13 @@ function InputHandler({
   const regularFont = fontContext.regular;
   const regularFontRef = useRef(regularFont);
   regularFontRef.current = regularFont;
+  // Refs pointing to FontContext's pre-built maps (stable references, no rebuilding)
   const glyphMapRef = useRef<GlyphMap>(new Map());
   const kerningMapRef = useRef<KerningMap>(new Map());
-  useEffect(() => {
-    if (regularFont) {
-      glyphMapRef.current = buildGlyphMap(regularFont.metrics);
-      kerningMapRef.current = buildKerningMap(regularFont.metrics);
-    }
-  }, [regularFont]);
+  if (regularFont) {
+    glyphMapRef.current = regularFont.glyphMap;
+    kerningMapRef.current = regularFont.kerningMap;
+  }
 
   // Sync socket layout to store so quadtree bounds use correct entity heights
   useEffect(() => {
@@ -1816,6 +1815,9 @@ function InputHandler({
           // Double-click on non-editing text entity: enter edit mode
           if (clickCount >= 2 && clickedEntity.type === 'text') {
             store.getState().startEditing(clickedEntity.id);
+            // Reset click counter so subsequent clicks in edit mode start fresh
+            // (prevents double-click-to-enter counting toward in-edit multi-clicks)
+            clickCountRef.current = null;
           }
 
           // Click on entity: select it

@@ -29,16 +29,18 @@ import {
   DEFAULT_TEXT_PADDING,
 } from '../core/constants';
 import {
-  type GlyphMap,
-  type KerningMap,
   type MultiLineTextEntry,
-  buildGlyphMap,
-  buildKerningMap,
   wrapTextMSDF,
   measureTextBlockMSDF,
   countMultiLineGlyphs,
   populateMultiLineGlyphBuffers,
 } from '../utils/text-layout';
+
+import type { GlyphMap, KerningMap } from '../utils/text-layout';
+
+// Stable empty maps to avoid re-creating on every render when font isn't loaded
+const emptyGlyphMap: GlyphMap = new Map();
+const emptyKerningMap: KerningMap = new Map();
 
 // Buffer capacity management
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -59,15 +61,14 @@ export function TextEntities() {
   const initializedRef = useRef(false);
   const dirtyRef = useRef(true);
 
-  // Pre-built lookup maps (memoized on font change)
-  const glyphMap = useMemo<GlyphMap>(
-    () => (regularFont ? buildGlyphMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
-  const kerningMap = useMemo<KerningMap>(
-    () => (regularFont ? buildKerningMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
+  // Deferred dimension updates — batched via queueMicrotask to avoid store
+  // mutations (array spread + quadtree update) inside the render loop.
+  const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
+  const dimFlushScheduledRef = useRef(false);
+
+  // Pre-built lookup maps from FontContext (shared across all text components)
+  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
+  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   // Derive text color from theme tokens — raw RGB, no color pipeline issues
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
@@ -136,10 +137,13 @@ export function TextEntities() {
     dirtyRef.current = true;
   }, [buffers, material]);
 
-  // Subscribe to relevant store slices for dirty flagging
+  // Subscribe to relevant store slices for dirty flagging.
+  // Use positionVersion + entities.length instead of the full entities array
+  // to avoid marking dirty when non-text entities change data (collapse, parent, etc.).
   useEffect(() => {
     const markDirty = () => { dirtyRef.current = true; };
-    const unsubEntities = store.subscribe((s) => s.entities, markDirty);
+    const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
+    const unsubTopology = store.subscribe((s) => s.entities.length, markDirty);
     const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
@@ -147,7 +151,8 @@ export function TextEntities() {
     const unsubEditContent = store.subscribe((s) => s.editingContent, markDirty);
 
     return () => {
-      unsubEntities();
+      unsubPositions();
+      unsubTopology();
       unsubViewport();
       unsubSelection();
       unsubHidden();
@@ -215,11 +220,10 @@ export function TextEntities() {
         measurement.height + 2 * padding,
         fontSize * lineHeight + 2 * padding
       );
-      // Skip store write for the entity being edited — its height is already
-      // maintained by TextEditOverlay.handleInput, avoiding a redundant
-      // entities array spread + quadtree update inside the render loop.
+      // Defer store writes to avoid entities array spread + quadtree update
+      // inside the render loop. Use the correct height locally for this frame.
       if (editingEntityId !== entity.id && Math.abs(h - expectedH) > 0.5) {
-        store.getState().updateEntityDimensions(entity.id, w, expectedH);
+        pendingDimUpdatesRef.current.set(entity.id, { w, h: expectedH });
         h = expectedH;
       }
 
@@ -333,6 +337,23 @@ export function TextEntities() {
     mesh.renderOrder = hasSelected ? RENDER_ORDER_FG : RENDER_ORDER_BG;
 
     dirtyRef.current = false;
+
+    // Flush pending dimension updates via microtask — runs after useFrame
+    // completes but before the next paint. The store update triggers subscribers
+    // which re-set dirtyRef, so the next frame sees the corrected heights and
+    // the condition becomes false (convergence in 2 frames).
+    if (pendingDimUpdatesRef.current.size > 0 && !dimFlushScheduledRef.current) {
+      dimFlushScheduledRef.current = true;
+      queueMicrotask(() => {
+        dimFlushScheduledRef.current = false;
+        const pending = pendingDimUpdatesRef.current;
+        if (pending.size === 0) return;
+        for (const [id, { w, h }] of pending) {
+          store.getState().updateEntityDimensions(id, w, h);
+        }
+        pending.clear();
+      });
+    }
   });
 
   // Don't render if font not loaded

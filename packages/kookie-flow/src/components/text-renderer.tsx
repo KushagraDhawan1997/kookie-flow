@@ -20,14 +20,13 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
-import { useFont } from '../contexts/FontContext';
+import { useFont, type LoadedFontWeight } from '../contexts/FontContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
 import { THEME_COLORS } from '../core/theme-colors';
 import {
   type FontMetrics,
   type TextEntry,
-  type TextFontWeight,
   type GlyphMap,
   type KerningMap,
   buildGlyphMap,
@@ -41,6 +40,14 @@ import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
+// Stable empty maps to avoid re-creating on every render when font isn't loaded
+const emptyGlyphMap: GlyphMap = new Map();
+const emptyKerningMap: KerningMap = new Map();
+
+// Sentinel array — unique reference that never equals any real entries array.
+// Used to force buffer re-population after capacity resize.
+const SENTINEL_ENTRIES: TextEntry[] = [];
+
 // Buffer capacity management
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 512;
@@ -53,18 +60,15 @@ const MIN_EDGE_ZOOM = 0.25; // Below this, hide edge labels
 
 /**
  * Font data for a single weight.
+ * @deprecated Use LoadedFontWeight from FontContext instead.
  */
-export interface FontWeightData {
-  metrics: FontMetrics;
-  texture: THREE.Texture;
-}
+export type FontWeightData = LoadedFontWeight;
 
 /**
  * Props for the single-weight text renderer.
  */
 interface TextWeightRendererProps {
-  fontMetrics: FontMetrics;
-  atlasTexture: THREE.Texture;
+  fontData: import('../contexts/FontContext').LoadedFontWeight;
   /** Ref to entries array - read directly in useFrame for same-frame updates */
   entriesRef: React.MutableRefObject<TextEntry[]>;
 }
@@ -72,14 +76,11 @@ interface TextWeightRendererProps {
 /**
  * Renders text for a single font weight using instanced MSDF.
  */
-function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeightRendererProps) {
+function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
+  const { metrics: fontMetrics, texture: atlasTexture, glyphMap, kerningMap } = fontData;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const initializedRef = useRef(false);
-
-  // Pre-built lookup maps
-  const glyphMap = useMemo<GlyphMap>(() => buildGlyphMap(fontMetrics), [fontMetrics]);
-  const kerningMap = useMemo<KerningMap>(() => buildKerningMap(fontMetrics), [fontMetrics]);
 
   // Create plane geometry (unit quad)
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -115,9 +116,14 @@ function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeigh
     [capacity]
   );
 
+  // Track last processed entries ref to skip redundant buffer writes.
+  // SENTINEL forces a re-populate after buffer resize (different from any real array).
+  const lastEntriesRef = useRef<TextEntry[]>(SENTINEL_ENTRIES);
+
   // Reset initialized flag when buffers change
   useEffect(() => {
     initializedRef.current = false;
+    lastEntriesRef.current = SENTINEL_ENTRIES; // Force re-populate after resize
   }, [buffers]);
 
   // Initialize attributes when mesh is ready
@@ -141,12 +147,18 @@ function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeigh
     initializedRef.current = true;
   }, [buffers]);
 
-  // Update on frame - read from ref for same-frame updates (no React batching delay)
+  // Update on frame - read from ref for same-frame updates (no React batching delay).
+  // Skip buffer population when entries ref hasn't changed (parent didn't re-collect).
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current) return;
 
     const entries = entriesRef.current;
+
+    // Same reference as last frame → parent didn't re-collect, nothing changed
+    if (entries === lastEntriesRef.current) return;
+    lastEntriesRef.current = entries;
+
     if (entries.length === 0) {
       mesh.count = 0;
       return;
@@ -203,9 +215,9 @@ function TextWeightRenderer({ fontMetrics, atlasTexture, entriesRef }: TextWeigh
  */
 export interface MultiWeightTextRendererProps {
   /** Font data for regular weight (optional - uses FontContext if not provided) */
-  regularFont?: FontWeightData;
+  regularFont?: LoadedFontWeight;
   /** Font data for semibold weight (optional - uses FontContext if not provided) */
-  semiboldFont?: FontWeightData;
+  semiboldFont?: LoadedFontWeight;
   /** Show socket labels */
   showSocketLabels?: boolean;
   /** Show edge labels */
@@ -254,15 +266,9 @@ export function MultiWeightTextRenderer({
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
   const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
 
-  // Build glyph/kerning maps for text truncation
-  const regularGlyphMap = useMemo<GlyphMap>(
-    () => (regularFont ? buildGlyphMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
-  const regularKerningMap = useMemo<KerningMap>(
-    () => (regularFont ? buildKerningMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
+  // Glyph/kerning maps from FontContext (shared, built once)
+  const regularGlyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
+  const regularKerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   // Socket index map for edge label positioning
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
@@ -270,6 +276,9 @@ export function MultiWeightTextRenderer({
   // Entries by weight - use refs for same-frame updates (avoid React batching delay)
   const regularEntriesRef = useRef<TextEntry[]>([]);
   const semiboldEntriesRef = useRef<TextEntry[]>([]);
+
+  // Dirty flag — only re-collect when something relevant changes
+  const dirtyRef = useRef(true);
 
   // Track whether we have semibold entries (for conditional rendering)
   const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
@@ -509,32 +518,50 @@ export function MultiWeightTextRenderer({
     ]
   );
 
-  // Subscribe to store changes - rebuild socket index map when entities are added/removed
-  // IMPORTANT: Subscribe to entities.length, NOT entities array - position changes create new
-  // array references which would cause this to fire every frame during drag
+  // Subscribe to store changes that affect text labels
   useEffect(() => {
-    rebuildSocketIndexMap();
+    const markDirty = () => { dirtyRef.current = true; };
 
-    const unsubEntities = store.subscribe(
+    // Rebuild socket index map when entity count changes (add/remove)
+    rebuildSocketIndexMap();
+    const unsubEntityCount = store.subscribe(
       (state) => state.entities.length,
       () => {
         rebuildSocketIndexMap();
+        markDirty();
       }
     );
 
+    // Entity positions/dimensions/data affect header + socket label positions
+    const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
+    // Viewport changes affect culling + LOD
+    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
+    // Edge labels
+    const unsubEdges = store.subscribe((s) => s.edges, markDirty);
+
     return () => {
-      unsubEntities();
+      unsubEntityCount();
+      unsubPositions();
+      unsubViewport();
+      unsubEdges();
     };
   }, [store, rebuildSocketIndexMap]);
 
-  // Collect entries on frame - update refs directly for same-frame rendering
-  // Always collect every frame to ensure positions are fresh during drag
+  // Re-collect when theme colors or style config changes
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [primaryTextColor, secondaryTextColor, config, style, socketLayout]);
+
+  // Collect entries on frame — only when dirty (avoids allocations on idle frames)
   useFrame(({ size }) => {
+    if (!dirtyRef.current) return;
+
     const { viewport, entities } = store.getState();
 
     if (!regularFont || viewport.zoom < MIN_TEXT_ZOOM) {
       regularEntriesRef.current = [];
       semiboldEntriesRef.current = [];
+      dirtyRef.current = false;
       if (hasSemiboldEntries) setHasSemiboldEntries(false);
       return;
     }
@@ -561,6 +588,8 @@ export function MultiWeightTextRenderer({
     regularEntriesRef.current = regular;
     semiboldEntriesRef.current = semibold;
 
+    dirtyRef.current = false;
+
     // Only trigger React re-render if semibold presence changes (for conditional mount)
     const hasSemibold = semibold.length > 0;
     if (hasSemibold !== hasSemiboldEntries) {
@@ -576,14 +605,12 @@ export function MultiWeightTextRenderer({
   return (
     <>
       <TextWeightRenderer
-        fontMetrics={regularFont.metrics}
-        atlasTexture={regularFont.texture}
+        fontData={regularFont}
         entriesRef={regularEntriesRef}
       />
       {semiboldFont && hasSemiboldEntries && (
         <TextWeightRenderer
-          fontMetrics={semiboldFont.metrics}
-          atlasTexture={semiboldFont.texture}
+          fontData={semiboldFont}
           entriesRef={semiboldEntriesRef}
         />
       )}
@@ -613,9 +640,17 @@ export interface TextRendererProps {
  * @deprecated Use MultiWeightTextRenderer for multi-weight support.
  */
 export function TextRenderer({ fontMetrics, atlasTexture, ...props }: TextRendererProps) {
+  // Build maps for legacy callers that pass raw metrics/texture
+  const fontData = useMemo<LoadedFontWeight>(() => ({
+    metrics: fontMetrics,
+    texture: atlasTexture,
+    glyphMap: buildGlyphMap(fontMetrics),
+    kerningMap: buildKerningMap(fontMetrics),
+  }), [fontMetrics, atlasTexture]);
+
   return (
     <MultiWeightTextRenderer
-      regularFont={{ metrics: fontMetrics, texture: atlasTexture }}
+      regularFont={fontData}
       {...props}
     />
   );

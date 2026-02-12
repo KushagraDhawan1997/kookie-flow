@@ -50,14 +50,15 @@ function colorizeMipLevels(
   texture: THREE.Texture
 ): void {
   const glCtx = gl.getContext() as WebGL2RenderingContext;
-  const props = gl.properties.get(texture);
-  const glTex = props.__webglTexture;
+  const props = gl.properties.get(texture) as Record<string, unknown>;
+  const glTex = props.__webglTexture as WebGLTexture | undefined;
   if (!glTex) return;
 
   glCtx.bindTexture(glCtx.TEXTURE_2D, glTex);
 
-  let w = texture.image.width;
-  let h = texture.image.height;
+  const img = texture.image as { width: number; height: number };
+  let w = img.width;
+  let h = img.height;
 
   for (let level = 1; w > 1 || h > 1; level++) {
     w = Math.max(1, w >> 1);
@@ -321,8 +322,8 @@ export function ImageEntities() {
       if ('initTexture' in gl) {
         (gl as unknown as { initTexture: (t: THREE.Texture) => void }).initTexture(texture);
       }
-      const props = gl.properties.get(texture);
-      const glTex = props.__webglTexture;
+      const props = gl.properties.get(texture) as Record<string, unknown>;
+      const glTex = props.__webglTexture as WebGLTexture | undefined;
       if (glTex) {
         colorizeMipLevels(gl, texture);
         colorizedRef.current.add(texture);

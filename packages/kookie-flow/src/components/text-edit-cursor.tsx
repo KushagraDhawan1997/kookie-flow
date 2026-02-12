@@ -22,21 +22,20 @@ import {
   DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_PADDING,
 } from '../core/constants';
-import {
-  type GlyphMap,
-  type KerningMap,
-  buildGlyphMap,
-  buildKerningMap,
-} from '../utils/text-layout';
+import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import {
   type CharPositionTable,
   type SelectionRect,
-  type SelectionEntityBounds,
-  buildCharPositionsForEntity,
+  getSharedCharPositionTable,
+  clearSharedCharPositionTable,
   getCursorXY,
   getSelectionRects,
 } from '../utils/text-cursor-layout';
 import type { TextEntityData } from '../types';
+
+// Stable empty maps to avoid re-creating on every render when font isn't loaded
+const emptyGlyphMap: GlyphMap = new Map();
+const emptyKerningMap: KerningMap = new Map();
 
 const CURSOR_WIDTH = 1.0; // pixels (world units before zoom)
 const CURSOR_GAP = 1; // gap between last character and cursor (world units)
@@ -85,14 +84,9 @@ export function TextEditCursor() {
   const fontContext = useFont();
   const regularFont = fontContext.regular;
 
-  const glyphMap = useMemo<GlyphMap>(
-    () => (regularFont ? buildGlyphMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
-  const kerningMap = useMemo<KerningMap>(
-    () => (regularFont ? buildKerningMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
+  // Pre-built lookup maps from FontContext (shared across all text components)
+  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
+  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   const cursorMeshRef = useRef<THREE.Mesh>(null);
   const selectionMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -101,15 +95,10 @@ export function TextEditCursor() {
   const dirtyRef = useRef(true);
   const lastCursorRef = useRef<{ start: number; end: number } | null>(null);
 
-  // Table & selection caching (avoid per-frame allocations)
-  const cachedTableRef = useRef<CharPositionTable | null>(null);
-  const tableVersionRef = useRef(0);
-  const lastTableKeyRef = useRef({
-    content: '', w: 0, x: 0, y: 0,
-    fontSize: 0, lineHeight: 0, textAlign: '' as string, letterSpacing: 0,
-  });
+  // Selection caching (avoid per-frame allocations)
+  const lastTableRef = useRef<CharPositionTable | null>(null);
   const cachedRectsRef = useRef<SelectionRect[]>([]);
-  const lastSelKeyRef = useRef({ start: -1, end: -1, ver: -1 });
+  const lastSelKeyRef = useRef({ start: -1, end: -1, tableChanged: false });
   const matrixTmpRef = useRef(new THREE.Matrix4());
 
   // Theme colors
@@ -176,7 +165,8 @@ export function TextEditCursor() {
       blinkTimerRef.current = 0;
       blinkVisibleRef.current = true;
       lastCursorRef.current = null;
-      cachedTableRef.current = null;
+      lastTableRef.current = null;
+      clearSharedCharPositionTable();
       return;
     }
 
@@ -217,35 +207,14 @@ export function TextEditCursor() {
       c.setRGB(primaryTextColor[0], primaryTextColor[1], primaryTextColor[2]);
     }
 
-    // Build character position table (cached — only rebuild when inputs change)
-    const tk = lastTableKeyRef.current;
-    if (
-      !cachedTableRef.current ||
-      content !== tk.content ||
-      w !== tk.w ||
-      entity.position.x !== tk.x ||
-      entity.position.y !== tk.y ||
-      fontSize !== tk.fontSize ||
-      lineHeightMul !== tk.lineHeight ||
-      textAlign !== tk.textAlign ||
-      letterSpacing !== tk.letterSpacing
-    ) {
-      cachedTableRef.current = buildCharPositionsForEntity(
-        content, fontSize, lineHeightMul, textAlign,
-        w, pad, entity.position.x, entity.position.y,
-        regularFont.metrics, glyphMap, kerningMap, letterSpacing
-      );
-      tk.content = content;
-      tk.w = w;
-      tk.x = entity.position.x;
-      tk.y = entity.position.y;
-      tk.fontSize = fontSize;
-      tk.lineHeight = lineHeightMul;
-      tk.textAlign = textAlign;
-      tk.letterSpacing = letterSpacing;
-      tableVersionRef.current++;
-    }
-    const table = cachedTableRef.current;
+    // Get character position table (shared cache with TextEditOverlay)
+    const table = getSharedCharPositionTable(
+      content, fontSize, lineHeightMul, textAlign,
+      w, pad, entity.position.x, entity.position.y,
+      regularFont.metrics, glyphMap, kerningMap, letterSpacing
+    );
+    const tableChanged = table !== lastTableRef.current;
+    lastTableRef.current = table;
 
     const hasSelection = editingCursor.start !== editingCursor.end;
 
@@ -255,26 +224,18 @@ export function TextEditCursor() {
 
       // Cache selection rects — only rebuild when range or table changed
       const sk = lastSelKeyRef.current;
-      const tv = tableVersionRef.current;
       const selChanged = (
         editingCursor.start !== sk.start ||
         editingCursor.end !== sk.end ||
-        tv !== sk.ver
+        tableChanged
       );
 
       if (selChanged) {
-        const selBounds: SelectionEntityBounds = {
-          x: entity.position.x,
-          y: entity.position.y,
-          width: w,
-          padding: pad,
-        };
         cachedRectsRef.current = getSelectionRects(
-          editingCursor.start, editingCursor.end, table, selBounds
+          editingCursor.start, editingCursor.end, table
         );
         sk.start = editingCursor.start;
         sk.end = editingCursor.end;
-        sk.ver = tv;
 
         const rects = cachedRectsRef.current;
         const count = Math.min(rects.length, MAX_SELECTION_INSTANCES);

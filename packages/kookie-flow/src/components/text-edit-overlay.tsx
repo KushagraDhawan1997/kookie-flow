@@ -10,24 +10,23 @@
  * the Zustand store (editingContent, editingCursor).
  */
 
-import { useRef, useState, useCallback, useLayoutEffect, useMemo } from 'react';
+import { useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { useFlowStoreApi } from './context';
 import { useFont } from '../contexts/FontContext';
 import type { TextEntityData, EntityChange } from '../types';
 import { DEFAULT_TEXT_WIDTH, DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_PADDING } from '../core/constants';
 import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
+import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import {
-  type GlyphMap,
-  type KerningMap,
-  buildGlyphMap,
-  buildKerningMap,
-} from '../utils/text-layout';
-import {
-  buildCharPositionsForEntity,
+  getSharedCharPositionTable,
   getCursorXY,
   contentOffsetToLineColumn,
   lineColumnToContentOffset,
 } from '../utils/text-cursor-layout';
+
+// Stable empty maps to avoid re-creating on every render when font isn't loaded
+const emptyGlyphMap: GlyphMap = new Map();
+const emptyKerningMap: KerningMap = new Map();
 
 // Module-level ref for the textarea, accessible from InputHandler (kookie-flow.tsx)
 let _textareaEl: HTMLTextAreaElement | null = null;
@@ -50,14 +49,9 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
   const fontContext = useFont();
   const regularFont = fontContext.regular;
 
-  const glyphMap = useMemo<GlyphMap>(
-    () => (regularFont ? buildGlyphMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
-  const kerningMap = useMemo<KerningMap>(
-    () => (regularFont ? buildKerningMap(regularFont.metrics) : new Map()),
-    [regularFont]
-  );
+  // Pre-built lookup maps from FontContext (shared across all text components)
+  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
+  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -206,7 +200,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const textAlign = data.textAlign ?? 'left';
         const pad = DEFAULT_TEXT_PADDING;
 
-        const table = buildCharPositionsForEntity(
+        const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
           w, pad, entity.position.x, entity.position.y,
           regularFont.metrics, glyphMap, kerningMap, letterSpacing
@@ -291,7 +285,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const textAlign = data.textAlign ?? 'left';
         const pad = DEFAULT_TEXT_PADDING;
 
-        const table = buildCharPositionsForEntity(
+        const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
           w, pad, entity.position.x, entity.position.y,
           regularFont.metrics, glyphMap, kerningMap, letterSpacing

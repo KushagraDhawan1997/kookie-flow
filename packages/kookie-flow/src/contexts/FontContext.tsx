@@ -1,14 +1,20 @@
 import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from 'react';
 import * as THREE from 'three';
 import type { FontPreset, FontConfig, FontWeightConfig } from '../types';
-import type { FontMetrics } from '../utils/text-layout';
+import type { FontMetrics, GlyphMap, KerningMap } from '../utils/text-layout';
+import { buildGlyphMap, buildKerningMap } from '../utils/text-layout';
 
 /**
  * Loaded font data for WebGL rendering.
+ * Includes pre-built lookup maps so consumers don't duplicate them.
  */
 export interface LoadedFontWeight {
   metrics: FontMetrics;
   texture: THREE.Texture;
+  /** Pre-built glyph lookup map (O(1) by charCode) — shared across all consumers */
+  glyphMap: GlyphMap;
+  /** Pre-built kerning lookup map (O(1) by packed pair key) — shared across all consumers */
+  kerningMap: KerningMap;
 }
 
 /**
@@ -59,6 +65,8 @@ function loadFontWeight(config: FontWeightConfig): LoadedFontWeight {
   return {
     metrics: config.metrics,
     texture: loadTexture(config.atlasUrl),
+    glyphMap: buildGlyphMap(config.metrics),
+    kerningMap: buildKerningMap(config.metrics),
   };
 }
 

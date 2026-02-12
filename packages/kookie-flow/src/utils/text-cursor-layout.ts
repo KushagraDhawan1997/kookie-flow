@@ -621,3 +621,49 @@ export function buildCharPositionsForEntity(
     metrics, glyphMap, kerningMap, letterSpacing
   );
 }
+
+// ============================================================================
+// Shared CharPositionTable cache
+// ============================================================================
+// Module-level cache shared between TextEditCursor and TextEditOverlay.
+// Both components need the same table for the same editing entity — building
+// it once avoids O(chars) duplicate work on every arrow key press.
+
+let _sharedTable: CharPositionTable | null = null;
+let _sharedTableKey = '';
+
+/**
+ * Get a CharPositionTable, returning a cached version if inputs haven't changed.
+ * Shared across TextEditCursor and TextEditOverlay.
+ */
+export function getSharedCharPositionTable(
+  content: string,
+  fontSize: number,
+  lineHeight: number,
+  textAlign: 'left' | 'center' | 'right',
+  entityWidth: number,
+  padding: number,
+  entityX: number,
+  entityY: number,
+  metrics: FontMetrics,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap,
+  letterSpacing: number
+): CharPositionTable {
+  const key = `${content}|${fontSize}|${lineHeight}|${textAlign}|${entityWidth}|${entityX}|${entityY}|${letterSpacing}`;
+  if (_sharedTableKey === key && _sharedTable) return _sharedTable;
+
+  _sharedTable = buildCharPositionsForEntity(
+    content, fontSize, lineHeight, textAlign,
+    entityWidth, padding, entityX, entityY,
+    metrics, glyphMap, kerningMap, letterSpacing
+  );
+  _sharedTableKey = key;
+  return _sharedTable;
+}
+
+/** Clear the shared table cache (e.g. when editing ends). */
+export function clearSharedCharPositionTable(): void {
+  _sharedTable = null;
+  _sharedTableKey = '';
+}
