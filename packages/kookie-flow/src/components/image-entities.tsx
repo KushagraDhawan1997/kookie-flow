@@ -111,8 +111,14 @@ export function ImageEntities() {
       .map((e) => e.id);
   });
 
-  const dirtyRef = useRef(true);
-  // Separate flag for entity add/remove — gates the cleanup loop in useFrame
+  // Fine-grained dirty flags — avoid full useFrame work for lightweight changes.
+  // fullDirtyRef: positions, culling, LOD, textures (viewport/entity/texture-load changes)
+  // selectionDirtyRef: only renderOrder needs updating
+  // hiddenDirtyRef: only visibility needs updating
+  // topologyDirtyRef: entity add/remove — gates the cleanup loop
+  const fullDirtyRef = useRef(true);
+  const selectionDirtyRef = useRef(true);
+  const hiddenDirtyRef = useRef(true);
   const topologyDirtyRef = useRef(true);
 
   // Refs for each mesh, keyed by entity ID
@@ -130,7 +136,7 @@ export function ImageEntities() {
   // Texture manager — singleton for component lifetime.
   // onLoad callback marks dirty so textures appear as soon as they're ready.
   const texManager = useMemo(() => {
-    return new ImageTextureManager(() => { dirtyRef.current = true; });
+    return new ImageTextureManager(() => { fullDirtyRef.current = true; });
   }, []);
 
   // Placeholder color from theme (muted text color for subtle placeholder)
@@ -152,17 +158,17 @@ export function ImageEntities() {
     };
   }, [texManager, placeholderMat]);
 
-  // Subscribe to store changes.
-  // Split into two subscriptions:
-  // - topologyVersion: only fires on entity add/remove → runs filter/map to update React state
-  // - entities (reference): just marks dirty for useFrame (position/data changes during drag)
+  // Subscribe to store changes with fine-grained dirty flags.
+  // - topologyVersion: entity add/remove → rebuild image ID list + full update
+  // - entities: position/data changes → full update (positions, culling, LOD)
+  // - viewport: pan/zoom → full update
+  // - selectedEntityIds: only renderOrder changes → lightweight pass
+  // - hiddenEntityIds: only visibility changes → lightweight pass
   useEffect(() => {
-    const markDirty = () => { dirtyRef.current = true; };
+    const markFullDirty = () => { fullDirtyRef.current = true; };
 
-    // Topology changes (add/remove) — rebuild image ID list for React reconciliation.
-    // topologyVersion doesn't change during drag, so filter/map only runs when needed.
     const unsubTopology = store.subscribe((s) => s.topologyVersion, () => {
-      markDirty();
+      markFullDirty();
       topologyDirtyRef.current = true;
       const { entities } = store.getState();
       const ids = entities.filter((e) => e.type === 'image').map((e) => e.id);
@@ -174,12 +180,14 @@ export function ImageEntities() {
         return prev;
       });
     });
-    // Position/data changes — just mark dirty for useFrame, no allocations
-    const unsubEntities = store.subscribe((s) => s.entities, markDirty);
-    // Viewport changes affect frustum culling and LOD selection (zoom-dependent)
-    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
-    const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
-    const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
+    const unsubEntities = store.subscribe((s) => s.entities, markFullDirty);
+    const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
+    const unsubSelection = store.subscribe((s) => s.selectedEntityIds, () => {
+      selectionDirtyRef.current = true;
+    });
+    const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, () => {
+      hiddenDirtyRef.current = true;
+    });
 
     return () => {
       unsubTopology();
@@ -204,8 +212,16 @@ export function ImageEntities() {
   }
 
   // ---- useFrame: update positions, textures, visibility (no React re-render) ----
+  // Uses fine-grained dirty flags to skip work:
+  // - fullDirtyRef: positions, culling, LOD, textures (viewport/entity/texture changes)
+  // - selectionDirtyRef: only renderOrder (selection click)
+  // - hiddenDirtyRef: only visibility (hide/show toggle)
   useFrame(({ size }) => {
-    if (!dirtyRef.current) return;
+    const full = fullDirtyRef.current;
+    const selDirty = selectionDirtyRef.current;
+    const hidDirty = hiddenDirtyRef.current;
+
+    if (!full && !selDirty && !hidDirty) return;
 
     const {
       entities,
@@ -214,11 +230,15 @@ export function ImageEntities() {
       hiddenEntityIds,
     } = store.getState();
 
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
+    // Viewport bounds only needed for full update (frustum culling)
+    let viewLeft = 0, viewRight = 0, viewTop = 0, viewBottom = 0;
+    if (full) {
+      const invZoom = 1 / viewport.zoom;
+      viewLeft = -viewport.x * invZoom;
+      viewRight = (size.width - viewport.x) * invZoom;
+      viewTop = -viewport.y * invZoom;
+      viewBottom = (size.height - viewport.y) * invZoom;
+    }
     const cullPadding = 100;
 
     for (let i = 0; i < entities.length; i++) {
@@ -227,6 +247,19 @@ export function ImageEntities() {
 
       const mesh = meshRefs.current.get(entity.id);
       if (!mesh) continue;
+
+      // Lightweight path: selection-only or hidden-only change
+      if (!full) {
+        if (hidDirty) {
+          mesh.visible = !hiddenEntityIds.has(entity.id);
+        }
+        if (selDirty && mesh.visible) {
+          mesh.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
+        }
+        continue;
+      }
+
+      // Full path: positions, culling, LOD, textures, renderOrder, visibility
 
       // Hidden check
       if (hiddenEntityIds.has(entity.id)) {
@@ -327,7 +360,9 @@ export function ImageEntities() {
       topologyDirtyRef.current = false;
     }
 
-    dirtyRef.current = false;
+    fullDirtyRef.current = false;
+    selectionDirtyRef.current = false;
+    hiddenDirtyRef.current = false;
   });
 
   // Debug: colorize mip levels one frame after GPU upload
