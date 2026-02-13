@@ -1891,16 +1891,23 @@ function InputHandler({
   }, []);
 
   // Native drag/drop listeners for filesystem file drops.
-  // Must use native listeners because R3F's Canvas intercepts React synthetic drag events.
+  // Uses capture phase so the handler fires before any child element can interfere.
+  // Stable ref for the callback avoids tearing down listeners on re-render.
+  const onFileDropRef = useRef(onFileDrop);
+  onFileDropRef.current = onFileDrop;
+
   useEffect(() => {
-    if (!onFileDrop) return;
     const el = containerRef.current;
     if (!el) return;
 
-    const handleDragOver = (e: DragEvent) => { e.preventDefault(); };
-    const handleDrop = (e: DragEvent) => {
+    const handleDragOver = (e: DragEvent) => {
+      if (!onFileDropRef.current) return;
       e.preventDefault();
-      if (!e.dataTransfer) return;
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const handleDrop = (e: DragEvent) => {
+      if (!onFileDropRef.current || !e.dataTransfer) return;
+      e.preventDefault();
       const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
       if (files.length === 0) return;
       const rect = cachedRectRef.current;
@@ -1908,16 +1915,17 @@ function InputHandler({
         { x: e.clientX - rect.left, y: e.clientY - rect.top },
         store.getState().viewport,
       );
-      onFileDrop(files, worldPos);
+      onFileDropRef.current(files, worldPos);
     };
 
-    el.addEventListener('dragover', handleDragOver);
-    el.addEventListener('drop', handleDrop);
+    // Capture phase ensures we handle the event before any child element
+    el.addEventListener('dragover', handleDragOver, true);
+    el.addEventListener('drop', handleDrop, true);
     return () => {
-      el.removeEventListener('dragover', handleDragOver);
-      el.removeEventListener('drop', handleDrop);
+      el.removeEventListener('dragover', handleDragOver, true);
+      el.removeEventListener('drop', handleDrop, true);
     };
-  }, [onFileDrop, store]);
+  }, [store]);
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
