@@ -1890,23 +1890,29 @@ function InputHandler({
     };
   }, []);
 
-  // Native drag/drop listeners for filesystem file drops.
-  // Uses capture phase so the handler fires before any child element can interfere.
-  // Stable ref for the callback avoids tearing down listeners on re-render.
+  // Filesystem file-drop: listen on window to avoid DOM/R3F event interception.
+  // Check container bounds via cachedRectRef (no layout thrash).
   const onFileDropRef = useRef(onFileDrop);
   onFileDropRef.current = onFileDrop;
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!containerRef.current) return;
+
+    const inBounds = (e: DragEvent) => {
+      const r = cachedRectRef.current;
+      return (
+        e.clientX >= r.left && e.clientX <= r.left + r.width &&
+        e.clientY >= r.top && e.clientY <= r.top + r.height
+      );
+    };
 
     const handleDragOver = (e: DragEvent) => {
-      if (!onFileDropRef.current) return;
+      if (!onFileDropRef.current || !inBounds(e)) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     };
     const handleDrop = (e: DragEvent) => {
-      if (!onFileDropRef.current || !e.dataTransfer) return;
+      if (!onFileDropRef.current || !e.dataTransfer || !inBounds(e)) return;
       e.preventDefault();
       const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
       if (files.length === 0) return;
@@ -1918,12 +1924,11 @@ function InputHandler({
       onFileDropRef.current(files, worldPos);
     };
 
-    // Capture phase ensures we handle the event before any child element
-    el.addEventListener('dragover', handleDragOver, true);
-    el.addEventListener('drop', handleDrop, true);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
     return () => {
-      el.removeEventListener('dragover', handleDragOver, true);
-      el.removeEventListener('drop', handleDrop, true);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
     };
   }, [store]);
 
