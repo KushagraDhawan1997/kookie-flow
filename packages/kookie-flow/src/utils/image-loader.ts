@@ -9,13 +9,13 @@
  * Design decisions:
  * - Each unique `src` gets one CacheEntry with up to 2 LOD tiers (thumbnail + full).
  * - Thumbnail: ≤ 256px on longest axis. Used when entity is small on screen.
- * - Full: original capped at MAX_IMAGE_TEXTURE_SIZE (4096). Used when zoomed in.
+ * - Full: original capped at maxTextureSize (default 2048). Used when zoomed in.
  * - Textures are Three.js `Texture` objects, disposed explicitly.
  * - Reference counted: multiple entities can share the same src.
  */
 
 import * as THREE from 'three';
-import { MAX_IMAGE_TEXTURE_SIZE } from '../core/constants';
+import { DEFAULT_MAX_IMAGE_TEXTURE_SIZE } from '../core/constants';
 import { ImageDecodeWorker } from './image-decode-worker';
 
 // LOD threshold: if the entity's screen-space width (px) is below this, use thumbnail
@@ -94,9 +94,11 @@ export class ImageTextureManager {
   private onLoad: (() => void) | undefined;
   private uploadQueue: PendingUpload[] = [];
   private decodeWorker: ImageDecodeWorker | null = null;
+  private maxTextureSize: number;
 
-  constructor(onLoad?: () => void) {
+  constructor(onLoad?: () => void, maxTextureSize?: number) {
     this.onLoad = onLoad;
+    this.maxTextureSize = maxTextureSize ?? DEFAULT_MAX_IMAGE_TEXTURE_SIZE;
   }
 
   // ── Worker (lazy) ──────────────────────────────────────────────────
@@ -311,7 +313,7 @@ export class ImageTextureManager {
       const worker = this.getDecodeWorker();
 
       if (worker) {
-        const result = await worker.decode(MAX_IMAGE_TEXTURE_SIZE, blob);
+        const result = await worker.decode(this.maxTextureSize, blob);
         if (!this.cache.has(src)) { result.bitmap.close(); return; }
 
         this.enqueueUpload({
@@ -325,7 +327,7 @@ export class ImageTextureManager {
         const bitmap = await createImageBitmap(blob);
         if (!this.cache.has(src)) { bitmap.close(); return; }
 
-        const fullBitmap = await downscale(bitmap, MAX_IMAGE_TEXTURE_SIZE);
+        const fullBitmap = await downscale(bitmap, this.maxTextureSize);
         if (!this.cache.has(src)) {
           fullBitmap.close();
           if (fullBitmap !== bitmap) bitmap.close();

@@ -97,8 +97,8 @@ export const DEFAULT_IMAGE_WIDTH = 240;
 export const DEFAULT_IMAGE_HEIGHT = 160;
 export const MIN_IMAGE_WIDTH = 60;
 export const MIN_IMAGE_HEIGHT = 40;
-/** Maximum texture dimension — matches Figma's cap; keeps worst-case VRAM per image at 64 MB */
-export const MAX_IMAGE_TEXTURE_SIZE = 4096;
+/** Default maximum texture dimension for full-res LOD tier (configurable via maxImageTextureSize prop) */
+export const DEFAULT_MAX_IMAGE_TEXTURE_SIZE = 2048;
 
 /** Selection outline + resize handle settings (screen pixels) */
 export const RESIZE_HANDLE_SIZE = 8;

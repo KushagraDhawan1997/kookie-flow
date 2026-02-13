@@ -793,6 +793,8 @@ export interface KookieFlowProps {
   snapGrid?: [number, number];
   /** Default edge rendering type. Default: 'bezier' */
   defaultEdgeType?: EdgeType;
+  /** Maximum texture dimension (px) for full-res image LOD tier. Default: 2048 */
+  maxImageTextureSize?: number;
   /** Additional class name */
   className?: string;
   /** Children (for overlays) */

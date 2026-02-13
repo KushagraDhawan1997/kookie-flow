@@ -122,6 +122,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     snapToGrid = false,
     snapGrid = [20, 20],
     defaultEdgeType = 'bezier',
+    maxImageTextureSize,
     connectionMode = 'loose',
     isValidConnection,
     allowCycles = true,
@@ -197,6 +198,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             ThemeComponent={ThemeComponent}
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
+            maxImageTextureSize={maxImageTextureSize}
           >
             {children}
           </ThemedFlowContainer>
@@ -250,6 +252,7 @@ interface ThemedFlowContainerProps {
   ThemeComponent?: KookieFlowProps['ThemeComponent'];
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
+  maxImageTextureSize?: number;
 }
 
 const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerProps>(
@@ -294,6 +297,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       ThemeComponent,
       defaultEntityWidth,
       socketLabelWidth,
+      maxImageTextureSize,
     },
     ref
   ) {
@@ -354,6 +358,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               textRenderMode={textRenderMode}
               showSocketLabels={showSocketLabels}
               showEdgeLabels={showEdgeLabels}
+              maxImageTextureSize={maxImageTextureSize}
             />
             <DOMLayer
               entityTypes={entityTypes}
@@ -2205,6 +2210,7 @@ interface FlowCanvasProps {
   textRenderMode: TextRenderMode;
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
+  maxImageTextureSize?: number;
 }
 
 /**
@@ -2240,6 +2246,7 @@ function FlowCanvas({
   textRenderMode,
   showSocketLabels,
   showEdgeLabels,
+  maxImageTextureSize,
 }: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
   const glConfig = useMemo(
@@ -2284,7 +2291,7 @@ function FlowCanvas({
       <CameraController />
       {showGrid && <Grid />}
       <TextEntities />
-      <ImageEntities />
+      <ImageEntities maxImageTextureSize={maxImageTextureSize} />
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Entities />

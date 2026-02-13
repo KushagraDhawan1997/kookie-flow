@@ -100,7 +100,7 @@ function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
   });
 }
 
-export function ImageEntities() {
+export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: number }) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
 
@@ -136,8 +136,8 @@ export function ImageEntities() {
   // Texture manager — singleton for component lifetime.
   // onLoad callback marks dirty so textures appear as soon as they're ready.
   const texManager = useMemo(() => {
-    return new ImageTextureManager(() => { fullDirtyRef.current = true; });
-  }, []);
+    return new ImageTextureManager(() => { fullDirtyRef.current = true; }, maxImageTextureSize);
+  }, [maxImageTextureSize]);
 
   // Placeholder color from theme (muted text color for subtle placeholder)
   const surfaceColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
