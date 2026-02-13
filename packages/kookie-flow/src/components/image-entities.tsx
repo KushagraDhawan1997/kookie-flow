@@ -238,6 +238,13 @@ export function ImageEntities() {
   // - selectionDirtyRef: only renderOrder (selection click)
   // - hiddenDirtyRef: only visibility (hide/show toggle)
   useFrame(({ size }) => {
+    // Drain texture upload queue: 1-2 per frame to avoid GPU stalls.
+    // Runs before dirty-flag check so queue drains even when nothing else changed.
+    if (texManager.hasQueuedUploads) {
+      texManager.processUploadQueue(2);
+      fullDirtyRef.current = true;
+    }
+
     const full = fullDirtyRef.current;
     const selDirty = selectionDirtyRef.current;
     const hidDirty = hiddenDirtyRef.current;
@@ -377,6 +384,11 @@ export function ImageEntities() {
     fullDirtyRef.current = false;
     selectionDirtyRef.current = false;
     hiddenDirtyRef.current = false;
+
+    // Keep draining upload queue next frame if more items remain
+    if (texManager.hasQueuedUploads) {
+      fullDirtyRef.current = true;
+    }
   });
 
   // Debug: colorize mip levels one frame after GPU upload
