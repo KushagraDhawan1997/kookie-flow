@@ -241,27 +241,28 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const errorColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
 
   // Placeholder material (shared for unloaded images)
+  // Disposed on theme change via useEffect cleanup, not just unmount
   const placeholderMat = useMemo(
     () => createPlaceholderMaterial(surfaceColor),
     [surfaceColor]
   );
+  useEffect(() => () => { placeholderMat.dispose(); }, [placeholderMat]);
 
   // Error material (shared for failed image loads)
   const errorMat = useMemo(
     () => createPlaceholderMaterial(errorColor),
     [errorColor]
   );
+  useEffect(() => () => { errorMat.dispose(); }, [errorMat]);
 
   // Cleanup texture manager on unmount
   useEffect(() => {
     return () => {
       texManager.disposeAll();
-      placeholderMat.dispose();
-      errorMat.dispose();
       materialRefs.current.forEach((m) => m.dispose());
       materialRefs.current.clear();
     };
-  }, [texManager, placeholderMat, errorMat]);
+  }, [texManager]);
 
   // Subscribe to store changes with fine-grained dirty flags.
   // - topologyVersion: entity add/remove → rebuild image ID list + full update

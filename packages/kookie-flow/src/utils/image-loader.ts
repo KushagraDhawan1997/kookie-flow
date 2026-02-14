@@ -144,7 +144,7 @@ export class ImageTextureManager {
 
     const count = Math.min(maxPerFrame, this.uploadQueue.length);
     for (let i = 0; i < count; i++) {
-      const item = this.uploadQueue[i];
+      const item = this.uploadQueue.shift()!;
       const entry = this.cache.get(item.src);
       if (!entry) {
         // Entry was disposed while queued — clean up bitmap
@@ -160,7 +160,6 @@ export class ImageTextureManager {
         this.fullResCount++;
       }
     }
-    this.uploadQueue.splice(0, count);
 
     // Evict LRU full-res textures if over budget
     if (this.fullResCount > MAX_FULL_RES_TEXTURES) {
@@ -424,14 +423,14 @@ export class ImageTextureManager {
 }
 
 /**
- * Create a placeholder gradient image as a data URL for demos.
- * Generates a colorful gradient on a canvas, returns a blob URL.
+ * Create a placeholder gradient image as a blob URL for demos.
+ * Uses canvas.toBlob() instead of toDataURL() to avoid 33% base64 overhead.
  */
-export function createDemoImageBlobURL(
+export async function createDemoImageBlobURL(
   width: number,
   height: number,
   colors: [string, string] = ['#6366f1', '#ec4899']
-): string {
+): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -475,5 +474,9 @@ export function createDemoImageBlobURL(
   ctx.arc(cx + iconSize / 4, cy - iconSize / 4, iconSize / 8, 0, Math.PI * 2);
   ctx.fill();
 
-  return canvas.toDataURL('image/png');
+  return new Promise<string>((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png'));
+    }, 'image/png');
+  });
 }
