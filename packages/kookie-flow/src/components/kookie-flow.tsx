@@ -1262,8 +1262,15 @@ function InputHandler({
         if (h === 's' || h === 'se' || h === 'sw') newH = rs.initialBounds.height + dy;
         if (h === 'n' || h === 'ne' || h === 'nw') { newH = rs.initialBounds.height - dy; newY = rs.initialBounds.y + dy; }
 
-        // Shift = aspect ratio lock
-        if (e.shiftKey) {
+        // Aspect ratio lock:
+        // - Images: locked by default (Shift to unlock)
+        // - Others: unlocked by default (Shift to lock)
+        const resizedEnt = store.getState().entityMap.get(rs.entityId);
+        const isImageLocked = resizedEnt?.type === 'image' &&
+          (resizedEnt.data as { aspectLocked?: boolean }).aspectLocked !== false;
+        const lockAspect = isImageLocked ? !e.shiftKey : e.shiftKey;
+
+        if (lockAspect) {
           const ar = rs.aspectRatio;
           if (h === 'e' || h === 'w') {
             newH = newW / ar;
@@ -1302,8 +1309,8 @@ function InputHandler({
           if (h === 'n' || h === 'ne' || h === 'nw') newY -= diff;
         }
 
-        // Shift: re-enforce ratio after min-size clamping
-        if (e.shiftKey) {
+        // Re-enforce ratio after min-size clamping
+        if (lockAspect) {
           if (newW <= rs.minWidth) {
             newW = rs.minWidth;
             newH = newW / rs.aspectRatio;
@@ -1315,9 +1322,8 @@ function InputHandler({
         }
 
         // Text entities: auto-height — recompute height from content after width change
-        const resizedEntity = store.getState().entityMap.get(rs.entityId);
-        if (resizedEntity?.type === 'text' && !e.shiftKey) {
-          const data = resizedEntity.data as TextEntityData;
+        if (resizedEnt?.type === 'text' && !lockAspect) {
+          const data = resizedEnt.data as TextEntityData;
           const style = resolveTextStyle(data);
           const resizeFont = regularFontRef.current;
           if (resizeFont && glyphMapRef.current.size > 0) {

@@ -259,6 +259,8 @@ export interface ImageEntityData extends EntityData {
   alt?: string;
   /** Object fit mode */
   objectFit?: 'contain' | 'cover' | 'fill';
+  /** Lock aspect ratio during resize (default true for images; Shift inverts) */
+  aspectLocked?: boolean;
 }
 
 /** Data for video entities */
