@@ -61,7 +61,7 @@ import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLin
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
-import { screenToWorld, getSocketAtPosition, getEdgeAtPosition } from '../utils/geometry';
+import { screenToWorld, getSocketAtPosition, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
 import { setInteractionMode } from './interaction-state';
@@ -966,15 +966,13 @@ function InputHandler({
 
       // Left-click: potentially start selection, box selection, or connection
       if (e.button === 0) {
-        const { viewport, entities } = store.getState();
+        const { viewport, socketQuadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        // Check for socket click first
-        const socket = getSocketAtPosition(
+        // Check for socket click first — O(log n) via spatial index
+        const socket = getSocketAtPositionFast(
           worldPos,
-          entities,
-          viewport,
-          { width: rect.width, height: rect.height },
+          socketQuadtree,
           socketLayout
         );
 
@@ -1185,15 +1183,13 @@ function InputHandler({
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, entities, entityMap } = store.getState();
+        const { viewport, entityMap, socketQuadtree: connSocketQuadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
-        // Check for socket hover during connection
-        const hoveredSocket = getSocketAtPosition(
+        // Check for socket hover during connection — O(log n) via spatial index
+        const hoveredSocket = getSocketAtPositionFast(
           worldPos,
-          entities,
-          viewport,
-          { width: rect.width, height: rect.height },
+          connSocketQuadtree,
           socketLayout
         );
         store.getState().setHoveredSocketId(hoveredSocket);
@@ -1540,7 +1536,7 @@ function InputHandler({
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, hoveredEntityId, hoveredSocketId, entities, quadtree } = store.getState();
+        const { viewport, hoveredEntityId, hoveredSocketId, quadtree, socketQuadtree: hoverSocketQuadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check resize handle hover first (for cursor feedback)
@@ -1551,12 +1547,10 @@ function InputHandler({
           setHoveredHandle(newHandle);
         }
 
-        // Check socket hover first
-        const newHoveredSocket = getSocketAtPosition(
+        // Check socket hover first — O(log n) via spatial index
+        const newHoveredSocket = getSocketAtPositionFast(
           worldPos,
-          entities,
-          viewport,
-          { width: rect.width, height: rect.height },
+          hoverSocketQuadtree,
           socketLayout
         );
 
