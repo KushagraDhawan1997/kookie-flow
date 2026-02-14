@@ -29,6 +29,7 @@ import {
   Select,
   SegmentedControl,
   Separator,
+  ToggleIconButton,
 } from '@kushagradhawan/kookie-ui';
 import type { CardProps } from '@kushagradhawan/kookie-ui';
 import { useFlowStoreApi } from './context';
@@ -491,6 +492,24 @@ function AlignRightIcon() {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function UnlockIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 7.4-2" />
+    </svg>
+  );
+}
+
 // ============================================================================
 // Built-in toolbar widgets (Kookie UI components)
 // ============================================================================
@@ -706,6 +725,38 @@ function BuiltInWidget({
         />
       );
       break;
+
+    case 'objectFit':
+      content = (
+        <SegmentedControl.Root
+          size="2"
+          value={(data.objectFit as string) ?? 'fill'}
+          onValueChange={(v: string) => update(entity.id, { objectFit: v })}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+        >
+          <SegmentedControl.Item value="fill">Fill</SegmentedControl.Item>
+          <SegmentedControl.Item value="cover">Cover</SegmentedControl.Item>
+          <SegmentedControl.Item value="contain">Contain</SegmentedControl.Item>
+        </SegmentedControl.Root>
+      );
+      break;
+
+    case 'aspectLock': {
+      const locked = (data.aspectLocked as boolean) ?? true;
+      content = (
+        <ToggleIconButton
+          size="2"
+          variant="soft"
+          pressed={locked}
+          onPressedChange={(v: boolean) => update(entity.id, { aspectLocked: v })}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+        >
+          {locked ? <LockIcon /> : <UnlockIcon />}
+        </ToggleIconButton>
+      );
+      break;
+    }
 
     default:
       return null;
