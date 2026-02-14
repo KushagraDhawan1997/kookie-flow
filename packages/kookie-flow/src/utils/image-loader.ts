@@ -24,6 +24,10 @@ const THUMBNAIL_SIZE = 256;
 
 export type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
+/** Time (ms) to keep the raw blob in memory before evicting it.
+ *  If full-res is requested after eviction, the image is re-fetched. */
+const BLOB_EVICTION_MS = 30_000;
+
 export interface TextureEntry {
   thumbnail: THREE.Texture | null;
   full: THREE.Texture | null;
@@ -39,6 +43,8 @@ export interface TextureEntry {
   blob: Blob | null;
   /** Whether full-res decode is in progress */
   fullLoadState: 'idle' | 'loading';
+  /** Timer ID for blob eviction (cleared on loadFull or release) */
+  blobTimerId: ReturnType<typeof setTimeout> | null;
 }
 
 // ── Upload queue item ────────────────────────────────────────────────
@@ -173,6 +179,7 @@ export class ImageTextureManager {
       abort: new AbortController(),
       blob: null,
       fullLoadState: 'idle',
+      blobTimerId: null,
     };
     this.cache.set(src, entry);
     this.load(src, entry);
@@ -186,6 +193,7 @@ export class ImageTextureManager {
     entry.refCount--;
     if (entry.refCount <= 0) {
       entry.abort?.abort();
+      if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
       entry.thumbnail?.dispose();
       entry.full?.dispose();
       entry.blob = null;
@@ -203,8 +211,8 @@ export class ImageTextureManager {
 
     if (screenWidth > LOD_THRESHOLD_PX) {
       if (entry.full) return entry.full;
-      // Trigger deferred full-res decode (if not already in progress)
-      if (entry.blob && entry.fullLoadState === 'idle') {
+      // Trigger deferred full-res decode (re-fetches if blob was evicted)
+      if (entry.fullLoadState === 'idle') {
         this.loadFull(src, entry);
       }
     }
@@ -229,6 +237,7 @@ export class ImageTextureManager {
 
     for (const [, entry] of this.cache) {
       entry.abort?.abort();
+      if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
       entry.thumbnail?.dispose();
       entry.full?.dispose();
       entry.blob = null;
@@ -288,8 +297,12 @@ export class ImageTextureManager {
         });
       }
 
-      // Store blob for deferred full-res decode
+      // Store blob for deferred full-res decode, with eviction timer
       entry.blob = blob;
+      entry.blobTimerId = setTimeout(() => {
+        entry.blobTimerId = null;
+        entry.blob = null;
+      }, BLOB_EVICTION_MS);
       entry.state = 'loaded';
       entry.abort = null;
       this.onLoad?.();
@@ -305,11 +318,25 @@ export class ImageTextureManager {
    * Decodes from the stored blob and enqueues for GPU upload.
    */
   private async loadFull(src: string, entry: TextureEntry): Promise<void> {
-    if (entry.fullLoadState !== 'idle' || !entry.blob) return;
+    if (entry.fullLoadState !== 'idle') return;
     entry.fullLoadState = 'loading';
 
+    // Cancel blob eviction timer — we're using/fetching it now
+    if (entry.blobTimerId !== null) {
+      clearTimeout(entry.blobTimerId);
+      entry.blobTimerId = null;
+    }
+
     try {
-      const blob = entry.blob;
+      // Re-fetch if blob was evicted by timeout
+      let blob = entry.blob;
+      if (!blob) {
+        const response = await fetch(src);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        blob = await response.blob();
+        if (!this.cache.has(src)) return;
+      }
+
       const worker = this.getDecodeWorker();
 
       if (worker) {
