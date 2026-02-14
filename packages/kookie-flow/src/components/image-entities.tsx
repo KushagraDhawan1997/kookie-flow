@@ -262,7 +262,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
   // Subscribe to store changes with fine-grained dirty flags.
   // - topologyVersion: entity add/remove → rebuild image ID list + full update
-  // - entities: position/data changes → full update (positions, culling, LOD)
+  // - positionVersion: position/dimension changes → full update
+  // - entities: data-only changes (src, objectFit) → full update (skips position-only)
   // - viewport: pan/zoom → full update
   // - selectedEntityIds: only renderOrder changes → lightweight pass
   // - hiddenEntityIds: only visibility changes → lightweight pass
@@ -282,7 +283,19 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
         return prev;
       });
     });
-    const unsubEntities = store.subscribe((s) => s.entities, markFullDirty);
+    // Position/dimension changes — fires on drag/resize but useFrame is now O(k) not O(n)
+    const unsubPositions = store.subscribe((s) => s.positionVersion, markFullDirty);
+    // Data changes (src, objectFit, etc.) — skip position-only updates already handled above
+    let lastPosVersion = store.getState().positionVersion;
+    const unsubEntities = store.subscribe((s) => s.entities, () => {
+      const pv = store.getState().positionVersion;
+      if (pv !== lastPosVersion) {
+        // Position version also bumped → position-only update, already handled
+        lastPosVersion = pv;
+        return;
+      }
+      markFullDirty();
+    });
     const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, () => {
       selectionDirtyRef.current = true;
@@ -293,6 +306,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
     return () => {
       unsubTopology();
+      unsubPositions();
       unsubEntities();
       unsubViewport();
       unsubSelection();
