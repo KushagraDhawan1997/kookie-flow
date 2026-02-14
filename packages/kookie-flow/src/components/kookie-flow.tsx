@@ -672,6 +672,7 @@ function InputHandler({
     initialPointer: { x: number; y: number };
     minWidth: number;
     minHeight: number;
+    aspectRatio: number;
   } | null>(null);
   // Tracks which resize handle (if any) is hovered for cursor changes.
   // Ref for comparison in handlePointerMove (avoids recreating the callback on every handle change).
@@ -1009,6 +1010,7 @@ function InputHandler({
               initialPointer: { x: worldPos.x, y: worldPos.y },
               minWidth,
               minHeight,
+              aspectRatio: h > 0 ? w / h : 1,
             };
             setIsResizing(true);
             setInteractionMode('resizing');
@@ -1250,6 +1252,34 @@ function InputHandler({
         if (h === 's' || h === 'se' || h === 'sw') newH = rs.initialBounds.height + dy;
         if (h === 'n' || h === 'ne' || h === 'nw') { newH = rs.initialBounds.height - dy; newY = rs.initialBounds.y + dy; }
 
+        // Shift = aspect ratio lock
+        if (e.shiftKey) {
+          const ar = rs.aspectRatio;
+          if (h === 'e' || h === 'w') {
+            newH = newW / ar;
+          } else if (h === 'n' || h === 's') {
+            newW = newH * ar;
+          } else {
+            // Corner: project delta onto aspect-ratio diagonal for smooth resize.
+            // Avoids jank from axis-dominance flipping when mouse direction changes.
+            const iw = rs.initialBounds.width;
+            const ih = rs.initialBounds.height;
+            const sx = (h === 'se' || h === 'ne') ? 1 : -1;
+            const sy = (h === 'se' || h === 'sw') ? 1 : -1;
+            const diagSq = iw * iw + ih * ih;
+            const t = (dx * sx * iw + dy * sy * ih) / diagSq;
+            newW = iw + t * iw;
+            newH = ih + t * ih;
+          }
+          // Recompute origin for handles that move it
+          if (h === 'w' || h === 'nw' || h === 'sw') {
+            newX = rs.initialBounds.x + rs.initialBounds.width - newW;
+          }
+          if (h === 'n' || h === 'ne' || h === 'nw') {
+            newY = rs.initialBounds.y + rs.initialBounds.height - newH;
+          }
+        }
+
         // Clamp to minimum sizes
         if (newW < rs.minWidth) {
           const diff = rs.minWidth - newW;
@@ -1262,9 +1292,21 @@ function InputHandler({
           if (h === 'n' || h === 'ne' || h === 'nw') newY -= diff;
         }
 
+        // Shift: re-enforce ratio after min-size clamping
+        if (e.shiftKey) {
+          if (newW <= rs.minWidth) {
+            newW = rs.minWidth;
+            newH = newW / rs.aspectRatio;
+          }
+          if (newH <= rs.minHeight) {
+            newH = rs.minHeight;
+            newW = newH * rs.aspectRatio;
+          }
+        }
+
         // Text entities: auto-height — recompute height from content after width change
         const resizedEntity = store.getState().entityMap.get(rs.entityId);
-        if (resizedEntity?.type === 'text') {
+        if (resizedEntity?.type === 'text' && !e.shiftKey) {
           const data = resizedEntity.data as TextEntityData;
           const style = resolveTextStyle(data);
           const resizeFont = regularFontRef.current;
