@@ -223,6 +223,9 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const autoSizedRef = useRef<Set<string>>(new Set());
   const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
   const dimFlushScheduledRef = useRef(false);
+  // Ref mirror of imageEntityIds for useFrame access (avoids React state read in render loop)
+  const imageEntityIdsRef = useRef(imageEntityIds);
+  imageEntityIdsRef.current = imageEntityIds;
   // Stable ref for onEntitiesChange to avoid stale closures in microtasks
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   onEntitiesChangeRef.current = onEntitiesChange;
@@ -368,11 +371,14 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     if (!full && !selDirty && !hidDirty) return;
 
     const {
-      entities,
+      entityMap,
       viewport,
       selectedEntityIds,
       hiddenEntityIds,
     } = store.getState();
+
+    // O(k) iteration over image entity IDs only, with O(1) entityMap lookups
+    const ids = imageEntityIdsRef.current;
 
     // Viewport bounds only needed for full update (frustum culling)
     let viewLeft = 0, viewRight = 0, viewTop = 0, viewBottom = 0;
@@ -385,9 +391,9 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     }
     const cullPadding = 100;
 
-    for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
-      if (entity.type !== 'image') continue;
+    for (let i = 0; i < ids.length; i++) {
+      const entity = entityMap.get(ids[i]);
+      if (!entity) continue;
 
       const mesh = meshRefs.current.get(entity.id);
       if (!mesh) continue;
@@ -453,6 +459,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       // Pick the best LOD texture
       const screenWidth = w * viewport.zoom;
       const texture = src ? texManager.getTexture(src, screenWidth) : null;
+      // Cache entry lookup once (used for UV, error state, and auto-sizing)
+      const entry = src ? texManager.getEntry(src) : undefined;
 
       if (texture) {
         // ShaderMaterial pre-created in ref callback — update uniforms only
@@ -470,7 +478,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
           // Object-fit UV transforms — mutates existing Vector2 uniforms in place
           const objectFit = data.objectFit ?? 'fill';
-          const entry = texManager.getEntry(src!);
           applyObjectFitUV(
             u.uvOffset.value as THREE.Vector2,
             u.uvScale.value as THREE.Vector2,
@@ -484,7 +491,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
         }
       } else {
         // Show placeholder or error state
-        const entry = src ? texManager.getEntry(src) : undefined;
         mesh.material = entry?.state === 'error' ? errorMat : placeholderMat;
       }
 
@@ -492,7 +498,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
       // Auto aspect ratio: on first texture load, adjust height to match natural proportions
       if (texture && src && !autoSizedRef.current.has(entity.id)) {
-        const entry = texManager.getEntry(src);
         if (entry && entry.naturalWidth > 0 && entry.naturalHeight > 0) {
           autoSizedRef.current.add(entity.id);
           const currentW = entity.width ?? DEFAULT_IMAGE_WIDTH;
