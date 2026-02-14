@@ -137,7 +137,7 @@ Never run build commands like `npm run build` or `pnpm build`—watchers are alr
 
 - Comment "why", not "what".
 - Document tricky hooks/components.
-- Update PLAN.md's phase tracking when adding features.
+- Update plans/PLAN.md's phase tracking when adding features.
 
 ---
 
@@ -155,4 +155,4 @@ Never run build commands like `npm run build` or `pnpm build`—watchers are alr
 - Prefer explicit, declarative, readable code.
 - Follow established patterns in the codebase.
 - If unsure whether something impacts performance, it probably does. Ask first.
-- Align with React best practices and the patterns established in PLAN.md.
+- Align with React best practices and the patterns established in plans/PLAN.md.
