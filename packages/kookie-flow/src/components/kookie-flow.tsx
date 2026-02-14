@@ -674,6 +674,7 @@ function InputHandler({
     minWidth: number;
     minHeight: number;
     aspectRatio: number;
+    initialCenter: { x: number; y: number };
   } | null>(null);
   // Tracks which resize handle (if any) is hovered for cursor changes.
   // Ref for comparison in handlePointerMove (avoids recreating the callback on every handle change).
@@ -1012,6 +1013,7 @@ function InputHandler({
               minWidth,
               minHeight,
               aspectRatio: h > 0 ? w / h : 1,
+              initialCenter: { x: entity.position.x + w / 2, y: entity.position.y + h / 2 },
             };
             setIsResizing(true);
             setInteractionMode('resizing');
@@ -1241,6 +1243,13 @@ function InputHandler({
           dy = Math.round(dy / snapGrid[1]) * snapGrid[1];
         }
 
+        // Alt = resize from center: double deltas so the handle stays under the cursor
+        const altResize = e.altKey;
+        if (altResize) {
+          dx *= 2;
+          dy *= 2;
+        }
+
         let newX = rs.initialBounds.x;
         let newY = rs.initialBounds.y;
         let newW = rs.initialBounds.width;
@@ -1323,6 +1332,12 @@ function InputHandler({
               style.fontSize * style.lineHeight + 2 * style.padding
             );
           }
+        }
+
+        // Alt = resize from center: reposition so entity stays centered
+        if (altResize) {
+          newX = rs.initialCenter.x - newW / 2;
+          newY = rs.initialCenter.y - newH / 2;
         }
 
         // Update entity dimensions and position
