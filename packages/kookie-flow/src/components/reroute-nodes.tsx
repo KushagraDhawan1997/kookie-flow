@@ -30,6 +30,15 @@ export function RerouteNodes() {
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
 
+  // Pre-filtered reroute entity IDs — only recomputed on topology changes, not every frame
+  const [rerouteEntityIds, setRerouteEntityIds] = useState<string[]>(() => {
+    return store.getState().entities
+      .filter((e) => e.type === 'reroute')
+      .map((e) => e.id);
+  });
+  const rerouteEntityIdsRef = useRef(rerouteEntityIds);
+  rerouteEntityIdsRef.current = rerouteEntityIds;
+
   // Derive colors from theme
   const rerouteColor = useMemo(() => {
     const c = tokens[THEME_COLORS.edge.default];
@@ -164,44 +173,35 @@ export function RerouteNodes() {
 
   // Subscribe to store changes
   useEffect(() => {
-    const unsubEntities = store.subscribe(
-      (state) => state.entities,
-      (entities) => {
-        dirtyRef.current = true;
-        // Check if we need more capacity for reroute entities
-        const rerouteCount = entities.filter((n) => n.type === 'reroute').length;
-        if (rerouteCount > capacity) {
-          setCapacity(Math.ceil(rerouteCount * BUFFER_GROWTH_FACTOR));
+    const markDirty = () => { dirtyRef.current = true; };
+
+    const unsubTopology = store.subscribe(
+      (state) => state.topologyVersion,
+      () => {
+        markDirty();
+        const { entities } = store.getState();
+        const ids = entities.filter((e) => e.type === 'reroute').map((e) => e.id);
+        setRerouteEntityIds((prev) => {
+          if (prev.length !== ids.length) return ids;
+          for (let i = 0; i < ids.length; i++) {
+            if (prev[i] !== ids[i]) return ids;
+          }
+          return prev;
+        });
+        if (ids.length > capacity) {
+          setCapacity(Math.ceil(ids.length * BUFFER_GROWTH_FACTOR));
         }
       }
     );
-    const unsubViewport = store.subscribe(
-      (state) => state.viewport,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
-    const unsubHovered = store.subscribe(
-      (state) => state.hoveredEntityId,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
-    const unsubSelection = store.subscribe(
-      (state) => state.selectedEntityIds,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
-    const unsubHidden = store.subscribe(
-      (state) => state.hiddenEntityIds,
-      () => {
-        dirtyRef.current = true;
-      }
-    );
+    const unsubPositions = store.subscribe((state) => state.positionVersion, markDirty);
+    const unsubViewport = store.subscribe((state) => state.viewport, markDirty);
+    const unsubHovered = store.subscribe((state) => state.hoveredEntityId, markDirty);
+    const unsubSelection = store.subscribe((state) => state.selectedEntityIds, markDirty);
+    const unsubHidden = store.subscribe((state) => state.hiddenEntityIds, markDirty);
 
     return () => {
-      unsubEntities();
+      unsubTopology();
+      unsubPositions();
       unsubViewport();
       unsubHovered();
       unsubSelection();
@@ -215,7 +215,7 @@ export function RerouteNodes() {
 
     if (!mesh || !initializedRef.current || !dirtyRef.current) return;
 
-    const { entities, viewport, hoveredEntityId, selectedEntityIds, hiddenEntityIds } = store.getState();
+    const { entityMap, viewport, hoveredEntityId, selectedEntityIds, hiddenEntityIds } = store.getState();
 
     // Mark dirty on canvas resize
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -223,10 +223,9 @@ export function RerouteNodes() {
       lastSizeRef.current.height = size.height;
     }
 
-    // Filter to reroute entities only
-    const rerouteEntities = entities.filter((n) => n.type === 'reroute');
+    const ids = rerouteEntityIdsRef.current;
 
-    if (rerouteEntities.length === 0) {
+    if (ids.length === 0) {
       mesh.count = 0;
       dirtyRef.current = false;
       return;
@@ -243,8 +242,9 @@ export function RerouteNodes() {
     let visibleCount = 0;
     const maxVisible = capacity;
 
-    for (let i = 0; i < rerouteEntities.length && visibleCount < maxVisible; i++) {
-      const entity = rerouteEntities[i];
+    for (let i = 0; i < ids.length && visibleCount < maxVisible; i++) {
+      const entity = entityMap.get(ids[i]);
+      if (!entity) continue;
 
       // Skip if inside collapsed frame - O(1) lookup
       if (hiddenEntityIds.has(entity.id)) {
