@@ -48,6 +48,19 @@ export function getMovedEntityIds(): ReadonlySet<string> {
   return _movedEntityIds;
 }
 
+/**
+ * Persistent id-to-index map — avoids O(n) rebuild on every drag frame.
+ * Kept in sync via rebuildIdToIndex (on setEntities/applyEntityChanges)
+ * and incremental updates in updateEntityPositions/updateEntityDimensions.
+ */
+const _idToIndex = new Map<string, number>();
+function rebuildIdToIndex(entities: Entity[]): void {
+  _idToIndex.clear();
+  for (let i = 0; i < entities.length; i++) {
+    _idToIndex.set(entities[i].id, i);
+  }
+}
+
 export interface FlowState {
   /** Entities in the graph */
   entities: Entity[];
@@ -508,6 +521,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } = rebuildDerivedState(initialEntities);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
   const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
+  rebuildIdToIndex(initialEntities);
 
   // Lazy cached analysis — closure-scoped, not in Zustand state (avoids re-render on compute)
   let cachedAnalysis: CachedAnalysis | null = null;
@@ -561,6 +575,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setEntities: (entities) => {
         const derived = rebuildDerivedState(entities, undefined, get().socketLayout);
         cachedAnalysis = null;
+        rebuildIdToIndex(entities);
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
         const state = get();
@@ -748,7 +763,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Rebuild derived state (entityMap, quadtree, socketQuadtree) to stay in sync
         const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
         const derived = rebuildDerivedState(nextEntities, finalCollapsed, get().socketLayout);
-        if (topologyChanged) cachedAnalysis = null;
+        if (topologyChanged) {
+          cachedAnalysis = null;
+          rebuildIdToIndex(nextEntities);
+        }
         set({
           entities: nextEntities,
           ...derived,
@@ -982,21 +1000,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
         const nextEntities = [...entities];
 
-        // Build id->index map once: O(n)
-        const idToIndex = new Map<string, number>();
-        for (let i = 0; i < entities.length; i++) {
-          idToIndex.set(entities[i].id, i);
-        }
-
         // Populate moved entity IDs side-channel for renderers
         _movedEntityIds.clear();
         for (const { id } of updates) {
           _movedEntityIds.add(id);
         }
 
-        // Update each entity: O(k)
+        // Update each entity: O(k) using persistent idToIndex map
         for (const { id, position } of updates) {
-          const index = idToIndex.get(id);
+          const index = _idToIndex.get(id);
           if (index !== undefined) {
             const entity = { ...nextEntities[index], position };
             nextEntities[index] = entity;
