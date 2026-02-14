@@ -21,9 +21,9 @@ import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
-import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT } from '../core/constants';
+import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../core/constants';
 import { ImageTextureManager } from '../utils/image-loader';
-import type { ImageEntityData } from '../types';
+import type { ImageEntityData, EntityChange } from '../types';
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -100,7 +100,12 @@ function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
   });
 }
 
-export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: number }) {
+interface ImageEntitiesProps {
+  maxImageTextureSize?: number;
+  onEntitiesChange?: (changes: EntityChange[]) => void;
+}
+
+export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
 
@@ -132,6 +137,14 @@ export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: n
   // Debug: track textures pending mip colorization (need one frame for GPU upload)
   const pendingColorizeRef = useRef<Set<THREE.Texture>>(new Set());
   const colorizedRef = useRef<WeakSet<THREE.Texture>>(new WeakSet());
+
+  // Auto aspect ratio: track which entities have been auto-sized, deferred store updates
+  const autoSizedRef = useRef<Set<string>>(new Set());
+  const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
+  const dimFlushScheduledRef = useRef(false);
+  // Stable ref for onEntitiesChange to avoid stale closures in microtasks
+  const onEntitiesChangeRef = useRef(onEntitiesChange);
+  onEntitiesChangeRef.current = onEntitiesChange;
 
   // Texture manager — singleton for component lifetime.
   // onLoad callback marks dirty so textures appear as soon as they're ready.
@@ -328,6 +341,7 @@ export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: n
         if (prevSrc) texManager.release(prevSrc);
         texManager.acquire(src);
         loadedSrcRefs.current.set(entity.id, src);
+        autoSizedRef.current.delete(entity.id); // re-auto-size for new image
       } else if (!src && prevSrc) {
         texManager.release(prevSrc);
         loadedSrcRefs.current.delete(entity.id);
@@ -360,6 +374,39 @@ export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: n
       }
 
       mesh.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
+
+      // Auto aspect ratio: on first texture load, adjust height to match natural proportions
+      if (texture && src && !autoSizedRef.current.has(entity.id)) {
+        const entry = texManager.getEntry(src);
+        if (entry && entry.naturalWidth > 0 && entry.naturalHeight > 0) {
+          autoSizedRef.current.add(entity.id);
+          const currentW = entity.width ?? DEFAULT_IMAGE_WIDTH;
+          const naturalAR = entry.naturalHeight / entry.naturalWidth;
+          const expectedH = Math.max(MIN_IMAGE_HEIGHT, Math.round(currentW * naturalAR));
+          const currentH = entity.height ?? DEFAULT_IMAGE_HEIGHT;
+          if (Math.abs(expectedH - currentH) > 0.5) {
+            pendingDimUpdatesRef.current.set(entity.id, { w: currentW, h: expectedH });
+          }
+        }
+      }
+    }
+
+    // Flush deferred dimension updates via microtask (avoids re-render inside useFrame)
+    if (pendingDimUpdatesRef.current.size > 0 && !dimFlushScheduledRef.current) {
+      dimFlushScheduledRef.current = true;
+      queueMicrotask(() => {
+        dimFlushScheduledRef.current = false;
+        const pending = pendingDimUpdatesRef.current;
+        if (pending.size === 0) return;
+        const changes: EntityChange[] = [];
+        for (const [id, { w, h }] of pending) {
+          store.getState().updateEntityDimensions(id, w, h);
+          changes.push({ type: 'dimensions', id, dimensions: { width: w, height: h } });
+        }
+        pending.clear();
+        // Notify consumer so controlled-mode state stays in sync
+        onEntitiesChangeRef.current?.(changes);
+      });
     }
 
     // Clean up materials and ref callbacks for removed entities.
@@ -371,6 +418,7 @@ export function ImageEntities({ maxImageTextureSize }: { maxImageTextureSize?: n
           mat?.dispose();
           materialRefs.current.delete(id);
           refCallbacksRef.current.delete(id);
+          autoSizedRef.current.delete(id);
           const src = loadedSrcRefs.current.get(id);
           if (src) {
             texManager.release(src);

@@ -359,6 +359,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               showSocketLabels={showSocketLabels}
               showEdgeLabels={showEdgeLabels}
               maxImageTextureSize={maxImageTextureSize}
+              onEntitiesChange={onEntitiesChange}
             />
             <DOMLayer
               entityTypes={entityTypes}
@@ -2253,6 +2254,7 @@ interface FlowCanvasProps {
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
   maxImageTextureSize?: number;
+  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
 }
 
 /**
@@ -2289,6 +2291,7 @@ function FlowCanvas({
   showSocketLabels,
   showEdgeLabels,
   maxImageTextureSize,
+  onEntitiesChange,
 }: FlowCanvasProps) {
   // WebGL context attributes optimized for Safari
   const glConfig = useMemo(
@@ -2333,7 +2336,7 @@ function FlowCanvas({
       <CameraController />
       {showGrid && <Grid />}
       <TextEntities />
-      <ImageEntities maxImageTextureSize={maxImageTextureSize} />
+      <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
       <Entities />
