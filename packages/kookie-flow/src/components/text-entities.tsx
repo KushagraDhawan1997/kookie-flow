@@ -20,7 +20,7 @@ import { useFont } from '../contexts/FontContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
-import type { TextEntityData } from '../types';
+import type { TextEntityData, EntityChange } from '../types';
 import {
   DEFAULT_TEXT_WIDTH,
   DEFAULT_TEXT_HEIGHT,
@@ -50,7 +50,11 @@ const MAX_CAPACITY = 250000;
 const RENDER_ORDER_BG = 1; // Non-selected (same as entities)
 const RENDER_ORDER_FG = 4; // Selected (same as entities)
 
-export function TextEntities() {
+interface TextEntitiesProps {
+  onEntitiesChange?: (changes: EntityChange[]) => void;
+}
+
+export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const fontContext = useFont();
@@ -60,6 +64,10 @@ export function TextEntities() {
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const initializedRef = useRef(false);
   const dirtyRef = useRef(true);
+
+  // Stable ref for onEntitiesChange to avoid stale closures in microtasks
+  const onEntitiesChangeRef = useRef(onEntitiesChange);
+  onEntitiesChangeRef.current = onEntitiesChange;
 
   // Deferred dimension updates — batched via queueMicrotask to avoid store
   // mutations (array spread + quadtree update) inside the render loop.
@@ -348,10 +356,16 @@ export function TextEntities() {
         dimFlushScheduledRef.current = false;
         const pending = pendingDimUpdatesRef.current;
         if (pending.size === 0) return;
+        // Collect dimension changes for parent propagation
+        const dimChanges: EntityChange[] = [];
         for (const [id, { w, h }] of pending) {
           store.getState().updateEntityDimensions(id, w, h);
+          dimChanges.push({ type: 'dimensions', id, dimensions: { width: w, height: h } });
         }
         pending.clear();
+        // Propagate to parent so controlled state stays in sync —
+        // prevents setEntities from wiping auto-computed heights
+        onEntitiesChangeRef.current?.(dimChanges);
       });
     }
   });

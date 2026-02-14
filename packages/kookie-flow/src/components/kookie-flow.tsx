@@ -2350,7 +2350,7 @@ function FlowCanvas({
       <Invalidator />
       <CameraController />
       {showGrid && <Grid />}
-      <TextEntities />
+      <TextEntities onEntitiesChange={onEntitiesChange} />
       <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
       <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
       <Sockets socketTypes={socketTypes} />
