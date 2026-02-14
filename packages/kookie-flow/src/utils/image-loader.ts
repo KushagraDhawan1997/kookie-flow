@@ -45,6 +45,8 @@ export interface TextureEntry {
   fullLoadState: 'idle' | 'loading';
   /** Timer ID for blob eviction (cleared on loadFull or release) */
   blobTimerId: ReturnType<typeof setTimeout> | null;
+  /** Timestamp of last getTexture access (for LRU eviction of full-res) */
+  lastAccessTime: number;
 }
 
 // ── Upload queue item ────────────────────────────────────────────────
@@ -95,8 +97,15 @@ function bitmapToTexture(bitmap: ImageBitmap, generateMipmaps: boolean): THREE.T
 
 // ── ImageTextureManager ──────────────────────────────────────────────
 
+/** Max number of full-res textures kept in GPU memory.
+ *  LRU eviction disposes the least-recently-accessed full-res textures
+ *  (thumbnails are kept since they're small). */
+const MAX_FULL_RES_TEXTURES = 32;
+
 export class ImageTextureManager {
   private cache = new Map<string, TextureEntry>();
+  /** Count of entries that currently have a full-res texture */
+  private fullResCount = 0;
   private onLoad: (() => void) | undefined;
   private uploadQueue: PendingUpload[] = [];
   private decodeWorker: ImageDecodeWorker | null = null;
@@ -148,9 +157,15 @@ export class ImageTextureManager {
         entry.thumbnail = tex;
       } else {
         entry.full = tex;
+        this.fullResCount++;
       }
     }
     this.uploadQueue.splice(0, count);
+
+    // Evict LRU full-res textures if over budget
+    if (this.fullResCount > MAX_FULL_RES_TEXTURES) {
+      this.evictFullRes();
+    }
 
     return this.uploadQueue.length > 0;
   }
@@ -180,6 +195,7 @@ export class ImageTextureManager {
       blob: null,
       fullLoadState: 'idle',
       blobTimerId: null,
+      lastAccessTime: 0,
     };
     this.cache.set(src, entry);
     this.load(src, entry);
@@ -195,7 +211,7 @@ export class ImageTextureManager {
       entry.abort?.abort();
       if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
       entry.thumbnail?.dispose();
-      entry.full?.dispose();
+      if (entry.full) { entry.full.dispose(); this.fullResCount--; }
       entry.blob = null;
       this.cache.delete(src);
     }
@@ -208,6 +224,8 @@ export class ImageTextureManager {
   getTexture(src: string, screenWidth: number): THREE.Texture | null {
     const entry = this.cache.get(src);
     if (!entry) return null;
+
+    entry.lastAccessTime = performance.now();
 
     if (screenWidth > LOD_THRESHOLD_PX) {
       if (entry.full) return entry.full;
@@ -243,6 +261,31 @@ export class ImageTextureManager {
       entry.blob = null;
     }
     this.cache.clear();
+  }
+
+  // ── LRU eviction ─────────────────────────────────────────────────
+
+  /** Evict least-recently-accessed full-res textures down to budget.
+   *  Thumbnails are kept (small). Full-res can be re-decoded on demand. */
+  private evictFullRes(): void {
+    // Collect entries with full-res textures, sorted by lastAccessTime ascending
+    const candidates: [string, TextureEntry][] = [];
+    for (const [src, entry] of this.cache) {
+      if (entry.full) candidates.push([src, entry]);
+    }
+    candidates.sort((a, b) => a[1].lastAccessTime - b[1].lastAccessTime);
+
+    // Evict oldest until within budget
+    let toEvict = this.fullResCount - MAX_FULL_RES_TEXTURES;
+    for (let i = 0; i < candidates.length && toEvict > 0; i++) {
+      const entry = candidates[i][1];
+      if (!entry.full) continue;
+      entry.full.dispose();
+      entry.full = null;
+      entry.fullLoadState = 'idle';
+      this.fullResCount--;
+      toEvict--;
+    }
   }
 
   // ── Private: load pipelines ────────────────────────────────────────
