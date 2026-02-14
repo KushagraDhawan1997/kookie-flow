@@ -100,6 +100,87 @@ function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
   });
 }
 
+// ---- Object-fit: custom ShaderMaterial with per-entity UV offset/scale ----
+
+const IMAGE_VERTEX_SHADER = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const IMAGE_FRAGMENT_SHADER = /* glsl */ `
+uniform sampler2D map;
+uniform float opacity;
+uniform vec2 uvOffset;
+uniform vec2 uvScale;
+varying vec2 vUv;
+
+void main() {
+  vec2 sampledUV = vUv * uvScale + uvOffset;
+
+  // Discard pixels outside texture bounds (contain mode letterbox)
+  if (sampledUV.x < 0.0 || sampledUV.x > 1.0 || sampledUV.y < 0.0 || sampledUV.y > 1.0) {
+    discard;
+  }
+
+  vec4 texColor = texture2D(map, sampledUV);
+  gl_FragColor = vec4(texColor.rgb, texColor.a * opacity);
+
+  #include <colorspace_fragment>
+}`;
+
+/**
+ * Compute UV offset/scale for object-fit modes, writing directly into
+ * the uniform Vector2s to avoid allocations in the render loop.
+ */
+function applyObjectFitUV(
+  uvOffset: THREE.Vector2,
+  uvScale: THREE.Vector2,
+  objectFit: 'fill' | 'cover' | 'contain',
+  entityW: number,
+  entityH: number,
+  naturalW: number,
+  naturalH: number,
+): void {
+  if (objectFit === 'fill' || naturalW <= 0 || naturalH <= 0) {
+    uvOffset.set(0, 0);
+    uvScale.set(1, 1);
+    return;
+  }
+
+  const imageAR = naturalW / naturalH;
+  const entityAR = entityW / entityH;
+
+  if (objectFit === 'cover') {
+    if (imageAR > entityAR) {
+      // Image wider → crop sides
+      const r = entityAR / imageAR;
+      uvOffset.set((1 - r) / 2, 0);
+      uvScale.set(r, 1);
+    } else {
+      // Image taller → crop top/bottom
+      const r = imageAR / entityAR;
+      uvOffset.set(0, (1 - r) / 2);
+      uvScale.set(1, r);
+    }
+    return;
+  }
+
+  // contain
+  if (imageAR > entityAR) {
+    // Image wider → bars top/bottom
+    const r = imageAR / entityAR;
+    uvOffset.set(0, -(r - 1) / 2);
+    uvScale.set(1, r);
+  } else {
+    // Image taller → bars left/right
+    const r = entityAR / imageAR;
+    uvOffset.set(-(r - 1) / 2, 0);
+    uvScale.set(r, 1);
+  }
+}
+
 interface ImageEntitiesProps {
   maxImageTextureSize?: number;
   onEntitiesChange?: (changes: EntityChange[]) => void;
@@ -130,8 +211,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
   // Stable ref callbacks cached per entity ID (avoids new closure per render)
   const refCallbacksRef = useRef<Map<string, (mesh: THREE.Mesh | null) => void>>(new Map());
-  // Material refs per entity (each has its own texture)
-  const materialRefs = useRef<Map<string, THREE.MeshBasicMaterial>>(new Map());
+  // Material refs per entity (ShaderMaterial with UV offset/scale for object-fit)
+  const materialRefs = useRef<Map<string, THREE.ShaderMaterial>>(new Map());
   // Track which src each entity currently has loaded (for detecting src changes)
   const loadedSrcRefs = useRef<Map<string, string>>(new Map());
   // Debug: track textures pending mip colorization (need one frame for GPU upload)
@@ -227,9 +308,17 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       cb = (mesh: THREE.Mesh | null) => {
         if (mesh) {
           meshRefs.current.set(id, mesh);
-          // Pre-create material so useFrame only assigns textures, never allocates
+          // Pre-create ShaderMaterial so useFrame only updates uniforms, never allocates
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, new THREE.MeshBasicMaterial({
+            materialRefs.current.set(id, new THREE.ShaderMaterial({
+              uniforms: {
+                map: { value: null },
+                opacity: { value: 1.0 },
+                uvOffset: { value: new THREE.Vector2(0, 0) },
+                uvScale: { value: new THREE.Vector2(1, 1) },
+              },
+              vertexShader: IMAGE_VERTEX_SHADER,
+              fragmentShader: IMAGE_FRAGMENT_SHADER,
               transparent: true,
               depthWrite: false,
               depthTest: false,
@@ -352,19 +441,31 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       const texture = src ? texManager.getTexture(src, screenWidth) : null;
 
       if (texture) {
-        // Material pre-created in ref callback — just look it up
+        // ShaderMaterial pre-created in ref callback — update uniforms only
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
-          // Update texture if it changed
-          if (mat.map !== texture) {
-            mat.map = texture;
-            mat.needsUpdate = true;
+          const u = mat.uniforms;
+          if (u.map.value !== texture) {
+            u.map.value = texture;
             // Debug: queue for mip colorization after GPU upload
             if (DEBUG_MIP_LEVELS && !colorizedRef.current.has(texture)) {
               pendingColorizeRef.current.add(texture);
             }
           }
-          mat.opacity = 1;
+          u.opacity.value = 1;
+
+          // Object-fit UV transforms — mutates existing Vector2 uniforms in place
+          const objectFit = data.objectFit ?? 'fill';
+          const entry = texManager.getEntry(src!);
+          applyObjectFitUV(
+            u.uvOffset.value as THREE.Vector2,
+            u.uvScale.value as THREE.Vector2,
+            objectFit,
+            w, h,
+            entry?.naturalWidth ?? 0,
+            entry?.naturalHeight ?? 0,
+          );
+
           mesh.material = mat;
         }
       } else {
