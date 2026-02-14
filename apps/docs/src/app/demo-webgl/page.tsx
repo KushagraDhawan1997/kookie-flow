@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { KookieFlow, useGraph, type Entity, type Edge, type XYPosition } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, Toolbar, useGraph, type Entity, type Edge, type XYPosition, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
 
 // Socket type patterns for type-aware edge connections
 const socketPatterns = [
@@ -311,6 +311,13 @@ function generateEdges(nodeCount: number): Edge[] {
   return edges;
 }
 
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  text: {
+    type: 'text',
+    toolbar: ['fontSize', 'fontWeight', 'textAlign', 'textColor'],
+  },
+};
+
 function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
   const initialEntities = useMemo(() => generateEntities(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
@@ -344,6 +351,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
     <KookieFlow
       entities={entities}
       edges={edges}
+      entityTypes={entityTypes}
       onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
@@ -358,7 +366,9 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
       variant="surface"
       size="2"
       header="outside"
-    />
+    >
+      <Toolbar />
+    </KookieFlow>
   );
 }
 

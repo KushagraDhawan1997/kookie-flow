@@ -2,6 +2,7 @@
 export { KookieFlow } from './components/kookie-flow';
 export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/context';
 export { Minimap } from './components/minimap';
+export { Toolbar, type ToolbarProps } from './components/toolbar';
 
 // Hooks
 export { useGraph } from './hooks/use-graph';
@@ -134,6 +135,14 @@ export type {
   EdgeChange,
   EntityTypeDefinition,
   EntityComponentProps,
+  ToolbarRenderProps,
+  ToolbarRenderFn,
+  ToolbarConfig,
+  ToolbarWidget,
+  TextToolbarWidget,
+  ImageToolbarWidget,
+  CommentToolbarWidget,
+  CommonToolbarWidget,
   KookieFlowProps,
   // Styling types
   EntitySize,

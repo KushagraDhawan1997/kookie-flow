@@ -489,6 +489,53 @@ export type EdgeChange =
   | { type: 'remove'; id: string }
   | { type: 'add'; edge: Edge };
 
+/** Props passed to toolbar render functions */
+export interface ToolbarRenderProps {
+  /** All selected entities */
+  entities: Entity[];
+  /** Update one entity's data — wraps onEntitiesChange internally */
+  update: (entityId: string, data: Partial<EntityData>) => void;
+  /** The selection's screen-space bounding box */
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
+/** Toolbar render function */
+export type ToolbarRenderFn = (props: ToolbarRenderProps) => React.ReactNode;
+
+/** Built-in toolbar widget names for text entities */
+export type TextToolbarWidget = 'fontSize' | 'fontFamily' | 'fontWeight' | 'textColor' | 'textAlign' | 'lineHeight' | 'letterSpacing';
+
+/** Built-in toolbar widget names for image entities */
+export type ImageToolbarWidget = 'objectFit' | 'aspectLock';
+
+/** Built-in toolbar widget names for comment entities */
+export type CommentToolbarWidget = 'backgroundColor' | 'textColor' | 'fontSize';
+
+/** Built-in toolbar widget names available to any entity type */
+export type CommonToolbarWidget = 'color';
+
+/** All built-in toolbar widget names */
+export type ToolbarWidget = TextToolbarWidget | ImageToolbarWidget | CommentToolbarWidget | CommonToolbarWidget;
+
+/**
+ * Toolbar configuration for an entity type.
+ *
+ * - `true`: show all built-in defaults for this entity type
+ * - `false`: no toolbar
+ * - `string[]`: pick specific built-in defaults
+ * - `{ defaults, extra }`: built-in defaults + custom controls
+ * - `ToolbarRenderFn`: full override — consumer owns everything
+ */
+export type ToolbarConfig =
+  | true
+  | false
+  | ToolbarWidget[]
+  | {
+      defaults?: true | ToolbarWidget[];
+      extra?: ToolbarRenderFn;
+    }
+  | ToolbarRenderFn;
+
 /** Entity type definition for custom rendering */
 export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   /** Entity type identifier */
@@ -509,6 +556,8 @@ export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   };
   /** Custom React component for hybrid mode */
   component?: React.ComponentType<EntityComponentProps<T>>;
+  /** Toolbar configuration — controls shown when this entity type is selected */
+  toolbar?: ToolbarConfig;
 }
 
 /** Props passed to custom entity components */
