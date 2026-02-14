@@ -1045,12 +1045,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const existing = entityMap.get(id);
         if (!existing) return;
 
-        // Find index via id comparison (avoids reference equality issues after spread)
-        let index = -1;
-        for (let i = 0; i < entities.length; i++) {
-          if (entities[i].id === id) { index = i; break; }
-        }
-        if (index === -1) return;
+        const index = _idToIndex.get(id);
+        if (index === undefined) return;
 
         const nextEntities = [...entities];
 
@@ -1098,11 +1094,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const existing = entityMap.get(id);
         if (!existing) return;
 
-        let index = -1;
-        for (let i = 0; i < entities.length; i++) {
-          if (entities[i].id === id) { index = i; break; }
-        }
-        if (index === -1) return;
+        const index = _idToIndex.get(id);
+        if (index === undefined) return;
 
         const nextEntities = [...entities];
         // Clear explicit dimensions to revert to computed minimum
