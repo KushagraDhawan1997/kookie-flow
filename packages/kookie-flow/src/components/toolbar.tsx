@@ -16,6 +16,7 @@ import {
   useCallback,
   useLayoutEffect,
   useState,
+  useEffect,
   createContext,
   useContext,
   type CSSProperties,
@@ -265,6 +266,22 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       () => scheduleUpdate()
     );
 
+    // Entity data changes → refresh toolbar widget values
+    // Guarded by interaction mode: during drag/resize, entities array changes
+    // on every position update but toolbar is hidden — skip to avoid wasteful re-renders
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      () => {
+        if (getInteractionMode() !== 'idle') return;
+        const { selectedEntityIds, entityMap } = store.getState();
+        if (selectedEntityIds.size > 0) {
+          const entities = getSelectedEntitiesFromIds(selectedEntityIds, entityMap);
+          setSelectedEntities(entities);
+        }
+        scheduleUpdate();
+      }
+    );
+
     // ResizeObserver for parent size
     const parent = containerRef.current?.parentElement;
     let resizeObserver: ResizeObserver | null = null;
@@ -297,6 +314,7 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       unsubSelection();
       unsubViewport();
       unsubPositions();
+      unsubEntities();
       resizeObserver?.disconnect();
       cancelAnimationFrame(rafId);
     };
@@ -477,6 +495,105 @@ function AlignRightIcon() {
 // Built-in toolbar widgets (Kookie UI components)
 // ============================================================================
 
+/** Number input with local state buffer — commits on blur or Enter */
+function ToolbarNumberInput({
+  value,
+  onChange,
+  width = 52,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  width?: number;
+}) {
+  const [local, setLocal] = useState(() => String(value));
+
+  // Sync from prop when value changes externally
+  useEffect(() => {
+    setLocal(String(value));
+  }, [value]);
+
+  const commit = useCallback(() => {
+    const v = parseFloat(local);
+    if (!isNaN(v) && v !== value) {
+      onChange(v);
+    } else {
+      // Reset to prop value if invalid
+      setLocal(String(value));
+    }
+  }, [local, value, onChange]);
+
+  return (
+    <TextField.Root
+      size="2"
+      variant="soft"
+      type="number"
+      value={local}
+      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') commit();
+      }}
+      onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+      style={{ width }}
+    />
+  );
+}
+
+/** Color input that throttles updates to avoid rapid-fire entity changes */
+function ToolbarColorInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const pendingRef = useRef<string | null>(null);
+  const rafRef = useRef(0);
+
+  const flush = useCallback(() => {
+    rafRef.current = 0;
+    if (pendingRef.current !== null) {
+      onChange(pendingRef.current);
+      pendingRef.current = null;
+    }
+  }, [onChange]);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      pendingRef.current = e.target.value;
+      if (rafRef.current === 0) {
+        rafRef.current = requestAnimationFrame(flush);
+      }
+    },
+    [flush]
+  );
+
+  // Flush on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return (
+    <input
+      type="color"
+      value={value}
+      onChange={handleChange}
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        width: 24,
+        height: 24,
+        border: 'none',
+        borderRadius: 'var(--radius-1)',
+        padding: 0,
+        cursor: 'pointer',
+        background: 'none',
+      }}
+    />
+  );
+}
+
 function BuiltInWidget({
   widget,
   entity,
@@ -495,51 +612,27 @@ function BuiltInWidget({
   switch (widget) {
     case 'fontSize':
       content = (
-        <TextField.Root
-          size="2"
-          variant="soft"
-          type="number"
-          value={String((data.fontSize as number) ?? 16)}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v)) update(entity.id, { fontSize: v });
-          }}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          style={{ width: 52 }}
+        <ToolbarNumberInput
+          value={(data.fontSize as number) ?? 16}
+          onChange={(v) => update(entity.id, { fontSize: v })}
         />
       );
       break;
 
     case 'lineHeight':
       content = (
-        <TextField.Root
-          size="2"
-          variant="soft"
-          type="number"
-          value={String((data.lineHeight as number) ?? 1.5)}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v)) update(entity.id, { lineHeight: v });
-          }}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          style={{ width: 52 }}
+        <ToolbarNumberInput
+          value={(data.lineHeight as number) ?? 1.5}
+          onChange={(v) => update(entity.id, { lineHeight: v })}
         />
       );
       break;
 
     case 'letterSpacing':
       content = (
-        <TextField.Root
-          size="2"
-          variant="soft"
-          type="number"
-          value={String((data.letterSpacing as number) ?? 0)}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v)) update(entity.id, { letterSpacing: v });
-          }}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          style={{ width: 52 }}
+        <ToolbarNumberInput
+          value={(data.letterSpacing as number) ?? 0}
+          onChange={(v) => update(entity.id, { letterSpacing: v })}
         />
       );
       break;
@@ -607,20 +700,9 @@ function BuiltInWidget({
 
     case 'textColor':
       content = (
-        <input
-          type="color"
+        <ToolbarColorInput
           value={(data.textColor as string) || '#ffffff'}
-          onChange={(e) => update(entity.id, { textColor: e.target.value })}
-          onPointerDown={(e) => e.stopPropagation()}
-          style={{
-            width: 24,
-            height: 24,
-            border: 'none',
-            borderRadius: 'var(--radius-1)',
-            padding: 0,
-            cursor: 'pointer',
-            background: 'none',
-          }}
+          onChange={(v) => update(entity.id, { textColor: v })}
         />
       );
       break;
