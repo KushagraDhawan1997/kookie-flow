@@ -140,12 +140,24 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
   // Track whether toolbar should be visible (interaction mode)
   const [visible, setVisible] = useState(false);
 
-  // Stable update helper for toolbar render props
+  // Stable update helper for toolbar render props (single entity)
   const update = useCallback(
     (entityId: string, data: Partial<EntityData>) => {
       onEntitiesChange?.([{ type: 'data', id: entityId, data: data as EntityData }]);
     },
     [onEntitiesChange]
+  );
+
+  // Batch update helper — updates ALL selected entities in one onEntitiesChange call
+  const batchUpdate = useCallback(
+    (data: Partial<EntityData>) => {
+      const { selectedEntityIds } = store.getState();
+      if (selectedEntityIds.size === 0) return;
+      onEntitiesChange?.(
+        Array.from(selectedEntityIds, (id) => ({ type: 'data' as const, id, data: data as EntityData }))
+      );
+    },
+    [store, onEntitiesChange]
   );
 
   // Compute selection bounding box in world space
@@ -327,6 +339,7 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
     entityTypes,
     renderOverride,
     update,
+    batchUpdate,
     getSelectionBounds
   );
 
@@ -377,6 +390,7 @@ function resolveToolbarContent(
   entityTypes: Record<string, EntityTypeDefinition>,
   renderOverride: ToolbarRenderFn | undefined,
   update: (entityId: string, data: Partial<EntityData>) => void,
+  batchUpdate: (data: Partial<EntityData>) => void,
   getSelectionBounds: () => { x: number; y: number; width: number; height: number } | null
 ): ReactNode {
   if (entities.length === 0) return null;
@@ -424,13 +438,13 @@ function resolveToolbarContent(
   if (defaultWidgets.length === 0 && !extraFn) return null;
 
   return (
-    <Flex align="center" gap="3" p="2">
+    <Flex align="center" gap="3">
       {defaultWidgets.map((widget, i) => (
         <BuiltInWidget
           key={widget}
           widget={widget}
-          entity={entities[0]}
-          update={update}
+          entities={entities}
+          batchUpdate={batchUpdate}
           showSeparator={i > 0}
         />
       ))}
@@ -550,7 +564,11 @@ function ToolbarNumberInput({
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
       onBlur={commit}
       onKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') commit();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          commit();
+        }
       }}
       onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
       style={{ width }}
@@ -559,13 +577,7 @@ function ToolbarNumberInput({
 }
 
 /** Color input that throttles updates to avoid rapid-fire entity changes */
-function ToolbarColorInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function ToolbarColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const pendingRef = useRef<string | null>(null);
   const rafRef = useRef(0);
 
@@ -615,16 +627,17 @@ function ToolbarColorInput({
 
 function BuiltInWidget({
   widget,
-  entity,
-  update,
+  entities,
+  batchUpdate,
   showSeparator,
 }: {
   widget: ToolbarWidget;
-  entity: Entity;
-  update: (entityId: string, data: Partial<EntityData>) => void;
+  entities: Entity[];
+  batchUpdate: (data: Partial<EntityData>) => void;
   showSeparator: boolean;
 }) {
-  const data = entity.data as Record<string, unknown>;
+  // Display values from first entity; updates apply to all selected
+  const data = entities[0].data as Record<string, unknown>;
 
   let content: ReactNode;
 
@@ -633,7 +646,7 @@ function BuiltInWidget({
       content = (
         <ToolbarNumberInput
           value={(data.fontSize as number) ?? 16}
-          onChange={(v) => update(entity.id, { fontSize: v })}
+          onChange={(v) => batchUpdate({ fontSize: v })}
         />
       );
       break;
@@ -642,7 +655,7 @@ function BuiltInWidget({
       content = (
         <ToolbarNumberInput
           value={(data.lineHeight as number) ?? 1.5}
-          onChange={(v) => update(entity.id, { lineHeight: v })}
+          onChange={(v) => batchUpdate({ lineHeight: v })}
         />
       );
       break;
@@ -651,7 +664,7 @@ function BuiltInWidget({
       content = (
         <ToolbarNumberInput
           value={(data.letterSpacing as number) ?? 0}
-          onChange={(v) => update(entity.id, { letterSpacing: v })}
+          onChange={(v) => batchUpdate({ letterSpacing: v })}
         />
       );
       break;
@@ -661,7 +674,7 @@ function BuiltInWidget({
         <Select.Root
           size="2"
           value={String((data.fontWeight as number) ?? 400)}
-          onValueChange={(v: string) => update(entity.id, { fontWeight: Number(v) })}
+          onValueChange={(v: string) => batchUpdate({ fontWeight: Number(v) })}
         >
           <Select.Trigger
             variant="soft"
@@ -681,7 +694,7 @@ function BuiltInWidget({
         <SegmentedControl.Root
           size="2"
           value={(data.textAlign as string) ?? 'left'}
-          onValueChange={(v: string) => update(entity.id, { textAlign: v })}
+          onValueChange={(v: string) => batchUpdate({ textAlign: v })}
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           <SegmentedControl.Item value="left" iconOnly>
@@ -702,7 +715,7 @@ function BuiltInWidget({
         <Select.Root
           size="2"
           value={(data.fontFamily as string) ?? 'system-ui'}
-          onValueChange={(v: string) => update(entity.id, { fontFamily: v })}
+          onValueChange={(v: string) => batchUpdate({ fontFamily: v })}
         >
           <Select.Trigger
             variant="soft"
@@ -721,7 +734,7 @@ function BuiltInWidget({
       content = (
         <ToolbarColorInput
           value={(data.textColor as string) || '#ffffff'}
-          onChange={(v) => update(entity.id, { textColor: v })}
+          onChange={(v) => batchUpdate({ textColor: v })}
         />
       );
       break;
@@ -731,7 +744,7 @@ function BuiltInWidget({
         <SegmentedControl.Root
           size="2"
           value={(data.objectFit as string) ?? 'fill'}
-          onValueChange={(v: string) => update(entity.id, { objectFit: v })}
+          onValueChange={(v: string) => batchUpdate({ objectFit: v })}
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           <SegmentedControl.Item value="fill">Fill</SegmentedControl.Item>
@@ -748,7 +761,7 @@ function BuiltInWidget({
           size="2"
           variant="soft"
           pressed={locked}
-          onPressedChange={(v: boolean) => update(entity.id, { aspectLocked: v })}
+          onPressedChange={(v: boolean) => batchUpdate({ aspectLocked: v })}
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
           aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
         >
