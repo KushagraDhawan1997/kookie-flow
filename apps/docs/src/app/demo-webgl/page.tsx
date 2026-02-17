@@ -316,6 +316,10 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
     type: 'text',
     toolbar: ['fontSize', 'fontWeight', 'textAlign', 'textColor'],
   },
+  image: {
+    type: 'image',
+    toolbar: true,
+  },
 };
 
 function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
