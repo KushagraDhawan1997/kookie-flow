@@ -25,7 +25,8 @@ A floating toolbar that appears when a selection is made. One toolbar per select
 - Toolbar belongs to the **selection**, not an individual entity
 - Single entity selected = one toolbar
 - Multi-select = one toolbar, centered on the selection bounding box
-- Mixed-type multi-select: show only built-in defaults that apply to all selected types, or nothing
+- Built-in widgets batch-update ALL selected entities in one `onEntitiesChange` call
+- Mixed-type multi-select: currently shows nothing (single-type only)
 
 ### Toolbar content: layered API
 - kookie-flow ships built-in toolbar widgets for its own entity types
@@ -48,7 +49,7 @@ interface ToolbarRenderProps {
   entities: Entity[];
   /** Update one entity's data */
   update: (entityId: string, data: Partial<EntityData>) => void;
-  /** The selection's screen-space bounding box */
+  /** The selection's world-space bounding box */
   bounds: { x: number; y: number; width: number; height: number };
 }
 ```
@@ -172,12 +173,21 @@ Select entity with no `toolbar` defined → no toolbar appears.
 
 ### Show/hide logic
 - Visible when 1+ entities are selected and at least one has a toolbar defined
-- Hidden during drag, pan, zoom, connection draw, selection box
-- Hidden when selection is off-screen (frustum culling)
-- Animate in/out with CSS transition (opacity + slight translateY)
+- Hidden during drag, resize, connect, box-select (polls `getInteractionMode()` via RAF)
+- Repositions during pan/zoom via viewport subscription (stays visible and tracks)
 
-## Not Started Yet
-- Type definitions (ToolbarRenderProps, toolbar field on EntityTypeDefinition)
-- Built-in widget components (fontSize, textAlign, objectFit, etc.)
+## Status
+
+All core features are implemented:
+- Type definitions (`ToolbarRenderProps`, `ToolbarConfig`, `ToolbarWidget`, toolbar field on `EntityTypeDefinition`)
+- Built-in widget components (fontSize, fontFamily, fontWeight, textColor, textAlign, lineHeight, letterSpacing, objectFit, aspectLock)
 - Toolbar container component (positioning, show/hide, Card wrapper)
-- Demo page integration
+- Batch updates for multi-entity selection
+- `ToolbarProvider` context (provides `entityTypes` + `onEntitiesChange` from DOMLayer)
+- Demo page integration (text + image entity types in webgl demo)
+
+## Not Yet Implemented
+- `color` common widget (type exists, no built-in widget implementation)
+- Mixed-type multi-select showing shared widgets (currently shows nothing)
+- Frustum culling for off-screen toolbar
+- Enter/exit CSS animation (opacity + translateY)
