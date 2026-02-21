@@ -14,13 +14,13 @@ import { useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { useFlowStoreApi } from './context';
 import { useFont } from '../contexts/FontContext';
 import type { TextEntityData, EntityChange } from '../types';
-import { DEFAULT_TEXT_WIDTH, DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_PADDING } from '../core/constants';
-import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
+import { DEFAULT_TEXT_WIDTH, DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_PADDING, DEFAULT_TEXT_SIZING_MODE } from '../core/constants';
+import { resolveTextStyle, calculateTextAutoHeightMSDF, calculateTextAutoSizeMSDF, NO_WRAP_WIDTH } from '../utils/text-texture';
 import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import {
   getSharedCharPositionTable,
   getCursorXY,
-  contentOffsetToLineColumn,
+  visualLineForOffset,
   lineColumnToContentOffset,
 } from '../utils/text-cursor-layout';
 
@@ -122,46 +122,54 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
 
       if (newContent !== data.content) {
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
-        const newHeight = calcAutoHeight(newContent, data, w);
+        const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
+
+        let newW = w;
+        let newH = entity.height ?? calcAutoHeight(newContent, data, w);
+
+        if (sizingMode === 'auto-width' && regularFont && glyphMap.size > 0) {
+          const style = resolveTextStyle(data);
+          const size = calculateTextAutoSizeMSDF(
+            newContent, style, regularFont.metrics.info.size, glyphMap, kerningMap
+          );
+          newW = size.width;
+          newH = size.height;
+        } else if (sizingMode === 'auto-height') {
+          newH = calcAutoHeight(newContent, data, w);
+        }
+        // fixed: keep current dimensions
 
         onEntitiesChange?.([
           { type: 'data', id: currentId, data: { ...data, content: newContent } },
-          { type: 'dimensions', id: currentId, dimensions: { width: w, height: newHeight } },
+          { type: 'dimensions', id: currentId, dimensions: { width: newW, height: newH } },
         ]);
 
-        store.getState().updateEntityDimensions(currentId, w, newHeight);
+        store.getState().updateEntityDimensions(currentId, newW, newH);
       }
     }
 
     store.getState().stopEditing();
-  }, [store, onEntitiesChange, calcAutoHeight]);
+  }, [store, onEntitiesChange, calcAutoHeight, regularFont, glyphMap, kerningMap]);
 
-  // Sync textarea → store on input
+  // Sync textarea → store on input.
+  // Dimension updates (auto-height / auto-width) are deferred to the
+  // text-entities.tsx useFrame loop via pendingDimUpdatesRef, avoiding
+  // expensive store mutations (array spread + quadtree rebuild) per keystroke.
   const handleInput = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
 
-    const content = ta.value;
-    store.getState().setEditingContent(content);
+    store.getState().setEditingContent(ta.value);
     store.getState().setEditingCursor(ta.selectionStart, ta.selectionEnd);
-
-    // Auto-height update
-    const entityId = store.getState().editingEntityId;
-    if (entityId) {
-      const entity = store.getState().entityMap.get(entityId);
-      if (entity) {
-        const data = entity.data as TextEntityData;
-        const w = entity.width ?? DEFAULT_TEXT_WIDTH;
-        const newHeight = calcAutoHeight(content, data, w);
-        store.getState().updateEntityDimensions(entityId, w, newHeight);
-      }
-    }
-  }, [store, calcAutoHeight]);
+  }, [store]);
 
   // Sync selection changes (arrow keys, shift+click, etc.)
+  // Guard: only sync cursor when textarea content matches store content.
+  // Prevents stale cursor positioning if selectionchange fires before input.
   const handleSelect = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
+    if (ta.value !== store.getState().editingContent) return;
     store.getState().setEditingCursor(ta.selectionStart, ta.selectionEnd);
   }, [store]);
 
@@ -194,6 +202,8 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const data = entity.data as TextEntityData;
         const content = ta.value;
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
+        const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
+        const layoutWidth = sizingMode === 'auto-width' ? NO_WRAP_WIDTH : w;
         const fontSize = data.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
         const lineHeightMul = data.lineHeight ?? 1.5;
         const letterSpacing = data.letterSpacing ?? 0;
@@ -202,7 +212,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
 
         const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
-          w, pad, entity.position.x, entity.position.y,
+          layoutWidth, pad, entity.position.x, entity.position.y,
           regularFont.metrics, glyphMap, kerningMap, letterSpacing
         );
 
@@ -211,7 +221,8 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         e.preventDefault();
 
         const cursorOffset = ta.selectionStart;
-        const { line } = contentOffsetToLineColumn(cursorOffset, table);
+        // Use visual line (consistent with getCursorXY line-boundary adjustment)
+        const line = visualLineForOffset(cursorOffset, table);
 
         const targetLine = e.key === 'ArrowUp' ? line - 1 : line + 1;
         if (targetLine < 0 || targetLine >= table.lineCount) return;
@@ -279,6 +290,8 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const data = entity.data as TextEntityData;
         const content = ta.value;
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
+        const sizingModeHome = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
+        const layoutWidthHome = sizingModeHome === 'auto-width' ? NO_WRAP_WIDTH : w;
         const fontSize = data.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
         const lineHeightMul = data.lineHeight ?? 1.5;
         const letterSpacing = data.letterSpacing ?? 0;
@@ -287,7 +300,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
 
         const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
-          w, pad, entity.position.x, entity.position.y,
+          layoutWidthHome, pad, entity.position.x, entity.position.y,
           regularFont.metrics, glyphMap, kerningMap, letterSpacing
         );
 
@@ -300,11 +313,24 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         e.preventDefault();
 
         const cursorOffset = ta.selectionStart;
-        const { line } = contentOffsetToLineColumn(cursorOffset, table);
+        // Use visual line (consistent with getCursorXY line-boundary adjustment)
+        const line = visualLineForOffset(cursorOffset, table);
 
-        const newOffset = e.key === 'Home'
-          ? lineColumnToContentOffset(line, 0, table)
-          : lineColumnToContentOffset(line, table.lineLengths[line], table);
+        let newOffset: number;
+        if (e.key === 'Home') {
+          newOffset = lineColumnToContentOffset(line, 0, table);
+        } else {
+          // End: go one past last char on the line (the \n or trimmed space).
+          // Can't use lineColumnToContentOffset(line, lineLength) — that overflows
+          // to the next line's first position.
+          const lastCol = table.lineLengths[line] - 1;
+          if (lastCol >= 0) {
+            newOffset = lineColumnToContentOffset(line, lastCol, table) + 1;
+          } else {
+            // Empty line
+            newOffset = lineColumnToContentOffset(line, 0, table);
+          }
+        }
 
         if (e.shiftKey) {
           const anchor = ta.selectionDirection === 'backward'

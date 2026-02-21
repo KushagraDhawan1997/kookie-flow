@@ -231,6 +231,9 @@ export interface DrawEntityData extends EntityData {
   }>;
 }
 
+/** Sizing mode for text entities (Figma parity) */
+export type TextSizingMode = 'auto-width' | 'auto-height' | 'fixed';
+
 /** Data for text entities (standalone text blocks on canvas) */
 export interface TextEntityData extends EntityData {
   /** Text content (required for text entities) */
@@ -249,6 +252,8 @@ export interface TextEntityData extends EntityData {
   lineHeight?: number;
   /** Letter spacing in pixels (default: 0) */
   letterSpacing?: number;
+  /** Sizing mode: 'auto-width' | 'auto-height' | 'fixed'. Default: 'auto-height' */
+  sizingMode?: TextSizingMode;
 }
 
 /** Data for image entities */
@@ -505,7 +510,7 @@ export interface ToolbarRenderProps {
 export type ToolbarRenderFn = (props: ToolbarRenderProps) => React.ReactNode;
 
 /** Built-in toolbar widget names for text entities */
-export type TextToolbarWidget = 'fontSize' | 'fontFamily' | 'fontWeight' | 'textColor' | 'textAlign' | 'lineHeight' | 'letterSpacing';
+export type TextToolbarWidget = 'fontSize' | 'fontFamily' | 'fontWeight' | 'textColor' | 'textAlign' | 'lineHeight' | 'letterSpacing' | 'sizingMode';
 
 /** Built-in toolbar widget names for image entities */
 export type ImageToolbarWidget = 'objectFit' | 'aspectLock';

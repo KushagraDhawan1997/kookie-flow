@@ -324,6 +324,24 @@ export function getCursorXY(
   const posIdx = contentToPos[offset];
   if (posIdx !== undefined && posIdx < positions.length) {
     const pos = positions[posIdx];
+
+    // When this offset crosses a line boundary from the previous character,
+    // show cursor at end of the previous line (standard text editor behavior).
+    // Handles both explicit \n and trimmed spaces at word-wrap points.
+    if (offset > 0) {
+      const prevPosIdx = contentToPos[offset - 1];
+      if (prevPosIdx !== undefined && prevPosIdx < positions.length) {
+        const prevPos = positions[prevPosIdx];
+        if (pos.line > prevPos.line) {
+          return {
+            x: prevPos.x + prevPos.width,
+            y: prevPos.y,
+            height: lineHeightPx,
+          };
+        }
+      }
+    }
+
     return { x: pos.x, y: pos.y, height: lineHeightPx };
   }
 
@@ -511,6 +529,33 @@ export function contentOffsetToLineColumn(
 }
 
 /**
+ * Get the visual line for a content offset, consistent with getCursorXY.
+ * At line boundaries (\n or trimmed space), returns the previous line
+ * (where the cursor visually renders) rather than the next line's logical index.
+ */
+export function visualLineForOffset(
+  contentOffset: number,
+  table: CharPositionTable
+): number {
+  const { line } = contentOffsetToLineColumn(contentOffset, table);
+
+  if (contentOffset > 0 && contentOffset < table.contentLength) {
+    const posIdx = table.contentToPos[contentOffset];
+    const prevPosIdx = table.contentToPos[contentOffset - 1];
+    if (
+      posIdx !== undefined && prevPosIdx !== undefined &&
+      posIdx < table.positions.length && prevPosIdx < table.positions.length
+    ) {
+      if (table.positions[posIdx].line > table.positions[prevPosIdx].line) {
+        return table.positions[prevPosIdx].line;
+      }
+    }
+  }
+
+  return line;
+}
+
+/**
  * Convert (visual line, column) to content offset.
  */
 export function lineColumnToContentOffset(
@@ -580,8 +625,10 @@ export function getLineBoundary(
   offset: number,
   table: CharPositionTable
 ): { start: number; end: number } {
-  const { line } = contentOffsetToLineColumn(offset, table);
+  const line = visualLineForOffset(offset, table);
   const start = lineColumnToContentOffset(line, 0, table);
+  // lineColumnToContentOffset(line, lineLength) overflows to the next line's
+  // first offset, which correctly includes the trailing \n or space in the selection.
   const end = lineColumnToContentOffset(line, table.lineLengths[line], table);
   return { start, end };
 }

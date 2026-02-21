@@ -27,7 +27,9 @@ import {
   DEFAULT_TEXT_FONT_SIZE,
   DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_PADDING,
+  DEFAULT_TEXT_SIZING_MODE,
 } from '../core/constants';
+import { NO_WRAP_WIDTH } from '../utils/text-texture';
 import {
   type MultiLineTextEntry,
   wrapTextMSDF,
@@ -205,7 +207,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       if (entity.type !== 'text') continue;
       if (hiddenEntityIds.has(entity.id)) continue;
 
-      const w = entity.width ?? DEFAULT_TEXT_WIDTH;
+      let w = entity.width ?? DEFAULT_TEXT_WIDTH;
       let h = entity.height ?? DEFAULT_TEXT_HEIGHT;
       const data = entity.data as TextEntityData;
 
@@ -214,25 +216,62 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       const padding = DEFAULT_TEXT_PADDING;
       const letterSpacing = data.letterSpacing ?? 0;
       const textAlign = data.textAlign ?? 'left';
+      const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
       // Use live editing content when this entity is being edited
       const content = (editingEntityId === entity.id && editingContent !== null)
         ? editingContent
         : (data.content ?? '');
 
-      // Auto-correct height to match text content
-      const measurement = measureTextBlockMSDF(
-        content, fontSize, lineHeight, w, padding,
-        baseFontSize, glyphMap, kerningMap, letterSpacing
-      );
-      const expectedH = Math.max(
-        measurement.height + 2 * padding,
-        fontSize * lineHeight + 2 * padding
-      );
+      // Mode-aware dimension logic
+      let measurement;
+      let expectedW = w;
+      let expectedH = h;
+
+      if (sizingMode === 'auto-width') {
+        // No word wrap — measure at effectively infinite width
+        measurement = measureTextBlockMSDF(
+          content, fontSize, lineHeight, NO_WRAP_WIDTH, padding,
+          baseFontSize, glyphMap, kerningMap, letterSpacing
+        );
+        expectedW = Math.max(measurement.width + 2 * padding, fontSize + 2 * padding);
+        expectedH = Math.max(
+          measurement.height + 2 * padding,
+          fontSize * lineHeight + 2 * padding
+        );
+      } else {
+        // auto-height + fixed: wrap at entity width
+        measurement = measureTextBlockMSDF(
+          content, fontSize, lineHeight, w, padding,
+          baseFontSize, glyphMap, kerningMap, letterSpacing
+        );
+        if (sizingMode === 'auto-height') {
+          expectedH = Math.max(
+            measurement.height + 2 * padding,
+            fontSize * lineHeight + 2 * padding
+          );
+        }
+        // fixed: expectedH stays as stored entity.height
+      }
+
       // Defer store writes to avoid entities array spread + quadtree update
-      // inside the render loop. Use the correct height locally for this frame.
-      if (editingEntityId !== entity.id && Math.abs(h - expectedH) > 0.5) {
-        pendingDimUpdatesRef.current.set(entity.id, { w, h: expectedH });
-        h = expectedH;
+      // inside the render loop. Use the correct dimensions locally for this frame.
+      // Skip the entity being edited — no store/quadtree writes during editing.
+      // commitAndExit handles the final dimension + onEntitiesChange update.
+      if (editingEntityId !== entity.id) {
+        const wChanged = sizingMode === 'auto-width' && Math.abs(w - expectedW) > 0.5;
+        const hChanged = sizingMode !== 'fixed' && Math.abs(h - expectedH) > 0.5;
+        if (wChanged || hChanged) {
+          pendingDimUpdatesRef.current.set(entity.id, {
+            w: wChanged ? expectedW : w,
+            h: hChanged ? expectedH : h,
+          });
+          if (wChanged) w = expectedW;
+          if (hChanged) h = expectedH;
+        }
+      } else {
+        // Editing entity: use expected dimensions locally but don't write to store
+        if (sizingMode === 'auto-width') w = expectedW;
+        if (sizingMode !== 'fixed') h = expectedH;
       }
 
       // Frustum culling
@@ -270,12 +309,8 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
         continue;
       }
 
-      // Overflow clipping: if entity has user-controlled height (not auto-height),
-      // clip text that exceeds the entity bounds
-      const isAutoHeight = typeof entity.resizable === 'object'
-        ? !(entity.resizable.height ?? false)
-        : true;
-      const clipHeight = (!isAutoHeight && h < expectedH)
+      // Overflow clipping: only in fixed mode when content exceeds bounds
+      const clipHeight = (sizingMode === 'fixed' && h < (measurement.height + 2 * padding))
         ? h - 2 * padding
         : undefined;
 
@@ -286,7 +321,9 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
         fontSize,
         lineHeight,
         textAlign,
-        constrainedWidth: Math.max(1, w - 2 * padding),
+        constrainedWidth: sizingMode === 'auto-width'
+          ? Math.max(1, expectedW - 2 * padding)
+          : Math.max(1, w - 2 * padding),
         color: textColor,
         opacity: 1,
         letterSpacing,

@@ -1,4 +1,4 @@
-import type { TextEntityData } from '../types';
+import type { TextEntityData, TextSizingMode } from '../types';
 import {
   DEFAULT_TEXT_FONT_SIZE,
   DEFAULT_TEXT_LINE_HEIGHT,
@@ -78,4 +78,66 @@ export function calculateTextAutoHeightMSDF(
     height + 2 * style.padding,
     style.fontSize * style.lineHeight + 2 * style.padding
   );
+}
+
+// ============================================================================
+// Auto-width sizing (no word wrap)
+// ============================================================================
+
+/** Very large width that prevents word wrapping — only explicit \n breaks lines. */
+export const NO_WRAP_WIDTH = 1e7;
+
+/**
+ * Calculate auto-width and auto-height for 'auto-width' sizing mode.
+ * No word wrapping; only explicit \n creates line breaks.
+ */
+export function calculateTextAutoSizeMSDF(
+  content: string,
+  style: TextStyleConfig,
+  baseFontSize: number,
+  glyphMap: GlyphMap,
+  kerningMap: KerningMap
+): { width: number; height: number } {
+  const { width, height } = measureTextBlockMSDF(
+    content,
+    style.fontSize,
+    style.lineHeight,
+    NO_WRAP_WIDTH,
+    style.padding,
+    baseFontSize,
+    glyphMap,
+    kerningMap,
+    style.letterSpacing
+  );
+  const minDim = style.fontSize + 2 * style.padding;
+  return {
+    width: Math.max(width + 2 * style.padding, minDim),
+    height: Math.max(
+      height + 2 * style.padding,
+      style.fontSize * style.lineHeight + 2 * style.padding
+    ),
+  };
+}
+
+// ============================================================================
+// Sizing mode → resizable mapping
+// ============================================================================
+
+/**
+ * Derive the entity `resizable` property from the text sizing mode.
+ * - auto-width: no handles (both dimensions auto)
+ * - auto-height: E/W handles only (width manual, height auto)
+ * - fixed: all 8 handles (both dimensions manual)
+ */
+export function resizableForSizingMode(
+  mode: TextSizingMode
+): boolean | { width?: boolean; height?: boolean } {
+  switch (mode) {
+    case 'auto-width':
+      return false;
+    case 'auto-height':
+      return { width: true, height: false };
+    case 'fixed':
+      return { width: true, height: true };
+  }
 }

@@ -831,8 +831,8 @@ export function populateMultiLineGlyphBuffers(
       // Y position: line top + half-leading (to match CSS line box centering)
       const lineY = py + lineIdx * lineHeightPx + halfLeading;
 
-      // Overflow clipping: skip lines below maxHeight
-      if (entry.maxHeight !== undefined && (lineIdx * lineHeightPx + lineHeightPx) > entry.maxHeight) break;
+      // Overflow clipping: skip lines whose top starts past maxHeight
+      if (entry.maxHeight !== undefined && (lineIdx * lineHeightPx) >= entry.maxHeight) break;
 
       let cursorX = startX;
       let prevCharCode: number | null = null;

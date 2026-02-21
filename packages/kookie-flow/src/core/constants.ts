@@ -91,6 +91,7 @@ export const DEFAULT_TEXT_HEIGHT = 40;
 export const DEFAULT_TEXT_FONT_SIZE = 16;
 export const DEFAULT_TEXT_LINE_HEIGHT = 1.5;
 export const DEFAULT_TEXT_PADDING = 4;
+export const DEFAULT_TEXT_SIZING_MODE = 'auto-height' as const;
 
 /** Image entity settings */
 export const DEFAULT_IMAGE_WIDTH = 240;

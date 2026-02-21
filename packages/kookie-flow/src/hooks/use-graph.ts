@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { Entity, Edge, EntityChange, EdgeChange, Connection } from '../types';
+import type { Entity, Edge, EntityChange, EdgeChange, Connection, TextEntityData } from '../types';
+import { resizableForSizingMode } from '../utils/text-texture';
 
 export interface UseGraphOptions {
   initialEntities?: Entity[];
@@ -91,10 +92,14 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
           case 'data': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
-              nextEntities[index] = {
-                ...nextEntities[index],
-                data: { ...nextEntities[index].data, ...change.data },
-              };
+              const entity = nextEntities[index];
+              const merged = { ...entity, data: { ...entity.data, ...change.data } };
+              // Auto-derive resizable when sizingMode changes on text entities
+              if (entity.type === 'text' && 'sizingMode' in change.data) {
+                const mode = (change.data as TextEntityData).sizingMode ?? 'auto-height';
+                merged.resizable = resizableForSizingMode(mode);
+              }
+              nextEntities[index] = merged;
             }
             break;
           }

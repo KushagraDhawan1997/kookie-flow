@@ -129,6 +129,16 @@ function generateEntities(count: number): Entity[] {
     resizable: { width: true, height: false },
     inputs: [{ id: 'text-notes-in', name: 'Log', type: 'string' }],
   });
+  // Auto-width text entity — grows horizontally, no word wrap
+  entities.push({
+    id: 'text-auto-width',
+    type: 'text',
+    position: { x: -400, y: -100 },
+    width: 100,
+    height: 40,
+    data: { content: 'Auto-width text grows horizontally', sizingMode: 'auto-width' as const },
+    resizable: false,
+  });
 
   // Image entities — rendered as WebGL textured quads (real photos from /public)
   entities.push({
@@ -323,7 +333,7 @@ function generateEdges(nodeCount: number): Edge[] {
 const entityTypes: Record<string, EntityTypeDefinition> = {
   text: {
     type: 'text',
-    toolbar: ['fontSize', 'fontWeight', 'textAlign', 'textColor'],
+    toolbar: ['sizingMode', 'fontSize', 'fontWeight', 'textAlign', 'textColor'],
   },
   image: {
     type: 'image',

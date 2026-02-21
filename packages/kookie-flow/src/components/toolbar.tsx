@@ -42,11 +42,20 @@ import type {
   EntityData,
   EntityTypeDefinition,
   EntityChange,
+  TextEntityData,
+  TextSizingMode,
   ToolbarConfig,
   ToolbarRenderFn,
   ToolbarRenderProps,
   ToolbarWidget,
 } from '../types';
+import { useFont } from '../contexts/FontContext';
+import {
+  resolveTextStyle,
+  calculateTextAutoHeightMSDF,
+  calculateTextAutoSizeMSDF,
+} from '../utils/text-texture';
+import { DEFAULT_TEXT_WIDTH, DEFAULT_TEXT_HEIGHT } from '../core/constants';
 
 // ============================================================================
 // Context — provides entityTypes + onEntitiesChange to Toolbar children
@@ -85,6 +94,7 @@ function useToolbarContext() {
 /** Built-in defaults per built-in entity type */
 const BUILTIN_DEFAULTS: Record<string, ToolbarWidget[]> = {
   text: [
+    'sizingMode',
     'fontSize',
     'fontFamily',
     'fontWeight',
@@ -340,7 +350,8 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
     renderOverride,
     update,
     batchUpdate,
-    getSelectionBounds
+    getSelectionBounds,
+    onEntitiesChange
   );
 
   if (!visible || !toolbarContent) {
@@ -391,7 +402,8 @@ function resolveToolbarContent(
   renderOverride: ToolbarRenderFn | undefined,
   update: (entityId: string, data: Partial<EntityData>) => void,
   batchUpdate: (data: Partial<EntityData>) => void,
-  getSelectionBounds: () => { x: number; y: number; width: number; height: number } | null
+  getSelectionBounds: () => { x: number; y: number; width: number; height: number } | null,
+  onEntitiesChange?: (changes: EntityChange[]) => void
 ): ReactNode {
   if (entities.length === 0) return null;
 
@@ -445,6 +457,7 @@ function resolveToolbarContent(
           widget={widget}
           entities={entities}
           batchUpdate={batchUpdate}
+          onEntitiesChange={onEntitiesChange}
           showSeparator={i > 0}
         />
       ))}
@@ -520,6 +533,37 @@ function UnlockIcon() {
     <svg {...iconProps}>
       <rect x="5" y="11" width="14" height="10" rx="2" />
       <path d="M8 11V7a4 4 0 0 1 7.4-2" />
+    </svg>
+  );
+}
+
+function AutoWidthIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 7H21" />
+      <path d="M3 12H15" />
+      <path d="M1 4V20" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+function AutoHeightIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 7H21" />
+      <path d="M3 12H21" />
+      <path d="M3 17H11" />
+      <path d="M21 4V20" />
+    </svg>
+  );
+}
+
+function FixedSizeIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeDasharray="3 2" />
+      <path d="M7 9H17" />
+      <path d="M7 13H13" />
     </svg>
   );
 }
@@ -629,19 +673,91 @@ function BuiltInWidget({
   widget,
   entities,
   batchUpdate,
+  onEntitiesChange,
   showSeparator,
 }: {
   widget: ToolbarWidget;
   entities: Entity[];
   batchUpdate: (data: Partial<EntityData>) => void;
+  onEntitiesChange?: (changes: EntityChange[]) => void;
   showSeparator: boolean;
 }) {
   // Display values from first entity; updates apply to all selected
   const data = entities[0].data as Record<string, unknown>;
 
+  // Font context for sizing mode transitions (dimension recalculation)
+  const fontContext = useFont();
+  const regularFont = fontContext.regular;
+
   let content: ReactNode;
 
   switch (widget) {
+    case 'sizingMode': {
+      const currentMode = (data.sizingMode as string) ?? 'auto-height';
+      content = (
+        <SegmentedControl.Root
+          size="2"
+          value={currentMode}
+          onValueChange={(newMode: string) => {
+            if (!onEntitiesChange) return;
+            const mode = newMode as TextSizingMode;
+            const changes: EntityChange[] = [];
+
+            for (const entity of entities) {
+              if (entity.type !== 'text') continue;
+              const entData = entity.data as TextEntityData;
+              if ((entData.sizingMode ?? 'auto-height') === mode) continue;
+
+              const w = entity.width ?? DEFAULT_TEXT_WIDTH;
+              const h = entity.height ?? DEFAULT_TEXT_HEIGHT;
+              const style = resolveTextStyle(entData);
+
+              let newW = w;
+              let newH = h;
+
+              if (mode === 'auto-width' && regularFont && regularFont.glyphMap.size > 0) {
+                const size = calculateTextAutoSizeMSDF(
+                  entData.content, style, regularFont.metrics.info.size,
+                  regularFont.glyphMap, regularFont.kerningMap
+                );
+                newW = size.width;
+                newH = size.height;
+              } else if (mode === 'auto-height' && regularFont && regularFont.glyphMap.size > 0) {
+                newH = calculateTextAutoHeightMSDF(
+                  entData.content, style, w,
+                  regularFont.metrics.info.size, regularFont.glyphMap, regularFont.kerningMap
+                );
+              }
+              // fixed: freeze current dimensions
+
+              changes.push({
+                type: 'data', id: entity.id,
+                data: { ...entData, sizingMode: mode } as EntityData,
+              });
+              changes.push({
+                type: 'dimensions', id: entity.id,
+                dimensions: { width: newW, height: newH },
+              });
+            }
+
+            if (changes.length > 0) onEntitiesChange(changes);
+          }}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+        >
+          <SegmentedControl.Item value="auto-width" iconOnly>
+            <AutoWidthIcon />
+          </SegmentedControl.Item>
+          <SegmentedControl.Item value="auto-height" iconOnly>
+            <AutoHeightIcon />
+          </SegmentedControl.Item>
+          <SegmentedControl.Item value="fixed" iconOnly>
+            <FixedSizeIcon />
+          </SegmentedControl.Item>
+        </SegmentedControl.Root>
+      );
+      break;
+    }
+
     case 'fontSize':
       content = (
         <ToolbarNumberInput

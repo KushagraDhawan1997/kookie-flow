@@ -2404,14 +2404,26 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 - [x] `_movedEntityIds` race condition fix: `updateEntityDimensions` now accumulates (doesn't clear) the set, so multiple auto-size calls in the same frame all appear in the fast-path set
 - [x] Demo: text entity connections wired as string→string (valid type match)
 
+**10J: Text Sizing Modes (auto-width, auto-height, fixed)** ✅
+- [x] `TextSizingMode` type (`'auto-width' | 'auto-height' | 'fixed'`) and `sizingMode` field on `TextEntityData`
+- [x] `calculateTextAutoSizeMSDF()` — measures natural width + height for auto-width mode (no wrapping via `NO_WRAP_WIDTH = 1e7`)
+- [x] `resizableForSizingMode()` — maps sizing mode to entity `resizable` property
+- [x] `text-entities.tsx` — mode-aware dimension logic in useFrame: auto-width grows both axes, auto-height grows height only, fixed keeps stored dimensions
+- [x] `text-edit-overlay.tsx` — mode-aware dimension updates during editing (auto-width recalculates both dimensions per keystroke)
+- [x] `kookie-flow.tsx` — resize drag only overrides height in auto-height mode; fixed allows both axes; auto-width has no handles
+- [x] `toolbar.tsx` — `'sizingMode'` segmented control widget with AutoWidth/AutoHeight/Fixed icons; emits both `data` and `dimensions` changes on mode switch
+- [x] `store.ts` — `applyEntityChanges` auto-derives `resizable` from `sizingMode` on `data` changes for text entities
+- [x] Overflow clipping in fixed mode (text clips at entity bounds)
+- [x] Arrow key navigation uses `NO_WRAP_WIDTH` for auto-width entities (no wrapped-line navigation)
+- [x] Demo page: auto-width text entity example
+- [x] Exports: `TextSizingMode`, `resizableForSizingMode`
+
 **10-Later: Deferred**
-- Auto-width mode (width grows with content, no wrap)
 - Style runs (bold/italic/underline within text)
 - Emoji support (limited to MSDF atlas character set for now)
 - Font selection UI
 - Nested text inside Draw entities (`data.shapes[{ type: 'text' }]`)
 - IME popup positioning (currently shows near 0,0 instead of cursor position)
-- Double-click on empty canvas to create text entity
 
 ### Phase 11: Image Entity
 
@@ -2917,7 +2929,7 @@ import { useClipboard } from '@kushagradhawan/kookie-flow/plugins/useClipboard';
 
 - Rendering: Instanced MSDF via `text-entities.tsx` — single draw call, crisp at any zoom
 - Editing: Hidden textarea + WebGL cursor/selection (Figma pattern) — zero visual shift
-- Sizing: Auto-height mode (v1). Auto-width and fixed modes deferred
+- Sizing: Three Figma-parity modes — auto-width (no wrap, both axes hug content), auto-height (fixed width, auto height), fixed (both locked, overflow clips). Switchable via `sizingMode` on `TextEntityData` and built-in toolbar widget
 - Polish (10H): Multi-click word/line/block selection, drag-to-select, Home/End on wrapped lines, overflow clipping, edge-to-edge selection rects, numeric kerning keys, entity data change persistence
 - Key files: `text-entities.tsx`, `text-edit-overlay.tsx`, `text-edit-cursor.tsx`, `text-cursor-layout.ts`, `text-layout.ts`
 - Implementation order: 10A → 10B → 10D → 10C → 10E → 10F → 10G → 10H

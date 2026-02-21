@@ -17,8 +17,10 @@ import type {
   InternalClipboard,
   PasteFromInternalOptions,
   EntityData,
+  TextEntityData,
   FitViewOptions,
 } from '../types';
+import { resizableForSizingMode } from '../utils/text-texture';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, SOCKET_MARGIN_TOP, SOCKET_SPACING, SOCKET_OFFSET } from './constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { Quadtree, SocketQuadtree, getEntityBounds, type SocketEntry } from './spatial';
@@ -750,10 +752,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'data': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
-                nextEntities[index] = {
-                  ...nextEntities[index],
-                  data: { ...nextEntities[index].data, ...change.data },
-                };
+                const entity = nextEntities[index];
+                const merged = { ...entity, data: { ...entity.data, ...change.data } };
+                // Auto-derive resizable when sizingMode changes on text entities
+                if (entity.type === 'text' && 'sizingMode' in change.data) {
+                  const mode = (change.data as TextEntityData).sizingMode ?? 'auto-height';
+                  merged.resizable = resizableForSizingMode(mode);
+                }
+                nextEntities[index] = merged;
               }
               break;
             }

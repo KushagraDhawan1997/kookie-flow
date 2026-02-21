@@ -18,6 +18,7 @@ import { useFont } from '../contexts/FontContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import {
   DEFAULT_TEXT_WIDTH,
+  DEFAULT_TEXT_HEIGHT,
   DEFAULT_TEXT_FONT_SIZE,
   DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_PADDING,
@@ -32,6 +33,8 @@ import {
   getSelectionRects,
 } from '../utils/text-cursor-layout';
 import type { TextEntityData } from '../types';
+import { DEFAULT_TEXT_SIZING_MODE } from '../core/constants';
+import { NO_WRAP_WIDTH } from '../utils/text-texture';
 
 // Stable empty maps to avoid re-creating on every render when font isn't loaded
 const emptyGlyphMap: GlyphMap = new Map();
@@ -197,6 +200,7 @@ export function TextEditCursor() {
     const letterSpacing = data.letterSpacing ?? 0;
     const textAlign = data.textAlign ?? 'left';
     const pad = DEFAULT_TEXT_PADDING;
+    const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
 
     // Sync cursor color with entity text color (custom or theme default)
     if (data.textColor) {
@@ -207,10 +211,14 @@ export function TextEditCursor() {
       c.setRGB(primaryTextColor[0], primaryTextColor[1], primaryTextColor[2]);
     }
 
+    // Use NO_WRAP_WIDTH for auto-width mode to match the text renderer
+    // (prevents floating-point precision mismatches that cause unexpected wrapping)
+    const layoutWidth = sizingMode === 'auto-width' ? NO_WRAP_WIDTH : w;
+
     // Get character position table (shared cache with TextEditOverlay)
     const table = getSharedCharPositionTable(
       content, fontSize, lineHeightMul, textAlign,
-      w, pad, entity.position.x, entity.position.y,
+      layoutWidth, pad, entity.position.x, entity.position.y,
       regularFont.metrics, glyphMap, kerningMap, letterSpacing
     );
     const tableChanged = table !== lastTableRef.current;
@@ -284,7 +292,19 @@ export function TextEditCursor() {
         // Use actual BMFont glyph height (not full lineHeight which includes leading)
         // cursorPos.y already starts at halfLeading offset, so this aligns with glyphs
         const scale = fontSize / regularFont.metrics.info.size;
-        const glyphHeight = regularFont.metrics.common.lineHeight * scale;
+        let glyphHeight = regularFont.metrics.common.lineHeight * scale;
+
+        // Clamp cursor to entity bounds in fixed mode only.
+        // In auto-height/auto-width, entity.height in the store may be stale
+        // during editing (dimensions update on commitAndExit, not per keystroke).
+        if (sizingMode === 'fixed') {
+          const h = entity.height ?? DEFAULT_TEXT_HEIGHT;
+          const entityBottom = entity.position.y + h;
+          const cursorBottom = cursorPos.y + glyphHeight;
+          if (cursorBottom > entityBottom) {
+            glyphHeight = Math.max(1, entityBottom - cursorPos.y);
+          }
+        }
 
         cursorMesh.scale.set(CURSOR_WIDTH, glyphHeight, 1);
         cursorMesh.position.set(

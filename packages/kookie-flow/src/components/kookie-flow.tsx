@@ -1324,23 +1324,24 @@ function InputHandler({
           }
         }
 
-        // Text entities: auto-height — recompute height from content after width change
+        // Text entities: mode-aware resize
         if (resizedEnt?.type === 'text' && !lockAspect) {
           const data = resizedEnt.data as TextEntityData;
-          const style = resolveTextStyle(data);
-          const resizeFont = regularFontRef.current;
-          if (resizeFont && glyphMapRef.current.size > 0) {
-            newH = calculateTextAutoHeightMSDF(
-              data.content, style, newW,
-              resizeFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
-            );
-          } else {
-            // Fallback: single line height + padding
-            newH = Math.max(
-              style.fontSize * style.lineHeight + 2 * style.padding,
-              style.fontSize * style.lineHeight + 2 * style.padding
-            );
+          const sizingMode = data.sizingMode ?? 'auto-height';
+          // auto-width: resizable=false, so this branch won't execute for auto-width
+          if (sizingMode === 'auto-height') {
+            const style = resolveTextStyle(data);
+            const resizeFont = regularFontRef.current;
+            if (resizeFont && glyphMapRef.current.size > 0) {
+              newH = calculateTextAutoHeightMSDF(
+                data.content, style, newW,
+                resizeFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
+              );
+            } else {
+              newH = style.fontSize * style.lineHeight + 2 * style.padding;
+            }
           }
+          // fixed: both newW and newH are user-controlled (no override)
         }
 
         // Alt = resize from center: reposition so entity stays centered

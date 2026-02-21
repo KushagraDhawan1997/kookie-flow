@@ -183,6 +183,7 @@ export type {
   RerouteEntityData,
   DrawEntityData,
   TextEntityData,
+  TextSizingMode,
   ImageEntityData,
   VideoEntityData,
   MeshEntityData,
@@ -206,7 +207,7 @@ export {
 } from './types';
 
 // Text entity utilities
-export { resolveTextStyle } from './utils/text-texture';
+export { resolveTextStyle, resizableForSizingMode } from './utils/text-texture';
 export type { TextStyleConfig } from './utils/text-texture';
 
 // Grouping utilities
