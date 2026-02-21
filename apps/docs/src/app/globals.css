@@ -1,6 +1,7 @@
-@import 'tailwindcss/preflight';
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
 @import '@kushagradhawan/kookie-ui/styles.css';
 @import '@kushagradhawan/kookie-blocks/styles.css';
+@import 'tailwindcss/preflight';
 
 :root {
   --font-sans: 'system-ui';
