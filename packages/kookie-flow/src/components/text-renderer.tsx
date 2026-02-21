@@ -14,7 +14,7 @@
  * - LOD: hide text below zoom thresholds
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback, use } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -656,8 +656,45 @@ export function TextRenderer({ fontMetrics, atlasTexture, ...props }: TextRender
   );
 }
 
+// Module-level caches — deduplicates concurrent requests for the same URL
+const fontMetricsCache = new Map<string, Promise<FontMetrics>>();
+const atlasTextureCache = new Map<string, Promise<THREE.Texture>>();
+
+function fetchFontMetrics(url: string): Promise<FontMetrics> {
+  let cached = fontMetricsCache.get(url);
+  if (!cached) {
+    cached = fetch(url).then((res) => res.json());
+    fontMetricsCache.set(url, cached);
+  }
+  return cached;
+}
+
+function loadAtlasTexture(url: string): Promise<THREE.Texture> {
+  let cached = atlasTextureCache.get(url);
+  if (!cached) {
+    cached = new Promise<THREE.Texture>((resolve, reject) => {
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        url,
+        (texture) => {
+          texture.flipY = false;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.generateMipmaps = false;
+          resolve(texture);
+        },
+        undefined,
+        reject
+      );
+    });
+    atlasTextureCache.set(url, cached);
+  }
+  return cached;
+}
+
 /**
  * Wrapper component that loads font atlas and metrics.
+ * Uses React 19 `use()` — parent must wrap in <Suspense>.
  */
 export interface TextRendererLoaderProps {
   /** Path to font metrics JSON */
@@ -677,35 +714,8 @@ export function TextRendererLoader({
   atlasUrl,
   ...props
 }: TextRendererLoaderProps) {
-  const [fontMetrics, setFontMetrics] = useState<FontMetrics | null>(null);
-  const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
-
-  // Load font metrics
-  useEffect(() => {
-    fetch(fontMetricsUrl)
-      .then((res) => res.json())
-      .then((data) => setFontMetrics(data))
-      .catch((err) => console.error('Failed to load font metrics:', err));
-  }, [fontMetricsUrl]);
-
-  // Load atlas texture
-  useEffect(() => {
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      atlasUrl,
-      (texture) => {
-        texture.flipY = false;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.generateMipmaps = false;
-        setAtlasTexture(texture);
-      },
-      undefined,
-      (err) => console.error('Failed to load font atlas:', err)
-    );
-  }, [atlasUrl]);
-
-  if (!fontMetrics || !atlasTexture) return null;
+  const fontMetrics = use(fetchFontMetrics(fontMetricsUrl));
+  const atlasTexture = use(loadAtlasTexture(atlasUrl));
 
   return <TextRenderer fontMetrics={fontMetrics} atlasTexture={atlasTexture} {...props} />;
 }

@@ -84,23 +84,26 @@ function isPreset(font: FontPreset | FontConfig): font is FontPreset {
  * - For custom fonts, uses the provided metrics and atlas URL
  * - Memoized to prevent re-computation during interactions
  */
+interface FontState {
+  regular: LoadedFontWeight | null;
+  semibold: LoadedFontWeight | null;
+  isLoading: boolean;
+}
+
+const INITIAL_FONT_STATE: FontState = { regular: null, semibold: null, isLoading: true };
+const EMPTY_LOADED: FontState = { regular: null, semibold: null, isLoading: false };
+
 export function FontProvider({ children, font = 'google-sans' }: FontProviderProps) {
-  const [loadedFonts, setLoadedFonts] = useState<{
-    regular: LoadedFontWeight | null;
-    semibold: LoadedFontWeight | null;
-  }>({ regular: null, semibold: null });
-  const [isLoading, setIsLoading] = useState(true);
+  const [fontState, setFontState] = useState<FontState>(INITIAL_FONT_STATE);
 
   // Load fonts when prop changes
   useEffect(() => {
     let cancelled = false;
+    setFontState(INITIAL_FONT_STATE);
 
     async function loadFonts() {
-      setIsLoading(true);
-
       try {
         if (isPreset(font)) {
-          // Load preset fonts dynamically
           const preset = await loadFontPreset(font);
           if (cancelled) return;
 
@@ -109,26 +112,20 @@ export function FontProvider({ children, font = 'google-sans' }: FontProviderPro
             const semibold = preset.weights.semibold
               ? loadFontWeight(preset.weights.semibold)
               : null;
-            setLoadedFonts({ regular, semibold });
+            setFontState({ regular, semibold, isLoading: false });
           } else {
-            // System preset or unknown - no WebGL fonts
-            setLoadedFonts({ regular: null, semibold: null });
+            setFontState(EMPTY_LOADED);
           }
         } else {
-          // Custom FontConfig
           const regular = loadFontWeight(font.weights.regular);
           const semibold = font.weights.semibold
             ? loadFontWeight(font.weights.semibold)
             : null;
-          setLoadedFonts({ regular, semibold });
+          setFontState({ regular, semibold, isLoading: false });
         }
       } catch (error) {
         console.error('Failed to load fonts:', error);
-        setLoadedFonts({ regular: null, semibold: null });
-      }
-
-      if (!cancelled) {
-        setIsLoading(false);
+        setFontState(EMPTY_LOADED);
       }
     }
 
@@ -141,12 +138,12 @@ export function FontProvider({ children, font = 'google-sans' }: FontProviderPro
 
   const value = useMemo<FontContextValue>(
     () => ({
-      regular: loadedFonts.regular,
-      semibold: loadedFonts.semibold,
-      isLoading,
+      regular: fontState.regular,
+      semibold: fontState.semibold,
+      isLoading: fontState.isLoading,
       presetName: isPreset(font) ? font : null,
     }),
-    [loadedFonts, isLoading, font]
+    [fontState, font]
   );
 
   return <FontContext.Provider value={value}>{children}</FontContext.Provider>;
