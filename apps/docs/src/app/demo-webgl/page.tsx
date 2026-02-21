@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { KookieFlow, Toolbar, useGraph, type Entity, type Edge, type XYPosition, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+import { Theme } from '@kushagradhawan/kookie-ui';
+import {
+  KookieFlow,
+  Toolbar,
+  useGraph,
+  type Entity,
+  type Edge,
+  type XYPosition,
+  type EntityTypeDefinition,
+} from '@kushagradhawan/kookie-flow';
 
 // Socket type patterns for type-aware edge connections
 const socketPatterns = [
@@ -333,23 +342,26 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
 
   const dropCounterRef = useRef(0);
 
-  const handleFileDrop = useCallback((files: File[], position: XYPosition) => {
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const src = URL.createObjectURL(file);
-      const id = `image-drop-${Date.now()}-${dropCounterRef.current++}`;
-      addEntity({
-        id,
-        type: 'image',
-        position: { x: position.x + i * 30, y: position.y + i * 30 },
-        width: 280,
-        height: 200,
-        data: { src, alt: file.name, objectFit: 'cover' },
-        inputs: [{ id: `${id}-in`, name: 'Image', type: 'image' }],
-        outputs: [{ id: `${id}-out`, name: 'Output', type: 'image' }],
-      });
-    }
-  }, [addEntity]);
+  const handleFileDrop = useCallback(
+    (files: File[], position: XYPosition) => {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const src = URL.createObjectURL(file);
+        const id = `image-drop-${Date.now()}-${dropCounterRef.current++}`;
+        addEntity({
+          id,
+          type: 'image',
+          position: { x: position.x + i * 30, y: position.y + i * 30 },
+          width: 280,
+          height: 200,
+          data: { src, alt: file.name, objectFit: 'cover' },
+          inputs: [{ id: `${id}-in`, name: 'Image', type: 'image' }],
+          outputs: [{ id: `${id}-out`, name: 'Output', type: 'image' }],
+        });
+      }
+    },
+    [addEntity]
+  );
 
   return (
     <KookieFlow
@@ -380,48 +392,50 @@ export default function DemoWebGLPage() {
   const [nodeCount, setNodeCount] = useState<number>(100);
 
   return (
-    <main style={{ width: '100vw', height: '100vh' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          zIndex: 10,
-          background: 'rgba(0,0,0,0.85)',
-          padding: '12px 16px',
-          borderRadius: 8,
-          fontSize: 13,
-          color: '#fff',
-          pointerEvents: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <span style={{ fontWeight: 600 }}>WebGL Benchmark</span>
-        <select
-          value={nodeCount}
-          onChange={(e) => setNodeCount(Number(e.target.value))}
+    <Theme accentColor="blue">
+      <main style={{ width: '100vw', height: '100vh' }}>
+        <div
           style={{
-            padding: '4px 8px',
-            background: '#222',
-            border: '1px solid #555',
-            borderRadius: 4,
-            color: '#fff',
+            position: 'absolute',
+            top: 16,
+            left: 16,
+            zIndex: 10,
+            background: 'rgba(0,0,0,0.85)',
+            padding: '12px 16px',
+            borderRadius: 8,
             fontSize: 13,
-            cursor: 'pointer',
+            color: '#fff',
+            pointerEvents: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          {NODE_COUNT_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n.toLocaleString()} nodes
-            </option>
-          ))}
-        </select>
-      </div>
+          <span style={{ fontWeight: 600 }}>WebGL Benchmark</span>
+          <select
+            value={nodeCount}
+            onChange={(e) => setNodeCount(Number(e.target.value))}
+            style={{
+              padding: '4px 8px',
+              background: '#222',
+              border: '1px solid #555',
+              borderRadius: 4,
+              color: '#fff',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            {NODE_COUNT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n.toLocaleString()} nodes
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <WebGLBenchmarkGraph key={nodeCount} nodeCount={nodeCount} />
-    </main>
+        <WebGLBenchmarkGraph key={nodeCount} nodeCount={nodeCount} />
+      </main>
+    </Theme>
   );
 }

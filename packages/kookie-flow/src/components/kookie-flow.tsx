@@ -840,13 +840,16 @@ function InputHandler({
       height: rect.height,
     };
 
-    // Update on resize (no layout query - ResizeObserver provides size directly)
+    // Update on resize — size changes can also shift position (e.g. Theme wrapper)
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        // contentRect gives us width/height without forcing layout
         cachedRectRef.current.width = entry.contentRect.width;
         cachedRectRef.current.height = entry.contentRect.height;
+        // Position may shift when size changes, so update left/top too
+        const r = container.getBoundingClientRect();
+        cachedRectRef.current.left = r.left;
+        cachedRectRef.current.top = r.top;
       }
     });
     resizeObserver.observe(container);
@@ -949,7 +952,11 @@ function InputHandler({
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!containerRef.current) return;
-      // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
+      // Refresh cached position on interaction start (not a hot path)
+      // This catches cases where layout shifted after mount (e.g. sidebar animation, Theme wrapper)
+      const freshRect = containerRef.current.getBoundingClientRect();
+      cachedRectRef.current.left = freshRect.left;
+      cachedRectRef.current.top = freshRect.top;
       const rect = cachedRectRef.current;
 
       const screenX = e.clientX - rect.left;
