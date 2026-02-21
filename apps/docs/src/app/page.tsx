@@ -304,7 +304,7 @@ export default function Page() {
                 fallback="K"
                 size="4"
                 color="gray"
-                src="/kookie-flow-logo.svg"
+                src="/logos/kookie-flow/kookie-flow.png"
               />
               <Flex direction="column" gap="4">
                 <Footer.Tagline>
