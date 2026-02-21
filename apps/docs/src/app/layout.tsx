@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from 'next';
-import { JsonLd } from '@/components/json-ld';
 import './globals.css';
-import '@kushagradhawan/kookie-ui/styles.css';
-import '@kushagradhawan/kookie-blocks/styles.css';
 import { Providers } from '@/components/providers';
+import { DocsLayout } from '@/components/docs-layout';
 
 const siteConfig = {
   name: 'Kookie Flow',
@@ -93,27 +91,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="icon" href="/favicon.ico" sizes="48x48" />
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/site.webmanifest" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Google Sans for kookie-flow */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Google+Sans+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-        {/* Kookie UI fonts (loaded here to avoid @import ordering issues) */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body>
-        <JsonLd />
-        <Providers>{children}</Providers>
+        <Providers>
+          <DocsLayout>{children}</DocsLayout>
+        </Providers>
       </body>
     </html>
   );

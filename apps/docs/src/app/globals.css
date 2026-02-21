@@ -1,27 +1,43 @@
 @import 'tailwindcss/preflight';
 @import '@kushagradhawan/kookie-ui/styles.css';
+@import '@kushagradhawan/kookie-blocks/styles.css';
 
-/* Google Sans font family overrides for Kookie UI */
 :root {
-  --font-sans: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Google Sans Mono', ui-monospace, 'SF Mono', monospace;
+  --font-sans: 'system-ui';
 }
 
-/* Minimal global styles - Kookie UI handles the rest */
-
+/* Minimal global styles - Safari/iOS fixes */
 html,
 body {
-  height: 100%;
+  max-width: 100vw;
   margin: 0;
-  padding: 0;
+  /* Safari font scaling fixes */
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Prevent Safari from zooming on input focus */
+  -webkit-tap-highlight-color: transparent;
+  /* Prevent page-level horizontal overflow */
+  overflow-x: clip;
 }
 
-/* Smooth scrolling for anchor links */
-html {
-  scroll-behavior: smooth;
+/* Safari-specific viewport fixes */
+@supports (-webkit-touch-callout: none) {
+  html {
+    -webkit-text-size-adjust: none;
+  }
 }
 
-/* Code block styling overrides if needed */
-[data-rehype-pretty-code-fragment] {
-  position: relative;
+* {
+  box-sizing: border-box;
+}
+
+/* Scroll offset for headings when using anchor links */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  scroll-margin-top: 120px;
 }
