@@ -7,6 +7,7 @@ import { docsNavigation } from '../../navigation-config';
 import { Badge, Flex, IconButton } from '@kushagradhawan/kookie-ui';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { GithubIcon } from '@hugeicons/core-free-icons';
+import { DarkModeToggle } from './dark-mode';
 
 export function DocsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -42,6 +43,7 @@ export function DocsLayout({ children }: { children: React.ReactNode }) {
           </Badge>
         </Flex>
       }
+      sidebarFooter={<DarkModeToggle />}
     >
       {children}
     </DocsShell>

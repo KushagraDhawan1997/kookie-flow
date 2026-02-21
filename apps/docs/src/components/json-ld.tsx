@@ -32,7 +32,7 @@ export function JsonLd() {
     '@type': 'Organization',
     name: 'Kookie',
     url: 'https://github.com/KushagraDhawan1997',
-    logo: 'https://kookie-flow.vercel.app/logo.png',
+    logo: 'https://kookie-flow.vercel.app/kookie-flow-logo.svg',
     sameAs: [
       'https://github.com/KushagraDhawan1997',
       'https://twitter.com/kushagradh',

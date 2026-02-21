@@ -27,14 +27,14 @@ importers:
         specifier: ^1.1.4
         version: 1.1.4(react@19.2.3)
       '@kushagradhawan/kookie-blocks':
-        specifier: ^0.1.46
-        version: 0.1.47(@kushagradhawan/kookie-ui@0.2.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        specifier: ^0.1.57
+        version: 0.1.57(@kushagradhawan/kookie-ui@0.3.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@kushagradhawan/kookie-flow':
         specifier: workspace:*
         version: link:../../packages/kookie-flow
       '@kushagradhawan/kookie-ui':
-        specifier: ^0.2.3
-        version: 0.2.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        specifier: ^0.3.11
+        version: 0.3.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@mdx-js/loader':
         specifier: ^3.1.1
         version: 3.1.1
@@ -622,11 +622,11 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kushagradhawan/kookie-blocks@0.1.47':
-    resolution: {integrity: sha512-wRdLOo9CpJKMzwSMQN957faSWtvDpa7xu7MYQCOxsQwuWlSOEPYc4/FDLzE+By+DK/CXDPguGAjP13HKgxMSEg==}
+  '@kushagradhawan/kookie-blocks@0.1.57':
+    resolution: {integrity: sha512-2R1q8lUNrhUD9/bIIZk/8Ih0os3Jq3m/BsPXCLFuDcpsdZdsJRXzgFDUdSaCCb652OnZa6wwfRlOHQsYG0pSfw==}
     engines: {node: '>=16'}
     peerDependencies:
-      '@kushagradhawan/kookie-ui': '>=0.1.147'
+      '@kushagradhawan/kookie-ui': '>=0.3.10'
       marked: '*'
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -636,6 +636,20 @@ packages:
 
   '@kushagradhawan/kookie-ui@0.2.3':
     resolution: {integrity: sha512-zLPRAXAoXHCdVjtMGoAOupbJFfe8EPdUfPYCkb6p+wdlRRJE+scHLs9yjGeP6pQVla02lCaUVjihivsR9cdIJw==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: 16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+      react-dom: 16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+
+  '@kushagradhawan/kookie-ui@0.3.12':
+    resolution: {integrity: sha512-m3Qc+M3MfADhJDW4qeT3+TUR8CB+/beLqmL7/dpq2olH77ySObeHZqEigPVeseyjf4Yu0iIXbSTrixJ5i+Lysg==}
     engines: {node: '>=16'}
     peerDependencies:
       '@types/react': '*'
@@ -4119,11 +4133,11 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@kushagradhawan/kookie-blocks@0.1.47(@kushagradhawan/kookie-ui@0.2.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+  '@kushagradhawan/kookie-blocks@0.1.57(@kushagradhawan/kookie-ui@0.3.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
       '@hugeicons/core-free-icons': 3.1.1
       '@hugeicons/react': 1.1.4(react@19.2.3)
-      '@kushagradhawan/kookie-ui': 0.2.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@kushagradhawan/kookie-ui': 0.3.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       harden-react-markdown: 1.1.7(react-markdown@9.1.0(@types/react@19.2.8)(react@19.2.3))(react@19.2.3)
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
@@ -4136,6 +4150,31 @@ snapshots:
       - supports-color
 
   '@kushagradhawan/kookie-ui@0.2.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      '@radix-ui/colors': 3.0.0
+      '@radix-ui/react-accordion': 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tanstack/react-virtual': 3.13.18(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@zag-js/react': 1.32.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@zag-js/splitter': 1.32.0
+      classnames: 2.5.1
+      cmdk: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      geist: 1.5.1(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+      motion: 12.27.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      radix-ui: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+      react-dropzone: 14.3.8(react@19.2.3)
+      react-remove-scroll-bar: 2.3.8(@types/react@19.2.8)(react@19.2.3)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.1(zod@3.25.76)
+    optionalDependencies:
+      '@types/react': 19.2.8
+      '@types/react-dom': 19.2.3(@types/react@19.2.8)
+    transitivePeerDependencies:
+      - '@emotion/is-prop-valid'
+      - next
+
+  '@kushagradhawan/kookie-ui@0.3.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(next@15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
       '@radix-ui/colors': 3.0.0
       '@radix-ui/react-accordion': 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
