@@ -47,6 +47,8 @@ type ThemeComponentType = React.ComponentType<{
   children: React.ReactNode;
 }>;
 
+const EMPTY_WIDGET_TYPES: Record<string, React.ComponentType<WidgetProps>> = {};
+
 export interface WidgetsLayerProps {
   /** Socket type definitions for widget resolution */
   socketTypes: Record<string, SocketType>;
@@ -195,7 +197,7 @@ const widgetWrapperStyle: CSSProperties = {
  */
 export function WidgetsLayer({
   socketTypes,
-  widgetTypes = {},
+  widgetTypes = EMPTY_WIDGET_TYPES,
   onWidgetChange,
   minWidgetZoom = DEFAULT_MIN_WIDGET_ZOOM,
   ThemeComponent,
@@ -474,12 +476,14 @@ export function WidgetsLayer({
             }}
             data-entity-id={entity.id}
             data-socket-index={inputIndex}
+            role="group"
             style={widgetWrapperStyle}
             // Stop propagation to prevent InputHandler from capturing widget interactions
             onPointerDown={stopPropagation}
             onPointerMove={stopPropagation}
             onPointerUp={stopPropagation}
             onClick={stopPropagation}
+            onKeyDown={stopPropagation}
           >
             <SocketWidget
               entityId={entity.id}

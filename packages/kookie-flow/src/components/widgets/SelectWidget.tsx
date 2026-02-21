@@ -7,11 +7,13 @@ import { useCallback } from 'react';
 import { Select } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
+const EMPTY_OPTIONS: string[] = [];
+
 export function SelectWidget({
   value,
   onChange,
   disabled,
-  options = [],
+  options = EMPTY_OPTIONS,
   placeholder,
 }: WidgetProps) {
   const strValue = value !== undefined ? String(value) : '';

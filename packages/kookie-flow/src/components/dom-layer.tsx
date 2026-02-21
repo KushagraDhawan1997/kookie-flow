@@ -15,6 +15,8 @@ import { DEFAULT_ENTITY_WIDTH, SOCKET_OFFSET } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
+const EMPTY_ENTITY_TYPES: Record<string, EntityTypeDefinition> = {};
+
 export interface DOMLayerProps {
   entityTypes?: Record<string, EntityTypeDefinition>;
   /** Scale text with zoom (true = CSS scale, false = crisp text). Default: false */
@@ -59,7 +61,7 @@ const containerStyle: CSSProperties = {
  * - Ref-based updates that bypass React rendering
  */
 export function DOMLayer({
-  entityTypes = {},
+  entityTypes = EMPTY_ENTITY_TYPES,
   scaleTextWithZoom = false,
   defaultEdgeType = 'bezier',
   showEntityLabels = true,
