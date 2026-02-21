@@ -306,14 +306,21 @@ const entities = [
   },
 ];
 
-// Text entity — standalone annotation
+// Text entity — standalone annotation (auto-height is the default)
 const textNote = {
   id: 'note-1',
   type: 'text',
   position: { x: 0, y: 0 },
   width: 240,
   data: { content: 'Double-click to edit this text' },
-  resizable: { width: true, height: false }, // Auto-height
+};
+
+// Auto-width text — grows horizontally, no word wrap
+const autoWidthText = {
+  id: 'label-1',
+  type: 'text',
+  position: { x: 0, y: 0 },
+  data: { content: 'Auto-width label', sizingMode: 'auto-width' },
 };
 
 // Text entity with ports — participates in the graph
@@ -324,7 +331,6 @@ const promptNode = {
   width: 240,
   data: { content: 'A photorealistic mountain landscape' },
   outputs: [{ id: 'prompt-out', name: 'Prompt', type: 'string' }],
-  resizable: { width: true, height: false },
 };
 
 // Comment entity
@@ -378,12 +384,13 @@ Text entities are standalone text blocks on the canvas with Figma-quality inline
 - **MSDF rendering** — Instanced glyph rendering, crisp at any zoom level
 - **Inline editing** — Double-click to edit. Hidden `<textarea>` captures keyboard, IME, and clipboard natively while cursor and selection render in WebGL (same pattern as Figma/Monaco)
 - **Word wrap** — Automatic word wrapping using BMFont glyph metrics
-- **Auto-height** — Height adjusts to fit content. Width is user-resizable.
+- **Sizing modes** — Three modes matching Figma: auto-width (no wrap, grows horizontally), auto-height (fixed width, height grows), fixed (both dimensions locked, overflow clips). Switchable via toolbar.
 - **Click-to-position** — Click within text to reposition the cursor
 - **Selection** — Shift+click and keyboard selection with visual highlight rectangles
 - **Arrow key navigation** — Full support for navigating across word-wrapped lines
 - **Optional ports** — Add `inputs`/`outputs` to make text entities participate in the graph
 - **`T` shortcut** — Press T to create a new text entity at viewport center
+- **Zero store writes during editing** — Dimensions update only on commit, not per keystroke
 
 ```tsx
 // Text entity with custom styling
@@ -399,8 +406,8 @@ const text = {
     letterSpacing: 0.5,
     textAlign: 'center',    // 'left' | 'center' | 'right'
     textColor: '#E0E0E0',
+    sizingMode: 'auto-height', // 'auto-width' | 'auto-height' | 'fixed'
   },
-  resizable: { width: true, height: false },
 };
 ```
 
@@ -594,6 +601,7 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Entity model refactor (nodes->entities, status rendering)
 - [x] Text entities (MSDF rendering, word wrap, auto-height)
 - [x] WebGL-native text editing (hidden textarea, cursor, selection)
+- [x] Text sizing modes (auto-width, auto-height, fixed) with toolbar widget
 - [ ] Image entities (texture previews)
 - [ ] 3D mesh entity previews
 - [ ] Hybrid entity portals
