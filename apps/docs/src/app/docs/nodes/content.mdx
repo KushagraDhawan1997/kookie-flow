@@ -1,20 +1,20 @@
 ---
-title: Nodes
-description: Node structure, sockets, widgets, and styling in Kookie Flow
+title: Entities
+description: Entity structure, sockets, widgets, and styling in Kookie Flow
 ---
 
-Nodes are the building blocks of your graph. Each node has a position, data, and optional input/output sockets.
+Entities are the building blocks of your graph. Each entity has a position, data, and optional input/output sockets.
 
-## Node Structure
+## Entity Structure
 
 ```tsx
-import type { Node } from '@kushagradhawan/kookie-flow';
+import type { Entity } from '@kushagradhawan/kookie-flow';
 
-const node: Node = {
+const entity: Entity = {
   id: 'unique-id',
   type: 'default',
   position: { x: 100, y: 200 },
-  data: { label: 'My Node' },
+  data: { label: 'My Entity' },
   inputs: [
     { id: 'in-1', name: 'Input', type: 'float' },
   ],
@@ -26,12 +26,44 @@ const node: Node = {
   height: 120,
   selected: false,
   color: 'blue', // Accent color
+  resizable: true, // true | false | { width?: boolean; height?: boolean }
 };
 ```
 
+## Entity Types
+
+Every object on the canvas is an entity. Built-in types:
+
+| Type | Description | Has Ports |
+|------|-------------|-----------|
+| `default` | Standard graph node with sockets | Yes (optional) |
+| `frame` | Spatial container with collapsible children | No |
+| `comment` | Sticky note annotation | No |
+| `reroute` | Edge waypoint for cleaner routing | No |
+| `text` | Text block with inline editing | Optional |
+| `draw` | Shapes, SVG paths, freeform drawing | Optional |
+| `image` | Image display | Optional |
+| `video` | Video display | Optional |
+| `mesh` | 3D mesh viewer | Optional |
+
+## Entity Status
+
+Entities support visual status feedback via `data.status`:
+
+```tsx
+const entities = [
+  { id: '1', data: { label: 'Processing', status: 'running' } },   // Pulsing indigo border
+  { id: '2', data: { label: 'Failed', status: 'error' } },         // Solid red border
+  { id: '3', data: { label: 'Warning', status: 'warning' } },      // Solid amber border
+  { id: '4', data: { label: 'Done', status: 'success' } },         // Pulsing green flash
+];
+```
+
+Statuses: `'error'` | `'warning'` | `'running'` | `'success'`. Add `data.statusMessage` for a human-readable message.
+
 ## Sockets
 
-Sockets are connection points on nodes. Input sockets appear on the left, outputs on the right.
+Sockets are connection points on entities. Input sockets appear on the left, outputs on the right.
 
 ### Socket Definition
 
@@ -209,9 +241,9 @@ const inputs = [
 
 ```tsx
 <KookieFlow
-  onWidgetChange={(nodeId, socketId, value) => {
+  onWidgetChange={(entityId, socketId, value) => {
     // Update your application state
-    updateNodeData(nodeId, socketId, value);
+    updateEntityData(entityId, socketId, value);
   }}
 />
 ```
@@ -220,7 +252,7 @@ const inputs = [
 
 ### Global Styling
 
-Apply consistent styling to all nodes:
+Apply consistent styling to all entities:
 
 ```tsx
 <KookieFlow
@@ -232,12 +264,12 @@ Apply consistent styling to all nodes:
 />
 ```
 
-### Per-Node Colors
+### Per-Entity Colors
 
-Each node can have its own accent color from Kookie UI's 26-color palette:
+Each entity can have its own accent color from Kookie UI's 26-color palette:
 
 ```tsx
-const nodes = [
+const entities = [
   { id: '1', color: 'blue', /* ... */ },
   { id: '2', color: 'purple', /* ... */ },
   { id: '3', color: 'orange', /* ... */ },
@@ -248,11 +280,11 @@ Available colors: `gray`, `gold`, `bronze`, `brown`, `yellow`, `amber`, `orange`
 
 ### Style Overrides
 
-Fine-grained control over node appearance:
+Fine-grained control over entity appearance:
 
 ```tsx
 <KookieFlow
-  nodeStyle={{
+  entityStyle={{
     background: '#1a1a2e',
     borderColor: '#4a4a6a',
     borderWidth: 1,
@@ -264,41 +296,44 @@ Fine-grained control over node appearance:
 
 ### Themed Widgets
 
-For per-node widget theming, pass the Kookie UI Theme component:
+For per-entity widget theming, pass the Kookie UI Theme component:
 
 ```tsx
 import { Theme } from '@kushagradhawan/kookie-ui';
 
 <KookieFlow
   ThemeComponent={Theme}
-  // Widgets on nodes with `color` prop will use that accent color
+  // Widgets on entities with `color` prop will use that accent color
 />
 ```
 
-## Node Changes
+## Entity Changes
 
-Handle node changes through the `onNodesChange` callback:
+Handle entity changes through the `onEntitiesChange` callback:
 
 ```tsx
-import type { NodeChange } from '@kushagradhawan/kookie-flow';
+import type { EntityChange } from '@kushagradhawan/kookie-flow';
 
-function handleNodesChange(changes: NodeChange[]) {
+function handleEntitiesChange(changes: EntityChange[]) {
   for (const change of changes) {
     switch (change.type) {
       case 'position':
-        // Node moved: change.id, change.position
+        // Entity moved: change.id, change.position
         break;
       case 'select':
         // Selection changed: change.id, change.selected
         break;
       case 'remove':
-        // Node deleted: change.id
+        // Entity deleted: change.id
         break;
       case 'add':
-        // Node added: change.node
+        // Entity added: change.entity
         break;
       case 'dimensions':
         // Size changed: change.id, change.dimensions
+        break;
+      case 'data':
+        // Data changed: change.id, change.data
         break;
     }
   }
@@ -308,8 +343,8 @@ function handleNodesChange(changes: NodeChange[]) {
 The `useGraph` hook handles these changes automatically:
 
 ```tsx
-const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-  initialNodes,
+const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+  initialEntities,
   initialEdges,
 });
 ```
