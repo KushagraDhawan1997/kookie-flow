@@ -185,25 +185,16 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       };
     }
 
-    case 'inter': {
-      // Inter - lazily loaded when we have the atlases
-      // TODO: Generate and bundle Inter MSDF atlases
-      // For now, fall back to Google Sans
-      console.warn('Inter font preset not yet available, falling back to Google Sans');
-      return loadFontPreset('google-sans');
-    }
-
-    case 'roboto': {
-      // Roboto - lazily loaded when we have the atlases
-      // TODO: Generate and bundle Roboto MSDF atlases
-      console.warn('Roboto font preset not yet available, falling back to Google Sans');
-      return loadFontPreset('google-sans');
-    }
-
+    case 'inter':
+    case 'roboto':
     case 'source-serif': {
-      // Source Serif - lazily loaded when we have the atlases
-      // TODO: Generate and bundle Source Serif MSDF atlases
-      console.warn('Source Serif font preset not yet available, falling back to Google Sans');
+      // MSDF atlases not yet bundled for these presets.
+      // Provide an actionable message so developers know how to supply their own.
+      console.warn(
+        `[KookieFlow] Font preset "${preset}" is not yet bundled. ` +
+        `Falling back to Google Sans. To use ${preset}, provide a custom FontConfig ` +
+        `with your own MSDF atlas via the \`font\` prop.`
+      );
       return loadFontPreset('google-sans');
     }
 
@@ -212,7 +203,10 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       return null;
 
     default:
-      console.warn(`Unknown font preset: ${preset}, falling back to Google Sans`);
+      console.warn(
+        `[KookieFlow] Unknown font preset "${preset}". ` +
+        `Falling back to Google Sans. Valid presets: "google-sans", "inter", "roboto", "source-serif", "system".`
+      );
       return loadFontPreset('google-sans');
   }
 }

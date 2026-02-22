@@ -350,6 +350,7 @@ export class ImageTextureManager {
       this.onLoad?.();
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.warn(`[KookieFlow] Image load failed for "${src}":`, err);
       entry.state = 'error';
       entry.abort = null;
     }
@@ -416,8 +417,9 @@ export class ImageTextureManager {
       entry.blob = null;
       entry.fullLoadState = 'idle';
       this.onLoad?.();
-    } catch {
-      entry.fullLoadState = 'idle'; // Allow retry on error
+    } catch (err) {
+      console.warn(`[KookieFlow] Full-res image decode failed for "${src}":`, err);
+      entry.fullLoadState = 'idle'; // Allow retry on next zoom
     }
   }
 }
