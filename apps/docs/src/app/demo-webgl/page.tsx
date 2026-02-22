@@ -403,7 +403,7 @@ export default function DemoWebGLPage() {
 
   return (
     <Theme accentColor="blue">
-      <main style={{ width: '100vw', height: '100vh' }}>
+      <main style={{ width: '100%', height: '100vh', position: 'relative' }}>
         <div
           style={{
             position: 'absolute',
