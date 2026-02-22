@@ -1,5 +1,6 @@
 // Components
 export { KookieFlow } from './components/kookie-flow';
+export { CanvasErrorBoundary } from './components/error-boundary';
 export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/context';
 export { Minimap } from './components/minimap';
 export { Toolbar, type ToolbarProps } from './components/toolbar';

@@ -64,6 +64,7 @@ import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPosition, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
+import { CanvasErrorBoundary } from './error-boundary';
 import { setInteractionMode } from './interaction-state';
 import type {
   KookieFlowProps,
@@ -2336,46 +2337,48 @@ function FlowCanvas({
   );
 
   return (
-    <Canvas
-      orthographic
-      // Use 'always' frameloop for consistent frame timing
-      // Components use dirty flags to skip unnecessary work
-      frameloop="always"
-      camera={{
-        position: [0, 0, 100],
-        zoom: 1,
-        near: 0.1,
-        far: 1000,
-      }}
-      style={{ position: 'absolute', top: 0, left: 0 }}
-      gl={glConfig}
-      // Disable R3F's built-in color management for simpler pipeline
-      flat
-      // Use legacy lights for simpler rendering
-      legacy
-    >
-      {showStats && <Stats />}
-      <Invalidator />
-      <CameraController />
-      {showGrid && <Grid />}
-      <TextEntities onEntitiesChange={onEntitiesChange} />
-      <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
-      <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
-      <Sockets socketTypes={socketTypes} />
-      <Entities />
-      <TextEditCursor />
-      <RerouteNodes />
-      <EntitySelection />
-      <SelectionBox />
-      <ConnectionLine socketTypes={socketTypes} />
-      {textRenderMode === 'webgl' && (
-        <WebGLTextLayer
-          showSocketLabels={showSocketLabels}
-          showEdgeLabels={showEdgeLabels}
-          defaultEdgeType={defaultEdgeType}
-        />
-      )}
-    </Canvas>
+    <CanvasErrorBoundary>
+      <Canvas
+        orthographic
+        // Use 'always' frameloop for consistent frame timing
+        // Components use dirty flags to skip unnecessary work
+        frameloop="always"
+        camera={{
+          position: [0, 0, 100],
+          zoom: 1,
+          near: 0.1,
+          far: 1000,
+        }}
+        style={{ position: 'absolute', top: 0, left: 0 }}
+        gl={glConfig}
+        // Disable R3F's built-in color management for simpler pipeline
+        flat
+        // Use legacy lights for simpler rendering
+        legacy
+      >
+        {showStats && <Stats />}
+        <Invalidator />
+        <CameraController />
+        {showGrid && <Grid />}
+        <TextEntities onEntitiesChange={onEntitiesChange} />
+        <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
+        <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
+        <Sockets socketTypes={socketTypes} />
+        <Entities />
+        <TextEditCursor />
+        <RerouteNodes />
+        <EntitySelection />
+        <SelectionBox />
+        <ConnectionLine socketTypes={socketTypes} />
+        {textRenderMode === 'webgl' && (
+          <WebGLTextLayer
+            showSocketLabels={showSocketLabels}
+            showEdgeLabels={showEdgeLabels}
+            defaultEdgeType={defaultEdgeType}
+          />
+        )}
+      </Canvas>
+    </CanvasErrorBoundary>
   );
 }
 
