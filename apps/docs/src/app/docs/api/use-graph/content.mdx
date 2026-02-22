@@ -16,23 +16,23 @@ import { useGraph } from '@kushagradhawan/kookie-flow';
 ```tsx
 function MyFlow() {
   const {
-    nodes,
+    entities,
     edges,
-    onNodesChange,
+    onEntitiesChange,
     onEdgesChange,
     onConnect,
   } = useGraph({
-    initialNodes: [
-      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
+    initialEntities: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Entity 1' } },
     ],
     initialEdges: [],
   });
 
   return (
     <KookieFlow
-      nodes={nodes}
+      entities={entities}
       edges={edges}
-      onNodesChange={onNodesChange}
+      onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
     />
@@ -44,39 +44,39 @@ function MyFlow() {
 
 ```tsx
 interface UseGraphOptions {
-  initialNodes?: Node[];
+  initialEntities?: Entity[];
   initialEdges?: Edge[];
 }
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `initialNodes` | `Node[]` | `[]` | Initial nodes in the graph |
-| `initialEdges` | `Edge[]` | `[]` | Initial edges connecting nodes |
+| `initialEntities` | `Entity[]` | `[]` | Initial entities in the graph |
+| `initialEdges` | `Edge[]` | `[]` | Initial edges connecting entities |
 
 ## Return Value
 
 ```tsx
 interface UseGraphReturn {
   // State
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
-  setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setEntities: React.Dispatch<React.SetStateAction<Entity[]>>;
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
 
   // Change handlers (pass to KookieFlow)
-  onNodesChange: (changes: NodeChange[]) => void;
+  onEntitiesChange: (changes: EntityChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
 
   // Convenience methods
-  addNode: (node: Node) => void;
-  removeNode: (id: string) => void;
+  addEntity: (entity: Entity) => void;
+  removeEntity: (id: string) => void;
   addEdge: (edge: Edge) => void;
   removeEdge: (id: string) => void;
-  getNode: (id: string) => Node | undefined;
+  getEntity: (id: string) => Entity | undefined;
   getEdge: (id: string) => Edge | undefined;
-  getConnectedEdges: (nodeId: string) => Edge[];
+  getConnectedEdges: (entityId: string) => Edge[];
 }
 ```
 
@@ -84,16 +84,16 @@ interface UseGraphReturn {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `nodes` | `Node[]` | Current nodes in the graph |
+| `entities` | `Entity[]` | Current entities in the graph |
 | `edges` | `Edge[]` | Current edges in the graph |
-| `setNodes` | `Dispatch<SetStateAction<Node[]>>` | React state setter for nodes |
+| `setEntities` | `Dispatch<SetStateAction<Entity[]>>` | React state setter for entities |
 | `setEdges` | `Dispatch<SetStateAction<Edge[]>>` | React state setter for edges |
 
 ### Change Handlers
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `onNodesChange` | `(changes: NodeChange[]) => void` | Handles node position, selection, add, remove, dimension changes |
+| `onEntitiesChange` | `(changes: EntityChange[]) => void` | Handles entity position, selection, add, remove, dimension, and data changes |
 | `onEdgesChange` | `(changes: EdgeChange[]) => void` | Handles edge selection, add, remove changes |
 | `onConnect` | `(connection: Connection) => void` | Creates an edge when sockets are connected |
 
@@ -101,31 +101,31 @@ interface UseGraphReturn {
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `addNode` | `(node: Node) => void` | Add a new node |
-| `removeNode` | `(id: string) => void` | Remove a node and its connected edges |
+| `addEntity` | `(entity: Entity) => void` | Add a new entity |
+| `removeEntity` | `(id: string) => void` | Remove an entity and its connected edges |
 | `addEdge` | `(edge: Edge) => void` | Add a new edge |
 | `removeEdge` | `(id: string) => void` | Remove an edge |
-| `getNode` | `(id: string) => Node \| undefined` | Find a node by ID |
+| `getEntity` | `(id: string) => Entity \| undefined` | Find an entity by ID |
 | `getEdge` | `(id: string) => Edge \| undefined` | Find an edge by ID |
-| `getConnectedEdges` | `(nodeId: string) => Edge[]` | Get all edges connected to a node |
+| `getConnectedEdges` | `(entityId: string) => Edge[]` | Get all edges connected to an entity |
 
 ## Examples
 
-### Adding Nodes Programmatically
+### Adding Entities Programmatically
 
 ```tsx
 function FlowWithToolbar() {
-  const { nodes, edges, addNode, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes: [],
+  const { entities, edges, addEntity, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: [],
     initialEdges: [],
   });
 
-  const handleAddNode = () => {
-    addNode({
-      id: `node-${Date.now()}`,
+  const handleAddEntity = () => {
+    addEntity({
+      id: `entity-${Date.now()}`,
       type: 'default',
       position: { x: Math.random() * 400, y: Math.random() * 400 },
-      data: { label: 'New Node' },
+      data: { label: 'New Entity' },
       inputs: [{ id: 'in', name: 'Input', type: 'any' }],
       outputs: [{ id: 'out', name: 'Output', type: 'any' }],
     });
@@ -133,11 +133,11 @@ function FlowWithToolbar() {
 
   return (
     <>
-      <button onClick={handleAddNode}>Add Node</button>
+      <button onClick={handleAddEntity}>Add Entity</button>
       <KookieFlow
-        nodes={nodes}
+        entities={entities}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
       />
@@ -146,57 +146,57 @@ function FlowWithToolbar() {
 }
 ```
 
-### Updating Node Data
+### Updating Entity Data
 
 ```tsx
 function FlowWithDataUpdates() {
-  const { nodes, edges, setNodes, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes,
+  const { entities, edges, setEntities, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
     initialEdges,
   });
 
-  const updateNodeLabel = (nodeId: string, label: string) => {
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, label } }
-          : node
+  const updateEntityLabel = (entityId: string, label: string) => {
+    setEntities((entities) =>
+      entities.map((entity) =>
+        entity.id === entityId
+          ? { ...entity, data: { ...entity.data, label } }
+          : entity
       )
     );
   };
 
   return (
     <KookieFlow
-      nodes={nodes}
+      entities={entities}
       edges={edges}
-      onNodesChange={onNodesChange}
+      onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
-      onNodeClick={(node) => {
-        const newLabel = prompt('New label:', node.data.label);
-        if (newLabel) updateNodeLabel(node.id, newLabel);
+      onEntityClick={(entity) => {
+        const newLabel = prompt('New label:', entity.data.label);
+        if (newLabel) updateEntityLabel(entity.id, newLabel);
       }}
     />
   );
 }
 ```
 
-### Deleting Selected Nodes
+### Deleting Selected Entities
 
 ```tsx
 function FlowWithDelete() {
-  const { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes,
+  const { entities, edges, setEntities, setEdges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
     initialEdges,
   });
 
   const deleteSelected = () => {
-    const selectedIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id));
+    const selectedIds = new Set(entities.filter((e) => e.selected).map((e) => e.id));
 
-    // Remove selected nodes
-    setNodes((nodes) => nodes.filter((n) => !n.selected));
+    // Remove selected entities
+    setEntities((entities) => entities.filter((e) => !e.selected));
 
-    // Remove edges connected to deleted nodes
+    // Remove edges connected to deleted entities
     setEdges((edges) =>
       edges.filter((e) => !selectedIds.has(e.source) && !selectedIds.has(e.target))
     );
@@ -214,9 +214,9 @@ function FlowWithDelete() {
 
   return (
     <KookieFlow
-      nodes={nodes}
+      entities={entities}
       edges={edges}
-      onNodesChange={onNodesChange}
+      onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
     />
@@ -224,30 +224,30 @@ function FlowWithDelete() {
 }
 ```
 
-### Finding Connected Nodes
+### Finding Connected Entities
 
 ```tsx
 function FlowWithHighlighting() {
-  const { nodes, edges, getConnectedEdges, getNode } = useGraph({
-    initialNodes,
+  const { entities, edges, getConnectedEdges, getEntity } = useGraph({
+    initialEntities,
     initialEdges,
   });
 
-  const getConnectedNodes = (nodeId: string): Node[] => {
-    const connectedEdges = getConnectedEdges(nodeId);
+  const getConnectedEntities = (entityId: string): Entity[] => {
+    const connectedEdges = getConnectedEdges(entityId);
     const connectedIds = new Set<string>();
 
     for (const edge of connectedEdges) {
-      if (edge.source !== nodeId) connectedIds.add(edge.source);
-      if (edge.target !== nodeId) connectedIds.add(edge.target);
+      if (edge.source !== entityId) connectedIds.add(edge.source);
+      if (edge.target !== entityId) connectedIds.add(edge.target);
     }
 
     return Array.from(connectedIds)
-      .map(getNode)
-      .filter((n): n is Node => n !== undefined);
+      .map(getEntity)
+      .filter((e): e is Entity => e !== undefined);
   };
 
-  // Use getConnectedNodes for highlighting, validation, etc.
+  // Use getConnectedEntities for highlighting, validation, etc.
 }
 ```
 
@@ -255,5 +255,5 @@ function FlowWithHighlighting() {
 
 - [KookieFlow](/docs/api/kookie-flow) — Main component props
 - [useFlowStoreApi](/docs/api/use-flow-store-api) — Access internal store for advanced operations
-- [Nodes](/docs/nodes) — Node structure and types
+- [Entities](/docs/nodes) — Entity structure and types
 - [Edges](/docs/edges) — Edge structure and types
