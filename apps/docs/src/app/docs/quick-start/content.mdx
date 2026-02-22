@@ -1,9 +1,9 @@
 ---
 title: Quick Start
-description: Build your first node graph with Kookie Flow in minutes
+description: Build your first graph with Kookie Flow in minutes
 ---
 
-Get a fully functional node graph running in your React app.
+Get a fully functional graph running in your React app.
 
 ## Basic Setup
 
@@ -13,8 +13,8 @@ After [installing](/docs/installation) Kookie Flow, create your first flow:
 import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
 
 function App() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes: [
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: [
       {
         id: 'input',
         type: 'default',
@@ -36,9 +36,9 @@ function App() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <KookieFlow
-        nodes={nodes}
+        entities={entities}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         showGrid
@@ -48,7 +48,7 @@ function App() {
 }
 ```
 
-This creates two nodes you can connect by dragging from the output socket to the input socket.
+This creates two entities you can connect by dragging from the output socket to the input socket.
 
 ## Adding Socket Types
 
@@ -78,7 +78,7 @@ const socketTypes = {
 };
 
 <KookieFlow
-  nodes={nodes}
+  entities={entities}
   edges={edges}
   socketTypes={socketTypes}
   connectionMode="strict" // Only allow compatible types
@@ -91,7 +91,7 @@ const socketTypes = {
 Input sockets can show widgets when unconnected. The widget type is determined by the socket type:
 
 ```tsx
-const nodes = [
+const entities = [
   {
     id: 'processor',
     type: 'default',
@@ -120,20 +120,20 @@ Handle widget value changes:
 
 ```tsx
 <KookieFlow
-  onWidgetChange={(nodeId, socketId, value) => {
-    console.log(`${nodeId}.${socketId} = ${value}`);
+  onWidgetChange={(entityId, socketId, value) => {
+    console.log(`${entityId}.${socketId} = ${value}`);
   }}
   // ...
 />
 ```
 
-## Styling Nodes
+## Styling Entities
 
 Kookie Flow integrates with Kookie UI's design system:
 
 ```tsx
 <KookieFlow
-  // Node size scale (1-5)
+  // Entity size scale (1-5)
   size="2"
   // Visual variant
   variant="classic" // 'surface' | 'outline' | 'soft' | 'classic' | 'ghost'
@@ -147,10 +147,10 @@ Kookie Flow integrates with Kookie UI's design system:
 />
 ```
 
-Individual nodes can have accent colors:
+Individual entities can have accent colors:
 
 ```tsx
-const nodes = [
+const entities = [
   {
     id: 'math',
     color: 'blue', // 26 Kookie UI accent colors available
@@ -195,8 +195,8 @@ For large graphs, switch to WebGL text rendering:
 
 ## Next Steps
 
-- [Nodes](/docs/nodes) — Socket types, widgets, and layouts
+- [Entities](/docs/nodes) — Socket types, widgets, and layouts
 - [Edges](/docs/edges) — Edge types, labels, and markers
 - [Clipboard Plugin](/docs/plugins/clipboard) — Copy, paste, and cut
 - [Keyboard Shortcuts](/docs/plugins/keyboard-shortcuts) — Bind keyboard shortcuts
-- [Demo](/demo) — See a full example with 1000+ nodes
+- [Demo](/demo) — See a full example with 1000+ entities
