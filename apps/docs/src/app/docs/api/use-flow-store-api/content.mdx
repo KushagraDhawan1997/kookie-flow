@@ -43,20 +43,20 @@ Access current state via `store.getState()`:
 ```tsx
 interface FlowState {
   // Data
-  nodes: Node[];
+  entities: Entity[];
   edges: Edge[];
   viewport: Viewport;
 
   // Selection (O(1) lookup)
-  selectedNodeIds: Set<string>;
+  selectedEntityIds: Set<string>;
   selectedEdgeIds: Set<string>;
 
   // Lookup structures
-  nodeMap: Map<string, Node>;          // O(1) node lookup
-  connectedSockets: Set<string>;       // "nodeId:socketId" for connected inputs
+  entityMap: Map<string, Entity>;      // O(1) entity lookup
+  connectedSockets: Set<string>;       // "entityId:socketId" for connected inputs
 
   // Interaction state
-  hoveredNodeId: string | null;
+  hoveredEntityId: string | null;
   hoveredSocketId: SocketHandle | null;
   connectionDraft: ConnectionDraft | null;
   selectionBox: { start: XYPosition; end: XYPosition } | null;
@@ -72,15 +72,15 @@ interface FlowState {
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `selectNode` | `(id: string, additive?: boolean) => void` | Select a node |
-| `selectNodes` | `(ids: string[]) => void` | Replace selection with nodes |
+| `selectEntity` | `(id: string, additive?: boolean) => void` | Select an entity |
+| `selectEntities` | `(ids: string[]) => void` | Replace selection with entities |
 | `selectEdge` | `(id: string, additive?: boolean) => void` | Select an edge |
 | `selectEdges` | `(ids: string[]) => void` | Replace selection with edges |
-| `selectAll` | `() => void` | Select all nodes |
+| `selectAll` | `() => void` | Select all entities |
 | `deselectAll` | `() => void` | Clear all selection |
-| `isNodeSelected` | `(id: string) => boolean` | Check if node is selected |
+| `isEntitySelected` | `(id: string) => boolean` | Check if entity is selected |
 | `isEdgeSelected` | `(id: string) => boolean` | Check if edge is selected |
-| `getSelectedNodes` | `() => Node[]` | Get selected nodes |
+| `getSelectedEntities` | `() => Entity[]` | Get selected entities |
 
 ### Viewport
 
@@ -88,17 +88,17 @@ interface FlowState {
 |--------|------|-------------|
 | `pan` | `(delta: XYPosition) => void` | Pan the viewport |
 | `zoom` | `(delta: number, center?: XYPosition) => void` | Zoom the viewport |
-| `fitView` | `(padding?: number) => void` | Fit all nodes in view |
+| `fitView` | `(padding?: number) => void` | Fit all entities in view |
 | `setViewport` | `(viewport: Viewport) => void` | Set viewport directly |
 
 ### Batch Operations
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `addElements` | `(batch: ElementsBatch) => void` | Add multiple nodes/edges |
+| `addElements` | `(batch: ElementsBatch) => void` | Add multiple entities/edges |
 | `deleteElements` | `(batch: DeleteElementsBatch) => void` | Delete by IDs |
 | `deleteSelected` | `() => void` | Delete selected elements |
-| `cloneElements` | `(nodes, edges, options?) => CloneElementsResult` | Clone with new IDs |
+| `cloneElements` | `(entities, edges, options?) => CloneElementsResult` | Clone with new IDs |
 
 ### Clipboard
 
@@ -112,18 +112,18 @@ interface FlowState {
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `getConnectedEdges` | `(nodeIds: string[]) => Edge[]` | Get edges connected to nodes |
+| `getConnectedEdges` | `(entityIds: string[]) => Edge[]` | Get edges connected to entities |
 | `toObject` | `() => FlowObject` | Serialize state |
 
 ### Low-level Setters
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `setNodes` | `(nodes: Node[]) => void` | Replace all nodes |
+| `setEntities` | `(entities: Entity[]) => void` | Replace all entities |
 | `setEdges` | `(edges: Edge[]) => void` | Replace all edges |
-| `applyNodeChanges` | `(changes: NodeChange[]) => void` | Apply node changes |
+| `applyEntityChanges` | `(changes: EntityChange[]) => void` | Apply entity changes |
 | `applyEdgeChanges` | `(changes: EdgeChange[]) => void` | Apply edge changes |
-| `updateNodePositions` | `(updates: Array<{id, position}>) => void` | Batch position update |
+| `updateEntityPositions` | `(updates: Array<{id, position}>) => void` | Batch position update |
 
 ## Subscribing to State
 
@@ -139,7 +139,7 @@ function SelectionCounter() {
   useEffect(() => {
     // Subscribe to selection changes only
     const unsubscribe = store.subscribe(
-      (state) => state.selectedNodeIds.size,
+      (state) => state.selectedEntityIds.size,
       (size) => setCount(size)
     );
     return unsubscribe;
@@ -191,7 +191,7 @@ function ClipboardControls() {
   useEffect(() => {
     const unsubscribe = store.subscribe(
       (state) => state.internalClipboard,
-      (clipboard) => setHasContent(clipboard?.nodes.length > 0)
+      (clipboard) => setHasContent((clipboard?.entities.length ?? 0) > 0)
     );
     return unsubscribe;
   }, [store]);
@@ -215,26 +215,26 @@ function ClipboardControls() {
 }
 ```
 
-### Programmatic Node Addition
+### Programmatic Entity Addition
 
 ```tsx
-function AddNodeButton() {
+function AddEntityButton() {
   const store = useFlowStoreApi();
 
-  const addNode = () => {
+  const addEntity = () => {
     store.getState().addElements({
-      nodes: [{
-        id: `node-${Date.now()}`,
+      entities: [{
+        id: `entity-${Date.now()}`,
         type: 'default',
         position: { x: 100, y: 100 },
-        data: { label: 'New Node' },
+        data: { label: 'New Entity' },
         inputs: [{ id: 'in', name: 'Input', type: 'any' }],
         outputs: [{ id: 'out', name: 'Output', type: 'any' }],
       }],
     });
   };
 
-  return <button onClick={addNode}>Add Node</button>;
+  return <button onClick={addEntity}>Add Entity</button>;
 }
 ```
 
@@ -244,22 +244,22 @@ function AddNodeButton() {
 function DragHandler() {
   const store = useFlowStoreApi();
 
-  const handleDrag = (nodeIds: string[], delta: XYPosition) => {
-    const { nodes } = store.getState();
+  const handleDrag = (entityIds: string[], delta: XYPosition) => {
+    const { entities } = store.getState();
 
-    const updates = nodeIds.map((id) => {
-      const node = nodes.find((n) => n.id === id);
+    const updates = entityIds.map((id) => {
+      const entity = entities.find((e) => e.id === id);
       return {
         id,
         position: {
-          x: node!.position.x + delta.x,
-          y: node!.position.y + delta.y,
+          x: entity!.position.x + delta.x,
+          y: entity!.position.y + delta.y,
         },
       };
     });
 
     // Single efficient update
-    store.getState().updateNodePositions(updates);
+    store.getState().updateEntityPositions(updates);
   };
 }
 ```
@@ -279,7 +279,7 @@ function SaveLoadButtons() {
     const json = localStorage.getItem('flow');
     if (json) {
       const data = JSON.parse(json);
-      store.getState().setNodes(data.nodes);
+      store.getState().setEntities(data.entities);
       store.getState().setEdges(data.edges);
       store.getState().setViewport(data.viewport);
     }
