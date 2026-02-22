@@ -1,96 +1,96 @@
 ---
 title: Grouping & Annotations
-description: Node groups, comments, and reroute nodes in Kookie Flow
+description: Frames, comments, and reroute entities in Kookie Flow
 ---
 
-Kookie Flow supports grouping nodes together, adding annotations, and creating edge waypoints for cleaner graph layouts.
+Kookie Flow supports grouping entities together with frames, adding annotations with comments, and creating edge waypoints with reroutes.
 
-## Node Groups
+## Frames
 
-Groups are container nodes that can hold other nodes as children. When a group is collapsed, all its children are hidden.
+Frames are container entities that can hold other entities as children. When a frame is collapsed, all its children are hidden.
 
-### Creating a Group
+### Creating a Frame
 
 ```tsx
-import type { Node } from '@kushagradhawan/kookie-flow';
+import type { Entity } from '@kushagradhawan/kookie-flow';
 
-const nodes: Node[] = [
-  // Group node (container)
+const entities: Entity[] = [
+  // Frame entity (container)
   {
-    id: 'group-1',
-    type: 'group',
+    id: 'frame-1',
+    type: 'frame',
     position: { x: 0, y: 0 },
     data: { label: 'Processing Pipeline' },
     width: 400,
     height: 300,
     collapsed: false, // Set to true to hide children
   },
-  // Child nodes (reference parent via parentId)
+  // Child entities (reference parent via parentId)
   {
-    id: 'node-1',
+    id: 'entity-1',
     type: 'default',
-    parentId: 'group-1',
+    parentId: 'frame-1',
     position: { x: 20, y: 50 }, // Position relative to parent
     data: { label: 'Input' },
   },
   {
-    id: 'node-2',
+    id: 'entity-2',
     type: 'default',
-    parentId: 'group-1',
+    parentId: 'frame-1',
     position: { x: 20, y: 150 },
     data: { label: 'Output' },
   },
 ];
 ```
 
-### Collapsing Groups
+### Collapsing Frames
 
-Toggle the `collapsed` property to show/hide child nodes:
+Toggle the `collapsed` property to show/hide children:
 
 ```tsx
-function handleToggleCollapse(groupId: string) {
-  setNodes(nodes.map(node =>
-    node.id === groupId
-      ? { ...node, collapsed: !node.collapsed }
-      : node
+function handleToggleCollapse(frameId: string) {
+  setEntities(entities.map(entity =>
+    entity.id === frameId
+      ? { ...entity, collapsed: !entity.collapsed }
+      : entity
   ));
 }
 ```
 
 When collapsed:
-- All descendant nodes are hidden from the viewport
-- Edges connected to hidden nodes remain visible (connected to the group boundary)
-- The group displays a collapse indicator
+- All descendant entities are hidden from the viewport
+- Edges connected to hidden entities remain visible (connected to the frame boundary)
+- The frame displays a collapse indicator
 
-### Group Properties
+### Frame Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `type` | `'group'` | Identifies the node as a group |
+| `type` | `'frame'` | Identifies the entity as a frame |
 | `collapsed` | `boolean` | Whether children are hidden |
-| `parentId` | `string` | Parent group ID (for nested groups) |
-| `extent` | `'auto' \| 'fixed'` | How group bounds are calculated |
+| `parentId` | `string` | Parent frame ID (for nested frames) |
+| `extent` | `'auto' \| 'fixed'` | How frame bounds are calculated |
 
-### Nested Groups
+### Nested Frames
 
-Groups can be nested inside other groups:
+Frames can be nested inside other frames:
 
 ```tsx
-const nodes = [
-  { id: 'outer', type: 'group', data: { label: 'Outer' } },
-  { id: 'inner', type: 'group', parentId: 'outer', data: { label: 'Inner' } },
-  { id: 'node', parentId: 'inner', data: { label: 'Deeply Nested' } },
+const entities = [
+  { id: 'outer', type: 'frame', data: { label: 'Outer' } },
+  { id: 'inner', type: 'frame', parentId: 'outer', data: { label: 'Inner' } },
+  { id: 'entity', parentId: 'inner', data: { label: 'Deeply Nested' } },
 ];
 ```
 
 ## Comments
 
-Comment nodes are sticky notes for adding annotations to your graph. They render as DOM elements with customizable styling.
+Comment entities are sticky notes for adding annotations to your graph. They render as DOM elements with customizable styling.
 
 ### Creating Comments
 
 ```tsx
-const comment: Node = {
+const comment: Entity = {
   id: 'comment-1',
   type: 'comment',
   position: { x: 500, y: 100 },
@@ -129,14 +129,14 @@ const colors = {
 };
 ```
 
-## Reroute Nodes
+## Reroute Entities
 
-Reroute nodes are edge waypoints that help organize complex graphs. They appear as small circles that edges can pass through.
+Reroute entities are edge waypoints that help organize complex graphs. They appear as small circles that edges can pass through.
 
 ### Creating Reroutes
 
 ```tsx
-const reroute: Node = {
+const reroute: Entity = {
   id: 'reroute-1',
   type: 'reroute',
   position: { x: 200, y: 150 },
@@ -145,15 +145,15 @@ const reroute: Node = {
 
 // Connect edges through the reroute
 const edges = [
-  { id: 'e1', source: 'node-1', target: 'reroute-1' },
-  { id: 'e2', source: 'reroute-1', target: 'node-2' },
+  { id: 'e1', source: 'entity-1', target: 'reroute-1' },
+  { id: 'e2', source: 'reroute-1', target: 'entity-2' },
 ];
 ```
 
 ### Reroute Behavior
 
 - Rendered as small WebGL circles (instanced for performance)
-- Can be selected and dragged like regular nodes
+- Can be selected and dragged like regular entities
 - Act as connection points for edges
 - Useful for routing edges around obstacles
 
@@ -167,23 +167,23 @@ Reroutes display as:
 
 ## Store Actions
 
-The Zustand store provides actions for managing groups:
+The Zustand store provides actions for managing frames:
 
 ```tsx
 import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
 
-function GroupControls() {
+function FrameControls() {
   const store = useFlowStoreApi();
 
   return (
     <>
-      <button onClick={() => store.getState().toggleGroupCollapse('group-1')}>
+      <button onClick={() => store.getState().toggleGroupCollapse('frame-1')}>
         Toggle Collapse
       </button>
-      <button onClick={() => store.getState().expandGroup('group-1')}>
+      <button onClick={() => store.getState().expandGroup('frame-1')}>
         Expand
       </button>
-      <button onClick={() => store.getState().collapseGroup('group-1')}>
+      <button onClick={() => store.getState().collapseGroup('frame-1')}>
         Collapse
       </button>
     </>
@@ -195,33 +195,31 @@ function GroupControls() {
 
 | Action | Description |
 |--------|-------------|
-| `getGroupChildren(groupId)` | Get direct children of a group |
-| `getGroupDescendants(groupId)` | Get all descendants (recursive) |
-| `toggleGroupCollapse(groupId)` | Toggle collapsed state |
-| `expandGroup(groupId)` | Expand a collapsed group |
-| `collapseGroup(groupId)` | Collapse an expanded group |
-| `isGroupCollapsed(groupId)` | Check if group is collapsed |
-| `getGroupBounds(groupId)` | Get bounding box of group contents |
-| `setNodeParent(nodeId, parentId)` | Set/change a node's parent |
-| `moveGroup(groupId, delta)` | Move group and all descendants |
+| `getGroupChildren(frameId)` | Get direct children of a frame |
+| `getGroupDescendants(frameId)` | Get all descendants (recursive) |
+| `toggleGroupCollapse(frameId)` | Toggle collapsed state |
+| `expandGroup(frameId)` | Expand a collapsed frame |
+| `collapseGroup(frameId)` | Collapse an expanded frame |
+| `isGroupCollapsed(frameId)` | Check if frame is collapsed |
+| `getGroupBounds(frameId)` | Get bounding box of frame contents |
 
-## Node Changes
+## Entity Changes
 
-Handle grouping-related changes through `onNodesChange`:
+Handle grouping-related changes through `onEntitiesChange`:
 
 ```tsx
-import type { NodeChange } from '@kushagradhawan/kookie-flow';
+import type { EntityChange } from '@kushagradhawan/kookie-flow';
 
-function handleNodesChange(changes: NodeChange[]) {
+function handleEntitiesChange(changes: EntityChange[]) {
   for (const change of changes) {
     switch (change.type) {
       case 'collapse':
-        // Group collapsed/expanded: change.id, change.collapsed
-        console.log(`Group ${change.id} collapsed: ${change.collapsed}`);
+        // Frame collapsed/expanded: change.id, change.collapsed
+        console.log(`Frame ${change.id} collapsed: ${change.collapsed}`);
         break;
       case 'parent':
-        // Node reparented: change.id, change.parentId
-        console.log(`Node ${change.id} new parent: ${change.parentId}`);
+        // Entity reparented: change.id, change.parentId
+        console.log(`Entity ${change.id} new parent: ${change.parentId}`);
         break;
     }
   }
@@ -232,7 +230,7 @@ function handleNodesChange(changes: NodeChange[]) {
 
 Grouping features are optimized for large graphs:
 
-- **O(1) visibility checks**: Hidden nodes are pre-computed into a Set
+- **O(1) visibility checks**: Hidden entities are pre-computed into a Set
 - **Efficient collapse**: Only rebuilds when collapse state changes
-- **Instanced rendering**: Reroute nodes use WebGL instancing
-- **Frustum culling**: Hidden and off-screen nodes skip rendering
+- **Instanced rendering**: Reroute entities use WebGL instancing
+- **Frustum culling**: Hidden and off-screen entities skip rendering
