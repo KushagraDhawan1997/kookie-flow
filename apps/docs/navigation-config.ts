@@ -7,8 +7,8 @@ import {
   Package01Icon,
   FunctionCircleIcon,
   Database01Icon,
-  Clipboard01Icon,
-  Keyboard01Icon,
+  ClipboardIcon,
+  CommandIcon,
   ArrowTurnBackwardIcon,
   Menu01Icon,
   Folder01Icon,
@@ -57,12 +57,12 @@ export const docsNavigation: DocsNavigationConfig = {
         {
           href: '/docs/plugins/clipboard',
           title: 'Clipboard',
-          icon: Clipboard01Icon,
+          icon: ClipboardIcon,
         },
         {
           href: '/docs/plugins/keyboard-shortcuts',
           title: 'Keyboard Shortcuts',
-          icon: Keyboard01Icon,
+          icon: CommandIcon,
         },
         {
           href: '/docs/plugins/undo-redo',
