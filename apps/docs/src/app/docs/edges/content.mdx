@@ -3,7 +3,7 @@ title: Edges
 description: Edge types, labels, markers, and connections in Kookie Flow
 ---
 
-Edges connect nodes through their sockets. Kookie Flow renders edges using WebGL for high performance.
+Edges connect entities through their sockets. Kookie Flow renders edges using WebGL for high performance.
 
 ## Edge Structure
 
@@ -12,8 +12,8 @@ import type { Edge } from '@kushagradhawan/kookie-flow';
 
 const edge: Edge = {
   id: 'edge-1',
-  source: 'node-1',      // Source node ID
-  target: 'node-2',      // Target node ID
+  source: 'entity-1',      // Source entity ID
+  target: 'entity-2',      // Target entity ID
   sourceSocket: 'out-1', // Output socket ID
   targetSocket: 'in-1',  // Input socket ID
   // Optional
@@ -60,8 +60,8 @@ Add labels to edges to describe the connection:
 ```tsx
 const edge = {
   id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+  source: 'entity-1',
+  target: 'entity-2',
   label: 'Data Transfer',
 };
 ```
@@ -73,8 +73,8 @@ import type { EdgeLabelConfig } from '@kushagradhawan/kookie-flow';
 
 const edge = {
   id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+  source: 'entity-1',
+  target: 'entity-2',
   label: {
     text: 'Flow Data',
     position: 0.5,      // 0 = start, 0.5 = middle, 1 = end
@@ -100,8 +100,8 @@ Add arrow markers to indicate direction:
 ```tsx
 const edge = {
   id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+  source: 'entity-1',
+  target: 'entity-2',
   markerEnd: 'arrow',       // Open arrow
   // or
   markerEnd: 'arrowClosed', // Filled arrow
@@ -115,8 +115,8 @@ import type { EdgeMarker } from '@kushagradhawan/kookie-flow';
 
 const edge = {
   id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+  source: 'entity-1',
+  target: 'entity-2',
   markerEnd: {
     type: 'arrow',
     width: 16,
@@ -144,9 +144,9 @@ import type { Connection } from '@kushagradhawan/kookie-flow';
   onConnect={(connection: Connection) => {
     console.log('Connected:', connection);
     // {
-    //   source: 'node-1',
+    //   source: 'entity-1',
     //   sourceSocket: 'out-1',
-    //   target: 'node-2',
+    //   target: 'entity-2',
     //   targetSocket: 'in-1',
     // }
   }}
@@ -156,13 +156,13 @@ import type { Connection } from '@kushagradhawan/kookie-flow';
 The `useGraph` hook handles this automatically, creating the edge:
 
 ```tsx
-const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-  initialNodes,
+const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+  initialEntities,
   initialEdges,
 });
 
 <KookieFlow
-  nodes={nodes}
+  entities={entities}
   edges={edges}
   onConnect={onConnect}
 />
@@ -193,7 +193,7 @@ const isValidConnection: IsValidConnectionFn = (params, socketTypes) => {
   const { source, target, sourceSocketType, targetSocketType } = params;
 
   // Prevent self-connections
-  if (source.nodeId === target.nodeId) return false;
+  if (source.entityId === target.entityId) return false;
 
   // Check type compatibility
   const sourceType = socketTypes[sourceSocketType];
@@ -220,7 +220,7 @@ import type { OnConnectStartParams } from '@kushagradhawan/kookie-flow';
 <KookieFlow
   onConnectStart={(event: PointerEvent, params: OnConnectStartParams) => {
     console.log('Connection started from', params);
-    // { nodeId: 'node-1', socketId: 'out-1', isInput: false }
+    // { entityId: 'entity-1', socketId: 'out-1', isInput: false }
   }}
 />
 ```
@@ -235,38 +235,38 @@ import type { ConnectionEndState } from '@kushagradhawan/kookie-flow';
 <KookieFlow
   onConnectEnd={(event: PointerEvent, state: ConnectionEndState) => {
     // state.isValid — true if the drop landed on a compatible socket
-    // state.source — { nodeId, socketId, isInput } of the drag origin
+    // state.source — { entityId, socketId, isInput } of the drag origin
     // state.position — { x, y } world coordinates of the drop point
   }}
 />
 ```
 
-### Add Node on Edge Drop
+### Add Entity on Edge Drop
 
-A common pattern is creating a new node when the user drops a connection on empty canvas:
+A common pattern is creating a new entity when the user drops a connection on empty canvas:
 
 ```tsx
 <KookieFlow
   onConnectEnd={(event, state) => {
     if (state.isValid) return; // Successful connection, nothing extra to do
 
-    const id = `node-${Date.now()}`;
+    const id = `entity-${Date.now()}`;
     const { isInput } = state.source;
 
-    // Create a node at the drop position with a compatible socket
-    addNode({
+    // Create an entity at the drop position with a compatible socket
+    addEntity({
       id,
       type: 'default',
       position: state.position,
-      data: { label: 'New Node' },
+      data: { label: 'New Entity' },
       inputs: isInput ? [] : [{ id: `${id}-in`, name: 'Input', type: 'any' }],
       outputs: isInput ? [{ id: `${id}-out`, name: 'Output', type: 'any' }] : [],
     });
 
-    // Connect the source to the new node
+    // Connect the source to the new entity
     const edge = isInput
-      ? { id: `${id}-edge`, source: id, sourceSocket: `${id}-out`, target: state.source.nodeId, targetSocket: state.source.socketId }
-      : { id: `${id}-edge`, source: state.source.nodeId, sourceSocket: state.source.socketId, target: id, targetSocket: `${id}-in` };
+      ? { id: `${id}-edge`, source: id, sourceSocket: `${id}-out`, target: state.source.entityId, targetSocket: state.source.socketId }
+      : { id: `${id}-edge`, source: state.source.entityId, sourceSocket: state.source.socketId, target: id, targetSocket: `${id}-in` };
 
     addEdge(edge);
   }}
@@ -331,8 +331,8 @@ Mark edges as animated for visual feedback:
 const edges = [
   {
     id: 'edge-1',
-    source: 'node-1',
-    target: 'node-2',
+    source: 'entity-1',
+    target: 'entity-2',
     animated: true, // Shows flowing animation
   },
 ];
@@ -345,8 +345,8 @@ In loose connection mode, incompatible connections are marked as `invalid`:
 ```tsx
 const edge = {
   id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+  source: 'entity-1',
+  target: 'entity-2',
   invalid: true, // Rendered with warning style
 };
 ```
