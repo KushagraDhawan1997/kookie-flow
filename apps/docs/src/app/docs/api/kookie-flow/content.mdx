@@ -3,7 +3,7 @@ title: KookieFlow
 description: API reference for the KookieFlow component
 ---
 
-The main component for rendering a node graph.
+The main component for rendering an entity graph.
 
 ## Import
 
@@ -15,9 +15,9 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 
 ```tsx
 <KookieFlow
-  nodes={nodes}
+  entities={entities}
   edges={edges}
-  onNodesChange={onNodesChange}
+  onEntitiesChange={onEntitiesChange}
   onEdgesChange={onEdgesChange}
   onConnect={onConnect}
   showGrid
@@ -30,22 +30,25 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `nodes` | `Node[]` | Required | Nodes in the graph |
-| `edges` | `Edge[]` | Required | Edges connecting nodes |
-| `nodeTypes` | `Record<string, NodeTypeDefinition>` | `{}` | Custom node type definitions |
+| `entities` | `Entity[]` | Required | Entities in the graph |
+| `edges` | `Edge[]` | Required | Edges connecting entities |
+| `entityTypes` | `Record<string, EntityTypeDefinition>` | `{}` | Custom entity type definitions |
 | `socketTypes` | `Record<string, SocketType>` | `DEFAULT_SOCKET_TYPES` | Socket type definitions |
-| `onNodesChange` | `(changes: NodeChange[]) => void` | - | Callback when nodes change |
+| `onEntitiesChange` | `(changes: EntityChange[]) => void` | - | Callback when entities change |
 | `onEdgesChange` | `(changes: EdgeChange[]) => void` | - | Callback when edges change |
 | `onConnect` | `(connection: Connection) => void` | - | Callback when a connection is made |
+| `onConnectStart` | `(event: PointerEvent, params: OnConnectStartParams) => void` | - | Callback when connection drag starts |
+| `onConnectEnd` | `(event: PointerEvent, state: ConnectionEndState) => void` | - | Callback when connection drag ends |
 
 ### Event Callbacks
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `onNodeClick` | `(node: Node) => void` | - | Callback when a node is clicked |
+| `onEntityClick` | `(entity: Entity) => void` | - | Callback when an entity is clicked |
 | `onEdgeClick` | `(edge: Edge) => void` | - | Callback when an edge is clicked |
 | `onPaneClick` | `() => void` | - | Callback when empty space is clicked |
-| `onWidgetChange` | `(nodeId: string, socketId: string, value: unknown) => void` | - | Callback when a widget value changes |
+| `onWidgetChange` | `(entityId: string, socketId: string, value: unknown) => void` | - | Callback when a widget value changes |
+| `onFileDrop` | `(files: File[], position: XYPosition) => void` | - | Callback when files are dropped onto the canvas |
 
 ### Viewport
 
@@ -92,6 +95,7 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 |------|------|---------|-------------|
 | `connectionMode` | `'strict' \| 'loose'` | `'loose'` | Connection validation mode |
 | `isValidConnection` | `IsValidConnectionFn` | - | Custom validation function |
+| `allowCycles` | `boolean` | `true` | Whether to allow cycles in the graph |
 
 ### Grid Snapping
 
@@ -104,12 +108,12 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `size` | `NodeSize` | `'2'` | Node size scale |
-| `variant` | `NodeVariant` | `'surface'` | Node visual variant |
-| `radius` | `NodeRadius` | `'medium'` | Node border radius |
+| `size` | `EntitySize` | `'2'` | Entity size scale |
+| `variant` | `EntityVariant` | `'surface'` | Entity visual variant |
+| `radius` | `EntityRadius` | `'medium'` | Entity border radius |
 | `header` | `HeaderPosition` | `'none'` | Header position |
 | `accentHeader` | `boolean` | `false` | Tint header with accent color |
-| `nodeStyle` | `NodeStyleOverrides` | - | Fine-grained style overrides |
+| `entityStyle` | `EntityStyleOverrides` | - | Fine-grained style overrides |
 
 **Size:** `'1'`, `'2'`, `'3'`, `'4'`, `'5'`
 
@@ -124,7 +128,7 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `widgetTypes` | `Record<string, React.ComponentType<WidgetProps>>` | - | Custom widget components |
-| `defaultNodeWidth` | `number` | `240` | Default node width |
+| `defaultEntityWidth` | `number` | `240` | Default entity width |
 | `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |
 | `ThemeComponent` | `React.ComponentType` | - | Kookie UI Theme for widget theming |
 
@@ -132,6 +136,7 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `maxImageTextureSize` | `number` | `2048` | Max texture dimension for image entities |
 | `className` | `string` | - | Additional CSS class |
 | `children` | `React.ReactNode` | - | Overlay content |
 
@@ -149,7 +154,7 @@ function App() {
   return (
     <>
       <button onClick={() => flowRef.current?.fitView()}>Fit All</button>
-      <KookieFlow ref={flowRef} nodes={nodes} edges={edges} />
+      <KookieFlow ref={flowRef} entities={entities} edges={edges} />
     </>
   );
 }
@@ -159,44 +164,54 @@ function App() {
 
 | Method | Description |
 |--------|-------------|
-| `fitView(options?)` | Fit viewport to show all nodes (or specific nodes) |
+| `fitView(options?)` | Fit viewport to show all entities (or specific entities) |
 | `getViewport()` | Get current viewport `{ x, y, zoom }` |
 | `setViewport(viewport)` | Set viewport directly |
 | `zoomIn(step?)` | Zoom in by step (default: 0.25) |
 | `zoomOut(step?)` | Zoom out by step (default: 0.25) |
 | `setCenter(x, y, options?)` | Center viewport on a world position |
-| `getNodes()` | Get all nodes |
+| `getEntities()` | Get all entities |
 | `getEdges()` | Get all edges |
-| `getSelectedNodes()` | Get currently selected nodes |
+| `getSelectedEntities()` | Get currently selected entities |
 | `getSelectedEdges()` | Get currently selected edges |
+| `getGroupChildren(groupId)` | Get direct children of a frame |
+| `getGroupDescendants(groupId)` | Get all descendants (recursive) |
+| `toggleGroupCollapse(groupId)` | Toggle a frame's collapsed state |
+| `expandGroup(groupId)` | Expand a collapsed frame |
+| `collapseGroup(groupId)` | Collapse an expanded frame |
+| `isGroupCollapsed(groupId)` | Check if a frame is collapsed |
+| `getGroupBounds(groupId)` | Get bounding box of frame contents |
 
 ### FitViewOptions
 
 ```tsx
 flowRef.current?.fitView({
-  padding: 50,        // Padding around content (default: 50)
-  nodes: ['a', 'b'],  // Specific node IDs to fit (default: all)
-  minZoom: 0.1,       // Min zoom constraint
-  maxZoom: 1,         // Max zoom constraint (default: 1)
+  padding: 50,           // Padding around content (default: 50)
+  entities: ['a', 'b'],  // Specific entity IDs to fit (default: all)
+  minZoom: 0.1,          // Min zoom constraint
+  maxZoom: 1,            // Max zoom constraint (default: 1)
+  duration: 300,         // Animation duration in ms (default: 0)
 });
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `padding` | `number` | `50` | Padding around content in pixels |
-| `nodes` | `string[]` | - | Node IDs to fit (fits all if omitted) |
+| `entities` | `string[]` | - | Entity IDs to fit (fits all if omitted) |
 | `minZoom` | `number` | Component's `minZoom` | Minimum zoom for fit |
 | `maxZoom` | `number` | `1` | Maximum zoom for fit (won't zoom past 100% by default) |
+| `duration` | `number` | `0` | Animation duration in ms (0 = instant) |
+| `includeHiddenEntities` | `boolean` | `true` | Include hidden entities in bounds |
 
 ### Examples
 
-**Fit selected nodes:**
+**Fit selected entities:**
 
 ```tsx
 const handleFitSelection = () => {
-  const selectedIds = flowRef.current?.getSelectedNodes().map(n => n.id);
+  const selectedIds = flowRef.current?.getSelectedEntities().map(e => e.id);
   if (selectedIds?.length) {
-    flowRef.current?.fitView({ nodes: selectedIds, padding: 100 });
+    flowRef.current?.fitView({ entities: selectedIds, padding: 100 });
   }
 };
 ```
@@ -222,19 +237,19 @@ flowRef.current?.setCenter(0, 0, { zoom: 1 });
 import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
 
 function BasicFlow() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useGraph({
-    initialNodes: [
-      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Node 1' } },
-      { id: '2', type: 'default', position: { x: 300, y: 0 }, data: { label: 'Node 2' } },
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: [
+      { id: '1', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Entity 1' } },
+      { id: '2', type: 'default', position: { x: 300, y: 0 }, data: { label: 'Entity 2' } },
     ],
     initialEdges: [],
   });
 
   return (
     <KookieFlow
-      nodes={nodes}
+      entities={entities}
       edges={edges}
-      onNodesChange={onNodesChange}
+      onEntitiesChange={onEntitiesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       showGrid
@@ -247,9 +262,9 @@ function BasicFlow() {
 
 ```tsx
 <KookieFlow
-  nodes={nodes}
+  entities={entities}
   edges={edges}
-  onNodesChange={onNodesChange}
+  onEntitiesChange={onEntitiesChange}
   onEdgesChange={onEdgesChange}
   onConnect={onConnect}
   // Display
@@ -277,12 +292,12 @@ const socketTypes = {
 };
 
 <KookieFlow
-  nodes={nodes}
+  entities={entities}
   edges={edges}
   socketTypes={socketTypes}
   connectionMode="strict"
-  onWidgetChange={(nodeId, socketId, value) => {
-    console.log(`${nodeId}.${socketId} = ${value}`);
+  onWidgetChange={(entityId, socketId, value) => {
+    console.log(`${entityId}.${socketId} = ${value}`);
   }}
 />
 ```
@@ -290,7 +305,7 @@ const socketTypes = {
 ### With Overlays
 
 ```tsx
-<KookieFlow nodes={nodes} edges={edges}>
+<KookieFlow entities={entities} edges={edges}>
   <div style={{ position: 'absolute', top: 16, left: 16 }}>
     <h1>My Flow Editor</h1>
   </div>
@@ -302,5 +317,5 @@ const socketTypes = {
 
 - [useGraph](/docs/api/use-graph) — Hook for managing graph state
 - [useFlowStoreApi](/docs/api/use-flow-store-api) — Access the internal store
-- [Nodes](/docs/nodes) — Node structure and styling
+- [Entities](/docs/nodes) — Entity structure and styling
 - [Edges](/docs/edges) — Edge types and connections
