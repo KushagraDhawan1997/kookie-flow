@@ -14,7 +14,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useFont } from '../contexts/FontContext';
+import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import {
   DEFAULT_TEXT_WIDTH,
@@ -23,7 +23,6 @@ import {
   DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_PADDING,
 } from '../core/constants';
-import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import {
   type CharPositionTable,
   type SelectionRect,
@@ -35,10 +34,6 @@ import {
 import type { TextEntityData } from '../types';
 import { DEFAULT_TEXT_SIZING_MODE } from '../core/constants';
 import { NO_WRAP_WIDTH } from '../utils/text-texture';
-
-// Stable empty maps to avoid re-creating on every render when font isn't loaded
-const emptyGlyphMap: GlyphMap = new Map();
-const emptyKerningMap: KerningMap = new Map();
 
 const CURSOR_WIDTH = 1.0; // pixels (world units before zoom)
 const CURSOR_GAP = 1; // gap between last character and cursor (world units)
@@ -86,10 +81,6 @@ export function TextEditCursor() {
   const tokens = useTheme();
   const fontContext = useFont();
   const regularFont = fontContext.regular;
-
-  // Pre-built lookup maps from FontContext (shared across all text components)
-  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
-  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   const cursorMeshRef = useRef<THREE.Mesh>(null);
   const selectionMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -202,6 +193,14 @@ export function TextEditCursor() {
     const pad = DEFAULT_TEXT_PADDING;
     const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
 
+    // Resolve font for this entity's weight
+    const font = resolveFontForWeight(fontContext, data.fontWeight ?? 400);
+    if (!font || font.glyphMap.size === 0) {
+      cursorMesh.visible = false;
+      selectionMesh.count = 0;
+      return;
+    }
+
     // Sync cursor color with entity text color (custom or theme default)
     if (data.textColor) {
       const c = cursorMaterial.uniforms.uColor.value as THREE.Color;
@@ -214,12 +213,13 @@ export function TextEditCursor() {
     // Use NO_WRAP_WIDTH for auto-width mode to match the text renderer
     // (prevents floating-point precision mismatches that cause unexpected wrapping)
     const layoutWidth = sizingMode === 'auto-width' ? NO_WRAP_WIDTH : w;
+    const fontId = (data.fontWeight ?? 400) >= 600 ? 'semibold' : 'regular';
 
     // Get character position table (shared cache with TextEditOverlay)
     const table = getSharedCharPositionTable(
       content, fontSize, lineHeightMul, textAlign,
       layoutWidth, pad, entity.position.x, entity.position.y,
-      regularFont.metrics, glyphMap, kerningMap, letterSpacing
+      font.metrics, font.glyphMap, font.kerningMap, letterSpacing, fontId
     );
     const tableChanged = table !== lastTableRef.current;
     lastTableRef.current = table;
@@ -291,8 +291,8 @@ export function TextEditCursor() {
 
         // Use actual BMFont glyph height (not full lineHeight which includes leading)
         // cursorPos.y already starts at halfLeading offset, so this aligns with glyphs
-        const scale = fontSize / regularFont.metrics.info.size;
-        let glyphHeight = regularFont.metrics.common.lineHeight * scale;
+        const scale = fontSize / font.metrics.info.size;
+        let glyphHeight = font.metrics.common.lineHeight * scale;
 
         // Clamp cursor to entity bounds in fixed mode only.
         // In auto-height/auto-width, entity.height in the store may be stale

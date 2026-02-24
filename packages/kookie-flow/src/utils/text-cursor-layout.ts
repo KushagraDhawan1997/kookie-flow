@@ -695,9 +695,10 @@ export function getSharedCharPositionTable(
   metrics: FontMetrics,
   glyphMap: GlyphMap,
   kerningMap: KerningMap,
-  letterSpacing: number
+  letterSpacing: number,
+  fontId: string = 'regular'
 ): CharPositionTable {
-  const key = `${content}|${fontSize}|${lineHeight}|${textAlign}|${entityWidth}|${entityX}|${entityY}|${letterSpacing}`;
+  const key = `${content}|${fontSize}|${lineHeight}|${textAlign}|${entityWidth}|${entityX}|${entityY}|${letterSpacing}|${fontId}`;
   if (_sharedTableKey === key && _sharedTable) return _sharedTable;
 
   _sharedTable = buildCharPositionsForEntity(

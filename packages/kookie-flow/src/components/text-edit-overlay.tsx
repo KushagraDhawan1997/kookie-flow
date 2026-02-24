@@ -12,21 +12,16 @@
 
 import { useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { useFlowStoreApi } from './context';
-import { useFont } from '../contexts/FontContext';
+import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import type { TextEntityData, EntityChange } from '../types';
 import { DEFAULT_TEXT_WIDTH, DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_PADDING, DEFAULT_TEXT_SIZING_MODE } from '../core/constants';
 import { resolveTextStyle, calculateTextAutoHeightMSDF, calculateTextAutoSizeMSDF, NO_WRAP_WIDTH } from '../utils/text-texture';
-import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import {
   getSharedCharPositionTable,
   getCursorXY,
   visualLineForOffset,
   lineColumnToContentOffset,
 } from '../utils/text-cursor-layout';
-
-// Stable empty maps to avoid re-creating on every render when font isn't loaded
-const emptyGlyphMap: GlyphMap = new Map();
-const emptyKerningMap: KerningMap = new Map();
 
 // Module-level ref for the textarea, accessible from InputHandler (kookie-flow.tsx)
 let _textareaEl: HTMLTextAreaElement | null = null;
@@ -47,11 +42,6 @@ interface TextEditOverlayProps {
 export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
   const store = useFlowStoreApi();
   const fontContext = useFont();
-  const regularFont = fontContext.regular;
-
-  // Pre-built lookup maps from FontContext (shared across all text components)
-  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
-  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,19 +54,29 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
     );
   }, [store]);
 
+  // Resolve font for a given entity's weight
+  const resolveEntityFont = useCallback(
+    (data: TextEntityData) => {
+      const font = resolveFontForWeight(fontContext, data.fontWeight ?? 400);
+      return font;
+    },
+    [fontContext]
+  );
+
   // Calculate auto-height using MSDF measurement
   const calcAutoHeight = useCallback(
     (content: string, data: TextEntityData, entityWidth: number): number => {
       const style = resolveTextStyle(data);
-      if (regularFont && glyphMap.size > 0) {
+      const font = resolveEntityFont(data);
+      if (font && font.glyphMap.size > 0) {
         return calculateTextAutoHeightMSDF(
           content, style, entityWidth,
-          regularFont.metrics.info.size, glyphMap, kerningMap
+          font.metrics.info.size, font.glyphMap, font.kerningMap
         );
       }
       return style.fontSize * style.lineHeight + 2 * style.padding;
     },
-    [regularFont, glyphMap, kerningMap]
+    [resolveEntityFont]
   );
 
   // When editing starts: populate textarea, focus, sync to store
@@ -123,14 +123,15 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
       if (newContent !== data.content) {
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
         const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
+        const font = resolveEntityFont(data);
 
         let newW = w;
         let newH = entity.height ?? calcAutoHeight(newContent, data, w);
 
-        if (sizingMode === 'auto-width' && regularFont && glyphMap.size > 0) {
+        if (sizingMode === 'auto-width' && font && font.glyphMap.size > 0) {
           const style = resolveTextStyle(data);
           const size = calculateTextAutoSizeMSDF(
-            newContent, style, regularFont.metrics.info.size, glyphMap, kerningMap
+            newContent, style, font.metrics.info.size, font.glyphMap, font.kerningMap
           );
           newW = size.width;
           newH = size.height;
@@ -149,7 +150,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
     }
 
     store.getState().stopEditing();
-  }, [store, onEntitiesChange, calcAutoHeight, regularFont, glyphMap, kerningMap]);
+  }, [store, onEntitiesChange, calcAutoHeight, resolveEntityFont]);
 
   // Sync textarea → store on input.
   // Dimension updates (auto-height / auto-width) are deferred to the
@@ -187,8 +188,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
       // Let Ctrl/Cmd+Arrow fall through for native paragraph navigation
       if (
         (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
-        !e.ctrlKey && !e.metaKey &&
-        regularFont && glyphMap.size > 0
+        !e.ctrlKey && !e.metaKey
       ) {
         const ta = textareaRef.current;
         if (!ta) return;
@@ -200,6 +200,9 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         if (!entity || entity.type !== 'text') return;
 
         const data = entity.data as TextEntityData;
+        const font = resolveEntityFont(data);
+        if (!font || font.glyphMap.size === 0) return;
+
         const content = ta.value;
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
         const sizingMode = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
@@ -209,11 +212,12 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const letterSpacing = data.letterSpacing ?? 0;
         const textAlign = data.textAlign ?? 'left';
         const pad = DEFAULT_TEXT_PADDING;
+        const fontId = (data.fontWeight ?? 400) >= 600 ? 'semibold' : 'regular';
 
         const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
           layoutWidth, pad, entity.position.x, entity.position.y,
-          regularFont.metrics, glyphMap, kerningMap, letterSpacing
+          font.metrics, font.glyphMap, font.kerningMap, letterSpacing, fontId
         );
 
         if (table.lineCount <= 1) return; // Let textarea handle single-line
@@ -275,8 +279,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
       // Home/End: navigate to visual (wrapped) line start/end, not content line
       if (
         (e.key === 'Home' || e.key === 'End') &&
-        !e.ctrlKey && !e.metaKey &&
-        regularFont && glyphMap.size > 0
+        !e.ctrlKey && !e.metaKey
       ) {
         const ta = textareaRef.current;
         if (!ta) return;
@@ -288,6 +291,9 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         if (!entity || entity.type !== 'text') return;
 
         const data = entity.data as TextEntityData;
+        const font = resolveEntityFont(data);
+        if (!font || font.glyphMap.size === 0) return;
+
         const content = ta.value;
         const w = entity.width ?? DEFAULT_TEXT_WIDTH;
         const sizingModeHome = data.sizingMode ?? DEFAULT_TEXT_SIZING_MODE;
@@ -297,11 +303,12 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
         const letterSpacing = data.letterSpacing ?? 0;
         const textAlign = data.textAlign ?? 'left';
         const pad = DEFAULT_TEXT_PADDING;
+        const fontId = (data.fontWeight ?? 400) >= 600 ? 'semibold' : 'regular';
 
         const table = getSharedCharPositionTable(
           content, fontSize, lineHeightMul, textAlign,
           layoutWidthHome, pad, entity.position.x, entity.position.y,
-          regularFont.metrics, glyphMap, kerningMap, letterSpacing
+          font.metrics, font.glyphMap, font.kerningMap, letterSpacing, fontId
         );
 
         if (table.lineCount <= 1) {
@@ -353,7 +360,7 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
       // Stop propagation to prevent InputHandler from processing
       e.stopPropagation();
     },
-    [commitAndExit, store, regularFont, glyphMap, kerningMap]
+    [commitAndExit, store, resolveEntityFont]
   );
 
   // Handle blur — commit and exit (unless suppressed by click on editing entity)

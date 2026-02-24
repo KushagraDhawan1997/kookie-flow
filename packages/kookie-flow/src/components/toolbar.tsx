@@ -49,7 +49,7 @@ import type {
   ToolbarRenderProps,
   ToolbarWidget,
 } from '../types';
-import { useFont } from '../contexts/FontContext';
+import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import {
   resolveTextStyle,
   calculateTextAutoHeightMSDF,
@@ -687,7 +687,6 @@ function BuiltInWidget({
 
   // Font context for sizing mode transitions (dimension recalculation)
   const fontContext = useFont();
-  const regularFont = fontContext.regular;
 
   let content: ReactNode;
 
@@ -711,21 +710,22 @@ function BuiltInWidget({
               const w = entity.width ?? DEFAULT_TEXT_WIDTH;
               const h = entity.height ?? DEFAULT_TEXT_HEIGHT;
               const style = resolveTextStyle(entData);
+              const font = resolveFontForWeight(fontContext, entData.fontWeight ?? 400);
 
               let newW = w;
               let newH = h;
 
-              if (mode === 'auto-width' && regularFont && regularFont.glyphMap.size > 0) {
+              if (mode === 'auto-width' && font && font.glyphMap.size > 0) {
                 const size = calculateTextAutoSizeMSDF(
-                  entData.content, style, regularFont.metrics.info.size,
-                  regularFont.glyphMap, regularFont.kerningMap
+                  entData.content, style, font.metrics.info.size,
+                  font.glyphMap, font.kerningMap
                 );
                 newW = size.width;
                 newH = size.height;
-              } else if (mode === 'auto-height' && regularFont && regularFont.glyphMap.size > 0) {
+              } else if (mode === 'auto-height' && font && font.glyphMap.size > 0) {
                 newH = calculateTextAutoHeightMSDF(
                   entData.content, style, w,
-                  regularFont.metrics.info.size, regularFont.glyphMap, regularFont.kerningMap
+                  font.metrics.info.size, font.glyphMap, font.kerningMap
                 );
               }
               // fixed: freeze current dimensions
