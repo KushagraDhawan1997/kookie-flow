@@ -2,8 +2,9 @@
  * TextEntities - Renders text entities using instanced MSDF glyph rendering.
  * Phase 10B: MSDF-based text (replaces Canvas2D texture approach)
  *
- * Uses the same MSDF pipeline as node/socket/edge labels but with multi-line
- * word-wrap support. Single InstancedMesh = one draw call for all text entities.
+ * Supports multiple font weights with separate InstancedMesh per weight
+ * (one draw call per weight). Uses the same MSDF pipeline as node/socket/edge
+ * labels but with multi-line word-wrap support.
  *
  * Key advantages over Canvas2D textures:
  * - Crisp at any zoom level (resolution-independent SDF)
@@ -16,7 +17,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useFont } from '../contexts/FontContext';
+import { useFont, type LoadedFontWeight } from '../contexts/FontContext';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
@@ -52,46 +53,37 @@ const MAX_CAPACITY = 250000;
 const RENDER_ORDER_BG = 1; // Non-selected (same as entities)
 const RENDER_ORDER_FG = 4; // Selected (same as entities)
 
-interface TextEntitiesProps {
-  onEntitiesChange?: (changes: EntityChange[]) => void;
+// Sentinel array — unique reference that never equals any real entries array.
+// Used to force buffer re-population after capacity resize.
+const SENTINEL_ENTRIES: MultiLineTextEntry[] = [];
+
+// ============================================================================
+// TextEntityWeightMesh — renders one font weight's text entities
+// ============================================================================
+
+interface TextEntityWeightMeshProps {
+  fontData: LoadedFontWeight;
+  entriesRef: React.MutableRefObject<MultiLineTextEntry[]>;
+  storeRef: React.MutableRefObject<ReturnType<typeof useFlowStoreApi>>;
 }
 
-export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
-  const store = useFlowStoreApi();
-  const tokens = useTheme();
-  const fontContext = useFont();
-  const regularFont = fontContext.regular;
-
+/**
+ * Renders text entities for a single font weight using instanced MSDF.
+ * Manages its own GPU buffers and capacity.
+ */
+function TextEntityWeightMesh({ fontData, entriesRef, storeRef }: TextEntityWeightMeshProps) {
+  const { metrics, texture, glyphMap, kerningMap } = fontData;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const initializedRef = useRef(false);
-  const dirtyRef = useRef(true);
+  const lastEntriesRef = useRef<MultiLineTextEntry[]>(SENTINEL_ENTRIES);
 
-  // Stable ref for onEntitiesChange to avoid stale closures in microtasks
-  const onEntitiesChangeRef = useRef(onEntitiesChange);
-  onEntitiesChangeRef.current = onEntitiesChange;
-
-  // Deferred dimension updates — batched via queueMicrotask to avoid store
-  // mutations (array spread + quadtree update) inside the render loop.
-  const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
-  const dimFlushScheduledRef = useRef(false);
-
-  // Pre-built lookup maps from FontContext (shared across all text components)
-  const glyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
-  const kerningMap = regularFont?.kerningMap ?? emptyKerningMap;
-
-  // Derive text color from theme tokens — raw RGB, no color pipeline issues
-  const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
-
-  // Create unit quad geometry
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
-  // Create MSDF shader material
   const material = useMemo(() => {
-    if (!regularFont) return null;
     return new THREE.ShaderMaterial({
       uniforms: {
-        uAtlas: { value: regularFont.texture },
+        uAtlas: { value: texture },
         uThreshold: { value: MSDF_SHADER_DEFAULTS.threshold },
         uAlphaTest: { value: MSDF_SHADER_DEFAULTS.alphaTest },
       },
@@ -102,9 +94,8 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       depthTest: false,
       side: THREE.DoubleSide,
     });
-  }, [regularFont]);
+  }, [texture]);
 
-  // Pre-allocated buffers
   const buffers = useMemo(
     () => ({
       matrices: new Float32Array(capacity * 16),
@@ -118,14 +109,11 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     [capacity]
   );
 
-  // Reset initialized flag when buffers change
   useEffect(() => {
     initializedRef.current = false;
+    lastEntriesRef.current = SENTINEL_ENTRIES;
   }, [buffers]);
 
-  // Initialize attributes when mesh is ready.
-  // Depends on material so this re-runs when font loads and mesh first mounts
-  // (buffers alone won't change since it only depends on capacity).
   useEffect(() => {
     if (!meshRef.current) return;
 
@@ -144,16 +132,129 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     initializedRef.current = true;
-    dirtyRef.current = true;
-  }, [buffers, material]);
+  }, [buffers]);
+
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !initializedRef.current) return;
+
+    const entries = entriesRef.current;
+
+    // Same reference as last frame — parent didn't re-collect, nothing changed
+    if (entries === lastEntriesRef.current) return;
+    lastEntriesRef.current = entries;
+
+    if (entries.length === 0) {
+      mesh.count = 0;
+      return;
+    }
+
+    // Check capacity
+    const estimatedGlyphs = countMultiLineGlyphs(entries, glyphMap);
+    if (estimatedGlyphs > capacity && capacity < MAX_CAPACITY) {
+      setCapacity(Math.min(MAX_CAPACITY, Math.ceil(estimatedGlyphs * BUFFER_GROWTH_FACTOR)));
+      return;
+    }
+
+    // Populate buffers
+    const glyphCount = populateMultiLineGlyphBuffers(
+      entries,
+      metrics,
+      glyphMap,
+      kerningMap,
+      buffers.matrices,
+      buffers.uvOffsets,
+      buffers.colors,
+      buffers.opacities,
+      capacity
+    );
+
+    // Update GPU buffers
+    const safeGlyphCount = Math.min(glyphCount, capacity);
+    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, safeGlyphCount * 16));
+    mesh.instanceMatrix.needsUpdate = true;
+
+    if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
+      buffers.uvOffsetAttr.needsUpdate = true;
+      buffers.colorAttr.needsUpdate = true;
+      buffers.opacityAttr.needsUpdate = true;
+    }
+
+    mesh.count = safeGlyphCount;
+
+    // renderOrder: use foreground for selected text entities
+    const { selectedEntityIds } = storeRef.current.getState();
+    let hasSelected = false;
+    for (const entry of entries) {
+      if (selectedEntityIds.has(entry.id)) {
+        hasSelected = true;
+        break;
+      }
+    }
+    mesh.renderOrder = hasSelected ? RENDER_ORDER_FG : RENDER_ORDER_BG;
+  });
+
+  return (
+    <instancedMesh
+      key={capacity}
+      ref={meshRef}
+      args={[geometry, material, capacity]}
+      frustumCulled={false}
+      renderOrder={RENDER_ORDER_BG}
+    />
+  );
+}
+
+// ============================================================================
+// TextEntities — orchestrator that splits entities by font weight
+// ============================================================================
+
+interface TextEntitiesProps {
+  onEntitiesChange?: (changes: EntityChange[]) => void;
+}
+
+export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
+  const store = useFlowStoreApi();
+  const tokens = useTheme();
+  const fontContext = useFont();
+  const regularFont = fontContext.regular;
+  const semiboldFont = fontContext.semibold;
+
+  const dirtyRef = useRef(true);
+
+  // Stable ref for onEntitiesChange to avoid stale closures in microtasks
+  const onEntitiesChangeRef = useRef(onEntitiesChange);
+  onEntitiesChangeRef.current = onEntitiesChange;
+
+  // Stable store ref for children
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
+  // Deferred dimension updates — batched via queueMicrotask to avoid store
+  // mutations (array spread + quadtree update) inside the render loop.
+  const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
+  const dimFlushScheduledRef = useRef(false);
+
+  // Entries by weight — refs for same-frame child reads
+  const regularEntriesRef = useRef<MultiLineTextEntry[]>([]);
+  const semiboldEntriesRef = useRef<MultiLineTextEntry[]>([]);
+
+  // Track whether semibold entries exist (for conditional mount)
+  const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
+
+  // Derive text color from theme tokens — raw RGB, no color pipeline issues
+  const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
 
   // Subscribe to relevant store slices for dirty flagging.
-  // Use positionVersion + entities.length instead of the full entities array
-  // to avoid marking dirty when non-text entities change data (collapse, parent, etc.).
+  // We subscribe to the full `entities` array (not just `entities.length`) to catch
+  // text property changes (fontWeight, fontSize, textAlign, etc.) from the toolbar.
+  // During drag, positionVersion already triggers dirty — the entities subscription
+  // fires too but is a no-op (idempotent boolean set). The only extra cost is
+  // one O(n) scan when non-text entities change data, which is rare and cheap.
   useEffect(() => {
     const markDirty = () => { dirtyRef.current = true; };
     const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
-    const unsubTopology = store.subscribe((s) => s.entities.length, markDirty);
+    const unsubEntities = store.subscribe((s) => s.entities, markDirty);
     const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
@@ -162,7 +263,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
 
     return () => {
       unsubPositions();
-      unsubTopology();
+      unsubEntities();
       unsubViewport();
       unsubSelection();
       unsubHidden();
@@ -177,19 +278,15 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   }, [primaryTextColor]);
 
   useFrame(({ size }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current || !regularFont || !dirtyRef.current) return;
+    if (!regularFont || !dirtyRef.current) return;
 
     const {
       entities,
       viewport,
-      selectedEntityIds,
       hiddenEntityIds,
       editingEntityId,
       editingContent,
     } = store.getState();
-
-    const baseFontSize = regularFont.metrics.info.size;
 
     // Viewport frustum bounds for culling
     const invZoom = 1 / viewport.zoom;
@@ -199,8 +296,9 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     const viewBottom = (size.height - viewport.y) * invZoom;
     const cullPadding = 100;
 
-    // Collect multi-line text entries
-    const mlEntries: MultiLineTextEntry[] = [];
+    // Collect multi-line text entries, split by weight
+    const regularEntries: MultiLineTextEntry[] = [];
+    const semiboldEntries: MultiLineTextEntry[] = [];
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -221,6 +319,14 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       const content = (editingEntityId === entity.id && editingContent !== null)
         ? editingContent
         : (data.content ?? '');
+
+      // Resolve font weight — use semibold atlas for weight >= 600
+      const fontWeight = data.fontWeight ?? 400;
+      const useSemibold = fontWeight >= 600 && semiboldFont != null;
+      const font = useSemibold ? semiboldFont! : regularFont;
+      const glyphMap = font.glyphMap;
+      const kerningMap = font.kerningMap;
+      const baseFontSize = font.metrics.info.size;
 
       // Mode-aware dimension logic
       let measurement;
@@ -287,6 +393,9 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       // Resolve text color
       const textColor = data.textColor ?? primaryTextColor;
 
+      // Target entry list based on weight
+      const targetEntries = useSemibold ? semiboldEntries : regularEntries;
+
       // Handle empty content — show placeholder
       if (!content || !content.trim()) {
         const placeholderLines = wrapTextMSDF(
@@ -294,7 +403,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
           (Math.max(1, w - 2 * padding)) * baseFontSize / fontSize,
           glyphMap, kerningMap, 0
         );
-        mlEntries.push({
+        targetEntries.push({
           id: entity.id,
           lines: placeholderLines,
           position: [entity.position.x + padding, entity.position.y + padding, 0.1],
@@ -314,7 +423,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
         ? h - 2 * padding
         : undefined;
 
-      mlEntries.push({
+      targetEntries.push({
         id: entity.id,
         lines: measurement.lines,
         position: [entity.position.x + padding, entity.position.y + padding, 0.1],
@@ -331,57 +440,17 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       });
     }
 
-    if (mlEntries.length === 0) {
-      mesh.count = 0;
-      dirtyRef.current = false;
-      return;
-    }
-
-    // Check capacity
-    const estimatedGlyphs = countMultiLineGlyphs(mlEntries, glyphMap);
-    if (estimatedGlyphs > capacity && capacity < MAX_CAPACITY) {
-      setCapacity(Math.min(MAX_CAPACITY, Math.ceil(estimatedGlyphs * BUFFER_GROWTH_FACTOR)));
-      return;
-    }
-
-    // Populate buffers
-    const glyphCount = populateMultiLineGlyphBuffers(
-      mlEntries,
-      regularFont.metrics,
-      glyphMap,
-      kerningMap,
-      buffers.matrices,
-      buffers.uvOffsets,
-      buffers.colors,
-      buffers.opacities,
-      capacity
-    );
-
-    // Update GPU buffers
-    const safeGlyphCount = Math.min(glyphCount, capacity);
-    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, safeGlyphCount * 16));
-    mesh.instanceMatrix.needsUpdate = true;
-
-    if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
-      buffers.uvOffsetAttr.needsUpdate = true;
-      buffers.colorAttr.needsUpdate = true;
-      buffers.opacityAttr.needsUpdate = true;
-    }
-
-    mesh.count = safeGlyphCount;
-
-    // renderOrder: use foreground for selected text entities
-    // For simplicity, use the higher render order if any text entity is selected
-    let hasSelected = false;
-    for (const entry of mlEntries) {
-      if (selectedEntityIds.has(entry.id)) {
-        hasSelected = true;
-        break;
-      }
-    }
-    mesh.renderOrder = hasSelected ? RENDER_ORDER_FG : RENDER_ORDER_BG;
+    // Write new arrays to refs — children detect change via reference identity
+    regularEntriesRef.current = regularEntries;
+    semiboldEntriesRef.current = semiboldEntries;
 
     dirtyRef.current = false;
+
+    // Update hasSemiboldEntries only when presence changes (avoids React re-renders)
+    const hasSemibold = semiboldEntries.length > 0;
+    if (hasSemibold !== hasSemiboldEntries) {
+      setHasSemiboldEntries(hasSemibold);
+    }
 
     // Flush pending dimension updates via microtask — runs after useFrame
     // completes but before the next paint. The store update triggers subscribers
@@ -408,15 +477,22 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   });
 
   // Don't render if font not loaded
-  if (!regularFont || !material) return null;
+  if (!regularFont) return null;
 
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-      renderOrder={RENDER_ORDER_BG}
-    />
+    <>
+      <TextEntityWeightMesh
+        fontData={regularFont}
+        entriesRef={regularEntriesRef}
+        storeRef={storeRef}
+      />
+      {semiboldFont && hasSemiboldEntries && (
+        <TextEntityWeightMesh
+          fontData={semiboldFont}
+          entriesRef={semiboldEntriesRef}
+          storeRef={storeRef}
+        />
+      )}
+    </>
   );
 }

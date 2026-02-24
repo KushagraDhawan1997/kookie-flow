@@ -157,6 +157,19 @@ export function useFont(): FontContextValue {
 }
 
 /**
+ * Resolve the correct LoadedFontWeight for a numeric CSS font-weight.
+ * - fontWeight < 600 → regular
+ * - fontWeight >= 600 → semibold (if available), else regular
+ */
+export function resolveFontForWeight(
+  fontContext: FontContextValue,
+  fontWeight: number
+): LoadedFontWeight | null {
+  if (fontWeight >= 600 && fontContext.semibold) return fontContext.semibold;
+  return fontContext.regular;
+}
+
+/**
  * Lazily loads a font preset's MSDF data.
  * Returns null for 'system' preset (no WebGL fonts).
  */
