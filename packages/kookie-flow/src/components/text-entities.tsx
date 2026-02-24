@@ -246,10 +246,14 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
 
   // Subscribe to relevant store slices for dirty flagging.
+  // We subscribe to the full `entities` array (not just `entities.length`) to catch
+  // text property changes (fontWeight, fontSize, textAlign, etc.) from the toolbar.
+  // During drag, positionVersion already triggers dirty — the entities subscription
+  // fires too but is a no-op (idempotent boolean set). The only extra cost is
+  // one O(n) scan when non-text entities change data, which is rare and cheap.
   useEffect(() => {
     const markDirty = () => { dirtyRef.current = true; };
     const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
-    // Subscribe to full entities array to catch data changes (fontWeight, fontSize, etc.)
     const unsubEntities = store.subscribe((s) => s.entities, markDirty);
     const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);

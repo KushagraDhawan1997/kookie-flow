@@ -55,7 +55,7 @@ import {
   MAX_ZOOM,
 } from '../core/constants';
 import { resolveTextStyle, calculateTextAutoHeightMSDF } from '../utils/text-texture';
-import { useFont } from '../contexts/FontContext';
+import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
@@ -1050,9 +1050,9 @@ function InputHandler({
           if (editingId === clickedEntity.id && clickedEntity.type === 'text') {
             // Clicking on the entity being edited — set up drag-to-select anchor
             suppressEditBlur();
-            const font = regularFontRef.current;
-            if (font && glyphMapRef.current.size > 0) {
-              const data = clickedEntity.data as TextEntityData;
+            const data = clickedEntity.data as TextEntityData;
+            const font = resolveFontForWeight(fontContext, data.fontWeight ?? 400);
+            if (font && font.glyphMap.size > 0) {
               const content = store.getState().editingContent ?? (data.content ?? '');
               const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
               const fontSize = data.fontSize ?? 16;
@@ -1064,7 +1064,7 @@ function InputHandler({
               const table = buildCharPositionsForEntity(
                 content, fontSize, lineHeightMul, textAlignVal,
                 w, pad, clickedEntity.position.x, clickedEntity.position.y,
-                font.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
+                font.metrics, font.glyphMap, font.kerningMap, letterSp
               );
               const anchor = hitTestCharOffset(
                 worldPos.x, worldPos.y, table,
@@ -1332,11 +1332,11 @@ function InputHandler({
           // auto-width: resizable=false, so this branch won't execute for auto-width
           if (sizingMode === 'auto-height') {
             const style = resolveTextStyle(data);
-            const resizeFont = regularFontRef.current;
-            if (resizeFont && glyphMapRef.current.size > 0) {
+            const resizeFont = resolveFontForWeight(fontContext, data.fontWeight ?? 400);
+            if (resizeFont && resizeFont.glyphMap.size > 0) {
               newH = calculateTextAutoHeightMSDF(
                 data.content, style, newW,
-                resizeFont.metrics.info.size, glyphMapRef.current, kerningMapRef.current
+                resizeFont.metrics.info.size, resizeFont.glyphMap, resizeFont.kerningMap
               );
             } else {
               newH = style.fontSize * style.lineHeight + 2 * style.padding;
@@ -1822,68 +1822,69 @@ function InputHandler({
           };
 
           const currentEditingId = store.getState().editingEntityId;
-          const font = regularFontRef.current;
 
           // Already editing this text entity — handle click/multi-click
           if (
             currentEditingId === clickedEntity.id &&
-            clickedEntity.type === 'text' &&
-            font && glyphMapRef.current.size > 0
+            clickedEntity.type === 'text'
           ) {
             const data = clickedEntity.data as TextEntityData;
-            const content = store.getState().editingContent ?? (data.content ?? '');
-            const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
-            const fontSize = data.fontSize ?? 16;
-            const lineHeightMul = data.lineHeight ?? 1.5;
-            const letterSp = data.letterSpacing ?? 0;
-            const textAlignVal = data.textAlign ?? 'left';
-            const pad = 4; // DEFAULT_TEXT_PADDING
+            const font = resolveFontForWeight(fontContext, data.fontWeight ?? 400);
+            if (font && font.glyphMap.size > 0) {
+              const content = store.getState().editingContent ?? (data.content ?? '');
+              const w = clickedEntity.width ?? DEFAULT_TEXT_WIDTH;
+              const fontSize = data.fontSize ?? 16;
+              const lineHeightMul = data.lineHeight ?? 1.5;
+              const letterSp = data.letterSpacing ?? 0;
+              const textAlignVal = data.textAlign ?? 'left';
+              const pad = 4; // DEFAULT_TEXT_PADDING
 
-            const table = buildCharPositionsForEntity(
-              content, fontSize, lineHeightMul, textAlignVal,
-              w, pad, clickedEntity.position.x, clickedEntity.position.y,
-              font.metrics, glyphMapRef.current, kerningMapRef.current, letterSp
-            );
+              const table = buildCharPositionsForEntity(
+                content, fontSize, lineHeightMul, textAlignVal,
+                w, pad, clickedEntity.position.x, clickedEntity.position.y,
+                font.metrics, font.glyphMap, font.kerningMap, letterSp
+              );
 
-            const offset = hitTestCharOffset(
-              clickPos.x, clickPos.y, table,
-              clickedEntity.position.x, clickedEntity.position.y, pad
-            );
+              const offset = hitTestCharOffset(
+                clickPos.x, clickPos.y, table,
+                clickedEntity.position.x, clickedEntity.position.y, pad
+              );
 
-            let selStart: number;
-            let selEnd: number;
+              let selStart: number;
+              let selEnd: number;
 
-            if (clickCount >= 4) {
-              // Quad+ click: select entire block
-              selStart = 0;
-              selEnd = content.length;
-            } else if (clickCount === 3) {
-              // Triple-click: select visual (wrapped) line
-              const bounds = getLineBoundary(offset, table);
-              selStart = bounds.start;
-              selEnd = bounds.end;
-            } else if (clickCount === 2) {
-              // Double-click: select word
-              const bounds = getWordBoundary(offset, content);
-              selStart = bounds.start;
-              selEnd = bounds.end;
-            } else {
-              // Single click: reposition cursor
-              selStart = offset;
-              selEnd = offset;
+              if (clickCount >= 4) {
+                // Quad+ click: select entire block
+                selStart = 0;
+                selEnd = content.length;
+              } else if (clickCount === 3) {
+                // Triple-click: select visual (wrapped) line
+                const bounds = getLineBoundary(offset, table);
+                selStart = bounds.start;
+                selEnd = bounds.end;
+              } else if (clickCount === 2) {
+                // Double-click: select word
+                const bounds = getWordBoundary(offset, content);
+                selStart = bounds.start;
+                selEnd = bounds.end;
+              } else {
+                // Single click: reposition cursor
+                selStart = offset;
+                selEnd = offset;
+              }
+
+              store.getState().setEditingCursor(selStart, selEnd);
+
+              const ta = getEditingTextarea();
+              if (ta) {
+                ta.selectionStart = selStart;
+                ta.selectionEnd = selEnd;
+                ta.focus();
+              }
+
+              containerRef.current?.releasePointerCapture(e.pointerId);
+              return;
             }
-
-            store.getState().setEditingCursor(selStart, selEnd);
-
-            const ta = getEditingTextarea();
-            if (ta) {
-              ta.selectionStart = selStart;
-              ta.selectionEnd = selEnd;
-              ta.focus();
-            }
-
-            containerRef.current?.releasePointerCapture(e.pointerId);
-            return;
           }
 
           // If editing a different entity, stop editing
