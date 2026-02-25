@@ -164,7 +164,11 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       const { selectedEntityIds } = store.getState();
       if (selectedEntityIds.size === 0) return;
       onEntitiesChange?.(
-        Array.from(selectedEntityIds, (id) => ({ type: 'data' as const, id, data: data as EntityData }))
+        Array.from(selectedEntityIds, (id) => ({
+          type: 'data' as const,
+          id,
+          data: data as EntityData,
+        }))
       );
     },
     [store, onEntitiesChange]
@@ -717,25 +721,34 @@ function BuiltInWidget({
 
               if (mode === 'auto-width' && font && font.glyphMap.size > 0) {
                 const size = calculateTextAutoSizeMSDF(
-                  entData.content, style, font.metrics.info.size,
-                  font.glyphMap, font.kerningMap
+                  entData.content,
+                  style,
+                  font.metrics.info.size,
+                  font.glyphMap,
+                  font.kerningMap
                 );
                 newW = size.width;
                 newH = size.height;
               } else if (mode === 'auto-height' && font && font.glyphMap.size > 0) {
                 newH = calculateTextAutoHeightMSDF(
-                  entData.content, style, w,
-                  font.metrics.info.size, font.glyphMap, font.kerningMap
+                  entData.content,
+                  style,
+                  w,
+                  font.metrics.info.size,
+                  font.glyphMap,
+                  font.kerningMap
                 );
               }
               // fixed: freeze current dimensions
 
               changes.push({
-                type: 'data', id: entity.id,
+                type: 'data',
+                id: entity.id,
                 data: { ...entData, sizingMode: mode } as EntityData,
               });
               changes.push({
-                type: 'dimensions', id: entity.id,
+                type: 'dimensions',
+                id: entity.id,
                 dimensions: { width: newW, height: newH },
               });
             }
