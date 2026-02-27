@@ -212,14 +212,29 @@ function CrispLabelsContainer({ entityTypes }: { entityTypes: Record<string, Ent
     // Run initial update synchronously (refs are set after commit)
     updateLabels();
 
-    // Subscribe to store changes
-    const unsub = store.subscribe((state) => {
-      // Re-render if entity count changed (add/remove elements)
-      if (state.entities.length !== entities.length) {
-        setEntities(state.entities);
+    // Fine-grained subscriptions — only fire on relevant state slices
+    // Entity changes → re-render React for element creation/removal + reposition
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (newEntities) => {
+        if (newEntities.length !== entities.length) {
+          setEntities(newEntities);
+        }
+        scheduleUpdate();
       }
-      scheduleUpdate();
-    });
+    );
+
+    // Viewport changes → reposition labels
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => scheduleUpdate()
+    );
+
+    // Position changes → reposition labels
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
+      () => scheduleUpdate()
+    );
 
     // Resize observer for container size changes - also caches size to avoid getBoundingClientRect
     const parent = containerRef.current?.parentElement;
@@ -239,7 +254,9 @@ function CrispLabelsContainer({ entityTypes }: { entityTypes: Record<string, Ent
     }
 
     return () => {
-      unsub();
+      unsubEntities();
+      unsubViewport();
+      unsubPositions();
       resizeObserver?.disconnect();
     };
   }, [store, updateLabels, scheduleUpdate, entities.length, entities]);
@@ -353,14 +370,29 @@ function ScaledContainer({ entityTypes }: { entityTypes: Record<string, EntityTy
     // Run initial update synchronously
     updateTransform();
 
-    // Subscribe to store changes
-    const unsub = store.subscribe((state) => {
-      // Only re-render React when entity count changes (add/remove elements)
-      if (state.entities.length !== entities.length) {
-        setEntities(state.entities);
+    // Fine-grained subscriptions — only fire on relevant state slices
+    // Entity changes → re-render React for element creation/removal + reposition
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (newEntities) => {
+        if (newEntities.length !== entities.length) {
+          setEntities(newEntities);
+        }
+        scheduleUpdate();
       }
-      scheduleUpdate();
-    });
+    );
+
+    // Viewport changes → reposition labels
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => scheduleUpdate()
+    );
+
+    // Position changes → reposition labels
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
+      () => scheduleUpdate()
+    );
 
     // Resize observer on parent container
     const parent = containerRef.current?.parentElement;
@@ -374,7 +406,9 @@ function ScaledContainer({ entityTypes }: { entityTypes: Record<string, EntityTy
     }
 
     return () => {
-      unsub();
+      unsubEntities();
+      unsubViewport();
+      unsubPositions();
       resizeObserver?.disconnect();
     };
   }, [store, updateTransform, scheduleUpdate, entities.length]);
@@ -831,14 +865,29 @@ function SocketLabelsContainer() {
     // Run initial update synchronously
     updateLabels();
 
-    // Subscribe to store changes
-    const unsub = store.subscribe((state) => {
-      // Re-render if entity count changed
-      if (state.entities.length !== entities.length) {
-        setEntities(state.entities);
+    // Fine-grained subscriptions — only fire on relevant state slices
+    // Entity changes → re-render React for element creation/removal + reposition
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (newEntities) => {
+        if (newEntities.length !== entities.length) {
+          setEntities(newEntities);
+        }
+        scheduleUpdate();
       }
-      scheduleUpdate();
-    });
+    );
+
+    // Viewport changes → reposition labels
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => scheduleUpdate()
+    );
+
+    // Position changes → reposition labels
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
+      () => scheduleUpdate()
+    );
 
     // Resize observer for container size changes - caches size to avoid getBoundingClientRect
     const parent = containerRef.current?.parentElement;
@@ -856,7 +905,9 @@ function SocketLabelsContainer() {
     }
 
     return () => {
-      unsub();
+      unsubEntities();
+      unsubViewport();
+      unsubPositions();
       resizeObserver?.disconnect();
     };
   }, [store, updateLabels, scheduleUpdate, entities.length]);
@@ -922,11 +973,7 @@ function SocketLabelsContainer() {
           ref={setLabelRef(item.key)}
           data-socket-index={item.index}
           data-output-count={item.outputCount}
-          style={{
-            ...socketLabelStyle,
-            textAlign: item.side === 'input' ? 'left' : 'right',
-            transform: item.side === 'output' ? 'translateX(-100%)' : undefined,
-          }}
+          style={item.side === 'input' ? socketLabelInputStyle : socketLabelOutputStyle}
         >
           {item.name}
         </div>
@@ -935,7 +982,8 @@ function SocketLabelsContainer() {
   );
 }
 
-const socketLabelStyle: CSSProperties = {
+// Pre-computed style variants for input/output socket labels (avoids spread in render loop)
+const socketLabelBaseStyle: CSSProperties = {
   position: 'absolute',
   left: 0,
   top: 0,
@@ -955,6 +1003,17 @@ const socketLabelStyle: CSSProperties = {
   // Vertically center on socket
   lineHeight: '1',
   marginTop: '-5px',
+};
+
+const socketLabelInputStyle: CSSProperties = {
+  ...socketLabelBaseStyle,
+  textAlign: 'left',
+};
+
+const socketLabelOutputStyle: CSSProperties = {
+  ...socketLabelBaseStyle,
+  textAlign: 'right',
+  transform: 'translateX(-100%)',
 };
 
 // ============================================================================
@@ -1086,16 +1145,38 @@ function CommentsContainer() {
   useLayoutEffect(() => {
     updateComments();
 
-    const unsub = store.subscribe((state) => {
-      // Re-render if comment entities changed
-      const currentComments = state.entities.filter(
-        (n): n is Entity<CommentEntityData> => n.type === 'comment'
-      );
-      if (currentComments.length !== commentEntities.length) {
-        setCommentEntities(currentComments);
+    // Fine-grained subscriptions instead of bare store.subscribe
+    // Entity count changes → re-render React for element creation/removal
+    const unsubEntities = store.subscribe(
+      (state) => state.entities,
+      (entities) => {
+        const currentComments = entities.filter(
+          (n): n is Entity<CommentEntityData> => n.type === 'comment'
+        );
+        if (currentComments.length !== commentEntities.length) {
+          setCommentEntities(currentComments);
+        }
+        scheduleUpdate();
       }
-      scheduleUpdate();
-    });
+    );
+
+    // Viewport changes → reposition
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => scheduleUpdate()
+    );
+
+    // Position changes → reposition
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
+      () => scheduleUpdate()
+    );
+
+    // Selection changes → update selection border
+    const unsubSelection = store.subscribe(
+      (state) => state.selectedEntityIds,
+      () => scheduleUpdate()
+    );
 
     // Resize observer
     const parent = containerRef.current?.parentElement;
@@ -1113,7 +1194,10 @@ function CommentsContainer() {
     }
 
     return () => {
-      unsub();
+      unsubEntities();
+      unsubViewport();
+      unsubPositions();
+      unsubSelection();
       resizeObserver?.disconnect();
     };
   }, [store, updateComments, scheduleUpdate, commentEntities.length]);

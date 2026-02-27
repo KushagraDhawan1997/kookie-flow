@@ -17,6 +17,7 @@ import {
   useLayoutEffect,
   useState,
   useEffect,
+  useMemo,
   createContext,
   useContext,
   type CSSProperties,
@@ -74,8 +75,9 @@ export function ToolbarProvider({
   onEntitiesChange,
   children,
 }: ToolbarContextValue & { children: ReactNode }) {
+  const value = useMemo(() => ({ entityTypes, onEntitiesChange }), [entityTypes, onEntitiesChange]);
   return (
-    <ToolbarContext.Provider value={{ entityTypes, onEntitiesChange }}>
+    <ToolbarContext.Provider value={value}>
       {children}
     </ToolbarContext.Provider>
   );
