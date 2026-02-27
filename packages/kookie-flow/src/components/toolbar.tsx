@@ -363,7 +363,11 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
   }
 
   return (
-    <div ref={containerRef} style={toolbarContainerStyle}>
+    <div
+      ref={containerRef}
+      style={toolbarContainerStyle}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <Card size="1" variant="classic" {...cardProps}>
         {toolbarContent}
       </Card>
@@ -607,7 +611,7 @@ function ToolbarNumberInput({
     <TextField.Root
       size="2"
       variant="soft"
-      type="number"
+      inputMode="decimal"
       value={local}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
       onBlur={commit}
@@ -618,7 +622,6 @@ function ToolbarNumberInput({
           commit();
         }
       }}
-      onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
       style={{ width }}
     />
   );
@@ -659,7 +662,6 @@ function ToolbarColorInput({ value, onChange }: { value: string; onChange: (v: s
       type="color"
       value={value}
       onChange={handleChange}
-      onPointerDown={(e) => e.stopPropagation()}
       style={{
         width: 24,
         height: 24,
@@ -755,7 +757,6 @@ function BuiltInWidget({
 
             if (changes.length > 0) onEntitiesChange(changes);
           }}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           <SegmentedControl.Item value="auto-width" iconOnly>
             <AutoWidthIcon />
@@ -805,10 +806,7 @@ function BuiltInWidget({
           value={String((data.fontWeight as number) ?? 400)}
           onValueChange={(v: string) => batchUpdate({ fontWeight: Number(v) })}
         >
-          <Select.Trigger
-            variant="soft"
-            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          />
+          <Select.Trigger variant="soft" />
           <Select.Content>
             <Select.Item value="400">Regular</Select.Item>
             <Select.Item value="600">Semibold</Select.Item>
@@ -824,7 +822,6 @@ function BuiltInWidget({
           size="2"
           value={(data.textAlign as string) ?? 'left'}
           onValueChange={(v: string) => batchUpdate({ textAlign: v })}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           <SegmentedControl.Item value="left" iconOnly>
             <AlignLeftIcon />
@@ -846,10 +843,7 @@ function BuiltInWidget({
           value={(data.fontFamily as string) ?? 'system-ui'}
           onValueChange={(v: string) => batchUpdate({ fontFamily: v })}
         >
-          <Select.Trigger
-            variant="soft"
-            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          />
+          <Select.Trigger variant="soft" />
           <Select.Content>
             <Select.Item value="system-ui">System</Select.Item>
             <Select.Item value="serif">Serif</Select.Item>
@@ -874,7 +868,6 @@ function BuiltInWidget({
           size="2"
           value={(data.objectFit as string) ?? 'fill'}
           onValueChange={(v: string) => batchUpdate({ objectFit: v })}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           <SegmentedControl.Item value="fill">Fill</SegmentedControl.Item>
           <SegmentedControl.Item value="cover">Cover</SegmentedControl.Item>
@@ -891,7 +884,6 @@ function BuiltInWidget({
           variant="soft"
           pressed={locked}
           onPressedChange={(v: boolean) => batchUpdate({ aspectLocked: v })}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
           aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
         >
           {locked ? <LockIcon /> : <UnlockIcon />}
