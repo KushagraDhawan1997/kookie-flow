@@ -19,6 +19,7 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
 import { makeGraph } from './graph';
+import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB } from '../../src/utils/color';
 
 declare global {
   interface Window {
@@ -37,14 +38,22 @@ export interface HarnessApi {
   viewport(): unknown;
   /** Resolve a CSS custom property the way the GL layer does, to sRGB 0-1. */
   resolveToken(name: string): [number, number, number] | null;
+  /** The LIBRARY's own colour parsers, so a spike tests the shipped code and not a copy. */
+  lib: {
+    parseColorToRGB(v: string): [number, number, number];
+    parseColorToRGBA(v: string): [number, number, number, number];
+    resolveColorToRGB(v: string): [number, number, number] | null;
+  };
   /** Read one pixel from the WebGL canvas, in CSS pixel coordinates from the top-left. */
   readPixel(x: number, y: number): [number, number, number, number] | null;
   /** The <canvas> R3F is drawing into. */
   canvas(): HTMLCanvasElement | null;
   /** WebGL draw-call counters. */
   gl(): unknown;
-  /** Zero the draw-call counters. */
+  /** Zero the draw-call counters and the frame recorder. */
   resetGl(): void;
+  /** Frame-interval distribution for the current window. */
+  frames(): unknown;
 }
 
 function params() {
@@ -131,7 +140,18 @@ function installGlProbe() {
     gl.instancedDrawCalls++;
     gl.instancesDrawn += Number(a[3] ?? 0);
   });
-  wrap('clear', () => { gl.clears++; });
+  wrap('clear', () => {
+    gl.clears++;
+    // three clears once per frame, so the gap between clears IS the frame interval. Recording
+    // here rather than from our own rAF loop keeps the instrument out of the measurement.
+    const now = performance.now();
+    if (frames.last > 0) {
+      const dt = now - frames.last;
+      // A gap over a second is a tab stall or a pause between measurement windows, not a frame.
+      if (dt < 1000) frames.samples.push(dt);
+    }
+    frames.last = now;
+  });
   wrap('viewport', (a) => { gl.viewportSize = [Number(a[2] ?? 0), Number(a[3] ?? 0)]; });
 
   // KookieFlow creates its context with `preserveDrawingBuffer: false` (a deliberate Safari
@@ -176,8 +196,36 @@ if (typeof window !== 'undefined') {
   });
 }
 
+interface FrameRecorder {
+  last: number;
+  samples: number[];
+}
+const frames: FrameRecorder = { last: 0, samples: [] };
+
+/**
+ * Frame intervals for the current window, as a distribution.
+ *
+ * A mean is the wrong summary for frame time — one 200ms hitch inside a second of 8ms frames
+ * averages to something that looks fine and feels broken. p95 is where the stutter lives.
+ */
+function frameStats() {
+  const s = frames.samples.slice().sort((a, b) => a - b);
+  if (s.length === 0) return { count: 0 };
+  const at = (q: number) => s[Math.min(s.length - 1, Math.floor(s.length * q))];
+  return {
+    count: s.length,
+    p50: Number(at(0.5).toFixed(2)),
+    p95: Number(at(0.95).toFixed(2)),
+    p99: Number(at(0.99).toFixed(2)),
+    max: Number(s[s.length - 1].toFixed(2)),
+    fps50: Number((1000 / at(0.5)).toFixed(1)),
+  };
+}
+
 /** Zero the counters, so a measurement covers a known window rather than all of history. */
 function resetGlCounters() {
+  frames.samples.length = 0;
+  frames.last = 0;
   gl.drawCalls = 0;
   gl.instancedDrawCalls = 0;
   gl.instancesDrawn = 0;
@@ -252,6 +300,8 @@ function Probe() {
       canvas,
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
+      frames: frameStats,
+      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB },
     };
 
     window.__harness = api;
