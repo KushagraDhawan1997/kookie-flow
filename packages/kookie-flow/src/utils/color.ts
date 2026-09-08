@@ -19,16 +19,67 @@ export function rgbToHex(rgb: RGBColor): string {
 let colorProbe: HTMLSpanElement | null = null;
 
 /**
- * Get or create a hidden element used to resolve CSS colors to RGB.
- * The browser will compute any color format (oklch, hsl, etc.) to RGB.
+ * Get or create a hidden element used to resolve CSS colors.
+ *
+ * The probe MUST live inside the theme element, not on <body>. Design tokens are scoped to
+ * `.radix-themes`, so a probe outside it cannot see them: measured, `var(--accent-9)` resolves to
+ * rgb(0,0,0) from body and rgb(0,144,255) from inside the theme, and `--gray-2` gives the untinted
+ * rgb(249,249,249) instead of the real rgb(249,249,251).
+ *
+ * The host is re-checked on every call rather than cached once, because the theme element mounts
+ * after this module first runs.
  */
 function getColorProbe(): HTMLSpanElement | null {
-  if (!colorProbe && typeof document !== 'undefined' && document.body) {
+  if (typeof document === 'undefined' || !document.body) return null;
+
+  const host = document.querySelector('.radix-themes') ?? document.body;
+
+  if (!colorProbe) {
     colorProbe = document.createElement('span');
     colorProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
-    document.body.appendChild(colorProbe);
+  }
+  if (colorProbe.parentElement !== host) {
+    host.appendChild(colorProbe);
   }
   return colorProbe;
+}
+
+/**
+ * Read a colour off the probe, forcing modern colour functions to resolve.
+ *
+ * Chrome returns modern colour functions from getComputedStyle UNCHANGED — `oklch(...)` in,
+ * `oklch(...)` out — so reading `.color` directly cannot resolve an OKLCH token, and the caller
+ * silently falls back to mid-grey. Wrapping in `color-mix(in srgb, ...)` forces conversion and
+ * yields `color(srgb r g b)` at full float precision. Measured alternatives that do NOT work:
+ * a canvas 2D fillStyle round-trip, and CSS.registerProperty with syntax '<color>'.
+ *
+ * If the wrapped form is rejected (unsupported, or the value is invalid) the declaration is
+ * dropped and `color` keeps whatever it inherited — which would be silently wrong rather than
+ * absent. A sentinel detects that and falls back to the unwrapped value.
+ */
+const PROBE_SENTINEL = 'rgb(1, 2, 3)';
+
+function readProbe(colorValue: string): string | null {
+  const probe = getColorProbe();
+  if (!probe) return null;
+
+  probe.style.color = PROBE_SENTINEL;
+  probe.style.color = `color-mix(in srgb, ${colorValue} 100%, transparent 0%)`;
+  let computed = getComputedStyle(probe).color;
+
+  if (computed === PROBE_SENTINEL) {
+    // color-mix rejected it. Try the value on its own.
+    probe.style.color = PROBE_SENTINEL;
+    probe.style.color = colorValue;
+    computed = getComputedStyle(probe).color;
+    if (computed === PROBE_SENTINEL) {
+      probe.style.color = '';
+      return null;
+    }
+  }
+
+  probe.style.color = '';
+  return computed;
 }
 
 /**
@@ -38,20 +89,40 @@ function getColorProbe(): HTMLSpanElement | null {
 export function resolveColorToRGB(colorValue: string): RGBColor | null {
   if (typeof document === 'undefined') return null;
 
-  const probe = getColorProbe();
-  if (!probe) return null;
-
-  // Set the color on the probe element
-  probe.style.color = colorValue;
-
-  // Get the computed color (browser converts to rgb())
-  const computed = getComputedStyle(probe).color;
-
-  // Reset for next use
-  probe.style.color = '';
-
-  // Parse the computed rgb() value
+  const computed = readProbe(colorValue);
+  if (computed === null) return null;
   return parseRGBString(computed);
+}
+
+
+const COLOR_SRGB_RE = /color\(srgb\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)(?:\s*\/\s*([\d.eE+-]+))?/;
+const COLOR_P3_RE = /color\(display-p3\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)(?:\s*\/\s*([\d.eE+-]+))?/;
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** sRGB / Display-P3 share a transfer function; these move between encoded and linear light. */
+function toLinear(v: number): number {
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+function toEncoded(v: number): number {
+  return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+/**
+ * Display-P3 -> sRGB, through linear light and the P3->XYZ->sRGB matrix product.
+ * Values outside sRGB's gamut clamp, which is the only honest thing a narrower space can do.
+ */
+function displayP3ToSRGB(r: number, g: number, b: number): RGBColor {
+  const lr = toLinear(r);
+  const lg = toLinear(g);
+  const lb = toLinear(b);
+  return [
+    clamp01(toEncoded(1.2249401762 * lr - 0.2249404157 * lg + 0.0000002395 * lb)),
+    clamp01(toEncoded(-0.0420569547 * lr + 1.0420571668 * lg - 0.0000002121 * lb)),
+    clamp01(toEncoded(-0.0196375546 * lr - 0.0786360655 * lg + 1.0982736200 * lb)),
+  ];
 }
 
 /**
@@ -82,16 +153,25 @@ export function hexToRGB(hex: string): RGBColor {
  * Parse an rgb(), rgba(), or color(display-p3 ...) string to RGB array [0-1].
  */
 function parseRGBString(color: string): RGBColor {
-  // Match color(display-p3 r g b) - values are already 0-1
-  const p3Match = color.match(
-    /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/
-  );
-  if (p3Match) {
+  // color(srgb r g b) — what readProbe's color-mix produces. Already sRGB, full float precision.
+  const srgbMatch = color.match(COLOR_SRGB_RE);
+  if (srgbMatch) {
     return [
+      clamp01(parseFloat(srgbMatch[1])),
+      clamp01(parseFloat(srgbMatch[2])),
+      clamp01(parseFloat(srgbMatch[3])),
+    ];
+  }
+
+  // color(display-p3 r g b) — 0-1 but in a WIDER gamut. Using these as sRGB is wrong: a saturated
+  // P3 red is not sRGB (1,0,0). Convert properly.
+  const p3Match = color.match(COLOR_P3_RE);
+  if (p3Match) {
+    return displayP3ToSRGB(
       parseFloat(p3Match[1]),
       parseFloat(p3Match[2]),
-      parseFloat(p3Match[3]),
-    ];
+      parseFloat(p3Match[3])
+    );
   }
 
   // Match rgb(r, g, b) or rgba(r, g, b, a) - values are 0-255
@@ -125,30 +205,26 @@ function parseRGBString(color: string): RGBColor {
  * Parse an rgba(), or color(display-p3 ... / a) string to RGBA array [0-1].
  */
 function parseRGBAString(color: string): RGBAColor {
-  // Match color(display-p3 r g b / a) - values are already 0-1
-  const p3AlphaMatch = color.match(
-    /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\/\s*([\d.]+)/
-  );
-  if (p3AlphaMatch) {
+  // color(srgb r g b [/ a]) — what readProbe's color-mix produces.
+  const srgbMatch = color.match(COLOR_SRGB_RE);
+  if (srgbMatch) {
     return [
-      parseFloat(p3AlphaMatch[1]),
-      parseFloat(p3AlphaMatch[2]),
-      parseFloat(p3AlphaMatch[3]),
-      parseFloat(p3AlphaMatch[4]),
+      clamp01(parseFloat(srgbMatch[1])),
+      clamp01(parseFloat(srgbMatch[2])),
+      clamp01(parseFloat(srgbMatch[3])),
+      srgbMatch[4] === undefined ? 1 : clamp01(parseFloat(srgbMatch[4])),
     ];
   }
 
-  // Match color(display-p3 r g b) without alpha - values are already 0-1
-  const p3Match = color.match(
-    /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/
-  );
+  // color(display-p3 r g b [/ a]) — wider gamut; convert rather than reinterpret.
+  const p3Match = color.match(COLOR_P3_RE);
   if (p3Match) {
-    return [
+    const [r, g, b] = displayP3ToSRGB(
       parseFloat(p3Match[1]),
       parseFloat(p3Match[2]),
-      parseFloat(p3Match[3]),
-      1,
-    ];
+      parseFloat(p3Match[3])
+    );
+    return [r, g, b, p3Match[4] === undefined ? 1 : clamp01(parseFloat(p3Match[4]))];
   }
 
   // Match rgba(r, g, b, a) with comma syntax
@@ -229,19 +305,8 @@ export function parseColorToRGB(color: string): RGBColor {
 export function resolveColorToRGBA(colorValue: string): RGBAColor | null {
   if (typeof document === 'undefined') return null;
 
-  const probe = getColorProbe();
-  if (!probe) return null;
-
-  // Set the color on the probe element
-  probe.style.color = colorValue;
-
-  // Get the computed color (browser converts to rgb() or rgba())
-  const computed = getComputedStyle(probe).color;
-
-  // Reset for next use
-  probe.style.color = '';
-
-  // Parse the computed rgba() or rgb() value
+  const computed = readProbe(colorValue);
+  if (computed === null) return null;
   return parseRGBAString(computed);
 }
 
