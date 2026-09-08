@@ -141,7 +141,10 @@ async function assertModifierReaches(page, key, flag) {
       true
     );
   });
-  await clickWith(page, 5, 795, key); // empty space, bottom-left
+  // Deliberately on the DOM swatch strip (fixed, bottom-left, z-index 10), NOT on the canvas:
+  // the calibration must not disturb selection state that a later assertion depends on. The
+  // listener is on window in capture phase, so it sees the event whatever the target is.
+  await clickWith(page, 5, 795, key);
   await page.waitForTimeout(80);
   const seen = await page.evaluate(() => window.__modProbe ?? []);
   return seen.length > 0 && seen[seen.length - 1][flag] === true;
