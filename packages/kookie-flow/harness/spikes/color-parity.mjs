@@ -7,8 +7,10 @@
  *
  * This runs against the CURRENT v1 pipeline on purpose. Phase 0 pins what is true today, so that
  * the v2 swap shows up as a diff against a known baseline instead of landing on top of an unknown
- * one. It is expected to FAIL on the grid and the connection line — see
- * plans/migration/finding-colour-pipeline.md, which this spike is the executable form of.
+ * one. It is expected to PASS: the shipped pipeline is coherent, because <Canvas flat legacy>
+ * turns three's colour management off and every unmanaged shader then paints the token's own
+ * sRGB bytes. What it guards is the fragility — that coherence rests on `legacy`, which R3F
+ * documents as deprecated. See plans/migration/finding-colour-pipeline.md.
  */
 
 import { createServer } from 'node:http';
@@ -54,7 +56,7 @@ page.on('console', (m) => {
   if (m.type() === 'error') errors.push('console: ' + m.text());
 });
 
-await page.goto(`http://127.0.0.1:${port}/index.html?count=12&seed=1&textRenderMode=webgl&grid=1`);
+await page.goto(`http://127.0.0.1:${port}/index.html?count=12&seed=1&grid=1`);
 
 let mounted = true;
 try {

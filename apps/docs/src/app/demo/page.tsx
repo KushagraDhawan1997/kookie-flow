@@ -1236,7 +1236,6 @@ export default function DemoPage() {
         showGrid
         showMinimap
         minimapProps={{ zoomable: false }}
-        textRenderMode="webgl"
         showSocketLabels
         showEdgeLabels
         // Styling props (Milestone 2)

@@ -1,20 +1,18 @@
 /**
- * The legibility gate for moving labels from DOM to GL.
+ * GL label behaviour across zoom — the regression record for the LOD thresholds.
  *
- * Both label renderers ship today, switched by `textRenderMode`. Flipping the default to 'webgl'
- * and deleting the DOM path is only defensible if GL labels are at least as usable, so this
- * measures rather than assumes — and it measures the thing that actually differs.
+ * This began as the gate for moving labels off the DOM. It compared both renderers and found
+ * two things that decided it: at 1:1 the DOM path garbled output socket labels ("OO 0", "Ou 2"),
+ * and at zoom 0.5 it held labels at constant screen size so text overflowed the shrunken nodes.
+ * The DOM label path is now deleted, so the comparison arm is gone and what remains is the part
+ * still worth running: a sweep that pins when GL stops drawing text.
  *
- * The two paths do NOT agree on when to hide text:
+ *   text-renderer.tsx:57-59  MIN_TEXT_ZOOM 0.15 | MIN_SOCKET_ZOOM 0.35 | MIN_EDGE_ZOOM 0.25
  *
- *   GL   (text-renderer.tsx:57-59)  MIN_TEXT_ZOOM 0.15 | MIN_SOCKET_ZOOM 0.35 | MIN_EDGE_ZOOM 0.25
- *   DOM  (dom-layer.tsx:40-41)      MIN_ZOOM_FOR_LABELS 0.10, plus an 8px screen-size floor
+ * A change to any of those shows up here as a step moving to a different zoom row.
  *
- * So socket labels vanish at zoom 0.35 under GL and survive to 0.10 under DOM. That is an
- * observable behavior change and the brief requires it be deliberate and logged, not discovered.
- *
- * Usage: node harness/spikes/label-legibility.mjs
- * Writes side-by-side crops to harness/dist/legibility/ for a human to look at once.
+ * Usage: node harness/spikes/label-zoom.mjs
+ * Writes crops to harness/dist/legibility/ for a human to look at once.
  */
 
 import { createServer } from 'node:http';
@@ -52,14 +50,14 @@ const browser = await launch(chromium);
 
 /** Zooms chosen to straddle every threshold either renderer declares. */
 const ZOOMS = [1, 0.5, 0.36, 0.34, 0.26, 0.24, 0.16, 0.14, 0.1];
-const MODES = ['dom', 'webgl'];
 
 const rows = [];
 
-for (const mode of MODES) {
+{
+  const mode = 'gl';
   const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
   await page.goto(
-    `http://127.0.0.1:${port}/index.html?count=24&seed=1&textRenderMode=${mode}&grid=0&preserveBuffer=1`
+    `http://127.0.0.1:${port}/index.html?count=24&seed=1&grid=0&preserveBuffer=1`
   );
   await page.waitForFunction(() => window.__harness !== undefined, { timeout: 30_000 });
   await page.evaluate(() => window.__harness.ready);
@@ -73,19 +71,15 @@ for (const mode of MODES) {
     // Let culling, LOD and the buffer rewrite settle. Both paths update on a rAF cadence.
     await page.waitForTimeout(400);
 
+    // No label should be a DOM element any more. A non-zero count here means the DOM label
+    // path came back, which is the regression this guards.
     const probe = await page.evaluate(() => {
-      // DOM path: labels are real elements, so count them.
-      const domLabels = document.querySelectorAll(
-        '[data-entity-label], [data-socket-label], [data-edge-label]'
-      ).length;
-      // Fall back to counting text-bearing divs in the overlay when there are no data hooks.
-      const overlay = document.querySelectorAll('div');
       let domTextish = 0;
-      for (const el of overlay) {
+      for (const el of document.querySelectorAll('div')) {
         if (el.children.length === 0 && (el.textContent ?? '').trim().length > 0) domTextish++;
       }
       window.__harness.resetGl();
-      return { domLabels, domTextish };
+      return { domTextish };
     });
 
     // GL path: one frame's instance count is the number of glyph quads drawn.
@@ -106,9 +100,9 @@ for (const mode of MODES) {
   await page.close();
 }
 
-console.log('\nLabel rendering across zoom. "instancesDrawn" counts GL glyph quads over ~0.35s;');
-console.log('"domTextish" counts leaf DOM elements carrying text.\n');
-console.log('mode   zoom    domTextish   glInstances   glDrawCalls');
+console.log('\nGL label rendering across zoom. "glInstances" counts instances drawn over ~0.35s;');
+console.log('"domText" must stay 0 — a non-zero value means DOM labels returned.\n');
+console.log('mode   zoom    domText      glInstances   glDrawCalls');
 for (const r of rows) {
   console.log(
     `${r.mode.padEnd(6)} ${String(r.zoom).padEnd(7)} ${String(r.domTextish).padEnd(12)} ${String(

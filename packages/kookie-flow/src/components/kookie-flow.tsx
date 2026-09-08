@@ -78,7 +78,6 @@ import type {
   ConnectionMode,
   IsValidConnectionFn,
   EdgeType,
-  TextRenderMode,
 } from '../types';
 import * as THREE from 'three';
 
@@ -115,9 +114,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     showMinimap = false,
     minimapProps,
     showStats = false,
-    textRenderMode = 'webgl',
     font = 'google-sans',
-    scaleTextWithZoom = false,
     showSocketLabels = true,
     showEdgeLabels = true,
     snapToGrid = false,
@@ -186,11 +183,9 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             onFileDrop={onFileDrop}
             showGrid={showGrid}
             showStats={showStats}
-            textRenderMode={textRenderMode}
             showSocketLabels={showSocketLabels}
             showEdgeLabels={showEdgeLabels}
             entityTypes={entityTypes}
-            scaleTextWithZoom={scaleTextWithZoom}
             showMinimap={showMinimap}
             minimapProps={minimapProps}
             widgetTypes={widgetTypes}
@@ -238,11 +233,9 @@ interface ThemedFlowContainerProps {
   onFileDrop?: KookieFlowProps['onFileDrop'];
   showGrid: boolean;
   showStats: boolean;
-  textRenderMode: TextRenderMode;
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
   entityTypes: KookieFlowProps['entityTypes'];
-  scaleTextWithZoom: boolean;
   showMinimap: boolean;
   minimapProps?: KookieFlowProps['minimapProps'];
   children?: React.ReactNode;
@@ -284,11 +277,9 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       onFileDrop,
       showGrid,
       showStats,
-      textRenderMode,
       showSocketLabels,
       showEdgeLabels,
       entityTypes,
-      scaleTextWithZoom,
       showMinimap,
       minimapProps,
       children,
@@ -356,19 +347,13 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               showStats={showStats}
               defaultEdgeType={defaultEdgeType}
               socketTypes={resolvedSocketTypes}
-              textRenderMode={textRenderMode}
-              showSocketLabels={showSocketLabels}
+                showSocketLabels={showSocketLabels}
               showEdgeLabels={showEdgeLabels}
               maxImageTextureSize={maxImageTextureSize}
               onEntitiesChange={onEntitiesChange}
             />
             <DOMLayer
               entityTypes={entityTypes}
-              scaleTextWithZoom={scaleTextWithZoom}
-              defaultEdgeType={defaultEdgeType}
-              showEntityLabels={textRenderMode === 'dom'}
-              showSocketLabels={textRenderMode === 'dom' ? showSocketLabels : false}
-              showEdgeLabels={textRenderMode === 'dom' ? showEdgeLabels : false}
               onEntitiesChange={onEntitiesChange}
             >
               {children}
@@ -2275,7 +2260,6 @@ interface FlowCanvasProps {
   showStats: boolean;
   defaultEdgeType: import('../types').EdgeType;
   socketTypes: Record<string, SocketType>;
-  textRenderMode: TextRenderMode;
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
   maxImageTextureSize?: number;
@@ -2312,7 +2296,6 @@ function FlowCanvas({
   showStats,
   defaultEdgeType,
   socketTypes,
-  textRenderMode,
   showSocketLabels,
   showEdgeLabels,
   maxImageTextureSize,
@@ -2371,13 +2354,11 @@ function FlowCanvas({
         <EntitySelection />
         <SelectionBox />
         <ConnectionLine socketTypes={socketTypes} />
-        {textRenderMode === 'webgl' && (
-          <WebGLTextLayer
-            showSocketLabels={showSocketLabels}
-            showEdgeLabels={showEdgeLabels}
-            defaultEdgeType={defaultEdgeType}
-          />
-        )}
+        <WebGLTextLayer
+          showSocketLabels={showSocketLabels}
+          showEdgeLabels={showEdgeLabels}
+          defaultEdgeType={defaultEdgeType}
+        />
       </Canvas>
     </CanvasErrorBoundary>
   );

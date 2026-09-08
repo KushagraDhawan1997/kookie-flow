@@ -641,9 +641,6 @@ export interface PasteFromInternalOptions<T extends EntityData = EntityData> {
   preserveExternalConnections?: boolean;
 }
 
-/** Text rendering mode */
-export type TextRenderMode = 'dom' | 'webgl';
-
 // ============================================================================
 // Font Types
 // ============================================================================
@@ -824,30 +821,13 @@ export interface KookieFlowProps {
   /** Show performance stats (FPS counter) */
   showStats?: boolean;
   /**
-   * Text rendering mode.
-   * - 'webgl': instanced MSDF — one draw call per font weight (default)
-   * - 'dom': DOM elements, kept only as an escape hatch
-   *
-   * 'webgl' became the default because the DOM path costs 30-40fps at 1000+ nodes
-   * (plans/technical-decisions.md), garbles output socket labels, and — with the
-   * default `scaleTextWithZoom: false` — holds labels at constant screen size, so
-   * zooming out overflows text past the shrunken nodes it belongs to.
-   *
-   * Note the two paths hide text at different zooms: 'webgl' stops drawing socket
-   * labels below 0.35 and all text below 0.15; 'dom' drew down to 0.10.
-   *
-   * Default: 'webgl'
-   */
-  textRenderMode?: TextRenderMode;
-  /**
-   * Font for WebGL text rendering. DOM mode uses --font-sans CSS variable from Kookie UI.
+   * Font for text rendering. Labels are drawn with instanced MSDF, so this picks the
+   * MSDF atlas rather than a CSS font family.
    * - Preset name: 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
    * - Custom config: { name, weights: { regular, semibold? } } with MSDF metrics/atlas
    * Default: 'google-sans'
    */
   font?: FontPreset | FontConfig;
-  /** Scale text with zoom (true = text scales, false = text stays crisp). Default: false. Only applies to DOM mode. */
-  scaleTextWithZoom?: boolean;
   /** Show socket labels next to sockets. Default: true */
   showSocketLabels?: boolean;
   /** Show edge labels on edges. Default: true */

@@ -58,7 +58,8 @@
     "clean": "rm -rf dist .turbo",
     "generate:fonts": "node scripts/generate-fonts.js",
     "harness:build": "node harness/build.mjs",
-    "harness:spike:color": "node harness/spikes/color-parity.mjs"
+    "harness:spike:color": "node harness/spikes/color-parity.mjs",
+    "harness:spike:labels": "node harness/spikes/label-zoom.mjs"
   },
   "dependencies": {
     "zustand": "^5.0.10"

@@ -8,7 +8,7 @@
  * against these baselines rather than smuggled into them.
  *
  * Configuration comes from the query string so one bundle serves every scale:
- *   ?count=1000&seed=1&textRenderMode=webgl&widgets=0
+ *   ?count=1000&seed=1&widgets=0&preserveBuffer=1
  */
 
 import { StrictMode, useCallback, useEffect, useMemo, useState } from 'react';
@@ -58,9 +58,6 @@ function params() {
     count: num('count', 12),
     seed: num('seed', 1),
     edgeRatio: num('edgeRatio', 0.8),
-    // Absent means: exercise the LIBRARY's default. A fixture that supplies its own
-    // default cannot catch a default that changed, which is exactly what we are verifying.
-    textRenderMode: (q.get('textRenderMode') ?? undefined) as 'dom' | 'webgl' | undefined,
     widgets: q.get('widgets') === '1',
     grid: q.get('grid') !== '0',
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
@@ -292,7 +289,6 @@ function App() {
           edges={edges}
           onEntitiesChange={onEntitiesChange}
           onEdgesChange={onEdgesChange}
-          {...(p.textRenderMode ? { textRenderMode: p.textRenderMode } : {})}
           showWidgets={p.widgets}
           showGrid={p.grid}
           showMinimap={false}

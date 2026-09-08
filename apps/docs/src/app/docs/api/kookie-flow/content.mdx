@@ -74,9 +74,7 @@ import { KookieFlow } from '@kushagradhawan/kookie-flow';
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `textRenderMode` | `'dom' \| 'webgl'` | `'webgl'` | Text rendering method. `'webgl'` uses instanced MSDF (one draw call per font weight); `'dom'` is an escape hatch. |
 | `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text |
-| `scaleTextWithZoom` | `boolean` | `false` | Scale text with zoom (DOM mode only) |
 
 **Font Presets:** `'google-sans'`, `'inter'`, `'roboto'`, `'source-serif'`, `'system'`
 
@@ -278,7 +276,6 @@ function BasicFlow() {
   header="outside"
   accentHeader
   // Performance
-  textRenderMode="webgl"
 />
 ```
 

@@ -382,7 +382,6 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onFileDrop={handleFileDrop}
-      textRenderMode="webgl"
       showSocketLabels={false}
       showEdgeLabels={false}
       showWidgets={false}
