@@ -115,7 +115,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     showMinimap = false,
     minimapProps,
     showStats = false,
-    textRenderMode = 'dom',
+    textRenderMode = 'webgl',
     font = 'google-sans',
     scaleTextWithZoom = false,
     showSocketLabels = true,

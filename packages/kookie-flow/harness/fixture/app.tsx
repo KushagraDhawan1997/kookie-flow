@@ -58,7 +58,9 @@ function params() {
     count: num('count', 12),
     seed: num('seed', 1),
     edgeRatio: num('edgeRatio', 0.8),
-    textRenderMode: (q.get('textRenderMode') ?? 'webgl') as 'dom' | 'webgl',
+    // Absent means: exercise the LIBRARY's default. A fixture that supplies its own
+    // default cannot catch a default that changed, which is exactly what we are verifying.
+    textRenderMode: (q.get('textRenderMode') ?? undefined) as 'dom' | 'webgl' | undefined,
     widgets: q.get('widgets') === '1',
     grid: q.get('grid') !== '0',
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
@@ -290,7 +292,7 @@ function App() {
           edges={edges}
           onEntitiesChange={onEntitiesChange}
           onEdgesChange={onEdgesChange}
-          textRenderMode={p.textRenderMode}
+          {...(p.textRenderMode ? { textRenderMode: p.textRenderMode } : {})}
           showWidgets={p.widgets}
           showGrid={p.grid}
           showMinimap={false}

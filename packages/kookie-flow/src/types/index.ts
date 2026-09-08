@@ -825,9 +825,18 @@ export interface KookieFlowProps {
   showStats?: boolean;
   /**
    * Text rendering mode.
-   * - 'dom': Uses DOM elements (default, backwards compatible)
-   * - 'webgl': Uses instanced MSDF rendering (better performance at scale)
-   * Default: 'dom'
+   * - 'webgl': instanced MSDF — one draw call per font weight (default)
+   * - 'dom': DOM elements, kept only as an escape hatch
+   *
+   * 'webgl' became the default because the DOM path costs 30-40fps at 1000+ nodes
+   * (plans/technical-decisions.md), garbles output socket labels, and — with the
+   * default `scaleTextWithZoom: false` — holds labels at constant screen size, so
+   * zooming out overflows text past the shrunken nodes it belongs to.
+   *
+   * Note the two paths hide text at different zooms: 'webgl' stops drawing socket
+   * labels below 0.35 and all text below 0.15; 'dom' drew down to 0.10.
+   *
+   * Default: 'webgl'
    */
   textRenderMode?: TextRenderMode;
   /**
