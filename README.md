@@ -413,11 +413,10 @@ const text = {
 
 ### Font Configuration
 
-Built-in font presets for WebGL text rendering:
+Labels are drawn with instanced MSDF, so `font` picks an MSDF atlas rather than a CSS family.
 
 ```tsx
 <KookieFlow
-  textRenderMode="webgl"
   font="inter"  // 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
 />
 ```
@@ -426,7 +425,6 @@ Custom MSDF fonts with your own atlas:
 
 ```tsx
 <KookieFlow
-  textRenderMode="webgl"
   font={{
     name: 'my-font',
     weights: {
@@ -530,7 +528,6 @@ useKeyboardShortcuts({
 | `showMinimap` | `boolean` | `false` | Show minimap overview |
 | `minimapProps` | `MinimapProps` | - | Minimap configuration |
 | `showStats` | `boolean` | `false` | Show FPS stats |
-| `textRenderMode` | `'dom' \| 'webgl'` | `'dom'` | Text rendering mode |
 | `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text rendering |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |

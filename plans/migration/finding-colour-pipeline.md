@@ -5,8 +5,9 @@ must sample to the same pixel as a DOM button's `--tone-solid`") can pass. Every
 measured in a real headless render, not derived. Two earlier drafts of this file asserted a bug that
 does not exist; the retraction is kept at the bottom because the way it was wrong is instructive.
 
-**Verdict: the shipped colour pipeline is correct and coherent. It is also load-bearing on one
-deprecated prop, and Phase 3 has a hard blocker that has nothing to do with three.js.**
+**Verdict: the shipped colour pipeline is correct and coherent, and load-bearing on one deprecated
+prop. Phase 3 had a hard blocker that had nothing to do with three.js — v2's OKLCH tokens resolved
+to mid-grey — which is fixed as of 2026-09-08.**
 
 ---
 
@@ -83,9 +84,11 @@ Two mitigations, worth doing before anyone touches renderer configuration:
 
 ---
 
-## Phase 3 blocker: v2's OKLCH tokens resolve to mid-grey
+## Phase 3 blocker: v2's OKLCH tokens resolved to mid-grey — FIXED 2026-09-08
 
-**This one is real, it is not about three.js, and it will stop Phase 3 dead.**
+**This one was real, it is not about three.js, and it would have stopped Phase 3 dead.**
+Fixed in commit `fix: resolve OKLCH, lab and every modern colour function`; the description below
+is kept because the failure mode is worth recognising if it ever returns.
 
 `parseColorToRGB` (`color.ts:190`) routes anything that is not hex or `rgb()` to
 `resolveColorToRGB`, which sets the value on a probe element and reads back
@@ -122,13 +125,20 @@ forces conversion into sRGB — which is exactly the space the shader uniforms n
 teaching `parseRGBString` one more shape, `color(srgb r g b)`, alongside the `color(display-p3 …)`
 branch it already has.
 
-Already implemented and verified in the harness fixture
-(`packages/kookie-flow/harness/fixture/app.tsx`, `resolveToken`): all four probed tokens now resolve
-byte-exact against the DOM.
+**Landed in `src/utils/color.ts`.** `readProbe()` wraps the value in `color-mix` and falls back to
+the raw value behind a sentinel, because a rejected declaration leaves `color` at its inherited
+value — silently wrong rather than absent. `parseRGBString`/`parseRGBAString` learned
+`color(srgb r g b [/ a])`.
+
+Verified by `harness/spikes/color-formats.mjs`, which tests the SHIPPED functions against an
+independent canvas readback rather than a table of expected values written by the same person who
+wrote the parser. All ten formats pass; alpha survives the wrapper. Falsified by removing the
+wrapper, which reproduces the defect exactly — oklch and lab fall to mid-grey while hex and rgb stay
+correct, which is precisely why v1 works and v2 would not have.
 
 ## Two smaller defects found on the way
 
-**The exported colour probe is outside the theme scope.** `getColorProbe` (`color.ts:25`) appends its
+**The exported colour probe was outside the theme scope — FIXED.** `getColorProbe` (`color.ts:25`) appends its
 probe to `document.body`, but tokens are scoped to `.radix-themes`. Measured:
 
 | Value | probe on `<body>` | probe inside the theme |
@@ -136,16 +146,18 @@ probe to `document.body`, but tokens are scoped to `.radix-themes`. Measured:
 | `var(--accent-9)` | `rgb(0, 0, 0)` | `rgb(0, 144, 255)` |
 | `var(--gray-2)` | `rgb(249, 249, 249)` | `rgb(249, 249, 251)` |
 
-Flow's own rendering is unaffected — its internal path passes literal colour values, which resolve
+Flow's own rendering was unaffected — its internal path passes literal colour values, which resolve
 identically anywhere. But `resolveColorToRGB` and `resolveColorToRGBA` are **public API**
-(`src/index.ts:60-61`), so a consumer resolving `var(--accent-9)` gets black. The probe should be
-appended inside the theme element, falling back to body.
+(`src/index.ts:60-61`), so a consumer resolving `var(--accent-9)` got black. `getColorProbe` now
+appends inside `.radix-themes` when present and re-checks the host on every call, because the theme
+element mounts after this module first runs. Falsified by moving it back to body, which returns
+`0,0,0`.
 
-**`display-p3` coordinates are read as sRGB.** `parseRGBString` matches
-`color(display-p3 r g b)` and returns those coordinates directly, commented "values are already
-0-1". They are 0–1 — in P3, a wider gamut. A saturated P3 red is not sRGB `(1,0,0)`. On a wide-gamut
-display where the browser serialises to `display-p3`, colours are wrong. Latent today, and it becomes
-reachable the moment the `color-mix` fix above starts producing `color(...)` forms.
+**`display-p3` coordinates were read as sRGB — FIXED.** `parseRGBString` matched
+`color(display-p3 r g b)` and returned those coordinates directly, commented "values are already
+0-1". They are 0–1 — in P3, a wider gamut. A saturated P3 red is not sRGB `(1,0,0)`. It now goes
+through linear light and the P3→XYZ→sRGB matrix product, clamped, because clamping is the only
+honest thing a narrower space can do with an out-of-gamut colour.
 
 ---
 

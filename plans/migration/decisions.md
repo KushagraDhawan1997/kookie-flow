@@ -70,7 +70,21 @@ and
 So the documented target architecture is already the brief's law, and the DOM label path is a
 leftover from the superseded Phase 7A approach whose default was never flipped.
 
-**Decision.** Flip the default to `'webgl'`, then delete the DOM label path. Two gates:
+**Decision — DONE 2026-09-08.** Flipped the default to `'webgl'`, then deleted the DOM label
+path along with `textRenderMode` and `scaleTextWithZoom` (commits `feat!:` and `refactor!:` on this
+branch). `dom-layer.tsx` went 1268 -> 315 lines; `CommentsContainer`, `TextEditOverlay` and
+`ToolbarProvider` stayed.
+
+The legibility gate ran and produced two findings that strengthened the case beyond performance:
+at 1:1 the DOM path **garbled output socket labels** ("OO 0", "Ou 2", colliding with the socket
+dot), and at zoom 0.5 it held labels at constant screen size so text overflowed the shrunken nodes.
+The old default was the worse renderer, not merely the slower one. Evidence:
+`harness/spikes/label-zoom.mjs` and the crops under `harness/dist/legibility/`.
+
+Behaviour changes logged: labels now scale with zoom, and text hides at GL's thresholds (socket
+labels below 0.35, all text below 0.15) rather than DOM's 0.10.
+
+The gates as originally written were:
 
 1. **Legibility gate** — prove MSDF labels are legible down to the LOD floor
    (`MIN_LABEL_SCREEN_SIZE = 8`, `dom-layer.tsx:39`) before the DOM path is deleted, not before the
@@ -79,11 +93,12 @@ leftover from the superseded Phase 7A approach whose default was never flipped.
    `apps/docs/src/app/docs/api/kookie-flow/content.mdx:77` publishes `'dom'` as the default. It
    needs a logged decision and a docs change in the same commit.
 
-Nothing is lost by removing the DOM labels: verified in `dom-layer.tsx`, the three label kinds are
-`pointerEvents:'none'` + `userSelect:'none'`, and there are **zero** `aria-`/`role` attributes in all
-1,268 lines. Only comments are interactive (`pointerEvents:'auto'`, `userSelect:'text'`), and their
-editing is unimplemented — the code says "for editing in the future" (`dom-layer.tsx:1261`).
-Comments therefore become GL-display + borrowed-DOM-edit, reusing the D1 machinery.
+Nothing was lost by removing the DOM labels. Verified against `dom-layer.tsx` as it stood at 1,268
+lines: the three label kinds were `pointerEvents:'none'` + `userSelect:'none'`, with **zero**
+`aria-`/`role` attributes in the whole file. Only comments were interactive
+(`pointerEvents:'auto'`, `userSelect:'text'`) and their editing was unimplemented — the code said
+"for editing in the future" — so comments stayed in DOM and become GL-display + borrowed-DOM-edit
+later, reusing the D1 machinery.
 
 ---
 
