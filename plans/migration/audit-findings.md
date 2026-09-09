@@ -133,7 +133,20 @@ stacked socket, a multi-row widget or an explicit socket height. Different blast
 named in the source law's expectations rather than fixed under cover of this one.
 
 **T3 — the frame loop has no granularity.** Edges and sockets are never viewport-culled; every
-pointermove during a connection drag triggers a full rebuild of every socket in the graph.
+pointermove during a connection drag triggers a full rebuild of every socket in the graph. The
+instrument for this now exists (`harness/spikes/counts.mjs`); the nine commits do not.
+
+**Dead mechanisms that read as live ones.** `noUnusedLocals` is on, after deleting 23 unused
+locals. Four of them were refs in `edges.tsx` carrying confident comments about dirty tracking —
+"Track last position version to detect actual position changes" — that were never read or written
+anywhere, so the file documented an optimisation it did not have. Reading it, you would believe
+position changes were gated. They are not, which is part of T3.
+
+ESLint is **not** added, deliberately. The audit recommends `react-hooks`, which independently
+catches C18's and C23's defect classes, and it is very likely the right call — but this repo has
+no lint dependencies at all today (`lint` is `tsc --noEmit`), so adding it means several new
+devDependencies and a config to own. That is a decision for the owner, not something to fold into
+a fix commit.
 
 **T4 — React state used as a change detector.** The drag fast path allocates a fresh
 `[...entities]` every frame, making `state.entities` identity-unstable, which is why every React

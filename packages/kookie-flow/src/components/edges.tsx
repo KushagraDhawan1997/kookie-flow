@@ -158,16 +158,6 @@ export function Edges({
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
-  // Edge position cache for dirty tracking
-  // Key: edgeId, Value: hash of endpoint positions (x0,y0,x1,y1 packed)
-  const edgePositionCacheRef = useRef<Map<string, number>>(new Map());
-
-  // Track which edges need re-tessellation (empty = all dirty or first render)
-  const dirtyEdgesRef = useRef<Set<string> | null>(null);
-
-  // Track last selection state for per-edge color updates
-  const lastSelectedEdgesRef = useRef<Set<string>>(new Set());
-
   // Entity map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
   const entityMapRef = useRef<Map<string, Entity>>(new Map());
 
@@ -181,9 +171,6 @@ export function Edges({
   const geometryDirtyRef = useRef(true);
   const colorDirtyRef = useRef(true);
   const layerDirtyRef = useRef(false); // entity selection changed (edges move between bg/fg layers)
-
-  // Track last position version to detect actual position changes
-  const lastPositionVersionRef = useRef(-1);
 
   // Per-edge vertex layout in buffer: parallel arrays for start offset and vertex count
   const edgeVertexStartsRef = useRef<Int32Array>(new Int32Array(0));
@@ -432,8 +419,7 @@ export function Edges({
   useFrame(({ size }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds, selectedEntityIds, positionVersion, entityMap } =
-      store.getState();
+    const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap } = store.getState();
     // Always read entityMap from store (not cached ref) because setEntities
     // creates a new Map without changing entities.length, which would leave
     // entityMapRef stale. The store's getState() is synchronous and cheap.

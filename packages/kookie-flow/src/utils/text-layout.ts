@@ -381,7 +381,6 @@ export function layoutText(
   const atlasWidth = metrics.common.scaleW;
   const atlasHeight = metrics.common.scaleH;
   const fontSize = metrics.info.size;
-  const lineHeight = metrics.common.lineHeight;
 
   for (const entry of entries) {
     const [px, py, pz] = entry.position;

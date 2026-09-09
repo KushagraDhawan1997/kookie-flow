@@ -39,11 +39,6 @@ import {
   populateMultiLineGlyphBuffers,
 } from '../utils/text-layout';
 
-import type { GlyphMap, KerningMap } from '../utils/text-layout';
-
-// Stable empty maps to avoid re-creating on every render when font isn't loaded
-const emptyGlyphMap: GlyphMap = new Map();
-const emptyKerningMap: KerningMap = new Map();
 
 // Buffer capacity management
 const BUFFER_GROWTH_FACTOR = 1.5;

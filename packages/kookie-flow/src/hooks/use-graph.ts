@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import type { Entity, Edge, EntityChange, EdgeChange, Connection, TextEntityData } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
 

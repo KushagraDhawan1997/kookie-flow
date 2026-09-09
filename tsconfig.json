@@ -8,6 +8,12 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "strict": true,
+    // Dead locals are how a mechanism rots in place: four refs in edges.tsx carried confident
+    // comments about dirty tracking ("Track last position version to detect actual position
+    // changes") and were never read or written anywhere, so the file documented an optimisation it
+    // did not have. 23 of these were shipped. `noUnusedParameters` is deliberately NOT on with it:
+    // an unused parameter in a published signature is usually a contract, not a mistake.
+    "noUnusedLocals": true,
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,

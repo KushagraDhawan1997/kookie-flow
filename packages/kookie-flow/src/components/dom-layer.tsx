@@ -7,12 +7,9 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowStoreApi } from './context';
-import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
-import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData, EntityChange } from '../types';
+import type { EntityTypeDefinition, Entity, CommentEntityData, EntityChange } from '../types';
 import { TextEditOverlay } from './text-edit-overlay';
 import { ToolbarProvider } from './toolbar';
-import { getEntitySocketLayout } from '../utils/socket-layout-cache';
-import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 
 const EMPTY_ENTITY_TYPES: Record<string, EntityTypeDefinition> = {};
 

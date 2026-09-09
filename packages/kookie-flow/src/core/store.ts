@@ -6,7 +6,6 @@ import type {
   Viewport,
   EntityChange,
   EdgeChange,
-  Connection,
   XYPosition,
   SocketHandle,
   CloneElementsOptions,
@@ -23,7 +22,7 @@ import type {
 import { resizableForSizingMode } from '../utils/text-texture';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
 import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
-import { Quadtree, SocketQuadtree, getEntityBounds, type SocketEntry } from './spatial';
+import { Quadtree, SocketQuadtree, getEntityBounds } from './spatial';
 import {
   getGroupChildren as utilGetGroupChildren,
   getGroupDescendants as utilGetGroupDescendants,
@@ -857,7 +856,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       selectEdge: (id, additive = false) => {
-        const { selectedEdgeIds, selectedEntityIds } = get();
+        const { selectedEdgeIds } = get();
         if (additive) {
           // Add to existing selection
           const newSet = new Set(selectedEdgeIds);

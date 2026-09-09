@@ -1,5 +1,5 @@
-import type { Entity, Socket } from '../types';
-import { DEFAULT_ENTITY_WIDTH, DEFAULT_ENTITY_HEIGHT, SOCKET_RADIUS } from './constants';
+import type { Entity } from '../types';
+import { DEFAULT_ENTITY_WIDTH, DEFAULT_ENTITY_HEIGHT } from './constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
 

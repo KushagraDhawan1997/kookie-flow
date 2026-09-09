@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useFlowStoreApi } from '../components/context';
-import type { CloneElementsResult, EntityData, PasteFromInternalOptions } from '../types';
+import type { CloneElementsResult, EntityData } from '../types';
 
 export interface UseClipboardOptions<T extends EntityData = EntityData> {
   /** Offset for pasted elements. Default: { x: 50, y: 50 } */

@@ -9,7 +9,6 @@ import {
   useImperativeHandle,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
-  type ForwardedRef,
 } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
@@ -61,7 +60,7 @@ import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLin
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
-import { screenToWorld, getSocketAtPosition, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
+import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
 import { CanvasErrorBoundary } from './error-boundary';
