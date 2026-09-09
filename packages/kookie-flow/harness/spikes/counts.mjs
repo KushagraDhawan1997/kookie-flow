@@ -12,7 +12,13 @@
  * (CLAUDE.md: zero), and how many bytes are allocated in the handlers. Those numbers are the same
  * on any machine.
  *
- * Usage:  node harness/spikes/counts.mjs [--count=1000] [--json]
+ * Usage:  node harness/spikes/counts.mjs [--count=1000] [--widgets] [--json]
+ *
+ * `--widgets` mounts the widget layer AND puts a value on every input socket. Both, together, or
+ * the number is a lie: widget values are MSDF glyphs, and a graph whose sockets are all undefined
+ * prints none of them — so measuring the glyph budget of on-node values against an empty fixture
+ * would report that they are free. Off by default so every baseline already recorded from this
+ * spike stays comparable.
  */
 
 import { createServer } from 'node:http';
@@ -38,6 +44,7 @@ const args = new Map(
 );
 const COUNT = Number(args.get('count') ?? 1000);
 const AS_JSON = args.has('json');
+const WIDGETS = args.has('widgets');
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = createServer((req, res) => {
@@ -60,7 +67,9 @@ page.on('pageerror', (e) => console.error('PAGE ERROR', String(e)));
 
 // preserveBuffer is deliberately OFF: it changes what the driver may optimise, and every number
 // here is meant to be about the app rather than about the harness.
-await page.goto(`http://127.0.0.1:${port}/index.html?count=${COUNT}&seed=1`);
+await page.goto(
+  `http://127.0.0.1:${port}/index.html?count=${COUNT}&seed=1${WIDGETS ? '&widgets=1&values=1' : ''}`
+);
 await page.waitForFunction(() => window.__harness !== undefined, { timeout: 120_000 });
 await page.evaluate(() => window.__harness.ready);
 await page.waitForTimeout(500);
@@ -207,6 +216,23 @@ results.push(
   })
 );
 
+/*
+ * HOVER, which is a pointermove with no button down and therefore the branch that runs most often
+ * of anything here. It is also the branch that now hit-tests widgets, so this is where the cost of
+ * that shows up: `alloc B/f` is the number to watch, and `react` must be 0 — the cursor over a
+ * widget is written imperatively for exactly that reason.
+ *
+ * The sweep crosses the first node rather than empty canvas: over empty canvas the widget test is
+ * one null check and would report a cost of nothing, which is true and uninformative.
+ */
+results.push(
+  await measure('hover-nodes', async () => {
+    for (let i = 0; i < 60; i++) {
+      await page.mouse.move(nodePos.x + (i % 12) * 9, nodePos.y + Math.floor(i / 12) * 11);
+    }
+  })
+);
+
 // A connection drag. Audit finding #1: every pointermove rebuilds every socket in the graph, so
 // this is the number C15 has to move.
 const socketPos = await page.evaluate(() => {
@@ -240,7 +266,7 @@ server.close();
 if (AS_JSON) {
   console.log(JSON.stringify({ count: COUNT, results }, null, 2));
 } else {
-  console.log(`\ncounts @ ${COUNT} entities\n`);
+  console.log(`\ncounts @ ${COUNT} entities${WIDGETS ? ' (widgets + values)' : ''}\n`);
   const pad = (s, n) => String(s).padEnd(n);
   console.log(
     `  ${pad('interaction', 18)}${pad('react', 7)}${pad('frames', 8)}${pad('draws/f', 9)}${pad(

@@ -487,3 +487,47 @@ describe('the store can be built with the socket layout it will use', () => {
     expect(store.getState().quadtree.queryRange({ x: -1000, y: -1000, width: 2000, height: 2000 })).toEqual(['n']);
   });
 });
+
+/**
+ * The keyboard cursor is a single value, and selection cannot become one.
+ *
+ * The accessibility mirror mounts real DOM controls for the entity under `focusedEntityId`, and
+ * its entire claim to being affordable is that the id is single-valued. Keying it on selection
+ * was the obvious alternative and is the one that blows up: `selectAll` puts every entity in
+ * `selectedEntityIds`, so Ctrl+A on a thousand-node graph would commit a thousand nodes' worth of
+ * hidden inputs in one render. The second test here is what fails if anyone ever "simplifies" the
+ * two into one field.
+ */
+describe('the keyboard cursor', () => {
+  it('sets and clears', () => {
+    const store = createFlowStore({ entities: [ent('a'), ent('b')] });
+    expect(store.getState().focusedEntityId).toBeNull();
+    store.getState().setFocusedEntityId('b');
+    expect(store.getState().focusedEntityId).toBe('b');
+    store.getState().setFocusedEntityId(null);
+    expect(store.getState().focusedEntityId).toBeNull();
+  });
+
+  it('does not move when everything is selected', () => {
+    const store = createFlowStore({ entities: [ent('a'), ent('b'), ent('c')] });
+    store.getState().setFocusedEntityId('a');
+    store.getState().selectAll();
+    expect(store.getState().selectedEntityIds.size).toBe(3);
+    expect(store.getState().focusedEntityId).toBe('a');
+  });
+
+  it('does not re-publish when it is set to where it already is', () => {
+    // A press calls this on every pointerdown. Publishing an unchanged value would re-render the
+    // mirror and rebuild real DOM controls out from under a focused one.
+    const store = createFlowStore({ entities: [ent('a')] });
+    store.getState().setFocusedEntityId('a');
+    let moves = 0;
+    const unsub = store.subscribe((s) => s.focusedEntityId, () => { moves++; });
+    store.getState().setFocusedEntityId('a');
+    store.getState().setFocusedEntityId('a');
+    expect(moves).toBe(0);
+    store.getState().setFocusedEntityId('b');
+    expect(moves).toBe(1);
+    unsub();
+  });
+});

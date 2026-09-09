@@ -37,6 +37,42 @@ export function getWidgetBox(
   defaultWidth: number = DEFAULT_ENTITY_WIDTH,
   labelWidth: number = SOCKET_LABEL_WIDTH
 ): WidgetBox | null {
+  return readWidgetBoxInto(
+    { x: 0, y: 0, width: 0, height: 0 },
+    entity,
+    socketIndex,
+    socketLayout,
+    defaultWidth,
+    labelWidth
+  );
+}
+
+/**
+ * The same box, written into a rectangle the caller already owns.
+ *
+ * This exists for ONE caller: the hover test that runs on every pointermove (utils/widget-hit.ts).
+ * `getWidgetBox` mints an object per candidate socket, which is right for a press — it happens
+ * once and the hit keeps its box for the life of an edit — and wrong for a move, where a node with
+ * five inputs would mint five rectangles sixty times a second in the handler that this package's
+ * first rule says must allocate nothing.
+ *
+ * It is a SPLIT rather than a second implementation, and the difference matters: the arithmetic
+ * below is the only copy of it, and `getWidgetBox` is now a call into it. Two copies of one
+ * rectangle is precisely the shape this file's docstring exists to prevent — a widget painted in
+ * one place and pressed in another — and the agreement between the two spellings is pinned by a
+ * law in utils/widget-hit.test.ts rather than left to inspection.
+ *
+ * The caller owns `out`, so a caller that KEEPS a box must take one from `getWidgetBox` instead:
+ * a scratch rectangle handed out twice is one rectangle, and the second read would move the first.
+ */
+export function readWidgetBoxInto(
+  out: WidgetBox,
+  entity: Entity,
+  socketIndex: number,
+  socketLayout: ResolvedSocketLayout,
+  defaultWidth: number = DEFAULT_ENTITY_WIDTH,
+  labelWidth: number = SOCKET_LABEL_WIDTH
+): WidgetBox | null {
   const layout = getEntitySocketLayout(entity, socketLayout);
   const pos = layout.inputs[socketIndex];
   if (!pos) return null;
@@ -48,12 +84,11 @@ export function getWidgetBox(
   const centerOffset = (height - layout.computedHeight) / 2;
 
   const stacked = pos.layout === 'stacked';
-  return {
-    x: entity.position.x + socketLayout.padding + (stacked ? 0 : labelWidth),
-    y: entity.position.y + pos.widgetY + centerOffset,
-    width: width - socketLayout.padding * 2 - (stacked ? 0 : labelWidth),
-    height: pos.widgetHeight,
-  };
+  out.x = entity.position.x + socketLayout.padding + (stacked ? 0 : labelWidth);
+  out.y = entity.position.y + pos.widgetY + centerOffset;
+  out.width = width - socketLayout.padding * 2 - (stacked ? 0 : labelWidth);
+  out.height = pos.widgetHeight;
+  return out;
 }
 
 /** Is this world point inside the box? */

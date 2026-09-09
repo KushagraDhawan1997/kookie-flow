@@ -909,22 +909,43 @@ head('accessible names');
  * attribute check cannot see the difference — it is the same class of mistake as asserting a token
  * name instead of the colour it resolves to.
  *
- * WHAT THIS SECTION NO LONGER COVERS, AND IT IS A REAL COST. The seven built-in socket widgets
- * moved from DOM controls into WebGL, which took them out of the accessibility tree entirely — a
- * canvas has no roles, no names and no keyboard focus for the things drawn inside it. Before that
- * move a screen-reader user could at least reach a socket widget, even if the name was wrong; now
- * there is nothing to reach. That is not a regression this law can paper over by looking at
- * something else, so it says it out loud: the sweep now covers the DOM that remains — the
- * toolbar, a consumer-supplied widget, and the input borrowed during an edit — and the GL widgets
- * are recorded as an OPEN accessibility gap in plans/migration/decisions.md, with the options
- * (an off-screen DOM mirror, or ARIA on the canvas element) and no decision taken.
+ * WHAT THIS SECTION COVERS AGAIN, AND HOW IT GOT BACK. The seven built-in socket widgets moved
+ * from DOM controls into WebGL, which took them out of the accessibility tree entirely — a canvas
+ * has no roles, no names and no keyboard focus for the things drawn inside it — and for a while
+ * this docstring recorded that as an open gap with two candidate fixes and no decision. The fix
+ * taken is the first of them: an off-screen focusable DOM mirror, bounded to the ONE node the
+ * keyboard cursor is standing on (components/widget-a11y-mirror.tsx, decisions.md D7). So the
+ * sweep covers four things now — the toolbar, a consumer-supplied widget, the input borrowed
+ * during an edit, and the focused node's mirrored socket widgets.
+ *
+ * WHICH IS WHY THE PAGE IS FOCUSED AND ARROWED BELOW BEFORE ANYTHING IS COUNTED. A mirror only
+ * exists once a node has the cursor on it. Without those two lines this law would still pass, on
+ * the toolbar and the custom widget alone — `named.total >= 3` would be satisfied and the socket
+ * half of the claim would be measuring nothing. The scene is `widgets`, whose six sockets are one
+ * of each kind, rather than the random socket types a grid produces.
  *
  * ONE control is knowingly exempt and it is not fixable from this repository: kookie-ui hardcodes
  * the slider thumb's name (`Slider value: 0.5`) on the element that carries role="slider", so a
  * consumer aria-label lands on a wrapper carrying no role. A slider socket's only identity is its
- * group. The law states that rather than failing on correct code.
+ * group. The law states that rather than failing on correct code. It no longer applies to a SOCKET
+ * slider: the mirror uses a real `input[type=range]`, which names itself from its own aria-label
+ * and carries the role, the value and the keyboard model natively.
  */
-await withPage('count=3&widgets=1&customWidget=1', async (page) => {
+await withPage('scene=widgets&widgets=1&customWidget=1', async (page) => {
+  // Put the keyboard cursor on a node, which is what brings its mirror into existence.
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(250);
+
+  const mirrored = await page.evaluate(
+    () => document.querySelectorAll('[data-a11y-mirror]').length
+  );
+  check(
+    'INSTRUMENT: the focused node put its widgets in the accessibility tree',
+    mirrored > 0,
+    `${mirrored} mirrored controls`
+  );
+
   const named = await page.evaluate(() => {
     // The accessible name, computed the way a screen reader computes it — aria-label, then
     // aria-labelledby, then the label element, then the content.
@@ -2246,13 +2267,28 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
     misplaced.map((w) => `${w.entityId}/${w.socketId} expected (${Math.round(w.x)},${Math.round(w.y)})`).join('; ')
   );
 
-  // (b) NOT IN THE DOM. The built-ins have no DOM at rest — that is the claim the whole layer
-  //     exists to make, and the one a screenshot cannot check.
+  /**
+   * (b) NOTHING IN THE DOM PAINTS. The built-ins draw no DOM at rest — the claim the whole layer
+   *     exists to make, and the one a screenshot cannot check.
+   *
+   *     THE WORDING MOVED, and the move is the whole of what the accessibility mirror cost. This
+   *     said "no built-in widget is a DOM element at rest", and that sentence was load-bearing for
+   *     a migration whose rule was "everything persistent renders in GL". It is now "everything
+   *     persistent PAINTS in GL": the accessibility tree is not paint, and a hidden focusable
+   *     control per widget on ONE focused node is the price of a graph a screen reader can operate
+   *     at all. What must not come back is the compositing — thousands of real controls over the
+   *     canvas — and that is what the exclusion below still measures, backed by the three laws in
+   *     the section beneath this one: a mirror element paints nothing, the mirror set is bounded
+   *     at a thousand nodes, and it costs no React commit during a pan. Delete any of those three
+   *     and this exclusion becomes a hole.
+   */
   const domControls = await page.evaluate(() => {
     const root = document.querySelector('[data-kookie-flow-container]');
-    return root.querySelectorAll('input, select, textarea, [role="slider"], [role="checkbox"]').length;
+    return root.querySelectorAll(
+      'input:not([data-a11y-mirror]), select:not([data-a11y-mirror]), textarea:not([data-a11y-mirror]), [role="slider"], [role="checkbox"]'
+    ).length;
   });
-  check('no built-in widget is a DOM element at rest', domControls === 0, `${domControls} found`);
+  check('no built-in widget PAINTS in the DOM at rest', domControls === 0, `${domControls} found`);
 
   // (c) A CHECKBOX TOGGLES, with no DOM at any point in the gesture.
   const before = await page.evaluate(() => window.__harness.widgetValue('w', 'flag'));
@@ -2265,7 +2301,12 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
 
   const domDuring = await page.evaluate(() => {
     const root = document.querySelector('[data-kookie-flow-container]');
-    return root.querySelectorAll('input, select, textarea').length;
+    // The mirror is excluded because pressing a widget moves the keyboard cursor onto its node,
+    // which is the point: a pointer user and a screen-reader user end up in the same place. What
+    // is measured here is unchanged — the GESTURE borrows nothing.
+    return root.querySelectorAll(
+      'input:not([data-a11y-mirror]), select:not([data-a11y-mirror]), textarea:not([data-a11y-mirror])'
+    ).length;
   });
   check('toggling a checkbox borrows no DOM', domDuring === 0, `${domDuring} found`);
 
@@ -2304,7 +2345,9 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   const borrowed = await page.evaluate(() => {
     const el = document.activeElement;
     // Scoped to the flow: an input elsewhere on a consumer's page is not this library's business.
-    const inputs = document.querySelectorAll('[data-kookie-flow-container] input');
+    const inputs = document.querySelectorAll(
+      '[data-kookie-flow-container] input:not([data-a11y-mirror])'
+    );
     return { tag: el ? el.tagName : null, count: inputs.length };
   });
   check(
@@ -2321,9 +2364,755 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
   const afterEdit = await page.evaluate(
-    () => document.querySelectorAll('[data-kookie-flow-container] input').length
+    () =>
+      document.querySelectorAll('[data-kookie-flow-container] input:not([data-a11y-mirror])')
+        .length
   );
   check('the borrowed input vanishes when the edit ends', afterEdit === 0, `${afterEdit} remain`);
+
+  /**
+   * (f) A SELECT OPENS A LIST, and it opens it on the RELEASE.
+   *
+   * What this replaced: a press advanced to the next option and wrapped, so choosing the fourth of
+   * five took four presses and the five were never on screen together. The list is the platform's
+   * own `<select>`, borrowed through the same overlay the text field borrows an input through.
+   *
+   * The half of this that only a real browser can show is the TIMING. The borrowed select opens its
+   * list as soon as it is mounted and focused, so mounting it on pointerdown puts the popup under a
+   * button that is still held: the platform opens the list with the current option beneath the
+   * cursor, the release picks that same option, and the list shuts again — a flash, and no change.
+   * jsdom has no popup and cannot fail that way, so the claim is made here: nothing is borrowed
+   * while the button is down, and the select exists by the time it comes up.
+   */
+  const selectAt = await page.evaluate(() => window.__harness.widgetPoint('w', 'mode'));
+  check('INSTRUMENT: the select has a place on screen', selectAt !== null, JSON.stringify(selectAt));
+  const selectBefore = await page.evaluate(() => window.__harness.widgetValue('w', 'mode'));
+
+  const countSelects = () =>
+    page.evaluate(
+      () =>
+        document.querySelectorAll('[data-kookie-flow-container] select:not([data-a11y-mirror])')
+          .length
+    );
+
+  await page.mouse.move(selectAt.x, selectAt.y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  const whileHeld = await countSelects();
+  check('a select borrows nothing while the button is still down', whileHeld === 0, `${whileHeld} found`);
+
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const opened = await page.evaluate(() => {
+    const el = document.querySelector('[data-kookie-flow-container] select:not([data-a11y-mirror])');
+    if (!el) return null;
+    return {
+      focused: document.activeElement === el,
+      options: [...el.options].map((o) => o.value),
+      value: el.value,
+    };
+  });
+  check(
+    'releasing on a select borrows a real list, focused, holding every option',
+    opened !== null &&
+      opened.focused &&
+      opened.value === 'one' &&
+      opened.options.join(',') === 'one,two,three',
+    JSON.stringify(opened)
+  );
+
+  /**
+   * Picking the THIRD option, in one gesture. Under the old cycling press this needed two more
+   * presses and could not skip; the count of presses is the whole point of the change.
+   */
+  await page.selectOption('[data-kookie-flow-container] select:not([data-a11y-mirror])', 'three');
+  await page.waitForTimeout(250);
+  const selectAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'mode'));
+  check(
+    'picking from the list reaches the value in one gesture',
+    selectAfter === 'three' && selectBefore !== 'three',
+    `${selectBefore} -> ${selectAfter}`
+  );
+  const afterPick = await countSelects();
+  check('the borrowed list vanishes once a choice is made', afterPick === 0, `${afterPick} remain`);
+});
+
+// ---------------------------------------------------------------- accessibility mirror
+
+head('accessibility mirror');
+
+/**
+ * The widgets are reachable without a pointer, and the way back is bounded.
+ *
+ * WHAT THIS PINS. Moving the seven built-in widgets into WebGL took them out of the accessibility
+ * tree entirely — a canvas has no roles, no names and no focusable children — so a screen-reader
+ * or keyboard-only user went from being able to reach a socket widget to having nothing on a node
+ * to reach at all. The answer is a visually-hidden DOM control per widget, and the answer's whole
+ * risk is its SIZE: a mirror of every widget in the graph is thousands of focusable elements at a
+ * thousand nodes, which is precisely the persistent per-node DOM the GL migration deleted, put
+ * back through a side door.
+ *
+ * So the laws below are mostly about the bound, not about the feature. The mirror covers exactly
+ * one node — the one the keyboard cursor is on — and these measure that at a thousand nodes,
+ * measure that nothing it mounts paints, and measure that it costs no React commit while a node
+ * is being dragged. The naming law in the "accessible names" section covers the other half: that
+ * what it mounts actually announces itself.
+ *
+ * A NOTE ON THE WRONG FIX, because it is the easy one to reach for and it passes a careless law.
+ * `display: none`, `visibility: hidden`, the `hidden` attribute and `aria-hidden` all make an
+ * element stop painting — and all four remove it from the accessibility tree, which would leave
+ * this whole file mounting controls nobody can reach. That is why the paint law below asserts the
+ * computed style is NOT those two things as well as asserting the box is a pixel.
+ */
+await withPage('scene=widgets&widgets=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(300);
+
+  const mirrors = () => page.evaluate(() => document.querySelectorAll('[data-a11y-mirror]').length);
+
+  check('INSTRUMENT: nothing is mirrored before anything is focused', (await mirrors()) === 0);
+
+  // The graph's ONE tab stop, then one arrow key. This is the whole keyboard entry path.
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(250);
+
+  const cursor = await page.evaluate(() => window.__harness.store.getState().focusedEntityId);
+  check('an arrow key moves the keyboard cursor onto a node', cursor === 'w', String(cursor));
+
+  const mounted = await mirrors();
+  check('the focused node mirrors its widgets', mounted === 6, `${mounted} controls`);
+
+  /**
+   * A MIRROR ELEMENT PAINTS NOTHING, and is still in the accessibility tree.
+   *
+   * Both halves in one check on purpose: each alone admits the wrong fix. A box test alone passes
+   * for `display: none`, which is not reachable; a computed-style test alone passes for a
+   * full-size transparent control, which is a composited surface over the canvas and the exact
+   * cost the GL migration was measured to remove.
+   */
+  const paint = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-a11y-mirror]')].map((el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return {
+        name: el.getAttribute('aria-label'),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        display: cs.display,
+        visibility: cs.visibility,
+        hiddenFromAt: el.closest('[aria-hidden="true"]') !== null,
+      };
+    })
+  );
+  const painting = paint.filter((p) => p.w > 1 || p.h > 1);
+  check(
+    'a mirror element paints nothing',
+    painting.length === 0,
+    painting.map((p) => `${p.name} ${p.w}x${p.h}`).join(', ')
+  );
+  const gone = paint.filter(
+    (p) => p.display === 'none' || p.visibility === 'hidden' || p.hiddenFromAt
+  );
+  check(
+    'and is still reachable — not display:none, not visibility:hidden, not aria-hidden',
+    gone.length === 0 && paint.length > 0,
+    `${gone.length} of ${paint.length} removed from the accessibility tree`
+  );
+
+  /**
+   * EXACTLY ONE TAB STOP. Every mirror control carries `tabIndex={-1}`, so Tab leaves the graph
+   * rather than walking into a node's controls — which is what keeps the answer to "how does a
+   * keyboard user reach a thousand nodes" from being "a thousand tab stops". Entry is Enter.
+   */
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(100);
+  const left = await page.evaluate(() => {
+    const root = document.querySelector('[data-kookie-flow-container]');
+    return !root.contains(document.activeElement);
+  });
+  check('Tab leaves the graph rather than entering a node', left);
+
+  /**
+   * A KEYBOARD CHANGE REACHES THE STORE, through the same path a press does.
+   *
+   * Space on the checkbox mirror and an arrow on the range mirror. The second assertion is the one
+   * that says the mirror is not a decoration: nothing is borrowed, no overlay mounts, the element
+   * count does not move, and the value the consumer receives is the one the key asked for.
+   */
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  const entered = await page.evaluate(() => document.activeElement?.getAttribute('data-socket-id'));
+  check('Enter steps into the focused node\'s controls', entered === 'flag', String(entered));
+
+  const flagBefore = await page.evaluate(() => window.__harness.widgetValue('w', 'flag'));
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(250);
+  const flagAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'flag'));
+  check(
+    'a keypress on the checkbox mirror reaches the value',
+    flagBefore !== flagAfter && typeof flagAfter === 'boolean',
+    `${flagBefore} -> ${flagAfter}`
+  );
+
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(150);
+  const onSlider = await page.evaluate(() => document.activeElement?.getAttribute('data-socket-id'));
+  check('Down moves to the next control in the group', onSlider === 'amount', String(onSlider));
+
+  const amountBefore = await page.evaluate(() => window.__harness.widgetValue('w', 'amount'));
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(250);
+  const amountAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'amount'));
+  check(
+    'an arrow on the range mirror moves the value, as a number',
+    typeof amountAfter === 'number' && amountAfter > amountBefore,
+    `${amountBefore} -> ${amountAfter}`
+  );
+
+  const stillMirrors = await mirrors();
+  check(
+    'and nothing was borrowed to do it',
+    stillMirrors === mounted,
+    `${mounted} -> ${stillMirrors} controls`
+  );
+
+  // Escape hands focus back to the canvas, which is what makes the group escapable without Tab.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const back = await page.evaluate(
+    () => document.activeElement === document.querySelector('[data-kookie-flow-container]')
+  );
+  check('Escape hands focus back to the canvas', back);
+});
+
+/**
+ * THE BOUND, MEASURED WHERE IT MATTERS. A thousand nodes with widgets on every input socket.
+ *
+ * This is the law the whole design is shaped around. Mirroring every widget would put roughly
+ * three thousand focusable elements on this page; mirroring the SELECTION would do the same the
+ * moment anyone pressed Ctrl+A, which is why the store carries a single-valued `focusedEntityId`
+ * rather than reusing `selectedEntityIds`. Sixteen is a ceiling with room for a node far larger
+ * than this fixture's and no room at all for a second node's worth.
+ */
+await withPage('count=1000&widgets=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(300);
+
+  const focused = await page.evaluate(() => window.__harness.store.getState().focusedEntityId);
+  check('INSTRUMENT: the cursor landed on a node', focused !== null, String(focused));
+
+  const count = await page.evaluate(() => document.querySelectorAll('[data-a11y-mirror]').length);
+  check('INSTRUMENT: the cursor mounted controls to count', count > 0, `${count} controls`);
+  check('the mirror set does not scale with the graph', count <= 16, `${count} controls at 1000 nodes`);
+
+  /**
+   * AND IT COSTS NO REACT COMMIT WHILE A NODE MOVES.
+   *
+   * Measured across the middle of a drag, not across the whole gesture: starting and ending one
+   * legitimately commits — `isDragging` is React state and always has been. What must not commit
+   * is everything in between. The trap this guards is specific and was avoided deliberately: the
+   * store republishes `entities` on every pointermove of a drag, so a mirror that subscribed to
+   * `entities` to keep its values fresh would commit once per frame for the length of the gesture.
+   * It subscribes to `topologyVersion` and `widgetValuesVersion` instead.
+   */
+  const at = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get(s.focusedEntityId);
+    const canvas = document.querySelector('canvas');
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.position.x + 40) * s.viewport.zoom + s.viewport.x + rect.left,
+      y: (e.position.y + 10) * s.viewport.zoom + s.viewport.y + rect.top,
+    };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + 8, at.y + 8);
+  await page.waitForTimeout(120);
+
+  await page.evaluate(() => window.__harness.mark('mirror-drag'));
+  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  for (let i = 0; i < 24; i++) {
+    await page.mouse.move(at.x + 8 + i * 3, at.y + 8 + (i % 5));
+  }
+  await page.waitForTimeout(150);
+  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+  await page.mouse.up();
+
+  check(
+    'a mounted mirror costs no React commit while a node is dragged',
+    commitsAfter === commitsBefore,
+    `${commitsAfter - commitsBefore} commits over 24 pointermoves`
+  );
+
+  const stillThere = await page.evaluate(
+    () => document.querySelectorAll('[data-a11y-mirror]').length
+  );
+  check('and the mirror is still mounted, so the measurement meant something', stillThere > 0, `${stillThere}`);
+});
+
+/**
+ * A widget's VALUE is drawn, and it is drawn inside the widget.
+ *
+ * THE REGRESSION THIS PINS. The migration moved widget chrome into one instanced draw and deleted
+ * the seven DOM controls that used to print their own values — and the promised replacement, the
+ * glyphs contributed to the MSDF batcher, was never written. Every field on every node showed an
+ * empty well, every select a chevron with no option beside it, every slider a bar with no number.
+ * The section above passes in full with all of that broken: it counts widget INSTANCES and drives
+ * presses, and a widget with no text is still one instance that still answers a press.
+ *
+ * The measurement is glyph instances whose world position lands inside the widget's own box, taken
+ * from `widgetBox` — the same `getWidgetBox` the renderer draws from and the hit test presses. A
+ * socket's NAME sits in the gutter to the left of that box and a header above it, so anything
+ * counted here is value text and nothing else.
+ */
+await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  /** Glyphs drawn inside one widget's box, on the next painted frame. */
+  const glyphsIn = (socketId) =>
+    page.evaluate(
+      (sid) =>
+        new Promise((r) =>
+          requestAnimationFrame(() => {
+            const box = window.__harness.widgetBox('w', sid);
+            if (!box) return r(null);
+            const inside = window.__harness
+              .drawnInstances()
+              .filter(
+                (d) =>
+                  d.kind.startsWith('glyphs') &&
+                  d.x >= box.x &&
+                  d.x <= box.x + box.width &&
+                  d.y >= box.y &&
+                  d.y <= box.y + box.height
+              );
+            r(inside.length);
+          })
+        ),
+      socketId
+    );
+
+  check('INSTRUMENT: the text widget has a box on screen', (await glyphsIn('label')) !== null);
+
+  // 'name' — four characters, four glyph instances. An exact count rather than a floor: the
+  // scene is fully known, and a floor of one would stay green if a truncation bug cut every
+  // value to its first letter.
+  const field = await glyphsIn('label');
+  check('a text widget draws its value', field === 4, `${field} glyphs for 'name'`);
+
+  // 'one' — the select's current option, which the shader has no way to draw: it paints a well
+  // and a chevron, and before this the chevron pointed at nothing.
+  const select = await glyphsIn('mode');
+  check('a select draws its current option', select === 3, `${select} glyphs for 'one'`);
+
+  // 0.2 stepping by 0.01 reads '0.20': four characters, and the period is a real glyph in the
+  // atlas. This is the law that would catch a readout formatted straight off the float, which
+  // prints 0.30000000000000004 into a 60px space.
+  const slider = await glyphsIn('amount');
+  check('a slider draws its readout', slider === 4, `${slider} glyphs for '0.20'`);
+
+  /**
+   * The two kinds that deliberately print NOTHING, asserted rather than assumed.
+   *
+   * A checkbox's tick is its value and a colour swatch's fill is its value, so both would be
+   * double-stating themselves — and 'true'/'false' beside every checkbox on every visible node is
+   * a real slice of the glyph budget. Without these two lines, someone adding a value string to
+   * every widget kind would break the decision and no law would notice.
+   */
+  const checkbox = await glyphsIn('flag');
+  check('a checkbox draws no value text', checkbox === 0, `${checkbox} glyphs`);
+  const colour = await glyphsIn('tint');
+  check('a colour widget draws no value text', colour === 0, `${colour} glyphs`);
+
+  /**
+   * A VALUE CHANGE REPAINTS. This is the half the subscriptions exist for: a data-only change
+   * bumps no version counter in the store, it only swaps the entities array — so before the text
+   * layer subscribed to `entities` a value written by the consumer never reached the glyphs, and
+   * the field went on showing whatever the last node drag had collected.
+   */
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.setEntities(
+      s.entities.map((e) =>
+        e.id === 'w' ? { ...e, data: { ...e.data, values: { ...e.data.values, label: 'changed' } } } : e
+      )
+    );
+  });
+  await page.waitForTimeout(300);
+  const rewritten = await glyphsIn('label');
+  check(
+    'a value written from outside reaches the glyphs',
+    rewritten === 7,
+    `${rewritten} glyphs for 'changed'`
+  );
+
+  /**
+   * WHILE A FIELD IS OPEN, the borrowed input owns the box and the glyphs stand down.
+   *
+   * The input is opaque and sits on the same world box, so this is not about what is visible on a
+   * still frame — it is about the two placing on different clocks (the overlay on its own RAF, the
+   * glyphs on useFrame), which shows as text edging out from under the box on a pan mid-edit. The
+   * store key is what both sides agree on, so the key and the glyph count are checked together.
+   */
+  const at = await page.evaluate(() => window.__harness.widgetPoint('w', 'label'));
+  await page.mouse.click(at.x, at.y);
+  await page.waitForTimeout(250);
+  const openKey = await page.evaluate(() => window.__harness.store.getState().editingWidgetKey);
+  check('opening a field records which widget is being edited', openKey === 'w:label', String(openKey));
+  const duringEdit = await glyphsIn('label');
+  check('the value stops printing under a borrowed input', duringEdit === 0, `${duringEdit} glyphs`);
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  const closedKey = await page.evaluate(() => window.__harness.store.getState().editingWidgetKey);
+  check('closing the field clears the record', closedKey === null, String(closedKey));
+  const afterEdit = await glyphsIn('label');
+  check('the value prints again once the edit ends', afterEdit === 7, `${afterEdit} glyphs`);
+});
+
+/**
+ * The value text stops before its chrome does.
+ *
+ * Two floors, and the ordering between them is the whole point: widgets stop drawing at 0.4 and
+ * their values at 0.5, so there is no zoom at which a readout floats over a row with no well under
+ * it. The higher floor is also the glyph budget's main lever — this feature adds text to every
+ * widget on every visible node, and the zoomed-out frames are the ones with the most nodes on
+ * screen and the least readable glyphs.
+ */
+await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  const glyphCount = () =>
+    page.evaluate(
+      () =>
+        new Promise((r) =>
+          requestAnimationFrame(() => {
+            const box = window.__harness.widgetBox('w', 'label');
+            r(
+              window.__harness
+                .drawnInstances()
+                .filter(
+                  (d) =>
+                    d.kind.startsWith('glyphs') &&
+                    d.x >= box.x &&
+                    d.x <= box.x + box.width &&
+                    d.y >= box.y &&
+                    d.y <= box.y + box.height
+                ).length
+            );
+          })
+        )
+    );
+
+  const setZoom = (zoom) =>
+    page.evaluate((z) => {
+      const s = window.__harness.store.getState();
+      s.setViewport({ x: s.viewport.x, y: s.viewport.y, zoom: z });
+    }, zoom);
+
+  await setZoom(1);
+  await page.waitForTimeout(250);
+  check('INSTRUMENT: the value prints at full zoom', (await glyphCount()) > 0);
+
+  await setZoom(0.45);
+  await page.waitForTimeout(250);
+  const below = await glyphCount();
+  check('below the value floor the readout stops printing', below === 0, `${below} glyphs at 0.45`);
+
+  // And the chrome is still there at that zoom, which is what makes the ordering meaningful
+  // rather than two numbers that happen to agree.
+  const chrome = await page.evaluate(
+    () =>
+      new Promise((r) =>
+        requestAnimationFrame(() =>
+          r(window.__harness.drawnInstances().filter((d) => d.kind === 'widgets').length)
+        )
+      )
+  );
+  check('the widget chrome is still drawn at that zoom', chrome > 0, `${chrome} instances`);
+
+  await setZoom(1);
+  await page.waitForTimeout(250);
+  const back = await glyphCount();
+  check('zooming back in brings the readout back', back > 0, `${back} glyphs`);
+});
+
+// ---------------------------------------------------------------- widget hover
+
+head('widget hover');
+
+/**
+ * A widget says it is a control BEFORE it is pressed.
+ *
+ * What this replaced: nothing at all. A GL widget gave no sign it was interactive until it was
+ * pressed — no hover, no cursor change — so a field, a slider and a painted strip of node chrome
+ * were indistinguishable. The press worked; there was just no way to know it would.
+ *
+ * The claim has three parts and all three have to hold together, because any one of them alone
+ * passes with the feature half-built: the STORE knows which widget is under the pointer, the GPU
+ * is TOLD (a per-instance attribute, which is the step that quietly goes missing), and the cursor
+ * changes. And the whole thing is bound by the first rule in CLAUDE.md — it must cost ZERO React
+ * commits, which is why the cursor is an imperative style write rather than the `setState` the
+ * resize handles next to it use.
+ */
+await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  const cursor = () =>
+    page.evaluate(() => document.querySelector('[data-kookie-flow-container]').style.cursor);
+  const hovered = () =>
+    page.evaluate(() => window.__harness.store.getState().hoveredWidget);
+  const flagged = () =>
+    page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => r(window.__harness.hoveredWidgetInstances())))
+    );
+
+  const slider = await page.evaluate(() => window.__harness.widgetPoint('w', 'amount'));
+  const field = await page.evaluate(() => window.__harness.widgetPoint('w', 'label'));
+  check('INSTRUMENT: the slider and the field both have a place on screen', slider !== null && field !== null);
+
+  // The floor every claim below is read against. Over empty canvas nothing is hovered and the
+  // cursor is whatever the canvas's own ternary decided — which is not 'pointer'.
+  await page.mouse.move(1200, 800);
+  await page.waitForTimeout(150);
+  const restCursor = await cursor();
+  check('INSTRUMENT: nothing is hovered over empty canvas', (await hovered()) === null, JSON.stringify(await hovered()));
+  check('INSTRUMENT: the resting cursor is not already a pointer', restCursor !== 'pointer', restCursor);
+  check('INSTRUMENT: no instance is flagged hovered at rest', (await flagged()).length === 0);
+
+  // (a) THE STORE knows, and it knows exactly which widget.
+  await page.mouse.move(slider.x, slider.y);
+  await page.waitForTimeout(150);
+  const onSlider = await hovered();
+  check(
+    'moving onto a widget records which widget it is',
+    onSlider !== null && onSlider.entityId === 'w' && onSlider.socketId === 'amount',
+    JSON.stringify(onSlider)
+  );
+
+  // (b) THE GPU is told — and told about the right instance. The position is compared against
+  //     `widgetBox`, the geometry both the renderer and the hit test read, so a flag set on the
+  //     wrong instance fails here rather than looking like a pass.
+  const box = await page.evaluate(() => window.__harness.widgetBox('w', 'amount'));
+  const lit = await flagged();
+  const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  check(
+    'the hovered widget, and only it, reaches the shader flagged',
+    lit.length === 1 && Math.hypot(lit[0].x - centre.x, lit[0].y - centre.y) < 2,
+    `${lit.length} flagged: ${JSON.stringify(lit)} vs ${JSON.stringify(centre)}`
+  );
+
+  // (c) THE CURSOR says it is pressable.
+  check('the cursor over a widget is a pointer', (await cursor()) === 'pointer', await cursor());
+
+  /**
+   * (d) AND THE PIXELS ACTUALLY CHANGE.
+   *
+   * Everything above is CPU-side: the store field, the instance array as JavaScript sees it, an
+   * element's style. All three are true and the screen is unchanged if the attribute is never
+   * uploaded — a hover flag written into a buffer with no `needsUpdate` behind it appears only on
+   * frames where some OTHER attribute happened to change, which is most of them during a drag and
+   * none of them while a pointer moves over a still graph. That is the single most likely way to
+   * ship this half-working, so it is measured where nothing but a real rasteriser can answer.
+   *
+   * The field is sampled rather than the slider: hover moves its whole well one step, where a
+   * slider only moves a thin track and a grip, and a mean over the box is the honest instrument
+   * for the first and a weak one for the second.
+   */
+  const wellMean = () =>
+    page.evaluate(
+      () =>
+        new Promise((r) =>
+          requestAnimationFrame(() => {
+            const st = window.__harness.store.getState();
+            const b = window.__harness.widgetBox('w', 'label');
+            const c = document.querySelector('canvas');
+            const gl = c.getContext('webgl2');
+            const dpr = c.width / c.clientWidth;
+            const rect = c.getBoundingClientRect();
+            const buf = new Uint8Array(4);
+            let n = 0, sum = 0;
+            // Inset by three world units so the hairline and the antialiased corners are outside
+            // the sample: what is being measured is the WELL.
+            for (let wx = b.x + 3; wx < b.x + b.width - 3; wx += 2) {
+              for (let wy = b.y + 3; wy < b.y + b.height - 3; wy += 2) {
+                const sx = wx * st.viewport.zoom + st.viewport.x + rect.left;
+                const sy = wy * st.viewport.zoom + st.viewport.y + rect.top;
+                gl.readPixels(
+                  Math.round(sx * dpr), Math.round(c.height - sy * dpr),
+                  1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf
+                );
+                n++;
+                sum += (buf[0] + buf[1] + buf[2]) / 3;
+              }
+            }
+            r(n ? sum / n : null);
+          })
+        )
+    );
+
+  await page.mouse.move(1200, 800);
+  await page.waitForTimeout(200);
+  const restMean = await wellMean();
+  await page.mouse.move(field.x, field.y);
+  await page.waitForTimeout(200);
+  const hoverMean = await wellMean();
+  check(
+    'hovering a widget changes what is on the screen',
+    restMean !== null && hoverMean !== null && Math.abs(restMean - hoverMean) > 2,
+    `well mean ${restMean} at rest, ${hoverMean} hovered`
+  );
+
+  // And it goes back exactly, rather than drifting a step per hover — which is what a mix against
+  // the previous colour instead of the base colour would look like.
+  await page.mouse.move(1200, 800);
+  await page.waitForTimeout(200);
+  const restAgain = await wellMean();
+  check(
+    'and unhovering puts the same pixels back',
+    restAgain !== null && Math.abs(restAgain - restMean) < 0.5,
+    `${restMean} -> ${hoverMean} -> ${restAgain}`
+  );
+
+  // Moving to a DIFFERENT widget on the same node moves the hover with it. The first spelling of
+  // the dedupe compared entity ids only, which would have held the slider lit across this move.
+  await page.mouse.move(field.x, field.y);
+  await page.waitForTimeout(150);
+  const onField = await hovered();
+  check(
+    'moving between two widgets on one node moves the hover',
+    onField !== null && onField.socketId === 'label',
+    JSON.stringify(onField)
+  );
+
+  /**
+   * A MODE OUTRANKS THE WIDGET. Holding space arms the pan, and an armed pan owns the cursor: the
+   * widget under the pointer is not the thing about to happen. The first spelling of the effect
+   * put the pointer back unconditionally after any render that changed the base cursor, so space
+   * held over a slider showed a pointer where the grab hand belongs.
+   */
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.down('Space');
+  await page.waitForTimeout(200);
+  check('an armed pan takes the cursor back from the widget', (await cursor()) === 'grab', await cursor());
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(200);
+  check('and the widget gets it back when the mode ends', (await cursor()) === 'pointer', await cursor());
+
+  /**
+   * ZERO REACT COMMITS for the whole sweep, which is the rule that shaped every part of this.
+   *
+   * The sweep crosses several widgets and the gaps between them, so it is a dozen hover enters and
+   * leaves. The obvious implementation — hover in React state, cursor from the style ternary — is
+   * a commit per transition on a component this size, and would fail here by a wide margin.
+   */
+  await page.evaluate(() => window.__harness.mark('hover-sweep'));
+  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  for (let i = 0; i < 40; i++) {
+    await page.mouse.move(slider.x + (i % 8) * 12, slider.y + Math.floor(i / 8) * 14);
+  }
+  await page.waitForTimeout(200);
+  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+  check(
+    'sweeping the pointer across a row of widgets costs no React commits',
+    commitsAfter === commitsBefore,
+    `${commitsAfter - commitsBefore} commits`
+  );
+
+  // Leaving the node clears all three, which is the half a hover feature usually gets wrong: a
+  // control left lit after the pointer has gone reads as selected.
+  await page.mouse.move(1200, 800);
+  await page.waitForTimeout(150);
+  check('moving off a widget clears the store', (await hovered()) === null, JSON.stringify(await hovered()));
+  check('moving off a widget unflags every instance', (await flagged()).length === 0);
+  check('moving off a widget restores the cursor', (await cursor()) === restCursor, await cursor());
+
+  /**
+   * BELOW THE PAINT FLOOR, nothing hovers. `MIN_WIDGET_ZOOM` is the zoom at which the renderer
+   * stops drawing widget chrome, and a pointer cursor over a control nobody can see is the same
+   * lie as a press that lands on one — the defect that constant was introduced for.
+   */
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.setViewport({ x: s.viewport.x, y: s.viewport.y, zoom: 0.3 });
+  });
+  await page.waitForTimeout(250);
+  const zoomedOut = await page.evaluate(() => window.__harness.widgetPoint('w', 'amount'));
+  await page.mouse.move(zoomedOut.x, zoomedOut.y);
+  await page.waitForTimeout(200);
+  check(
+    'below the zoom the chrome stops at, a widget does not hover',
+    (await hovered()) === null,
+    JSON.stringify(await hovered())
+  );
+  check('and the cursor stays as it was', (await cursor()) !== 'pointer', await cursor());
+});
+
+/**
+ * The pointer LEAVING the canvas clears the hover, and a slider stays lit while it is dragged.
+ *
+ * Two cases the sweep above cannot reach. The canvas fills the window in this fixture, so leaving
+ * it is driven through the event React itself synthesises `pointerleave` from — a `pointerout`
+ * whose related target is outside the flow — rather than by moving a mouse that has nowhere to go.
+ * And a drag is the one gesture with duration: the hover branch is skipped for its whole length,
+ * so without the press setting the handle the grip goes cold exactly when it is being used.
+ */
+await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  const hovered = () => page.evaluate(() => window.__harness.store.getState().hoveredWidget);
+  const cursor = () =>
+    page.evaluate(() => document.querySelector('[data-kookie-flow-container]').style.cursor);
+
+  const slider = await page.evaluate(() => window.__harness.widgetPoint('w', 'amount'));
+  await page.mouse.move(slider.x, slider.y);
+  await page.waitForTimeout(150);
+  check('INSTRUMENT: the slider is hovered before the pointer leaves', (await hovered()) !== null);
+
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-kookie-flow-container]');
+    el.dispatchEvent(
+      new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body, pointerId: 1 })
+    );
+  });
+  await page.waitForTimeout(150);
+  check('the pointer leaving the canvas clears the hover', (await hovered()) === null, JSON.stringify(await hovered()));
+  check('and takes the pointer cursor with it', (await cursor()) !== 'pointer', await cursor());
+
+  // A slider stays lit for the length of the drag, including where the pointer travels off the
+  // track — the value clamps, the pointer does not.
+  await page.mouse.move(slider.x, slider.y);
+  await page.mouse.down();
+  await page.mouse.move(slider.x + 300, slider.y + 120, { steps: 6 });
+  await page.waitForTimeout(120);
+  const during = await hovered();
+  check(
+    'a slider stays lit while it is being dragged, wherever the pointer has gone',
+    during !== null && during.socketId === 'amount',
+    JSON.stringify(during)
+  );
+
+  // Released far from the widget: it goes cold, without waiting for a pointermove that may never
+  // come if the person simply lets go and stops moving.
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  check(
+    'releasing away from the widget puts it out',
+    (await hovered()) === null,
+    JSON.stringify(await hovered())
+  );
 });
 
 // ---------------------------------------------------------------- summary

@@ -30,21 +30,25 @@ function rectFor(left: number, right: number, top: number, bottom: number): Cull
 }
 
 describe('LOD buckets', () => {
-  it('changes across each of the three zoom cliffs', () => {
-    // 0.15 turns text on at all, 0.25 adds edge labels, 0.35 adds socket labels.
+  it('changes across each of the four zoom cliffs', () => {
+    // 0.15 turns text on at all, 0.25 adds edge labels, 0.35 adds socket labels, 0.5 adds the
+    // widget readouts. The last one is the cliff a zoom-in most needs: the visible rect only
+    // shrinks, so nothing but this bucket can tell the layer that a gate has opened.
     expect(lodBucket(0.14)).not.toBe(lodBucket(0.16));
     expect(lodBucket(0.24)).not.toBe(lodBucket(0.26));
     expect(lodBucket(0.34)).not.toBe(lodBucket(0.36));
+    expect(lodBucket(0.49)).not.toBe(lodBucket(0.51));
   });
 
   it('is constant between the cliffs, which is what lets a zoom reuse a collected set', () => {
-    expect(lodBucket(0.4)).toBe(lodBucket(3));
+    expect(lodBucket(0.5)).toBe(lodBucket(3));
+    expect(lodBucket(0.36)).toBe(lodBucket(0.49));
     expect(lodBucket(0.16)).toBe(lodBucket(0.24));
     expect(lodBucket(0.01)).toBe(lodBucket(0.14));
   });
 
   it('opens strictly more gates as zoom rises', () => {
-    const buckets = [0.1, 0.2, 0.3, 0.5].map(lodBucket);
+    const buckets = [0.1, 0.2, 0.3, 0.4, 0.6].map(lodBucket);
     expect(buckets).toStrictEqual([...new Set(buckets)]);
     for (let i = 1; i < buckets.length; i++) {
       expect(buckets[i] & buckets[i - 1]).toBe(buckets[i - 1]);

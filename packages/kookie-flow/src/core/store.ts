@@ -8,6 +8,7 @@ import type {
   EdgeChange,
   XYPosition,
   SocketHandle,
+  WidgetHandle,
   CloneElementsOptions,
   CloneElementsResult,
   ElementsBatch,
@@ -56,6 +57,14 @@ export interface FlowState {
   hoveredEntityId: string | null;
   /** Currently hovered socket */
   hoveredSocketId: SocketHandle | null;
+  /**
+   * Which on-node widget the pointer is over, or null.
+   *
+   * A handle rather than a `widgetKey` string for the reason `WidgetHandle` states: the GL widget
+   * layer compares this against every visible widget inside `useFrame`, and a joined key would
+   * mean one concatenation per widget per frame.
+   */
+  hoveredWidget: WidgetHandle | null;
   /** Connection draft while dragging from a socket */
   connectionDraft: {
     source: SocketHandle;
@@ -78,12 +87,46 @@ export interface FlowState {
   widgetValuesVersion: number;
 
   /**
+   * The widget whose value is currently being edited through a borrowed DOM input, as
+   * `widgetKey(entityId, socketId)`, or null.
+   *
+   * It is here rather than in the canvas component's state because the GL TEXT layer is what needs
+   * it: it prints every widget's value, and the one widget under an open input must not be printed
+   * twice — once as glyphs, once as the input's own text — if the overlay ever gains a translucent
+   * or inset style, or drifts by a frame from the glyphs during a pan (the overlay places on its
+   * own RAF, the text on useFrame). A string rather than the hit itself, so a subscriber compares
+   * a scalar. Same shape and same reason as `editingEntityId` above.
+   */
+  editingWidgetKey: string | null;
+
+  /**
    * Stacking order: entity id -> a monotonically increasing index; higher is nearer the camera.
    * See utils/entity-depth.ts for how the renderers turn it into depth. Mutated in place, with
    * `stackVersion` as the dirty flag beside it — the same shape as `widgetValues`.
    */
   stackOrder: Map<string, number>;
   stackVersion: number;
+
+  /**
+   * THE KEYBOARD CURSOR: which entity a keyboard user is standing on, or null.
+   *
+   * Deliberately NOT selection, and the difference is the whole reason this field exists. The
+   * accessibility mirror (components/widget-a11y-mirror.tsx) mounts one real DOM control per
+   * widget on this entity, and its entire claim to being affordable is that the number of those
+   * controls does not scale with the graph. `selectAll` puts every entity in
+   * `selectedEntityIds` — so a mirror keyed on selection would mount a thousand nodes' worth of
+   * inputs in the single commit that answers Ctrl+A. One entity, one cursor, one bound.
+   *
+   * A plain `set()` with no version counter beside it, unlike `widgetValues` and `stackOrder`:
+   * this moves on a click or a keypress, never on a frame, so there is nothing here for a
+   * dirty flag to save.
+   *
+   * A cursor left pointing at a removed entity is not cleaned up here. The mirror renders
+   * nothing for an id `entityMap` does not hold, and the arrow keys fall back to the first
+   * entity when the id they were given has gone, so the stale value heals on the next keypress
+   * rather than costing every removal a lookup.
+   */
+  focusedEntityId: string | null;
 
   /** Selection state - O(1) lookup */
   selectedEntityIds: Set<string>;
@@ -162,6 +205,7 @@ export interface FlowState {
   setSocketLayout: (layout: ResolvedSocketLayout) => void;
   setHoveredEntityId: (id: string | null) => void;
   setHoveredSocketId: (socket: SocketHandle | null) => void;
+  setHoveredWidget: (widget: WidgetHandle | null) => void;
   startConnection: (entityId: string, socketId: string) => void;
   endConnection: () => void;
   setSelectionBox: (box: { start: XYPosition; end: XYPosition } | null) => void;
@@ -178,6 +222,12 @@ export interface FlowState {
 
   /** Record what a person set on a widget, until the consumer echoes it into the entity. */
   setWidgetValue: (entityId: string, socketId: string, value: unknown) => void;
+
+  /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
+  setEditingWidgetKey: (key: string | null) => void;
+
+  /** Move the keyboard cursor. See `focusedEntityId` for why this is not selection. */
+  setFocusedEntityId: (id: string | null) => void;
 
   /**
    * Last interacted on top. Brings the entity to the front of the stacking order, with its
@@ -696,16 +746,19 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       connectionStart: null,
       hoveredEntityId: null,
       hoveredSocketId: null,
+      hoveredWidget: null,
       connectionDraft: null,
       selectionBox: null,
       widgetValues: new Map<string, WidgetOverride>(),
       widgetValuesVersion: 0,
+      editingWidgetKey: null,
       stackOrder: initialStackOrder,
       stackVersion: 0,
 
       // Selection state
       selectedEntityIds: new Set<string>(),
       selectedEdgeIds: new Set<string>(),
+      focusedEntityId: null,
 
       // Derived state for O(1) lookups
       entityMap,
@@ -812,6 +865,30 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
         set({ hoveredSocketId });
       },
+      /**
+       * Deduped by VALUE, for exactly the reason the socket hover above it is.
+       *
+       * The widget hit test runs on every pointermove that lands on an entity and mints a fresh
+       * handle each time, so an unguarded `set` would notify on every move — and the widget layer
+       * answers a notification by rebuilding every visible widget's instance data. Guarded, this
+       * fires twice per hover: once on enter, once on leave.
+       *
+       * The guard lives here rather than at the call site because that is where the socket version
+       * of it had to be moved to after a call-site copy went stale, and because the whole
+       * no-re-render claim rests on it: nothing subscribes to this through React, so the only
+       * subscriber is the renderer's dirty flag, and the dirty flag is only honest if the store
+       * refuses to raise it for a value it already holds.
+       */
+      setHoveredWidget: (hoveredWidget) => {
+        const prev = get().hoveredWidget;
+        if (
+          prev?.entityId === hoveredWidget?.entityId &&
+          prev?.socketId === hoveredWidget?.socketId
+        ) {
+          return;
+        }
+        set({ hoveredWidget });
+      },
       startConnection: (entityId, socketId) =>
         set({ connectionStart: { entityId, socketId } }),
       endConnection: () => set({ connectionStart: null }),
@@ -871,6 +948,16 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const baseline = isValueBag(values) ? values[socketId] : undefined;
         widgetValues.set(widgetKey(entityId, socketId), { value, baseline });
         set({ widgetValuesVersion: widgetValuesVersion + 1 });
+      },
+
+      setEditingWidgetKey: (editingWidgetKey) => set({ editingWidgetKey }),
+
+      setFocusedEntityId: (focusedEntityId) => {
+        // Deduped, because the pointer path calls it on every press: a re-press on the node the
+        // cursor is already on must not re-commit the mirror, which would rebuild real DOM
+        // controls out from under a focused one.
+        if (get().focusedEntityId === focusedEntityId) return;
+        set({ focusedEntityId });
       },
 
       bringToFront: (entityId) => {

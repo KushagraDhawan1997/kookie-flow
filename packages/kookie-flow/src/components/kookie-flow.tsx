@@ -7,6 +7,7 @@ import {
   useMemo,
   forwardRef,
   useImperativeHandle,
+  useId,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -62,14 +63,18 @@ import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
+import { isPointInWidget } from '../utils/widget-geometry';
 import {
   getWidgetAt,
+  getWidgetSocketIdAt,
   sliderValueAt,
-  nextSelectValue,
   MIN_WIDGET_ZOOM,
   type WidgetHit,
 } from '../utils/widget-hit';
+import { widgetKey } from '../utils/widget-values';
+import { stepEntityCursor } from '../utils/entity-cursor';
 import { WidgetEditOverlay } from './widget-edit-overlay';
+import { WidgetA11yMirror } from './widget-a11y-mirror';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
 import { CanvasErrorBoundary } from './error-boundary';
@@ -152,6 +157,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     isValidConnection,
     allowCycles = true,
     className,
+    ariaLabel,
     children,
     // Styling props (Milestone 2)
     size = '2',
@@ -194,6 +200,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             edges={edges}
             defaultViewport={defaultViewport}
             className={className}
+            ariaLabel={ariaLabel}
             minZoom={minZoom}
             maxZoom={maxZoom}
             snapToGrid={snapToGrid}
@@ -244,6 +251,7 @@ interface ThemedFlowContainerProps {
   edges: Edge[];
   defaultViewport?: KookieFlowProps['defaultViewport'];
   className?: string;
+  ariaLabel?: string;
   minZoom: number;
   maxZoom: number;
   snapToGrid: boolean;
@@ -288,6 +296,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       edges,
       defaultViewport,
       className,
+      ariaLabel,
       minZoom,
       maxZoom,
       snapToGrid,
@@ -379,6 +388,8 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
           <InputHandler
             showWidgets={showWidgets}
             onWidgetChange={onWidgetChange}
+            widgetTypes={widgetTypes}
+            ariaLabel={ariaLabel}
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
             minZoom={minZoom}
@@ -569,8 +580,16 @@ interface InputHandlerProps {
    */
   showWidgets: boolean;
   onWidgetChange?: KookieFlowProps['onWidgetChange'];
+  /**
+   * Read only to know which widget TYPES a consumer has replaced with their own component.
+   * Those already mount a real named control in widgets-layer.tsx, so the accessibility mirror
+   * must not mount a second one beside them — see utils/widget-mirror.ts.
+   */
+  widgetTypes?: KookieFlowProps['widgetTypes'];
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
+  /** The accessible name of the graph. See KookieFlowProps.ariaLabel. */
+  ariaLabel?: string;
   children: React.ReactNode;
   minZoom: number;
   maxZoom: number;
@@ -592,6 +611,28 @@ interface InputHandlerProps {
   onEdgesChange?: KookieFlowProps['onEdgesChange'];
   onFileDrop?: KookieFlowProps['onFileDrop'];
 }
+
+/**
+ * The clip-rect pattern, for the one static sentence that describes the graph's keyboard model.
+ *
+ * Clipped rather than `display: none` on purpose. An `aria-describedby` target is read even when
+ * it is display-none in most engines, but "most" is not a contract, and the same file's mirror
+ * depends on the distinction absolutely — keeping one spelling of "hidden but present" is worth
+ * more than saving four declarations here.
+ */
+const SR_ONLY_TEXT: CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  margin: '-1px',
+  padding: 0,
+  border: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+  pointerEvents: 'none',
+};
 
 // Minimum distance (in pixels) to consider a pointer move as a drag
 const DRAG_THRESHOLD = 5;
@@ -628,6 +669,8 @@ function InputHandler({
   onFileDrop,
   showWidgets,
   onWidgetChange,
+  widgetTypes,
+  ariaLabel = 'Flow graph',
   defaultEntityWidth,
   socketLabelWidth,
 }: InputHandlerProps) {
@@ -678,8 +721,81 @@ function InputHandler({
    */
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
   const [widgetEdit, setWidgetEdit] = useState<WidgetHit | null>(null);
+
+  /**
+   * THE KEYBOARD CURSOR, mirrored out of the store so the accessibility mirror can mount for it.
+   *
+   * React state, and that is the whole budget: this changes when someone presses a node or moves
+   * the cursor with an arrow key — once per event, never per frame — and what it changes is which
+   * DOM elements exist, which is exactly what React state is for. It is deliberately NOT
+   * `selectedEntityIds`: Ctrl+A selects a thousand nodes and would commit a thousand nodes' worth
+   * of hidden controls, which is the bound the mirror's whole argument rests on. See
+   * components/widget-a11y-mirror.tsx and store.ts `focusedEntityId`.
+   */
+  const [focusedEntityId, setFocusedEntityIdState] = useState<string | null>(
+    () => store.getState().focusedEntityId
+  );
+  useEffect(
+    () => store.subscribe((state) => state.focusedEntityId, setFocusedEntityIdState),
+    [store]
+  );
+
+  /**
+   * The id the container's `aria-describedby` points at.
+   *
+   * Through `useId` rather than a constant, because two graphs on one page would otherwise both
+   * describe themselves with the first one's instructions node.
+   */
+  const instructionsId = useId();
+
+  /**
+   * A select press is answered on pointer UP, and that is not fussiness.
+   *
+   * The borrowed `<select>` opens its list programmatically as soon as it is mounted and focused.
+   * Open it while the button is still down and the release goes straight into the popup: the
+   * platform opens the list with the CURRENT option under the cursor, so the mouseup picks that
+   * same option and shuts the list again. The press reads as a flash and nothing changes.
+   *
+   * Held here between the two halves of one press. A ref because nothing renders from it, and it
+   * carries its POINTER for the reason `widgetDragRef` above carries one: a second finger's
+   * release must not answer the first finger's press.
+   */
+  const pendingSelectRef = useRef<{
+    hit: WidgetHit;
+    pointerId: number;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
+
+  /**
+   * Open or close a widget edit, in ONE place, because two things have to move together.
+   *
+   * The borrowed input is React state here; the GL text layer needs the same fact in the store, so
+   * it can stop printing glyphs for the widget the input is sitting on. Keeping them in step at
+   * each call site is how they drift — a path that closed the editor without clearing the key
+   * would suppress that widget's value for the rest of the session.
+   */
+  const openWidgetEdit = useCallback(
+    (hit: WidgetHit | null) => {
+      setWidgetEdit(hit);
+      store.getState().setEditingWidgetKey(hit ? widgetKey(hit.entityId, hit.socketId) : null);
+    },
+    [store]
+  );
   const onWidgetChangeRef = useRef(onWidgetChange);
   onWidgetChangeRef.current = onWidgetChange;
+
+  /**
+   * What the entity cursor needs that is not in the store, read through a ref.
+   *
+   * The window key listeners register ONCE for the life of the component, on purpose — the effect
+   * below says so. Naming `socketLayout` or a prop in their dependency list would re-register them
+   * every time the resolved style changed, which is the churn that comment exists to prevent.
+   * Written during render, exactly as `onWidgetChangeRef` above is.
+   */
+  const cursorDepsRef = useRef({ socketLayout, defaultEntityWidth });
+  cursorDepsRef.current.socketLayout = socketLayout;
+  cursorDepsRef.current.defaultEntityWidth = defaultEntityWidth;
   /**
    * Every widget change leaves through here, and the order of the two lines is the point: the
    * store records what the person set FIRST, so the GL layer paints it on the next frame whether
@@ -711,17 +827,20 @@ function InputHandler({
   useEffect(() => {
     if (!widgetEdit) return;
     const entityId = widgetEdit.entityId;
+    // Through `openWidgetEdit`, not `setWidgetEdit`: closing the editor without clearing the
+    // store's key would leave the GL text layer suppressing a widget that no longer has an input
+    // over it — and for a removed entity, forever.
     if (!store.getState().entityMap.has(entityId)) {
-      setWidgetEdit(null);
+      openWidgetEdit(null);
       return;
     }
     return store.subscribe(
       (s) => s.entityMap,
       (entityMap) => {
-        if (!entityMap.has(entityId)) setWidgetEdit(null);
+        if (!entityMap.has(entityId)) openWidgetEdit(null);
       }
     );
-  }, [store, widgetEdit]);
+  }, [store, widgetEdit, openWidgetEdit]);
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -796,6 +915,46 @@ function InputHandler({
   // State for cursor rendering (triggers re-render only on null↔handle transitions).
   const hoveredHandleRef = useRef<ResizeHandle | null>(null);
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
+
+  /**
+   * The pointer cursor over a widget, written to the element rather than rendered.
+   *
+   * Every other cursor on this container comes out of the ternary in the style object below, which
+   * means a React render — and the resize-handle branch immediately above pays for that with a
+   * `setState` on every null-to-handle transition, re-rendering a component this size. A resize
+   * handle is a rare target; a widget is not. On a node with six controls, sweeping the pointer
+   * across the row would have been six renders of the entire canvas in one gesture, which is the
+   * first rule of this package.
+   *
+   * So the widget cursor is one `style.cursor` write on a ref, guarded on the transition. The base
+   * cursor is mirrored into a ref so this can put it back on leave, and the effect beside the
+   * render re-applies the winner after any render that CHANGED the base — the only moment React
+   * would overwrite an imperative write, since its style diff leaves keys it did not touch alone.
+   */
+  const baseCursorRef = useRef('default');
+  const widgetCursorRef = useRef(false);
+  /**
+   * The widget's pointer wins only over `default`.
+   *
+   * Every other base cursor names a mode that is either running or armed — grabbing a node,
+   * holding space to pan, a marquee, a connection, a resize handle, an open text caret — and a
+   * widget sitting under the pointer does not outrank any of them. Without the check, holding
+   * space with the pointer resting on a slider showed a pointer where the grab hand belongs.
+   */
+  const applyCursor = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const base = baseCursorRef.current;
+    el.style.cursor = widgetCursorRef.current && base === 'default' ? 'pointer' : base;
+  }, []);
+  const setWidgetCursor = useCallback(
+    (wantPointer: boolean) => {
+      if (wantPointer === widgetCursorRef.current) return;
+      widgetCursorRef.current = wantPointer;
+      applyCursor();
+    },
+    [applyCursor]
+  );
 
   // Pre-allocated array for quadtree queries (avoids GC in hot paths)
   const queryResultsRef = useRef<string[]>([]);
@@ -1073,6 +1232,10 @@ function InputHandler({
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!containerRef.current) return;
+      // Any new press abandons a select press that never reached its release — a pointer whose up
+      // event was eaten by a resize gesture, or by the OS. Cleared here rather than beside
+      // `hasDragged` below because several branches return before reaching that line.
+      pendingSelectRef.current = null;
       // Focus the canvas on any press. The keydown gate above asks whether this element has focus,
       // and clicking a tabindex=0 div only focuses it by browser convention — which `preventDefault`
       // on a middle-click press already breaks. Stating it here makes the gate's precondition
@@ -1206,23 +1369,42 @@ function InputHandler({
             pointerDownPos.current = null;
             // Last interacted on top — a press on a widget is a press on its node.
             store.getState().bringToFront(clickedEntity.id);
+            // The keyboard cursor follows the pointer, so a pointer user and a keyboard user
+            // share one notion of where they are — and so the mirror a screen reader lands on
+            // after a click is the node that was clicked, not wherever the cursor was left.
+            store.getState().setFocusedEntityId(clickedEntity.id);
             if (hit.config.type === 'checkbox') {
               emitWidgetChange(hit.entityId, hit.socketId, !hit.value);
               return;
             }
             if (hit.config.type === 'slider') {
+              // Lit for the length of the gesture. The hover block in the move handler is skipped
+              // entirely while a pointer is down, so without this the grip goes cold the instant
+              // the drag it is responding to begins — the one gesture here with any duration, and
+              // the one that most needs to say it is being answered.
+              store.getState().setHoveredWidget({ entityId: hit.entityId, socketId: hit.socketId });
+              setWidgetCursor(true);
               widgetDragRef.current = { hit, pointerId: e.pointerId };
               containerRef.current?.setPointerCapture(e.pointerId);
               emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, worldPos.x));
               return;
             }
             if (hit.config.type === 'select') {
-              const next = nextSelectValue(hit);
-              if (next !== null) emitWidgetChange(hit.entityId, hit.socketId, next);
+              // Answered on the release — see `pendingSelectRef`. Nothing to choose from means
+              // nothing to open: an empty list would be a popup with no rows in it, so the value
+              // is left exactly as it is.
+              if (hit.config.options && hit.config.options.length > 0) {
+                pendingSelectRef.current = {
+                  hit,
+                  pointerId: e.pointerId,
+                  screenX: e.clientX,
+                  screenY: e.clientY,
+                };
+              }
               return;
             }
             // text, number, textarea, color — a borrowed DOM input, for this edit only.
-            setWidgetEdit(hit);
+            openWidgetEdit(hit);
             return;
           }
         }
@@ -1274,6 +1456,8 @@ function InputHandler({
             // Last interacted on top. Done on press rather than on selection, because the
             // stacking order is what survives a deselect — see utils/entity-depth.ts.
             store.getState().bringToFront(clickedEntity.id);
+            // And the keyboard cursor moves with it — see the widget branch above.
+            store.getState().setFocusedEntityId(clickedEntity.id);
 
             // Store cursor offset from entity position (React Flow style)
             pendingDragRef.current = {
@@ -1294,7 +1478,7 @@ function InputHandler({
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown, store, socketLayout, onConnectStart, getResizeHandleAt, getMinSize]
+    [isSpaceDown, store, socketLayout, onConnectStart, getResizeHandleAt, getMinSize, setWidgetCursor]
   );
 
   // Handle pointer move
@@ -1806,9 +1990,61 @@ function InputHandler({
         if (newHoveredId !== hoveredEntityId) {
           store.getState().setHoveredEntityId(newHoveredId);
         }
+
+        /**
+         * Which widget the pointer is on — the thing that makes a control look like a control
+         * before it is pressed.
+         *
+         * GATED ON THE QUADTREE RESULT, which is the whole reason this is affordable. A widget
+         * only exists ON an entity, so there is nothing to test until the index has already named
+         * one; over empty canvas — most of a pan across a large graph — this is a null check and
+         * stops. When an entity IS under the pointer it is a loop over that one entity's input
+         * sockets against a WeakMap-cached layout, writing into a scratch rectangle, so it
+         * allocates nothing on a miss and one small handle on an enter.
+         *
+         * Socket hover wins where the two could overlap: a socket dot is the smaller target and
+         * it starts a connection, which is the more consequential gesture.
+         *
+         * Gated on the zoom the renderer paints at, for the reason MIN_WIDGET_ZOOM states — a
+         * cursor that promises a control nothing on screen shows is the same lie as a press that
+         * lands on one.
+         *
+         * This whole block is already skipped during a press: it sits inside `!pointerDownPos`,
+         * and a slider drag returns long before reaching it. That is deliberate — a slider stays
+         * lit under the finger because pointerdown set the handle and nothing here clears it.
+         */
+        let hoveredWidgetSocketId: string | null = null;
+        if (
+          showWidgets &&
+          newHoveredId !== null &&
+          newHoveredSocket === null &&
+          viewport.zoom >= MIN_WIDGET_ZOOM
+        ) {
+          const hoveredEntity = store.getState().entityMap.get(newHoveredId);
+          if (hoveredEntity) {
+            hoveredWidgetSocketId = getWidgetSocketIdAt(
+              hoveredEntity,
+              worldPos.x,
+              worldPos.y,
+              socketTypes,
+              socketLayout,
+              store.getState().connectedSockets,
+              defaultEntityWidth,
+              socketLabelWidth
+            );
+          }
+        }
+        // Unconditional, like the socket line above it: the store dedupes by value, so a pointer
+        // resting on one widget notifies nobody after the first move.
+        store.getState().setHoveredWidget(
+          hoveredWidgetSocketId === null || newHoveredId === null
+            ? null
+            : { entityId: newHoveredId, socketId: hoveredWidgetSocketId }
+        );
+        setWidgetCursor(hoveredWidgetSocketId !== null);
       }
     },
-    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout, getResizeHandleAt]
+    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout, getResizeHandleAt, showWidgets, defaultEntityWidth, socketLabelWidth, setWidgetCursor]
   );
 
   // Handle pointer up
@@ -1825,8 +2061,45 @@ function InputHandler({
       // ended a slider drag the first finger was still holding, and handed the release to a
       // pointer the container had never captured.
       if (widgetDragRef.current && widgetDragRef.current.pointerId === e.pointerId) {
+        const releasedDrag = widgetDragRef.current;
         widgetDragRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
+        // A slider drag travels well past its own box — the value clamps, the pointer does not —
+        // so the release decides whether the grip stays lit. Asked here rather than left to the
+        // next pointermove, because a person who releases and does not move the mouse again would
+        // otherwise be looking at a lit control they are no longer touching.
+        const rect = cachedRectRef.current;
+        const { viewport } = store.getState();
+        const releaseWorld = screenToWorld(
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          viewport
+        );
+        const stillOn = isPointInWidget(releasedDrag.hit.box, releaseWorld.x, releaseWorld.y);
+        store.getState().setHoveredWidget(
+          stillOn ? { entityId: releasedDrag.hit.entityId, socketId: releasedDrag.hit.socketId } : null
+        );
+        setWidgetCursor(stillOn);
+        return;
+      }
+
+      /**
+       * The second half of a select press — see `pendingSelectRef`. Mounting here means the list
+       * opens against a pointer that is already up.
+       *
+       * This handler is also bound to `pointercancel` and `pointerleave`, and neither of those is
+       * a choice: a gesture the OS took away, or one that wandered off the canvas, has to clear
+       * the pending press WITHOUT opening anything. So the open is gated on the event actually
+       * being a release, and on the release landing near where the press did — a press that
+       * travelled was someone starting a drag on a node, not someone picking an option.
+       */
+      const pendingSelect = pendingSelectRef.current;
+      if (pendingSelect && pendingSelect.pointerId === e.pointerId) {
+        pendingSelectRef.current = null;
+        const travelled =
+          Math.abs(e.clientX - pendingSelect.screenX) + Math.abs(e.clientY - pendingSelect.screenY);
+        if (e.type === 'pointerup' && travelled <= DRAG_THRESHOLD) openWidgetEdit(pendingSelect.hit);
+        // Returned whether or not it opened, for the reason the drag branch above returns: a
+        // gesture that began on a widget must not fall through into the selection logic below.
         return;
       }
 
@@ -2189,6 +2462,8 @@ function InputHandler({
       onConnectEnd,
       onEntitiesChange,
       socketLayout,
+      openWidgetEdit,
+      setWidgetCursor,
     ]
   );
 
@@ -2263,6 +2538,72 @@ function InputHandler({
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
+    /**
+     * Pan the cursor's node into view, and only if it is not already there.
+     *
+     * A keyboard cursor that lands off-camera has moved nothing anyone can see. Centering on
+     * EVERY move would be worse — it would yank the viewport for a step to the node already
+     * beside the one you were on — so this is a reveal, not a follow: the node is centred only
+     * when its box is not comfortably inside the visible rect. One `setViewport` per move that
+     * needs one, and nothing per frame.
+     */
+    const revealEntity = (id: string) => {
+      const s = store.getState();
+      const entity = s.entityMap.get(id);
+      if (!entity) return;
+      const { socketLayout: layout, defaultEntityWidth: widthDefault } = cursorDepsRef.current;
+      const rect = cachedRectRef.current;
+      if (rect.width === 0 || rect.height === 0) return;
+      const { viewport } = s;
+      const width = entity.width ?? widthDefault ?? DEFAULT_ENTITY_WIDTH;
+      const height =
+        entity.height ?? (layout ? getEntitySocketLayout(entity, layout).computedHeight : 0);
+      const left = entity.position.x * viewport.zoom + viewport.x;
+      const top = entity.position.y * viewport.zoom + viewport.y;
+      const right = left + width * viewport.zoom;
+      const bottom = top + height * viewport.zoom;
+      const margin = 24;
+      const visible =
+        left >= margin &&
+        top >= margin &&
+        right <= rect.width - margin &&
+        bottom <= rect.height - margin;
+      if (visible) return;
+      const centerX = entity.position.x + width / 2;
+      const centerY = entity.position.y + height / 2;
+      s.setViewport({
+        x: rect.width / 2 - centerX * viewport.zoom,
+        y: rect.height / 2 - centerY * viewport.zoom,
+        zoom: viewport.zoom,
+      });
+    };
+
+    const placeCursor = (id: string | null) => {
+      if (id === null) return;
+      const s = store.getState();
+      s.setFocusedEntityId(id);
+      // The GL selection ring is the only thing on a canvas that can say where the cursor is.
+      s.selectEntity(id);
+      revealEntity(id);
+    };
+
+    const moveEntityCursor = (direction: 1 | -1) => {
+      const s = store.getState();
+      placeCursor(
+        stepEntityCursor(s.entities, s.focusedEntityId, direction, (id) =>
+          s.hiddenEntityIds.has(id)
+        )
+      );
+    };
+
+    /** Home and End: the step taken from nowhere, which is what an end of the order is. */
+    const jumpEntityCursor = (direction: 1 | -1) => {
+      const s = store.getState();
+      placeCursor(
+        stepEntityCursor(s.entities, null, direction, (id) => s.hiddenEntityIds.has(id))
+      );
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       /**
        * The canvas only answers keys when the canvas is what has focus.
@@ -2289,6 +2630,50 @@ function InputHandler({
       // Skip if typing in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      /**
+       * THE ENTITY CURSOR — the half that makes one tab stop enough.
+       *
+       * Arrow keys were unused on the canvas, so this claims nothing that already worked. Each
+       * move puts the cursor on a node, SELECTS it so the GL selection ring says where the cursor
+       * is (there is nothing else on a canvas that can say so), and pans the node into view if it
+       * is not already there — a cursor that leaves its target off-camera is useless to a
+       * low-vision user, and it is the reason the mirror itself is never positioned over its
+       * widget.
+       *
+       * Enter steps into the focused node's controls. From there the mirror's own handler owns
+       * the arrows and Escape hands focus back here; the guard above is what keeps these two
+       * keyboards from fighting, since `e.target` is the mirror's input rather than the container
+       * for as long as one is focused. Do not widen that guard to `contains()` — the comment on
+       * it records exactly why that was rejected.
+       */
+      if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
+        e.preventDefault();
+        moveEntityCursor(1);
+        return;
+      }
+      if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
+        e.preventDefault();
+        moveEntityCursor(-1);
+        return;
+      }
+      if (e.code === 'Home' || e.code === 'End') {
+        e.preventDefault();
+        // First and last in the same reading order the arrows walk: asking for the step out of
+        // nowhere is what "the end of the order" means, so there is one implementation of it.
+        jumpEntityCursor(e.code === 'Home' ? 1 : -1);
+        return;
+      }
+      if (e.code === 'Enter') {
+        // Into the mirror. The first control is queried rather than held in a ref because the
+        // mirror is rendered several components away and this is a keypress, not a frame.
+        const control = containerRef.current?.querySelector('[data-a11y-mirror]');
+        if (control instanceof HTMLElement) {
+          e.preventDefault();
+          control.focus({ preventScroll: true });
+        }
         return;
       }
 
@@ -2530,28 +2915,39 @@ function InputHandler({
     }
   }, []);
 
+  // What the cursor is when no widget is under the pointer. Named rather than inlined so the
+  // widget's imperative override has something to put back — see `setWidgetCursor`.
+  const baseCursor = isResizing
+    ? (resizeState.current ? RESIZE_CURSORS[resizeState.current.handle] : 'default')
+    : isPanning || isDragging
+      ? 'grabbing'
+      : isSpaceDown
+        ? 'grab'
+        : isBoxSelecting
+          ? 'crosshair'
+          : isConnecting
+            ? 'crosshair'
+            : hoveredHandle
+              ? RESIZE_CURSORS[hoveredHandle]
+              : isEditingText
+                ? 'text'
+                : 'default';
+
+  // React just wrote `cursor: baseCursor` onto the element, so a widget cursor set imperatively
+  // before this render has been clobbered. Re-assert it, and keep the ref the handler reads in
+  // step with what the render decided.
+  useEffect(() => {
+    baseCursorRef.current = baseCursor;
+    applyCursor();
+  }, [baseCursor, applyCursor]);
+
   return (
     <div
       ref={containerRef}
       style={{
         position: 'absolute',
         inset: 0,
-        cursor:
-          isResizing
-            ? (resizeState.current ? RESIZE_CURSORS[resizeState.current.handle] : 'default')
-            : isPanning || isDragging
-              ? 'grabbing'
-              : isSpaceDown
-                ? 'grab'
-                : isBoxSelecting
-                  ? 'crosshair'
-                  : isConnecting
-                    ? 'crosshair'
-                    : hoveredHandle
-                      ? RESIZE_CURSORS[hoveredHandle]
-                      : isEditingText
-                        ? 'text'
-                        : 'default',
+        cursor: baseCursor,
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -2572,6 +2968,11 @@ function InputHandler({
         handlePointerUp(e);
         store.getState().setHoveredEntityId(null);
         store.getState().setHoveredSocketId(null);
+        // The pointer has gone; nothing under it can still be lit. Without this a widget stayed
+        // hovered for as long as the page did, because the move handler that would have cleared it
+        // only runs over the canvas — the leaving case the socket hover already guards.
+        store.getState().setHoveredWidget(null);
+        setWidgetCursor(false);
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -2583,6 +2984,24 @@ function InputHandler({
       // DOM layer, several components away.
       data-kookie-flow-container=""
       tabIndex={0}
+      /**
+       * `application`, not `group`, and the trade is worth stating.
+       *
+       * This surface's arrow keys are its own: they move a keyboard cursor from node to node, and
+       * Enter steps into the focused node's controls. In a screen reader's browse mode those keys
+       * never reach the page at all — the reader eats them to move its own virtual cursor — so a
+       * graph that answers arrows and is not announced as an application is a graph a screen
+       * reader user cannot drive. The cost, and it is real: NVDA and JAWS switch out of browse
+       * mode for this element's whole subtree, which includes any `children` a consumer renders
+       * inside the canvas. A consumer's own control panel nested here inherits that mode.
+       *
+       * The alternative considered was `role="group"` with the arrows intercepted only while the
+       * container itself has focus. It changes no other element's mode and it also does not work,
+       * for the reason above: in browse mode the keydown never arrives.
+       */
+      role="application"
+      aria-label={ariaLabel}
+      aria-describedby={instructionsId}
     >
       {children}
       {/* The DOM's entire remaining role on a node: one input, for one field, while it is being
@@ -2590,8 +3009,29 @@ function InputHandler({
       <WidgetEditOverlay
         hit={widgetEdit}
         onChange={emitWidgetChange}
-        onClose={() => setWidgetEdit(null)}
+        onClose={() => openWidgetEdit(null)}
       />
+      {/* Static, and therefore free: one hidden sentence, read once when the graph takes focus. */}
+      <p id={instructionsId} style={SR_ONLY_TEXT}>
+        Arrow keys move between nodes. Press Enter to reach the focused node&apos;s controls, and
+        Escape to come back here.
+      </p>
+      {/*
+        The accessibility tree's half of the widget layer. Bounded to the ONE node the keyboard
+        cursor is on, so its element count does not move with the size of the graph — see
+        widget-a11y-mirror.tsx for why that bound is the whole argument. Gated on `showWidgets`
+        for the same reason the pointer path is: with widgets off nothing is drawn and nothing is
+        pressable, so there is nothing to mirror.
+      */}
+      {showWidgets ? (
+        <WidgetA11yMirror
+          entityId={focusedEntityId}
+          socketTypes={socketTypes}
+          widgetTypes={widgetTypes}
+          editingSocketId={widgetEdit?.socketId ?? null}
+          onChange={emitWidgetChange}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2619,12 +3059,26 @@ interface WebGLTextLayerProps {
   showSocketLabels: boolean;
   showEdgeLabels: boolean;
   defaultEdgeType: EdgeType;
+  /**
+   * The same four facts `<WidgetsGL>` is given, threaded here because a widget is drawn by two
+   * layers: its chrome in GL by widgets-gl.tsx, its value in glyphs by the text renderer. Both
+   * resolve the box from one `getWidgetBox`, so passing the same numbers to both is what keeps a
+   * value inside the well it belongs to.
+   */
+  showWidgets: boolean;
+  socketTypes: Record<string, SocketType>;
+  defaultEntityWidth?: number;
+  socketLabelWidth?: number;
 }
 
 function WebGLTextLayer({
   showSocketLabels,
   showEdgeLabels,
   defaultEdgeType,
+  showWidgets,
+  socketTypes,
+  defaultEntityWidth,
+  socketLabelWidth,
 }: WebGLTextLayerProps) {
   // Fonts are provided via FontContext - MultiWeightTextRenderer will use useFont()
   return (
@@ -2632,6 +3086,10 @@ function WebGLTextLayer({
       showSocketLabels={showSocketLabels}
       showEdgeLabels={showEdgeLabels}
       defaultEdgeType={defaultEdgeType}
+      showWidgetValues={showWidgets}
+      socketTypes={socketTypes}
+      defaultEntityWidth={defaultEntityWidth}
+      socketLabelWidth={socketLabelWidth}
     />
   );
 }
@@ -2742,6 +3200,10 @@ function FlowCanvas({
           showSocketLabels={showSocketLabels}
           showEdgeLabels={showEdgeLabels}
           defaultEdgeType={defaultEdgeType}
+          showWidgets={showWidgets}
+          socketTypes={socketTypes}
+          defaultEntityWidth={defaultEntityWidth}
+          socketLabelWidth={socketLabelWidth}
         />
       </Canvas>
     </CanvasErrorBoundary>

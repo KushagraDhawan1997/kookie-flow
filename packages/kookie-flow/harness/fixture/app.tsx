@@ -81,6 +81,15 @@ export interface HarnessApi {
   glyphs(): { count: number; x: number; y: number }[];
   /** Every drawn instance's world-space translation, labelled by mesh. The instanced half of `drawnVertices`. */
   drawnInstances(): { kind: string; x: number; y: number }[];
+  /**
+   * The widget instances the GPU was told are HOVERED, as world positions.
+   *
+   * Hover lives in a per-instance attribute (`aHover`), so the store saying a widget is hovered
+   * and the shader being told so are two different claims. Without this a law could only check the
+   * first, and the buffer write — the step whose omission makes hover appear only on frames where
+   * some other attribute happened to change — would be untested.
+   */
+  hoveredWidgetInstances(): { x: number; y: number }[];
   /** How many bulk Float32Array copies have happened since the last `mark`. */
   bulkCopies(): number;
   /** Cumulative GPU-object create/delete counts. Never reset — these are lifetimes, not work. */
@@ -101,6 +110,11 @@ export interface HarnessApi {
   widgetValue(entityId: string, socketId: string): unknown;
   /** Where a widget's centre is on screen, so a law can press the thing it drew. */
   widgetPoint(entityId: string, socketId: string): { x: number; y: number } | null;
+  /** A widget's WORLD box, from the same `getWidgetBox` the renderer and the hit test read. */
+  widgetBox(
+    entityId: string,
+    socketId: string
+  ): { x: number; y: number; width: number; height: number } | null;
   /**
    * Every widget the library says should be drawn, with its WORLD centre.
    *
@@ -151,6 +165,10 @@ function params() {
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
+    // Put a value on every input socket. Off by default so existing laws keep their fixture; the
+    // counts spike turns it on with `widgets=1`, because widget VALUES are glyphs and a graph of
+    // empty sockets would report that drawing them costs nothing.
+    values: q.get('values') === '1',
     // Mount N KookieFlow instances. Two is the reentrancy case: module-level state in the store
     // used to make the second instance break dragging in the first.
     instances: Math.max(1, Math.min(3, num('instances', 1))),
@@ -642,6 +660,31 @@ function drawnInstances(): { kind: string; x: number; y: number }[] {
 }
 
 /**
+ * The widget instances carrying a hover flag, in world space.
+ *
+ * Identified by the attribute itself rather than by mesh name: `aHover` exists on exactly the two
+ * widget meshes, and a law that matched on a name would keep passing if the attribute were moved
+ * or dropped. Bounded by `mesh.count` for the reason `drawnInstances` gives — the buffers are
+ * capacity-sized and everything past the count is a previous frame's leftovers.
+ */
+function hoveredWidgetInstances(): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const scene of scenes) {
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh & { isInstancedMesh?: boolean };
+      if (!mesh.isInstancedMesh || mesh.visible === false) return;
+      const hover = mesh.geometry?.attributes?.aHover;
+      if (!hover) return;
+      const m = mesh.instanceMatrix.array as unknown as ArrayLike<number>;
+      for (let i = 0; i < mesh.count; i++) {
+        if (hover.getX(i) > 0.5) out.push({ x: m[i * 16 + 12], y: -m[i * 16 + 13] });
+      }
+    });
+  }
+  return out;
+}
+
+/**
  * Every MSDF glyph mesh in the scene.
  *
  * `drawnVertices` deliberately skips instanced meshes, because their vertex positions are a unit
@@ -836,6 +879,7 @@ function Probe() {
       drawnVertices,
       glyphs,
       drawnInstances,
+      hoveredWidgetInstances,
       bulkCopies: () => bulk.copies,
       glLifetimes: () => ({ ...live }),
       disposals: () => ({ ...disposals }),
@@ -884,6 +928,21 @@ function Probe() {
           x: wx * s.viewport.zoom + s.viewport.x + rect.left,
           y: wy * s.viewport.zoom + s.viewport.y + rect.top,
         };
+      },
+      /**
+       * The widget's box in WORLD units, which is the space `drawnInstances()` reports glyph
+       * positions in — so a law can ask whether the value text a widget owes actually landed
+       * inside the well drawn for it. Straight from `getWidgetBox`, for the reason widgetPoint
+       * gives: a law that computed its own rectangle would be testing its own arithmetic.
+       */
+      widgetBox(entityId: string, socketId: string) {
+        const s = store.getState();
+        const e = s.entityMap.get(entityId);
+        if (!e || !s.socketLayout) return null;
+        const inputs = e.inputs ?? [];
+        const i = inputs.findIndex((sock) => sock.id === socketId);
+        if (i < 0) return null;
+        return getWidgetBox(e, i, s.socketLayout);
       },
       widgetSockets() {
         const s = store.getState();
@@ -1068,8 +1127,9 @@ function App() {
       seed: p.seed,
       edgeRatio: p.edgeRatio,
       explicitSize: p.explicitSize,
+      values: p.values,
     });
-  }, [p.scene, p.count, p.seed, p.edgeRatio, p.explicitSize]);
+  }, [p.scene, p.count, p.seed, p.edgeRatio, p.explicitSize, p.values]);
 
   const [entities, setEntities] = useState<Entity[]>(initial.entities);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);

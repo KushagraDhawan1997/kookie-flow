@@ -278,26 +278,94 @@ picker, which cannot be reimplemented. The GL caret this repo already ships earn
 canvas TEXT ENTITY, where the text is the document and the metrics are ours; here it would be a
 reimplementation of the platform.
 
-### THE ACCESSIBILITY GAP, and it is not fixed
+### THE ACCESSIBILITY GAP, and how it was closed
 
-**Before this phase a screen-reader user could reach a socket widget. Now there is nothing to
+**Before this phase a screen-reader user could reach a socket widget. Then there was nothing to
 reach.** A canvas has no roles, no names and no focusable children, so moving the widgets into GL
-took them out of the accessibility tree entirely. The naming law that used to cover them now covers
-only the DOM that remains — the toolbar, a consumer-supplied widget, and the borrowed input — and
-says so in its own docstring rather than quietly measuring something easier.
+took them out of the accessibility tree entirely. The naming law that used to cover them covered
+only the DOM that remained — the toolbar, a consumer-supplied widget, and the borrowed input — and
+said so in its own docstring rather than quietly measuring something easier.
 
-Two routes, neither taken, because this is a product decision and not an implementation detail:
+Two routes were on the table:
 
-1. **An off-screen DOM mirror.** A visually-hidden, focusable element per visible widget, kept in
-   step with the GL layer, with the real roles and names. It is what every serious canvas app does.
-   It also puts persistent DOM back on a node — which is what this phase existed to remove — so the
-   honest version of this is that the rule is about PAINT, not about the accessibility tree, and
-   the rule should be amended to say so.
+1. **An off-screen DOM mirror.** A visually-hidden, focusable element per widget, kept in step with
+   the GL layer, with the real roles and names. It is what every serious canvas app does. It also
+   risks putting persistent DOM back on a node — which is what this phase existed to remove — so
+   the honest version is that the rule is about PAINT, not about the accessibility tree.
 2. **ARIA on the canvas element.** Cheaper and much weaker: the graph announces as one thing with
    a description. It does not give anyone a way to operate a slider.
 
-Recommendation: route 1, with the rule amended to "everything persistent PAINTS in GL", because a
-hidden mirror costs no compositing and route 2 does not actually make the graph operable.
+**Status: route 1, shipped 2026-09-10.** The rule is amended, in this file and in
+`widgets-gl.tsx`'s own docstring: **everything persistent PAINTS in GL — the accessibility tree is
+not paint.** What the rule forbids is a per-node compositing cost, not a per-node entry in a tree
+the compositor never sees.
+
+#### The bound, which is the whole of what makes it honest
+
+**The mirror is a keyboard cursor, not a copy of the graph.** `src/components/widget-a11y-mirror.tsx`
+mounts one real control per widget on exactly ONE entity — the one under the store's new
+`focusedEntityId` — and its element count therefore does not move with the size of the graph.
+`harness/behaviors.mjs` pins that at a thousand nodes rather than leaving it to a comment.
+
+Two other bounds were considered and rejected in the writing:
+
+- **Mirror what is VISIBLE.** Visibility changes as the viewport moves, so the element set would
+  change on pan frames. Mounting and unmounting DOM per frame is strictly worse than the transform
+  writes D2 deleted, and it would move focus out from under whoever was using it.
+- **Mirror the SELECTION.** `selectAll` puts every entity in `selectedEntityIds`, so Ctrl+A would
+  commit a thousand nodes' worth of hidden controls in one render. That is why the store carries a
+  dedicated single-valued cursor rather than reusing selection.
+
+#### What it is, concretely
+
+- **Exactly one tab stop.** Tab reaches the canvas container and then leaves the graph, as it did
+  before. Every mirror control carries `tabIndex={-1}`: still programmatically focusable, still
+  fully present in the accessibility tree, never a second Tab stop.
+- **Arrow keys are an entity cursor.** Down/Right and Up/Left walk the nodes in READING ORDER —
+  `src/utils/entity-cursor.ts`, an O(n) scan per keypress with no sort and no cache to go stale —
+  Home and End jump to the ends, each move selects the node so the GL ring says where the cursor
+  is, and pans it into view if it is off camera. Enter steps into the node's controls; inside the
+  group Down and Up move between them (not Left and Right, which a range input owns) and Escape
+  hands focus back.
+- **Real elements, never ARIA roles.** `input[type=range]`, `input[type=checkbox]`, a real
+  `select`, a real `textarea`, `input[type=color]`. The platform supplies the role, the value
+  semantics and the keyboard model. The one hand-rolled `role="slider"` the naming law excuses is
+  upstream's and no longer applies to a socket widget.
+- **Hidden means CLIPPED.** `position:absolute; width:1px; height:1px; clip-path:inset(50%)`.
+  `display:none`, `visibility:hidden`, the `hidden` attribute and `aria-hidden` each remove an
+  element from the accessibility tree, which would make the whole exercise ceremonial; `opacity:0`
+  still paints and at full size would be a composited surface over the canvas. A harness law fails
+  on all of them.
+- **The container has an identity.** `role="application"`, an `aria-label` (new public prop
+  `ariaLabel`, default 'Flow graph') and an `aria-describedby` pointing at one hidden sentence of
+  instructions. `application` is what stops a screen reader eating the arrow keys the cursor needs.
+  **The cost, stated:** NVDA and JAWS switch out of browse mode for the whole subtree, which
+  includes any `children` a consumer renders inside the canvas. The alternative — `role="group"`
+  plus intercepting arrows only while the container is focused — does not work, because in browse
+  mode the keydown never arrives at all.
+- **A polite live region** announces the node the cursor moved to. Moving the cursor while real
+  focus stays on the container otherwise changes nothing a screen reader would read.
+- **The borrowed input now names itself `socket.name`**, not `socket.id`. It announced 'label'
+  where the screen said 'Label', and it has to agree with the mirror or the two become a duplicate.
+
+#### What it does NOT give
+
+- **No edge or connection navigation.** A screen-reader user can operate a focused node's controls
+  and cannot discover what that node is wired to, or make or break a connection. The store has
+  `adjacencyIndex` for it; it is a larger surface and deserves its own decision.
+- **No mirror for entity headers, comments or the canvas text entities.**
+- **A colour picker that opens at a clipped pixel.** `input[type=color]` opens the OS picker at the
+  focused element's rect, which here is 1px. Un-clipping it to the widget's real box would make it
+  paint and composite, which is the cost the bound exists to avoid.
+- **Reading order is positional, not semantic.** Two nodes at the same point are ordered by id.
+
+#### Convergence, deliberately not done
+
+For `text | number | textarea | color | select` the mirror and the borrowed input are the same
+element with different CSS, and unifying them would delete `widget-edit-overlay.tsx` and the
+mirror's editing skip along with it. It also re-opens both ordering bugs recorded below — focus
+attempted before the style landed, and draft-versus-live value — so it is worth doing later and
+deliberately, not as part of this.
 
 ### Bugs this phase produced and fixed, both of them ordering
 
@@ -313,8 +381,129 @@ hidden mirror costs no compositing and route 2 does not actually make the graph 
 
 ### Still open
 
-- The accessibility gap above.
-- `select` cycles to the next option on press rather than opening a list. It is honest and
-  operable, and a real dropdown is either a GL menu (rows, hit testing, scrolling — a component in
-  its own right) or a borrowed DOM `<select>`. Not judged.
-- A GL widget has no hover or focus state yet; the shader has the attributes for it.
+- ~~The accessibility gap above.~~ Closed by the mirror; the residue is listed under "What it does
+  NOT give" and the edge/connection half is the one worth its own decision.
+- ~~A GL widget has no hover or focus state yet; the shader has the attributes for it.~~ Hover
+  landed. The second half of that sentence was WRONG and worth recording: all five per-instance
+  attributes were load-bearing — `aValue` is the slider fraction, `aTint` the colour widget's
+  value, `aRadius` the corner radius, `aSize` and `aKind` self-evidently — so hover needed a SIXTH
+  (`aHover`, one float, 4 bytes an instance). Anyone reading this line before writing the code
+  would have gone looking for room that was not there.
+- Focus is closed as "nothing to draw", not as done. The four kinds that borrow a DOM input are
+  covered by an opaque overlay with an accent border for the whole edit, so a GL ring under it
+  could not be seen; the two that do not borrow anything have no keyboard focus to hold, because
+  a canvas has no focusable children (D-keyboard above). What a checkbox and a slider CAN show is
+  pressed, and the slider does, through the same hover attribute. The mirror does not change this:
+  DOM focus lands on a clipped element, and nothing in GL is drawn for it. A keyboard user
+  operating a checkbox through the mirror sees the value change and no focus ring. That is now
+  worth drawing, and it is a GL change rather than an accessibility one.
+
+(The `select` bullet that stood here — "cycles to the next option on press rather than opening a
+list… Not judged" — is judged in D9.)
+
+---
+
+## D8. The widgets draw their values.
+
+**Status: shipped 2026-09-10.** D7 above says the chrome is in GL and that "a widget's value and a
+select's current option are contributed to the text renderer rather than re-implemented" — and the
+contribution was never written. Every field on every node showed an empty well, every select a
+chevron with no option beside it, every slider a bar with no number. It is the most visible thing
+the migration cost, and the widget laws all passed through it: they count instances and drive
+presses, and a widget with no text is still one instance that still answers a press.
+
+The values are collected in `text-renderer.tsx`, as a fourth family beside entity headers, socket
+names and edge labels, from `widget-text.ts` — a pure function that answers what one widget prints
+and where in its box it sits. Three kinds deliberately print nothing, and each says why at its own
+branch: a checkbox's tick IS its value, a colour swatch's fill IS its value, and a consumer's own
+component prints its own.
+
+### What this cost, measured
+
+At a thousand entities with a value on every input socket, `harness/spikes/counts.mjs --widgets`
+and a glyph census at zoom 1: 676 glyph instances before, 843 after — +167, a quarter more glyphs
+and 1.3% more drawn instances of any kind. At zoom 0.51, the densest frame where values still
+print, +570 glyphs, +23% of glyphs and +3.9% of all instances. Uploads per frame did not move,
+because the text layer already declares the written span rather than re-sending its whole capacity.
+
+### The lever, and the bug the lever produced
+
+Values stop printing at zoom 0.5, above the 0.4 at which the chrome stops — a 12px glyph at 0.4 is
+under five device pixels, and low zoom is where the most nodes are on screen. Adding a floor
+exposed a hole in the pan hysteresis: `lodBucket` had a bit for each of the three existing cliffs,
+zooming IN only shrinks the visible rect, and a shrinking rect stays inside the one the set was
+collected for — so crossing 0.5 upward re-collected nothing and every field stayed blank until
+something unrelated marked the layer dirty. There is a fourth bit now. A gate with no bit is a gate
+that only closes.
+
+### Still open
+
+- A widget whose TYPE a consumer has replaced through `widgetTypes` gets both a DOM control and GL
+  chrome, and now GL value text under it as well. `resolveWidgetConfig` sees `customComponent` but
+  not the consumer's type map, so neither GL layer can tell. Pre-existing for the chrome; the text
+  inherits it.
+- `text-renderer.tsx` allocates one `WidgetBox` and one resolved config per visible widget per
+  dirty frame, the same shape of cost `widgets-gl.tsx` already pays, now paid twice. If it ever
+  shows up, the fix that keeps one source for the arithmetic is a `getWidgetBoxInto(out, …)` used
+  by BOTH layers, not a second copy of it.
+
+---
+
+## D9. A select opens a list, and the list belongs to the platform.
+
+**Status: shipped 2026-09-10.** D7 left this open: a press on a select advanced to the next option
+and wrapped. It was honest and it was operable, and it was also the only control in the package
+where choosing cost a number of presses proportional to how far away your answer was — the fourth
+of five options took four presses — and where the set you were choosing from was never on screen at
+all. The GL layer draws a well, a chevron and the current option; there was nothing to read.
+
+The choice was a GL menu or a borrowed DOM `<select>`, and it is the borrowed `<select>`, through
+the same overlay the text, number, textarea and colour widgets already borrow an input through. The
+rule that decided it is the rule that overlay already states for the colour picker: **borrow the
+platform where the platform OWES something**, not merely where borrowing is easier. A list owes the
+same class of things a colour picker does — arrow and Home/End navigation, type-ahead, the native
+picker on touch, and a popup that is allowed to leave the canvas bounds — and it narrows D7's
+accessibility gap rather than widening it, because a real `<select>` is a control a screen reader
+can reach and a GL menu is not. The GL side is untouched: no new instance kind, no buffer growth,
+no extra draw call, no change to the depth ladder. A menu drawn in GL would have needed an
+always-on-top pass outside the per-entity depth slice, its own instanced mesh, row hit testing,
+scrolling, dismissal, and rows contributed to the text batch.
+
+### Two things fell out of it, and both are load-bearing
+
+- **The press is answered on pointer UP.** The borrowed select opens its list as soon as it is
+  mounted and focused. Mount it on pointerdown and the popup appears under a button that is still
+  held: the platform opens the list with the current option beneath the cursor, so the release
+  picks that same option and shuts the list again. The press reads as a flash and nothing changes.
+  The hit is parked in a ref between the two halves of one press, carrying its pointer id for the
+  reason the slider drag carries one — a second finger's release must not answer the first finger's
+  press — and the same handler is bound to `pointercancel` and `pointerleave`, neither of which is
+  a choice, so the open is gated on the event actually being a release.
+- **The select paints transparent over its own GL chrome**, where a field replaces it. The well and
+  the chevron underneath are already the right control at the right size, and the text layer
+  already stops printing a widget's value while an edit is open, so the borrowed element has only
+  to contribute the option text and the list. Drawing a second well and a second chevron on top of
+  the first is what not saying so looks like.
+
+`nextSelectValue` is deleted rather than kept for keyboard use: the native select supplies arrows,
+Home/End and type-ahead itself, and D7 records that GL widgets are not in the accessibility tree,
+so there was no other keyboard path to reach it from.
+
+### The rule with the most ways to get it wrong
+
+A select fires `change` for keyboard navigation as well as for a pick — arrows on a closed select,
+and type-ahead everywhere — so ending the edit on every change would close it on the first arrow
+press, which is the opposite of choosing. A change with no key in front of it came from the list,
+and only that ends the edit. The flag that records this is cleared on `keyup` as well as on the
+change, because a key that moves nothing still arms it: typing a letter no option starts with fires
+a keydown and no change at all, and a flag left standing there makes the NEXT pick fail to close.
+
+### Still open
+
+- Options are `string[]`, so a label distinct from its value cannot be expressed. Widening it
+  touches `Socket.options`, `WidgetProps.options` and `ResolvedWidgetConfig.options`, wants a
+  `normalizeOptions` beside `resolveWidgetConfig`, and the GL text path needs the label too.
+- Non-string option values are not representable either. A pick commits the raw `<option value>`
+  string, exactly as the cycling press did.
+- The OPEN list is drawn by the OS and is not styleable in any portable way. This is the same trade
+  already accepted for the colour picker. The CLOSED control is matched exactly.

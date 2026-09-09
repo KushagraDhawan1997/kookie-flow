@@ -7,12 +7,18 @@
  * that would answer a press.
  *
  * O(visible entities x their input sockets) rather than a spatial index, and that is a deliberate
- * bound rather than an oversight: this runs on POINTER DOWN, not per frame, and it walks only
- * entities whose box already contains the point — which the quadtree has narrowed to one or two
- * before this is called.
+ * bound rather than an oversight: it walks only entities whose box already contains the point —
+ * which the quadtree has narrowed to one or two before either function here is called.
+ *
+ * TWO ENTRY POINTS, on two different clocks. `getWidgetAt` answers a POINTER DOWN and hands back
+ * everything a press needs, including a box the caller keeps for the length of an edit.
+ * `getWidgetSocketIdAt` answers a POINTERMOVE, sixty times a second, and therefore allocates
+ * nothing at all: it walks the same sockets under the same two skip rules and returns a socket id
+ * that already exists. They must agree at every point, which is a law rather than an intention —
+ * see widget-hit.test.ts.
  */
 
-import { getWidgetBox, isPointInWidget, type WidgetBox } from './widget-geometry';
+import { getWidgetBox, readWidgetBoxInto, isPointInWidget, type WidgetBox } from './widget-geometry';
 import { resolveWidgetConfig } from './widgets';
 import { readWidgetValue, widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
@@ -35,6 +41,15 @@ export const MIN_WIDGET_ZOOM = 0.4;
 export interface WidgetHit {
   entityId: string;
   socketId: string;
+  /**
+   * The socket's human name, carried so the borrowed DOM input can announce itself.
+   *
+   * It used to name itself `hit.socketId` — 'label', 'w0', whatever the consumer's data model
+   * happened to call the field — while the GL layer painted `socket.name` beside it. A screen
+   * reader read one thing and the screen said another, and the id is not reachable from anything
+   * a hit already carries, so the name had to come along with it.
+   */
+  socketName: string;
   /** Index among the entity's INPUT sockets. */
   index: number;
   box: WidgetBox;
@@ -79,6 +94,7 @@ export function getWidgetAt(
     return {
       entityId: entity.id,
       socketId: socket.id,
+      socketName: socket.name,
       index: i,
       box,
       config,
@@ -88,6 +104,53 @@ export function getWidgetAt(
         values?.[socket.id] ?? config.defaultValue
       ),
     };
+  }
+  return null;
+}
+
+/**
+ * One rectangle, reused by the hover test below and by nothing else.
+ *
+ * It is module-scoped and never escapes: `getWidgetSocketIdAt` reads it and returns a socket id,
+ * which is a string that already exists. The same shape as the `tempMatrix` every renderer here
+ * keeps beside its frame loop, and for the same reason — this runs on every pointermove.
+ */
+const SCRATCH: WidgetBox = { x: 0, y: 0, width: 0, height: 0 };
+
+/**
+ * WHICH widget a world point is on, without building a hit for it.
+ *
+ * The press path needs a `WidgetHit`: a box it can keep for the length of an edit, the resolved
+ * config, and the value on screen. The HOVER path needs none of that — it needs a socket id, to
+ * put in the store so the renderer can light one instance. Calling `getWidgetAt` for it would
+ * allocate a box per candidate socket and a hit object per hover, on every pointermove that lands
+ * on a node.
+ *
+ * The skips are the same two `getWidgetAt` applies, deliberately: a connected socket has no widget
+ * because its value comes down the edge, and a socket whose type resolves no widget has nothing to
+ * hover. A hover that lit something the press path would not answer is the same paint-vs-press
+ * disagreement in a different direction.
+ */
+export function getWidgetSocketIdAt(
+  entity: Entity,
+  worldX: number,
+  worldY: number,
+  socketTypes: Record<string, SocketType>,
+  socketLayout: ResolvedSocketLayout,
+  connectedSockets: Set<string>,
+  defaultWidth?: number,
+  labelWidth?: number
+): string | null {
+  const inputs = entity.inputs;
+  if (!inputs) return null;
+  for (let i = 0; i < inputs.length; i++) {
+    const socket = inputs[i];
+    if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+    if (!resolveWidgetConfig(socket, socketTypes)) continue;
+    const box = readWidgetBoxInto(SCRATCH, entity, i, socketLayout, defaultWidth, labelWidth);
+    if (!box) continue;
+    if (!isPointInWidget(box, worldX, worldY)) continue;
+    return socket.id;
   }
   return null;
 }
@@ -116,12 +179,4 @@ export function sliderValueAt(hit: WidgetHit, worldX: number): number {
   const lo = Math.min(min, max);
   const hi = Math.max(min, max);
   return Math.min(hi, Math.max(lo, snapped));
-}
-
-/** The option a select moves to when it is pressed, cycling and wrapping. */
-export function nextSelectValue(hit: WidgetHit): string | null {
-  const options = hit.config.options;
-  if (!options || options.length === 0) return null;
-  const current = typeof hit.value === 'string' ? options.indexOf(hit.value) : -1;
-  return options[(current + 1) % options.length];
 }

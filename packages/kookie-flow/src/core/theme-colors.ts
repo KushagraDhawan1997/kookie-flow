@@ -103,6 +103,18 @@ export const THEME_COLORS = {
     border: '--neutral-6',
     /** A slider's unfilled channel, and a checkbox's box when it is off. */
     track: '--neutral-4',
+    /**
+     * The same three, one step up, for the pointer being over the control.
+     *
+     * Hover is +1 step and nothing else — no invented token, no new hue. That is the rule the
+     * design system already applies to every variant it ships: `VARIANT_MAP` in
+     * utils/style-resolver.ts moves a background one step up on hover and takes a border from 6 to
+     * 7. A GL widget is a control on a surface like any other, so it wears the same convention
+     * rather than a second one that would drift from it the first time the scale changed.
+     */
+    fillHover: '--neutral-4',
+    trackHover: '--neutral-5',
+    borderHover: '--neutral-7',
     /** The filled portion, a ticked box, a grabbed thumb. */
     active: '--accent-9',
     /** What sits ON the active fill — a tick, a label over a solid. */

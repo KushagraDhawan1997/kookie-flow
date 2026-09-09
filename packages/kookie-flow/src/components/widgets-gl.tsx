@@ -1,11 +1,20 @@
 /**
  * On-node widget chrome, drawn in WebGL.
  *
- * THE RULE THIS IMPLEMENTS: everything persistent renders in GL; the DOM appears only
+ * THE RULE THIS IMPLEMENTS: everything persistent PAINTS in GL; the DOM appears only
  * transiently, for one field, during an active edit, and then vanishes. Widgets were the last
  * persistent DOM in the graph — seven React components per socket, each a real design-system
  * control, mounted for every visible entity. At a thousand nodes that is thousands of composited
  * layers, which is the measured reason the label path was deleted before it.
+ *
+ * THE WORD IS "PAINTS", AND IT WAS "RENDERS" UNTIL THE ACCESSIBILITY TREE FORCED THE DISTINCTION.
+ * A canvas has no roles, no names and no focusable children, so this file drawing every widget
+ * took the widgets out of the accessibility tree entirely — a screen-reader user could reach a
+ * socket widget before the migration and had nothing to reach after it. The answer is
+ * `widget-a11y-mirror.tsx`: a clipped, focusable DOM control per widget on the ONE node the
+ * keyboard cursor is standing on. It paints nothing, it composites nothing, and its element count
+ * does not move with the size of the graph. What the rule forbids is a per-node compositing cost,
+ * not a per-node entry in a tree the compositor never sees. See decisions.md D7.
  *
  * ONE DRAW CALL for every widget on screen. Kind, value and colour are per-instance attributes and
  * the fragment shader branches on kind — the branch is uniform across an instance, so it costs
@@ -169,6 +178,7 @@ const vertexShader = /* glsl */ `
   attribute float aKind;
   attribute float aValue;
   attribute vec3 aTint;
+  attribute float aHover;
 
   varying vec2 vUv;
   varying vec2 vSize;
@@ -176,6 +186,7 @@ const vertexShader = /* glsl */ `
   varying float vValue;
   varying vec3 vTint;
   varying float vRadius;
+  varying float vHover;
 
   void main() {
     vUv = uv;
@@ -184,6 +195,7 @@ const vertexShader = /* glsl */ `
     vValue = aValue;
     vTint = aTint;
     vRadius = aRadius;
+    vHover = aHover;
     vec3 pos = vec3(position.xy * aSize, position.z);
     gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
   }
@@ -200,12 +212,20 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uThumb;
   uniform float uBorderWidth;
 
+  // The hover dress, as UNIFORMS rather than attributes: WHICH widget is hovered varies per
+  // instance, what hover LOOKS like does not. One float per instance carries the first; three
+  // colours shared by every instance carry the second.
+  uniform vec3 uFillHover;
+  uniform vec3 uTrackHover;
+  uniform vec3 uBorderHover;
+
   varying vec2 vUv;
   varying vec2 vSize;
   varying float vKind;
   varying float vValue;
   varying vec3 vTint;
   varying float vRadius;
+  varying float vHover;
 
   // Clamped exactly as nodes.tsx clamps it, and for the same reason: past r = min(b.x, b.y)
   // every fragment lands outside the shape and the box erases itself.
@@ -219,7 +239,14 @@ const fragmentShader = /* glsl */ `
     vec2 p = (vUv - 0.5) * vSize;
     vec2 halfSize = vSize * 0.5;
 
-    vec3 color = uFill;
+    // The three state colours, resolved once. vHover is 0 or 1, so this is the rest colour or the
+    // hover colour and never a blend — but it is a mix rather than a branch, because a branch on a
+    // varying costs a divergent path and this costs three lerps of a constant.
+    vec3 fill = mix(uFill, uFillHover, vHover);
+    vec3 track = mix(uTrack, uTrackHover, vHover);
+    vec3 border = mix(uBorder, uBorderHover, vHover);
+
+    vec3 color = fill;
     float alpha = 0.0;
     // One pixel of the world, so the antialiasing is the same width at every zoom.
     float aa = fwidth(p.x) * 0.75 + 1e-5;
@@ -232,9 +259,9 @@ const fragmentShader = /* glsl */ `
       float d = roundedBoxSDF(cp, b, min(4.0, side * 0.25));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float on = step(1.5, vKind);
-      vec3 boxFill = mix(uTrack, uActive, on);
+      vec3 boxFill = mix(track, uActive, on);
       float ring = 1.0 - smoothstep(-aa, aa, d + uBorderWidth);
-      color = mix(uBorder, boxFill, ring);
+      color = mix(border, boxFill, ring);
       alpha = inside;
 
       // The tick, drawn as two thick segments rather than a glyph: it is five lines of SDF and
@@ -255,25 +282,30 @@ const fragmentShader = /* glsl */ `
       float d = roundedBoxSDF(p, vec2(halfSize.x, trackH * 0.5), trackH * 0.5);
       alpha = 1.0 - smoothstep(-aa, aa, d);
       float fillEdge = -halfSize.x + vSize.x * vValue;
-      color = mix(uActive, uTrack, step(fillEdge, p.x));
+      color = mix(uActive, track, step(fillEdge, p.x));
 
       // The grip rides the fill edge, inset by its own radius so it never leaves the channel —
       // the same wall rule a segmented control's thumb obeys.
-      float gr = min(vSize.y * 0.5, 8.0);
+      // It also grows under the pointer, the gesture the socket dot already makes with its own
+      // 1.0 + aHovered * 0.3. The clamp below is written in terms of gr, so the bigger grip still
+      // cannot leave the channel.
+      float gr = min(vSize.y * 0.5, 8.0) * (1.0 + vHover * 0.15);
       float gx = clamp(fillEdge, -halfSize.x + gr, halfSize.x - gr);
       float gd = length(p - vec2(gx, 0.0)) - gr;
       float grip = 1.0 - smoothstep(-aa, aa, gd);
       float gripRing = 1.0 - smoothstep(-aa, aa, gd + uBorderWidth);
-      color = mix(color, mix(uBorder, uThumb, gripRing), grip);
+      color = mix(color, mix(border, uThumb, gripRing), grip);
       alpha = max(alpha, grip);
     } else {
       // ---- field, select, colour: a well with a hairline ----
       float d = roundedBoxSDF(p, halfSize, min(aaRadius(), min(halfSize.x, halfSize.y)));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float ring = 1.0 - smoothstep(-aa, aa, d + uBorderWidth);
-      // A colour widget's fill IS its value; everything else takes the field well.
-      vec3 base = vKind > 4.5 ? vTint : uFill;
-      color = mix(uBorder, base, ring);
+      // A colour widget's fill IS its value; everything else takes the field well. Which also
+      // means hover cannot touch a colour widget's middle — it reads on the hairline alone, the
+      // only part of that widget that is chrome rather than content.
+      vec3 base = vKind > 4.5 ? vTint : fill;
+      color = mix(border, base, ring);
       alpha = inside;
 
       if (vKind > 3.5 && vKind < 4.5) {
@@ -285,7 +317,7 @@ const fragmentShader = /* glsl */ `
         float s2 = step(0.0, c.x) * step(c.x, 4.0);
         float chev = max(s1 * (1.0 - smoothstep(0.0, 1.1, a1)),
                          s2 * (1.0 - smoothstep(0.0, 1.1, a2)));
-        color = mix(color, uBorder, chev * inside);
+        color = mix(color, border, chev * inside);
       }
     }
 
@@ -310,11 +342,20 @@ function createBuffers(capacity: number) {
     kind: new Float32Array(capacity),
     value: new Float32Array(capacity),
     tint: new Float32Array(capacity * 3),
+    /**
+     * Is the pointer on this one. A SIXTH attribute, because there was no spare room in the five
+     * above it: `aValue` is the slider fraction, `aTint` the colour widget's value, `aRadius` the
+     * corner radius, and every one of them is load-bearing for some kind. (The migration notes
+     * claimed the shader already had the attributes for hover. It did not.) Four bytes an
+     * instance, 80KB a mesh at MAX_CAPACITY, allocated with the capacity step and never in a frame.
+     */
+    hover: new Float32Array(capacity),
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
     radiusAttr: null as THREE.InstancedBufferAttribute | null,
     kindAttr: null as THREE.InstancedBufferAttribute | null,
     valueAttr: null as THREE.InstancedBufferAttribute | null,
     tintAttr: null as THREE.InstancedBufferAttribute | null,
+    hoverAttr: null as THREE.InstancedBufferAttribute | null,
   };
 }
 
@@ -349,6 +390,9 @@ export function WidgetsGL({
         uActive: { value: rgb(c.active) },
         uActiveContrast: { value: rgb(c.activeContrast) },
         uThumb: { value: rgb(c.thumb) },
+        uFillHover: { value: rgb(c.fillHover) },
+        uTrackHover: { value: rgb(c.trackHover) },
+        uBorderHover: { value: rgb(c.borderHover) },
         uBorderWidth: { value: 1 },
       },
       vertexShader,
@@ -385,7 +429,8 @@ export function WidgetsGL({
       buffers.kindAttr = new THREE.InstancedBufferAttribute(buffers.kind, 1);
       buffers.valueAttr = new THREE.InstancedBufferAttribute(buffers.value, 1);
       buffers.tintAttr = new THREE.InstancedBufferAttribute(buffers.tint, 3);
-      for (const a of [buffers.sizeAttr, buffers.radiusAttr, buffers.kindAttr, buffers.valueAttr, buffers.tintAttr]) {
+      buffers.hoverAttr = new THREE.InstancedBufferAttribute(buffers.hover, 1);
+      for (const a of [buffers.sizeAttr, buffers.radiusAttr, buffers.kindAttr, buffers.valueAttr, buffers.tintAttr, buffers.hoverAttr]) {
         a.setUsage(THREE.DynamicDrawUsage);
       }
       mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
@@ -393,6 +438,7 @@ export function WidgetsGL({
       mesh.geometry.setAttribute('aKind', buffers.kindAttr);
       mesh.geometry.setAttribute('aValue', buffers.valueAttr);
       mesh.geometry.setAttribute('aTint', buffers.tintAttr);
+      mesh.geometry.setAttribute('aHover', buffers.hoverAttr);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     }
     initializedRef.current = true;
@@ -419,6 +465,12 @@ export function WidgetsGL({
       store.subscribe((s) => s.widgetValuesVersion, markDirty),
       // A press moved something to the front.
       store.subscribe((s) => s.stackVersion, markDirty),
+      // The pointer moved onto or off a widget. The store dedupes this handle by value, so it
+      // arrives exactly twice per hover — on enter and on leave — rather than on every pointermove
+      // across the control. That is the same contract sockets.tsx already relies on for
+      // `hoveredSocketId`, and without it a pointer resting on a slider would repaint the whole
+      // layer sixty times a second.
+      store.subscribe((s) => s.hoveredWidget, markDirty),
     ];
     return () => { for (const u of unsubs) u(); };
   }, [store]);
@@ -431,6 +483,7 @@ export function WidgetsGL({
 
     const {
       entities, viewport, connectedSockets, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder,
+      hoveredWidget,
     } = store.getState();
     if (viewport.zoom < minWidgetZoom) {
       bgMesh.count = 0;
@@ -525,6 +578,16 @@ export function WidgetsGL({
           buffers.tint[n * 3 + 1] = 0;
           buffers.tint[n * 3 + 2] = 0;
         }
+        // Two string compares against a handle that is null for all but one widget in the graph.
+        // Written unconditionally rather than only when hovered, because these buffers are reused
+        // across frames and instance `n` is a different widget from one frame to the next — a
+        // conditional write would leave the previous occupant's 1 behind and light the wrong well.
+        buffers.hover[n] =
+          hoveredWidget !== null &&
+          hoveredWidget.entityId === entity.id &&
+          hoveredWidget.socketId === socket.id
+            ? 1
+            : 0;
 
         tempMatrix.identity();
         tempMatrix.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), z);
@@ -549,12 +612,34 @@ export function WidgetsGL({
       [fgMesh, fgBuffers, fgCount],
     ] as const) {
       mesh.count = count;
+      // Nothing is drawn, so nothing needs sending. Skipped rather than flushed, because a bare
+      // `needsUpdate` with no range is a full-array upload — see below — and a zoomed-out or
+      // fully-culled frame would have been the most expensive one.
+      if (count === 0) continue;
+
+      /**
+       * DECLARE THE SPAN, THEN set `needsUpdate`.
+       *
+       * A bare `needsUpdate` with an empty `updateRanges` makes three fall back to
+       * `bufferSubData(bufferType, 0, array)` — the WHOLE array. These arrays are sized to
+       * CAPACITY, which grows to 1.5x the peak widget count ever seen on one mesh and never
+       * shrinks, so a graph that once had two thousand widgets on screen kept re-uploading two
+       * thousand instances' worth of untouched tail on every dirty frame — every frame of a pan —
+       * for widgets `mesh.count` was not drawing. Only the first `count` instances were written
+       * and only that many are read; whatever stale bytes sit past them in GPU memory are
+       * unreachable. Same call edges.tsx and text-renderer.tsx already make. Three clears the
+       * ranges once it has uploaded them, so they do not accumulate across frames.
+       */
+      mesh.instanceMatrix.addUpdateRange(0, count * 16);
       mesh.instanceMatrix.needsUpdate = true;
-      if (buffers.sizeAttr) buffers.sizeAttr.needsUpdate = true;
-      if (buffers.radiusAttr) buffers.radiusAttr.needsUpdate = true;
-      if (buffers.kindAttr) buffers.kindAttr.needsUpdate = true;
-      if (buffers.valueAttr) buffers.valueAttr.needsUpdate = true;
-      if (buffers.tintAttr) buffers.tintAttr.needsUpdate = true;
+      if (buffers.sizeAttr) { buffers.sizeAttr.addUpdateRange(0, count * 2); buffers.sizeAttr.needsUpdate = true; }
+      if (buffers.radiusAttr) { buffers.radiusAttr.addUpdateRange(0, count); buffers.radiusAttr.needsUpdate = true; }
+      if (buffers.kindAttr) { buffers.kindAttr.addUpdateRange(0, count); buffers.kindAttr.needsUpdate = true; }
+      if (buffers.valueAttr) { buffers.valueAttr.addUpdateRange(0, count); buffers.valueAttr.needsUpdate = true; }
+      if (buffers.tintAttr) { buffers.tintAttr.addUpdateRange(0, count * 3); buffers.tintAttr.needsUpdate = true; }
+      // The one that is easiest to forget, and whose absence is the subtlest failure: hover would
+      // then appear only on a frame where some OTHER attribute happened to change.
+      if (buffers.hoverAttr) { buffers.hoverAttr.addUpdateRange(0, count); buffers.hoverAttr.needsUpdate = true; }
     }
   });
 

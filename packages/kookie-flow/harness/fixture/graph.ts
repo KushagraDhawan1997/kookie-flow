@@ -48,6 +48,17 @@ export interface FixtureOptions {
    * when a measurement genuinely needs every box identical (some perf comparisons do).
    */
   explicitSize?: boolean;
+  /**
+   * Put a value on every input socket, under `data.values`.
+   *
+   * Default FALSE so every existing law keeps the byte-identical fixture it was written against.
+   * It exists because a widget with no value is a degenerate fixture for anything that MEASURES
+   * widgets: the GL layer prints a widget's value as MSDF glyphs, and a grid whose sockets are
+   * all undefined prints nothing at all — so a glyph-budget measurement taken on it would report
+   * that drawing values is free. Real documents carry values; a spike that wants to know what
+   * they cost has to ask for them.
+   */
+  values?: boolean;
 }
 
 export interface Fixture {
@@ -61,7 +72,7 @@ export interface Fixture {
  * culling looks far better than it is against uniform noise.
  */
 export function makeGraph(opts: FixtureOptions): Fixture {
-  const { count, seed = 1, edgeRatio = 0.8, socketsPerSide = 3, explicitSize = false } = opts;
+  const { count, seed = 1, edgeRatio = 0.8, socketsPerSide = 3, explicitSize = false, values = false } = opts;
   const rand = rng(seed);
 
   const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
@@ -88,6 +99,20 @@ export function makeGraph(opts: FixtureOptions): Fixture {
       } as Socket);
     }
 
+    // One value per input, derived from the socket's own type so each widget kind gets something
+    // it can actually print: a slider a fraction, a number an integer, a field a short string.
+    const socketValues: Record<string, unknown> = {};
+    if (values) {
+      for (const socket of inputs) {
+        socketValues[socket.id] =
+          socket.type === 'float'
+            ? Math.round(rand() * 100) / 100
+            : socket.type === 'int'
+              ? Math.floor(rand() * 100)
+              : `v${i}-${socket.id}`;
+      }
+    }
+
     const entity: Entity = {
       id: `n${i}`,
       type: 'default',
@@ -95,7 +120,7 @@ export function makeGraph(opts: FixtureOptions): Fixture {
         x: col * CELL_X + Math.round(rand() * 40) - 20,
         y: row * CELL_Y + Math.round(rand() * 40) - 20,
       },
-      data: { label: `Node ${i}` },
+      data: values ? { label: `Node ${i}`, values: socketValues } : { label: `Node ${i}` },
       inputs,
       outputs,
     };

@@ -179,6 +179,20 @@ export interface SocketHandle {
   isInput: boolean;
 }
 
+/**
+ * Which widget the pointer is over, as the two ids that name it.
+ *
+ * A widget only ever exists on an INPUT socket, so unlike `SocketHandle` this carries no
+ * direction — there is nothing for it to distinguish. Two fields rather than one `entityId:socketId`
+ * string because the renderer compares this against every visible widget inside the frame loop,
+ * and a joined key would mean a string concatenation per widget per frame in the one layer whose
+ * whole reason for existing is that a pan costs nothing.
+ */
+export interface WidgetHandle {
+  entityId: string;
+  socketId: string;
+}
+
 /** Entity status for visual feedback */
 export type EntityStatus = 'error' | 'warning' | 'running' | 'success';
 
@@ -850,6 +864,14 @@ export interface KookieFlowProps {
   maxImageTextureSize?: number;
   /** Additional class name */
   className?: string;
+  /**
+   * The accessible name of the graph itself.
+   *
+   * The canvas container is the graph's ONE tab stop, and until this existed it carried no name
+   * at all — a screen reader announced it as an unlabelled application and a page with two graphs
+   * on it announced the same nothing twice. Default: 'Flow graph'.
+   */
+  ariaLabel?: string;
   /** Children (for overlays) */
   children?: React.ReactNode;
 

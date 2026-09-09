@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getWidgetAt, sliderValueAt, nextSelectValue, type WidgetHit } from './widget-hit';
+import { getWidgetAt, getWidgetSocketIdAt, sliderValueAt, type WidgetHit } from './widget-hit';
 import { getWidgetBox } from './widget-geometry';
 import { widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
@@ -103,7 +103,7 @@ describe('getWidgetAt reads the value the renderer paints', () => {
     expect(widgetValues.has(key)).toBe(false);
   });
 
-  it('advances a select from the pending value, not the stale one', () => {
+  it('hands a select the pending option, not the stale one', () => {
     const entity = node(
       [{ id: 'mode', name: 'Mode', type: 'choice', options: ['a', 'b', 'c'] }],
       { mode: 'a' }
@@ -115,8 +115,12 @@ describe('getWidgetAt reads the value the renderer paints', () => {
 
     const hit = getWidgetAt(entity, p.x, p.y, socketTypes, layout, new Set(), widgetValues);
     expect(hit).not.toBeNull();
-    // Reading the entity gave 'a' and this answered 'b' a second time — one option, forever.
-    expect(hit && nextSelectValue(hit)).toBe('c');
+    // This used to be asserted through `nextSelectValue`, which no longer exists — a press now
+    // opens a list rather than advancing one step, so the hit's own value is what the borrowed
+    // `<select>` is seeded from. Reading the entity here gave 'a', so the list would have opened
+    // with the wrong option showing as chosen for as long as the consumer took to echo.
+    expect(hit?.value).toBe('b');
+    expect(hit?.config.options).toEqual(['a', 'b', 'c']);
   });
 
   it('still answers nothing for a connected input', () => {
@@ -134,6 +138,7 @@ function sliderHit(config: Partial<ResolvedWidgetConfig>): WidgetHit {
   return {
     entityId: 'n1',
     socketId: 's',
+    socketName: 'S',
     index: 0,
     box: { x: 0, y: 0, width: 100, height: 32 },
     config: { type: 'slider', ...config },
@@ -175,5 +180,101 @@ describe('sliderValueAt clamps to the ordered range', () => {
   it('snaps relative to min rather than to zero', () => {
     const hit = sliderHit({ min: 1, max: 10, step: 3 });
     expect([1, 4, 7, 10]).toContain(sliderValueAt(hit, 50));
+  });
+});
+
+/**
+ * The hover test and the press test are ONE arithmetic, and this is what says so.
+ *
+ * `getWidgetSocketIdAt` exists because the press path's `getWidgetAt` allocates — a box per
+ * candidate socket and a hit object per answer — and the hover path runs on every pointermove. The
+ * cheap version therefore reads the box through `readWidgetBoxInto`, the scratch spelling of the
+ * same function `getWidgetAt` calls. Two spellings of one rectangle is exactly the shape that put
+ * a socket dot 40px from anything that would answer a press, so the agreement is pinned here
+ * rather than left to whoever edits one of them next.
+ *
+ * A grid, not three chosen points: the interesting failures are at the edges — the gap between two
+ * widget rows, the label gutter to the left of a box, the padding at the right — and a law that
+ * sampled centres would agree in exactly the places where nothing can go wrong.
+ */
+describe('the hover test and the press test agree everywhere', () => {
+  const mixed = () =>
+    node([
+      { id: 'label', name: 'Label', type: 'string' },
+      { id: 'amount', name: 'Amount', type: 'number' },
+      { id: 'on', name: 'On', type: 'boolean' },
+    ]);
+  const types: Record<string, SocketType> = {
+    ...socketTypes,
+    string: { name: 'String', color: '#000', widget: 'text' },
+  };
+
+  it('answers the same socket at every point on a grid across the node', () => {
+    const entity = mixed();
+    let insideCount = 0;
+    let outsideCount = 0;
+    for (let x = -20; x <= 280; x += 7) {
+      for (let y = -20; y <= 200; y += 5) {
+        const hit = getWidgetAt(entity, x, y, types, layout, new Set(), new Map());
+        const id = getWidgetSocketIdAt(entity, x, y, types, layout, new Set());
+        expect(id).toBe(hit?.socketId ?? null);
+        if (id === null) outsideCount++;
+        else insideCount++;
+      }
+    }
+    // Vacuity guard: a grid that never landed on a widget, or never landed off one, would agree
+    // trivially. Both sides of the boundary have to be sampled for the agreement to mean anything.
+    expect(insideCount).toBeGreaterThan(50);
+    expect(outsideCount).toBeGreaterThan(50);
+  });
+
+  it('reports every one of the three sockets somewhere on that grid', () => {
+    // The other half of the vacuity guard: agreement on a fixture where only the first widget is
+    // ever reachable would say nothing about the loop that walks the rest.
+    const entity = mixed();
+    const seen = new Set<string>();
+    for (let x = -20; x <= 280; x += 7) {
+      for (let y = -20; y <= 200; y += 5) {
+        const id = getWidgetSocketIdAt(entity, x, y, types, layout, new Set());
+        if (id) seen.add(id);
+      }
+    }
+    expect([...seen].sort()).toEqual(['amount', 'label', 'on']);
+  });
+
+  it('skips a connected input, exactly as the press path does', () => {
+    // A connected socket has no widget — its value comes down the edge — so hovering one must not
+    // light a control that a press would refuse to answer.
+    const entity = mixed();
+    const p = insideWidget(entity, 1);
+    const connected = new Set(['n1:amount:input']);
+    expect(getWidgetSocketIdAt(entity, p.x, p.y, types, layout, connected)).toBeNull();
+    expect(getWidgetSocketIdAt(entity, p.x, p.y, types, layout, new Set())).toBe('amount');
+  });
+
+  it('skips a socket whose type resolves no widget', () => {
+    const entity = node([{ id: 'passthrough', name: 'Pass', type: 'opaque' }]);
+    const p = insideWidget(entity, 0);
+    // `opaque` is not in the map, so nothing resolves a widget for it.
+    expect(getWidgetSocketIdAt(entity, p.x, p.y, types, layout, new Set())).toBeNull();
+    // And the fixture is otherwise a hit: the same point on a socket that DOES resolve one answers.
+    const withWidget = node([{ id: 'passthrough', name: 'Pass', type: 'string' }]);
+    expect(getWidgetSocketIdAt(withWidget, p.x, p.y, types, layout, new Set())).toBe('passthrough');
+  });
+
+  it('answers null for an entity with no inputs at all', () => {
+    expect(getWidgetSocketIdAt(node(undefined), 50, 50, types, layout, new Set())).toBeNull();
+  });
+});
+
+describe('a hit carries the socket name the GL layer paints', () => {
+  it('reports socket.name, not socket.id', () => {
+    // The borrowed DOM input names itself from this. It used to name itself `socketId` — the
+    // consumer's internal key — so a screen reader announced 'amt' where the screen said 'Amount'.
+    const entity = node([{ id: 'amt', name: 'Amount', type: 'number' }], { amt: 5 });
+    const p = insideWidget(entity, 0);
+    const hit = getWidgetAt(entity, p.x, p.y, socketTypes, layout, new Set(), new Map());
+    expect(hit?.socketName).toBe('Amount');
+    expect(hit?.socketId).toBe('amt');
   });
 });

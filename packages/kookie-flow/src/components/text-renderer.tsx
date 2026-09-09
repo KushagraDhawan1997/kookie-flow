@@ -37,7 +37,12 @@ import {
 } from '../utils/text-layout';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
-import type { EdgeType, EdgeLabelConfig } from '../types';
+import { getWidgetBox } from '../utils/widget-geometry';
+import { resolveWidgetConfig } from '../utils/widgets';
+import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { widgetValueText, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
+import { measureText } from '../utils/text-layout';
+import type { EdgeType, EdgeLabelConfig, SocketType } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
@@ -88,16 +93,23 @@ const CULL_HYSTERESIS = 0.15;
  * Which LOD gates the current zoom passes, as a bitmask.
  *
  * The hysteresis above answers "did the camera leave the rect we collected for"; it says nothing
- * about zoom, and zoom has three cliffs where the ANSWER changes without the rect changing —
+ * about zoom, and zoom has four cliffs where the ANSWER changes without the rect changing —
  * zooming in past 0.35 has to make socket labels appear even though the visible rect only shrank
  * and is therefore still contained. Comparing the bucket catches every crossing in both
  * directions with one integer compare.
+ *
+ * THE FOURTH BIT WAS ADDED WITH THE WIDGET VALUES AND IS NOT OPTIONAL. Widget readouts have their
+ * own floor at WIDGET_VALUE_MIN_ZOOM, and zooming IN only shrinks the visible rect — which stays
+ * inside the rect the set was collected for, so nothing else here would ever ask again. Measured:
+ * zoom out past 0.5 and back to 1 and every field on every node stayed blank until something
+ * unrelated marked the layer dirty. A gate with no bit is a gate that only closes.
  */
 export function lodBucket(zoom: number): number {
   return (
     (zoom >= MIN_TEXT_ZOOM ? 1 : 0) |
     (zoom >= MIN_EDGE_ZOOM ? 2 : 0) |
-    (zoom >= MIN_SOCKET_ZOOM ? 4 : 0)
+    (zoom >= MIN_SOCKET_ZOOM ? 4 : 0) |
+    (zoom >= WIDGET_VALUE_MIN_ZOOM ? 8 : 0)
   );
 }
 
@@ -382,6 +394,20 @@ export interface MultiWeightTextRendererProps {
   showEdgeLabels?: boolean;
   /** Default edge type for label positioning */
   defaultEdgeType?: EdgeType;
+  /**
+   * Socket type definitions, for resolving which widget a socket gets.
+   *
+   * Widget chrome is drawn by `widgets-gl.tsx` and its VALUES are drawn here, so both layers have
+   * to resolve the same widget from the same socket. Optional only so the legacy single-weight
+   * API below can mount without one; with none, no widget prints a value.
+   */
+  socketTypes?: Record<string, SocketType>;
+  /** Print each unconnected widget's value. Follows `showWidgets` on the canvas. */
+  showWidgetValues?: boolean;
+  /** Default entity width when the entity does not state one. Must match the widget layer's. */
+  defaultEntityWidth?: number;
+  /** Width reserved for a socket's label before its widget starts. Must match the widget layer's. */
+  socketLabelWidth?: number;
 }
 
 /**
@@ -409,6 +435,10 @@ export function MultiWeightTextRenderer({
   showSocketLabels = true,
   showEdgeLabels = true,
   defaultEdgeType = 'bezier',
+  socketTypes,
+  showWidgetValues = true,
+  defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
+  socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: MultiWeightTextRendererProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
@@ -489,8 +519,17 @@ export function MultiWeightTextRenderer({
 
       if (!regularFont) return { regular, semibold };
 
-      const { entities, edges, entityMap, selectedEntityIds, stackOrder, hiddenEntityIds } =
-        store.getState();
+      const {
+        entities,
+        edges,
+        entityMap,
+        selectedEntityIds,
+        stackOrder,
+        hiddenEntityIds,
+        connectedSockets,
+        widgetValues,
+        editingWidgetKey,
+      } = store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
@@ -638,6 +677,120 @@ export function MultiWeightTextRenderer({
         }
       }
 
+      /**
+       * Widget values.
+       *
+       * `widgets-gl.tsx` draws a widget's chrome — the well, the track, the tick, the chevron —
+       * and says in its own docstring that the value belongs here rather than re-implemented in
+       * its shader. This is that contribution, and until it was written every field on every node
+       * showed an empty box: the DOM controls that used to print their own values were deleted
+       * with the migration and nothing replaced them.
+       *
+       * A FOURTH BLOCK rather than folded into the socket-label loop above, even though both walk
+       * the same inputs. The names are gated on `showSocketLabels` and MIN_SOCKET_ZOOM; the values
+       * have their own flag and a HIGHER floor, and fusing them would tie a value to whether its
+       * name is shown and print 12px readouts at a zoom where they are 4px of mush.
+       *
+       * The floor is the glyph budget's main lever: this adds text to every widget on every
+       * visible node, and the frames with the most visible nodes are exactly the zoomed-out ones.
+       * See WIDGET_VALUE_MIN_ZOOM.
+       */
+      if (
+        showWidgetValues &&
+        socketTypes &&
+        zoom >= WIDGET_VALUE_MIN_ZOOM &&
+        regularGlyphMap.size > 0
+      ) {
+        const glyphScale = 12 / regularFont.metrics.info.size;
+        for (const entity of entities) {
+          if (hiddenEntityIds.has(entity.id)) continue;
+          // Not `entity.inputs ?? []` — that mints an empty array for every input-less entity in
+          // the graph, on every dirty frame, purely to ask its length. Same note widgets-gl carries.
+          const inputs = entity.inputs;
+          if (!inputs || inputs.length === 0) continue;
+
+          const width = entity.width ?? defaultEntityWidth;
+          const entityLayout = getEntitySocketLayout(entity, socketLayout);
+          const height = entity.height ?? entityLayout.computedHeight;
+          if (
+            entity.position.x + width < viewLeft - cullPadding ||
+            entity.position.x > viewRight + cullPadding ||
+            entity.position.y + height < viewTop - cullPadding ||
+            entity.position.y > viewBottom + cullPadding
+          ) {
+            continue;
+          }
+
+          const depth =
+            entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label;
+          const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
+
+          for (let i = 0; i < inputs.length; i++) {
+            const socket = inputs[i];
+            // A connected socket has no widget — its value comes down the edge. The store keys
+            // this set per direction, so the suffix is part of the key.
+            if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+            const key = widgetKey(entity.id, socket.id);
+            // The borrowed input owns this box for the length of an edit and prints the value
+            // itself; see the store field for why the suppression is stated rather than left to
+            // the overlay's opacity.
+            if (key === editingWidgetKey) continue;
+            const config = resolveWidgetConfig(socket, socketTypes);
+            if (!config) continue;
+            const box = getWidgetBox(entity, i, socketLayout, defaultEntityWidth, socketLabelWidth);
+            if (!box) continue;
+            const value = readWidgetValue(
+              widgetValues,
+              key,
+              values?.[socket.id] ?? config.defaultValue
+            );
+            const placed = widgetValueText(config, value, box);
+            if (!placed) continue;
+
+            /**
+             * MEASURE FIRST, TRUNCATE ONLY IF IT DOES NOT FIT — and that order is load-bearing
+             * rather than a micro-optimisation. `truncateText` memoises on
+             * `text:maxWidth:fontSize` and, at a thousand entries, evicts by building an array of
+             * every key. A slider drag mints a new value string on every pointermove, so routing
+             * readouts through that cache churns it and puts an array-of-1000 allocation inside a
+             * gesture. `measureText` allocates nothing, and a numeric readout never needs cutting.
+             */
+            const fits =
+              measureText(placed.text, regularGlyphMap, regularKerningMap) * glyphScale <=
+              placed.maxWidth;
+            const text = fits
+              ? placed.text
+              : truncateText(
+                  placed.text,
+                  placed.maxWidth,
+                  12,
+                  regularFont.metrics.info.size,
+                  regularGlyphMap,
+                  regularKerningMap
+                );
+
+            regular.push({
+              text,
+              // Centred on the FIRST row of a multi-row widget rather than on the whole box, so a
+              // three-row textarea reads from its top line like the input that replaces it. The -7
+              // is the same visual centring the socket labels above use.
+              position: [
+                placed.x,
+                box.y + Math.min(box.height, socketLayout.widgetHeight) / 2 - 7,
+                depth,
+              ],
+              fontSize: 12,
+              // The value is CONTENT, like the entity header, not chrome like the socket's name —
+              // and neutral-12 is exactly what the borrowed input paints with, so opening an edit
+              // does not change the ink. A placeholder is not content, and takes the muted ink.
+              color: placed.muted ? secondaryTextColor : primaryTextColor,
+              anchor: placed.anchor,
+              fontWeight: 'regular',
+            });
+          }
+        }
+      }
+
       // Edge labels (regular)
       if (showEdgeLabels && zoom >= MIN_EDGE_ZOOM) {
         for (const edge of edges) {
@@ -710,6 +863,10 @@ export function MultiWeightTextRenderer({
       config,
       style,
       socketLayout,
+      showWidgetValues,
+      socketTypes,
+      defaultEntityWidth,
+      socketLabelWidth,
     ]
   );
 
@@ -746,6 +903,29 @@ export function MultiWeightTextRenderer({
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubStack = store.subscribe((s) => s.stackVersion, markDirty);
 
+    /**
+     * Widget values, which are ENTITY DATA and therefore invisible to every subscription above.
+     *
+     * `applyEntityChanges` bumps no version counter for a data-only change — it swaps the entities
+     * array and nothing else — and `setWidgetValue` bumps only `widgetValuesVersion`. So before
+     * these four lines a value typed into a field, or dragged on a slider, or written by the
+     * consumer, never repainted: the glyphs stayed on whatever the last position change had
+     * collected. The list is copied from widgets-gl.tsx, which subscribes to exactly the same set
+     * for exactly the same reason — the two layers draw two halves of one widget and must not
+     * disagree about when it changed.
+     *
+     * The entities subscription fires on every frame of a drag as well, since the store rebuilds
+     * the array there — but `positionVersion` has already set the flag on that frame, so it costs
+     * one boolean write and no extra collect.
+     */
+    const unsubEntities = store.subscribe((s) => s.entities, markDirty);
+    // What the person just set, ahead of the consumer echoing it back.
+    const unsubWidgetValues = store.subscribe((s) => s.widgetValuesVersion, markDirty);
+    // A value stops being shown the moment an edge lands on its socket.
+    const unsubConnected = store.subscribe((s) => s.connectedSockets, markDirty);
+    // Suppression under a borrowed input, on and off.
+    const unsubEditingWidget = store.subscribe((s) => s.editingWidgetKey, markDirty);
+
     return () => {
       unsubEntityCount();
       unsubPositions();
@@ -754,6 +934,10 @@ export function MultiWeightTextRenderer({
       unsubEdges();
       unsubSelection();
       unsubStack();
+      unsubEntities();
+      unsubWidgetValues();
+      unsubConnected();
+      unsubEditingWidget();
     };
   }, [store, rebuildSocketIndexMap]);
 

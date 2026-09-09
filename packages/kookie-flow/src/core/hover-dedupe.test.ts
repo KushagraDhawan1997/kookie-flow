@@ -98,6 +98,85 @@ describe('hovering a socket', () => {
   });
 });
 
+/**
+ * The widget hover is the same law, and it needs its own guard rather than the socket one's.
+ *
+ * A widget handle carries two fields where a socket handle carries three, and it is set from a
+ * different call site — the pointermove block tests the entity the quadtree named and mints a
+ * fresh `{entityId, socketId}` on every move that lands on a control. Everything the GL widget
+ * layer claims about not re-rendering rests on this guard: it subscribes to `hoveredWidget` and
+ * marks itself dirty, so an unguarded set would rebuild every visible widget's instance data
+ * sixty times a second for a pointer that is sitting still.
+ */
+function countingWidgetStore() {
+  const store = createFlowStore({ entities: [withSharedSocketId()] });
+  let notifications = 0;
+  const off = store.subscribe(
+    (s) => s.hoveredWidget,
+    () => {
+      notifications++;
+    }
+  );
+  return { store, off, count: () => notifications };
+}
+
+describe('hovering a widget', () => {
+  it('a fresh handle for the same widget notifies nobody', () => {
+    const { store, off, count } = countingWidgetStore();
+    const handle = () => ({ entityId: 'e1', socketId: 'value' });
+    store.getState().setHoveredWidget(handle());
+    expect(count()).toBe(1);
+    // Sixty pointermoves across one slider, which is about a second of resting on it.
+    for (let i = 0; i < 60; i++) store.getState().setHoveredWidget(handle());
+    off();
+    expect(count()).toBe(1);
+  });
+
+  it('moving to another widget on the same node notifies', () => {
+    const { store, off, count } = countingWidgetStore();
+    store.getState().setHoveredWidget({ entityId: 'e1', socketId: 'value' });
+    store.getState().setHoveredWidget({ entityId: 'e1', socketId: 'other' });
+    off();
+    expect(count()).toBe(2);
+  });
+
+  it('leaving a widget notifies', () => {
+    // Over-fixing guard: a dedupe that swallowed the null would leave a control lit after the
+    // pointer had gone, which is exactly the stuck-hover the socket version of this law exists for.
+    const { store, off, count } = countingWidgetStore();
+    store.getState().setHoveredWidget({ entityId: 'e1', socketId: 'value' });
+    store.getState().setHoveredWidget(null);
+    off();
+    expect(count()).toBe(2);
+  });
+
+  it('null to null notifies nobody', () => {
+    // The common case by a distance: most pointermoves are not over a control.
+    const { store, off, count } = countingWidgetStore();
+    for (let i = 0; i < 30; i++) store.getState().setHoveredWidget(null);
+    off();
+    expect(count()).toBe(0);
+  });
+
+  it('the same socket id on a different entity is a different widget', () => {
+    // Two nodes of the same kind side by side share every socket id they have.
+    const { store, off, count } = countingWidgetStore();
+    store.getState().setHoveredWidget({ entityId: 'e1', socketId: 'value' });
+    store.getState().setHoveredWidget({ entityId: 'e2', socketId: 'value' });
+    off();
+    expect(count()).toBe(2);
+  });
+
+  it('the store still reports what is hovered', () => {
+    // Deduping must not turn into not-storing: the renderer reads this field, it does not
+    // accumulate the notifications.
+    const { store, off } = countingWidgetStore();
+    store.getState().setHoveredWidget({ entityId: 'e1', socketId: 'value' });
+    off();
+    expect(store.getState().hoveredWidget).toEqual({ entityId: 'e1', socketId: 'value' });
+  });
+});
+
 describe('an unknown change type is not swallowed', () => {
   it('warns rather than dropping it in silence', () => {
     // `applyEntityChanges` takes a public union and ignored anything outside it without a word, so
