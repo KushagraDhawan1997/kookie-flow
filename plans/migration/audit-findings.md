@@ -132,9 +132,29 @@ the uniform-row-height formula — so a minimap rectangle is the wrong height fo
 stacked socket, a multi-row widget or an explicit socket height. Different blast radius, so it is
 named in the source law's expectations rather than fixed under cover of this one.
 
-**T3 — the frame loop has no granularity.** Edges and sockets are never viewport-culled; every
-pointermove during a connection drag triggers a full rebuild of every socket in the graph. The
-instrument for this now exists (`harness/spikes/counts.mjs`); the nine commits do not.
+**T3 — the frame loop has no granularity, and here is the number.** The instrument now exists
+(`harness/spikes/counts.mjs`); the nine commits do not. Baseline, per FRAME, 1280x800 viewport:
+
+| interaction | inst/f @ 200 | inst/f @ 2000 | alloc B/f @ 200 | alloc B/f @ 2000 |
+|---|---|---|---|---|
+| pan | 2,893 | 24,172 | 9,364 | 3,186 |
+| zoom | 2,823 | 24,198 | 954 | 905 |
+| drag-node | 2,839 | 24,328 | 4,974 | 35,646 |
+| connection-drag | 2,840 | 24,328 | 500 | 945 |
+
+**Per-frame instance count scales with the size of the graph, not with what is on screen** — 10x
+the entities, 8.5x the instances, on a viewport showing perhaps twenty nodes either way. That is
+the culling finding measured rather than asserted, and it is the number C17 has to move.
+
+The drag allocation profile names the second one. At 2000 entities a node drag allocates ~35 KB
+per frame, and the top allocators are `set`, `insert`, `getKey`, `rebuildDerivedState` and
+`buildAdjacencyIndex` — a drag changes no edges, so the adjacency index has no business being in
+that list at all. This is T4 seen from the allocation side: the controlled-component contract
+pushes a fresh `entities` array back through `setEntities`, which rebuilds the whole derived state.
+
+React commits are 2-4 per GESTURE, not per frame, so the "zero re-renders during interactions"
+rule holds in the sense that matters. Read the idle row with care — it sampled only 7 frames at
+2000 entities, which is too few to lean on.
 
 **Dead mechanisms that read as live ones.** `noUnusedLocals` is on, after deleting 23 unused
 locals. Four of them were refs in `edges.tsx` carrying confident comments about dirty tracking —
