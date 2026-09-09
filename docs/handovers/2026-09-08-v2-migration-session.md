@@ -197,15 +197,50 @@ everything sits, so it has been harmless — I nearly wrote a test around the wr
 now uses the code's version and has a case at zoom 0.5 where they disagree. I have not edited
 `CLAUDE.md` because it is your instruction file.
 
-## Still running when I wrote this
+## The audit landed
 
-The ultracode audit — 6 subsystem maps, 7 audit lenses, batched adversarial verification, then the
-report and a Phase-0 harness design. It is slow because this box caps agent concurrency at 2.
+57 agents, 214 raw findings from 7 lenses, 177 after dedup, **143 survived adversarial refutation**
+(34 refuted and excluded). Full summary in `plans/migration/audit-findings.md`.
 
-**One caveat for whoever reads its output:** the audit started before the label deletion, so the
-`dom-overlay` map describes containers that no longer exist. The audit lenses read files fresh, so
-their findings are against current code, but treat anything mentioning `CrispLabelsContainer`,
-`ScaledContainer`, `SocketLabelsContainer` or `EdgeLabelsContainer` as void.
+**Its headline is a measurement, not an opinion.** Exactly one file had tests — `graph.ts`, at 100%
+function coverage — and it contributed **zero** of the 143 findings. Every defect lives in a file
+with no coverage. Nine confirmed store defects, and 149/149 stayed green.
+
+It also caught my own fixture: it sets `width: 200, height: 120` on every entity, which masks both
+a 240-vs-200 index/paint mismatch and the entire auto-height divergence. Widening it is named as
+the highest-leverage remaining commit and I have **not** done it yet.
+
+**Ten of its findings are fixed on this branch**, including six criticals. The most striking:
+
+- `radius="full"` erased every node. No clamp in the rounded-box SDF, so past `min(b.x, b.y)` every
+  fragment falls outside the shape. Node-body ink 170/170 → **3/170**.
+- The library was not reentrant — a second `<KookieFlow>` killed dragging in the first.
+- A stale id index appended an entity with `id === undefined` to your document, then self-healed on
+  the next add or remove. That is the profile of a bug that survives every manual test.
+- A `parentId` cycle set through the public API **hangs the tab**. The regression test does not
+  fail against the old code; it times out.
+- **Theme changes never reached WebGL at all** — the observer watched five `data-*` attributes and
+  not `class`, and v1 carries appearance in className. Fixing that exposed three more: node,
+  socket and selection-outline meshes are reconstructed on a theme change and nobody re-initialised
+  them.
+
+One caveat if you read the raw audit: it started before the label deletion, so its `dom-overlay`
+map describes containers that no longer exist. The lenses read files fresh, so their findings are
+against current code — but treat anything naming `CrispLabelsContainer`, `ScaledContainer`,
+`SocketLabelsContainer` or `EdgeLabelsContainer` as void.
+
+## A second instrument lesson, and this one cost real time
+
+My first theme check compared GL ink across a light→dark flip with a 10% threshold. It **passed
+with the socket fix deliberately sabotaged**. Ink cannot separate "the geometry is gone" from "the
+colours legitimately changed", and any threshold that tells them apart is fitted to noise.
+
+What works is a **round trip** — flip light → dark → light and require the same geometry. Colour
+differences cancel; no threshold needed. Plus a **null control**: sample twice with identical waits
+and no flip, to prove the measurement is stable before trusting it.
+
+The round trip immediately found a third regression the single flip had missed: the selection
+outline came back as a partial rectangle and never recovered, 382px permanently lost.
 
 ## What I would do next
 
