@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -318,19 +318,35 @@ export function Entities() {
   const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
   const fgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
 
-  // Reset initialized flag when capacity changes (meshes will be recreated via key)
-  useEffect(() => {
-    initializedRef.current = false;
-  }, [capacity]);
-
-  // Initialize attributes when meshes are ready
-  useEffect(() => {
-    if (!bgMeshRef.current || !fgMeshRef.current) return;
-    initMeshBuffers(bgMeshRef.current, bgBuffers);
-    initMeshBuffers(fgMeshRef.current, fgBuffers);
-    initializedRef.current = true;
-    dirtyRef.current = true;
-  }, [bgBuffers, fgBuffers]);
+  /**
+   * Initialise on ATTACH, not in an effect keyed on the buffers.
+   *
+   * The effect this replaces depended on [bgBuffers, fgBuffers], which change only with capacity.
+   * But `args={[geometry, material, capacity]}` makes R3F reconstruct the InstancedMesh whenever
+   * `material` changes — and `material` is memoised on `resolvedStyle`, so every THEME CHANGE
+   * built a fresh mesh that nobody ever initialised. Its instance attributes were missing and the
+   * nodes went with them: measured, a light→dark flip took node-body ink from 170/170 sampled
+   * pixels to 41/170.
+   *
+   * A callback ref fixes the mechanism rather than the cause: whatever the reason a new mesh
+   * arrives, it gets its buffers. `initMeshBuffers` wraps the same typed arrays in fresh
+   * InstancedBufferAttributes, which is exactly what the new mesh needs.
+   */
+  const attach = useCallback(
+    (which: 'bg' | 'fg') => (mesh: THREE.InstancedMesh | null) => {
+      const ref = which === 'bg' ? bgMeshRef : fgMeshRef;
+      ref.current = mesh;
+      if (mesh) {
+        initMeshBuffers(mesh, which === 'bg' ? bgBuffers : fgBuffers);
+      }
+      // Only claim initialised once BOTH meshes are attached; useFrame reads both.
+      initializedRef.current = Boolean(bgMeshRef.current && fgMeshRef.current);
+      dirtyRef.current = true;
+    },
+    [bgBuffers, fgBuffers]
+  );
+  const attachBg = useMemo(() => attach('bg'), [attach]);
+  const attachFg = useMemo(() => attach('fg'), [attach]);
 
   // Subscribe to store changes
   useEffect(() => {
@@ -483,14 +499,14 @@ export function Entities() {
     <>
       <instancedMesh
         key={`bg-${capacity}`}
-        ref={bgMeshRef}
+        ref={attachBg}
         args={[bgGeometry, material, capacity]}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
       />
       <instancedMesh
         key={`fg-${capacity}`}
-        ref={fgMeshRef}
+        ref={attachFg}
         args={[fgGeometry, material, capacity]}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}

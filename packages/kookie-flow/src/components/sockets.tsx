@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -279,18 +279,33 @@ export function Sockets({
     };
   }, []);
 
-  // Reset initialized flag on capacity change
-  useEffect(() => {
-    initializedRef.current = false;
-  }, [capacity]);
-
-  // Initialize shared attributes on both meshes
-  useEffect(() => {
-    if (!bgMeshRef.current || !fgMeshRef.current) return;
-    initSharedSocketBuffers(bgMeshRef.current, fgMeshRef.current, sharedBuffers);
-    initializedRef.current = true;
-    dirtyRef.current = true;
-  }, [sharedBuffers]);
+  /**
+   * Initialise on ATTACH, for the same reason nodes.tsx does.
+   *
+   * `args={[geometry, material, capacity]}` makes R3F reconstruct the InstancedMesh whenever the
+   * material changes, and the materials are memoised on the theme — so a theme change built fresh
+   * meshes that the [sharedBuffers] effect never touched. Here that also destroys the
+   * `fgMesh.instanceMatrix = bgMesh.instanceMatrix` aliasing that the two-layer split depends on,
+   * so selected sockets stop being drawn and never come back.
+   *
+   * Both meshes must be present before initialising, because the aliasing needs the pair.
+   */
+  const attach = useCallback(
+    (which: 'bg' | 'fg') => (mesh: THREE.InstancedMesh | null) => {
+      const ref = which === 'bg' ? bgMeshRef : fgMeshRef;
+      ref.current = mesh;
+      if (bgMeshRef.current && fgMeshRef.current) {
+        initSharedSocketBuffers(bgMeshRef.current, fgMeshRef.current, sharedBuffers);
+        initializedRef.current = true;
+        dirtyRef.current = true;
+      } else {
+        initializedRef.current = false;
+      }
+    },
+    [sharedBuffers]
+  );
+  const attachBg = useMemo(() => attach('bg'), [attach]);
+  const attachFg = useMemo(() => attach('fg'), [attach]);
 
   // Store subscriptions
   useEffect(() => {
@@ -702,14 +717,14 @@ export function Sockets({
     <>
       <instancedMesh
         key={`bg-${capacity}`}
-        ref={bgMeshRef}
+        ref={attachBg}
         args={[bgGeometry, bgMaterial, capacity]}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
       />
       <instancedMesh
         key={`fg-${capacity}`}
-        ref={fgMeshRef}
+        ref={attachFg}
         args={[fgGeometry, fgMaterial, capacity]}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}

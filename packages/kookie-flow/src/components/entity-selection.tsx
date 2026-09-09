@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -171,13 +171,25 @@ export function EntitySelection() {
     paddingAttr: null as THREE.InstancedBufferAttribute | null,
   }), [outlineCapacity]);
 
-  // Reset initialized flag on buffer change
-  useEffect(() => { outlineInitializedRef.current = false; }, [outlineBuffers]);
-
-  // Initialize outline attributes
-  useEffect(() => {
-    if (!outlineMeshRef.current) return;
-    const mesh = outlineMeshRef.current;
+  /**
+   * Initialise on ATTACH — the third instance of this bug, and the one a person would notice.
+   *
+   * `outlineMaterial` is memoised on the theme (selectedColor, hoverColor, borderRadius), and
+   * `args={[geometry, material, capacity]}` makes R3F reconstruct the mesh when it changes, while
+   * this effect was keyed on [outlineBuffers]. So a theme change left the selection outline's
+   * instance attributes unset — measured through a light -> dark -> light round trip, the outline
+   * came back as a partial rectangle and never recovered.
+   *
+   * The round trip is what caught it: comparing ink across a single flip cannot separate "the
+   * geometry is gone" from "the colours legitimately changed", and a null control proved the
+   * measurement itself was stable.
+   */
+  const attachOutline = useCallback((mesh: THREE.InstancedMesh | null) => {
+    outlineMeshRef.current = mesh;
+    if (!mesh) {
+      outlineInitializedRef.current = false;
+      return;
+    }
 
     outlineBuffers.sizeAttr = new THREE.InstancedBufferAttribute(outlineBuffers.sizes, 2);
     outlineBuffers.sizeAttr.setUsage(THREE.DynamicDrawUsage);
@@ -273,17 +285,17 @@ export function EntitySelection() {
   // Handle buffer — no per-instance attributes, just instance matrices
   // (all handles same size/color, determined by uniform)
 
-  // Reset initialized flag on capacity change
-  useEffect(() => { handleInitializedRef.current = false; }, [handleCapacity]);
-
-  // Initialize handle mesh
-  useEffect(() => {
-    if (!handleMeshRef.current) return;
-    const mesh = handleMeshRef.current;
+  /** Same reconstruction hazard as the outline mesh above. */
+  const attachHandle = useCallback((mesh: THREE.InstancedMesh | null) => {
+    handleMeshRef.current = mesh;
+    if (!mesh) {
+      handleInitializedRef.current = false;
+      return;
+    }
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     handleInitializedRef.current = true;
     handleDirtyRef.current = true;
-  }, [handleCapacity]);
+  }, []);
 
   // ============================================================================
   // Store subscriptions
@@ -537,14 +549,14 @@ export function EntitySelection() {
     <>
       <instancedMesh
         key={`outline-${outlineCapacity}`}
-        ref={outlineMeshRef}
+        ref={attachOutline}
         args={[outlineGeometry, outlineMaterial, outlineCapacity]}
         frustumCulled={false}
         renderOrder={7}
       />
       <instancedMesh
         key={`handle-${handleCapacity}`}
-        ref={handleMeshRef}
+        ref={attachHandle}
         args={[handleGeometry, handleMaterial, handleCapacity]}
         frustumCulled={false}
         renderOrder={8}

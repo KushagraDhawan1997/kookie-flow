@@ -62,7 +62,8 @@
     "harness:spike:labels": "node harness/spikes/label-zoom.mjs",
     "harness:behaviors": "node harness/behaviors.mjs",
     "harness:spike:formats": "node harness/spikes/color-formats.mjs",
-    "harness:perf": "node harness/spikes/perf-baseline.mjs"
+    "harness:perf": "node harness/spikes/perf-baseline.mjs",
+    "harness:spike:theme": "node harness/spikes/theme-flip.mjs"
   },
   "dependencies": {
     "zustand": "^5.0.10"

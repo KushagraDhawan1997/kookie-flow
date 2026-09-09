@@ -505,16 +505,27 @@ export function useThemeTokens(): ThemeTokens {
     const root = document.querySelector('.radix-themes') ?? document.documentElement;
 
     // Compare tokens to avoid unnecessary re-renders
+    /**
+     * Compare every token, not a sample of four.
+     *
+     * This used to check appearance, --space-3, --radius-4 and --gray-6 only, which meant an
+     * accent-only change was swallowed and the GL layer kept painting the previous accent. It runs
+     * on a theme mutation, never per frame, so walking the whole record is free.
+     */
     const tokensEqual = (a: ThemeTokens, b: ThemeTokens): boolean => {
-      // Quick check on appearance first (most likely to change)
       if (a.appearance !== b.appearance) return false;
-      // Check a few critical numeric values
-      if (a['--space-3'] !== b['--space-3']) return false;
-      if (a['--radius-4'] !== b['--radius-4']) return false;
-      // Check a color (arrays need element comparison)
-      const aGray = a['--gray-6'];
-      const bGray = b['--gray-6'];
-      if (aGray[0] !== bGray[0] || aGray[1] !== bGray[1] || aGray[2] !== bGray[2]) return false;
+      for (const key of Object.keys(a) as Array<keyof ThemeTokens>) {
+        const av = a[key];
+        const bv = b[key];
+        if (Array.isArray(av)) {
+          if (!Array.isArray(bv) || av.length !== bv.length) return false;
+          for (let i = 0; i < av.length; i++) {
+            if (av[i] !== bv[i]) return false;
+          }
+        } else if (av !== bv) {
+          return false;
+        }
+      }
       return true;
     };
 
@@ -543,11 +554,21 @@ export function useThemeTokens(): ThemeTokens {
     observer.observe(root, {
       attributes: true,
       attributeFilter: [
+        // `class` is the important one and it was missing: Kookie UI v1's Theme carries the
+        // light/dark appearance in className, not in a data attribute, and `detectAppearance`
+        // reads `classList`. Without it a dark-mode toggle repainted every DOM control and left
+        // every GL colour at the previous appearance's values.
+        'class',
         'data-accent-color',
         'data-gray-color',
         'data-radius',
         'data-scaling',
         'data-is-root-theme',
+        'data-font-family',
+        'data-material',
+        // v2 carries appearance and contrast as data attributes on the element it stamps.
+        'data-appearance',
+        'data-contrast',
       ],
     });
 
