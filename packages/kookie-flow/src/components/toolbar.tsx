@@ -28,11 +28,16 @@ import {
   Flex,
   TextField,
   Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
   SegmentedControl,
+  SegmentedItem,
   Separator,
-  ToggleIconButton,
-} from '@kushagradhawan/kookie-ui';
-import type { CardProps } from '@kushagradhawan/kookie-ui';
+  Toggle,
+  iconStroke,
+} from '@kookie-ui/react';
+import type { CardProps } from '@kookie-ui/react';
 import { useFlowStoreApi } from './context';
 import { getInteractionMode, observeInteractionMode } from './interaction-state';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -367,7 +372,7 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       data-kookie-flow-toolbar=""
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <Card size="1" variant="classic" {...cardProps}>
+      <Card size="1" {...cardProps}>
         {toolbarContent}
       </Card>
     </div>
@@ -401,6 +406,21 @@ function getSelectedEntitiesWithToolbar(
     }
   }
   return result;
+}
+
+/**
+ * The toolbar's vertical tick.
+ *
+ * A Separator takes its length from whatever contains it, and a vertical one stretches to the
+ * full height of the row it sits in — the whole toolbar. The 16px box is what the old `size="1"`
+ * meant, stated in the one place it can now be stated.
+ */
+function ToolbarDivider() {
+  return (
+    <Flex height="16px">
+      <Separator orientation="vertical" />
+    </Flex>
+  );
 }
 
 function resolveToolbarContent(
@@ -470,7 +490,7 @@ function resolveToolbarContent(
       ))}
       {extraFn && (
         <>
-          {defaultWidgets.length > 0 && <Separator orientation="vertical" size="1" />}
+          {defaultWidgets.length > 0 && <ToolbarDivider />}
           {extraFn(renderProps)}
         </>
       )}
@@ -491,7 +511,19 @@ const iconProps = {
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.5,
+  /**
+   * The design system's own stroke, not a number of ours.
+   *
+   * A stroke is stated in VIEWBOX units, so the painted weight is `stroke x box / viewBox` — and
+   * these glyphs are drawn on the same 24 grid `iconGrid` names. At the hardcoded 1.5 they painted
+   * lighter than every glyph beside them in a v2 app, which is exactly the mismatch v2 exports
+   * `iconStroke` to prevent: it ships no icon set, so a consumer's glyphs and the library's have
+   * to be reconciled from the consumer's side or not at all.
+   *
+   * `width`/`height` stay for the same reason they always applied: inside a `.kui-control` the
+   * shared icon-box rule sizes the glyph from the size index, and outside one these are the box.
+   */
+  strokeWidth: iconStroke,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
@@ -613,10 +645,9 @@ function ToolbarNumberInput({
   }, [local, value, onChange]);
 
   return (
-    <TextField.Root
+    <TextField
       aria-label={label}
       size="2"
-      variant="soft"
       inputMode="decimal"
       value={local}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
@@ -682,7 +713,15 @@ function ToolbarColorInput({
         width: 24,
         height: 24,
         border: 'none',
-        borderRadius: 'var(--radius-1)',
+        // The MARK band, not the raw palette. `--radius-1` survived the v1 -> v2 rename by name
+        // and lost its meaning with it: in v1 it was a flat 6px, in v2 it is a palette index the
+        // radius axis re-authors per level, and at the default level (`full`) it resolves to
+        // 9999px — this 24x24 swatch would have rendered as a circle, and as a hard square under
+        // `radius="none"`. A colour well is a square control that IS its own mark, so it belongs
+        // on the band the mark family already designed for boxes that are not on the height
+        // ladder: it answers the radius axis (0/2/4/6), caps at 6px rather than rounding away,
+        // and lands on v1's rendered corner exactly at the default.
+        borderRadius: 'var(--radius-mark-2)',
         padding: 0,
         cursor: 'pointer',
         background: 'none',
@@ -690,6 +729,23 @@ function ToolbarColorInput({
     />
   );
 }
+
+/**
+ * A Select resolves the text on its CLOSED trigger from this map and from nothing else — never
+ * from the row that was picked — so a select whose labels differ from its values needs one, or
+ * the trigger paints the raw value ("400", "system-ui") for as long as it is closed.
+ */
+const FONT_WEIGHT_LABELS: Record<string, ReactNode> = {
+  '400': 'Regular',
+  '600': 'Semibold',
+  '700': 'Bold',
+};
+
+const FONT_FAMILY_LABELS: Record<string, ReactNode> = {
+  'system-ui': 'System',
+  serif: 'Serif',
+  monospace: 'Mono',
+};
 
 function BuiltInWidget({
   widget,
@@ -716,13 +772,13 @@ function BuiltInWidget({
     case 'sizingMode': {
       const currentMode = (data.sizingMode as string) ?? 'auto-height';
       content = (
-        <SegmentedControl.Root
+        <SegmentedControl
           size="2"
           aria-label="Sizing mode"
           value={currentMode}
-          onValueChange={(newMode: string) => {
+          onValueChange={(newMode: unknown) => {
             if (!onEntitiesChange) return;
-            const mode = newMode as TextSizingMode;
+            const mode = String(newMode) as TextSizingMode;
             const changes: EntityChange[] = [];
 
             for (const entity of entities) {
@@ -775,16 +831,16 @@ function BuiltInWidget({
             if (changes.length > 0) onEntitiesChange(changes);
           }}
         >
-          <SegmentedControl.Item value="auto-width" iconOnly aria-label="Auto width">
+          <SegmentedItem value="auto-width" aria-label="Auto width">
             <AutoWidthIcon />
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="auto-height" iconOnly aria-label="Auto height">
+          </SegmentedItem>
+          <SegmentedItem value="auto-height" aria-label="Auto height">
             <AutoHeightIcon />
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="fixed" iconOnly aria-label="Fixed size">
+          </SegmentedItem>
+          <SegmentedItem value="fixed" aria-label="Fixed size">
             <FixedSizeIcon />
-          </SegmentedControl.Item>
-        </SegmentedControl.Root>
+          </SegmentedItem>
+        </SegmentedControl>
       );
       break;
     }
@@ -821,56 +877,66 @@ function BuiltInWidget({
 
     case 'fontWeight':
       content = (
-        <Select.Root
+        <Select
           size="2"
+          items={FONT_WEIGHT_LABELS}
           value={String((data.fontWeight as number) ?? 400)}
-          onValueChange={(v: string) => batchUpdate({ fontWeight: Number(v) })}
+          onValueChange={(v) => {
+            // null is a real argument: Base UI clears the value when the mounted option set
+            // changes, and Number(null) is 0 — a font weight of zero, written silently.
+            if (v === null) return;
+            batchUpdate({ fontWeight: Number(v) });
+          }}
         >
-          <Select.Trigger aria-label="Font weight" variant="soft" />
-          <Select.Content>
-            <Select.Item value="400">Regular</Select.Item>
-            <Select.Item value="600">Semibold</Select.Item>
-            <Select.Item value="700">Bold</Select.Item>
-          </Select.Content>
-        </Select.Root>
+          <SelectTrigger aria-label="Font weight" />
+          <SelectContent>
+            <SelectItem value="400">Regular</SelectItem>
+            <SelectItem value="600">Semibold</SelectItem>
+            <SelectItem value="700">Bold</SelectItem>
+          </SelectContent>
+        </Select>
       );
       break;
 
     case 'textAlign':
       content = (
-        <SegmentedControl.Root
+        <SegmentedControl
           size="2"
           aria-label="Text alignment"
           value={(data.textAlign as string) ?? 'left'}
-          onValueChange={(v: string) => batchUpdate({ textAlign: v })}
+          onValueChange={(v: unknown) => batchUpdate({ textAlign: String(v) })}
         >
-          <SegmentedControl.Item value="left" iconOnly aria-label="Align left">
+          <SegmentedItem value="left" aria-label="Align left">
             <AlignLeftIcon />
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="center" iconOnly aria-label="Align centre">
+          </SegmentedItem>
+          <SegmentedItem value="center" aria-label="Align centre">
             <AlignCenterIcon />
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="right" iconOnly aria-label="Align right">
+          </SegmentedItem>
+          <SegmentedItem value="right" aria-label="Align right">
             <AlignRightIcon />
-          </SegmentedControl.Item>
-        </SegmentedControl.Root>
+          </SegmentedItem>
+        </SegmentedControl>
       );
       break;
 
     case 'fontFamily':
       content = (
-        <Select.Root
+        <Select
           size="2"
+          items={FONT_FAMILY_LABELS}
           value={(data.fontFamily as string) ?? 'system-ui'}
-          onValueChange={(v: string) => batchUpdate({ fontFamily: v })}
+          onValueChange={(v) => {
+            if (v === null) return;
+            batchUpdate({ fontFamily: v });
+          }}
         >
-          <Select.Trigger aria-label="Font family" variant="soft" />
-          <Select.Content>
-            <Select.Item value="system-ui">System</Select.Item>
-            <Select.Item value="serif">Serif</Select.Item>
-            <Select.Item value="monospace">Mono</Select.Item>
-          </Select.Content>
-        </Select.Root>
+          <SelectTrigger aria-label="Font family" />
+          <SelectContent>
+            <SelectItem value="system-ui">System</SelectItem>
+            <SelectItem value="serif">Serif</SelectItem>
+            <SelectItem value="monospace">Mono</SelectItem>
+          </SelectContent>
+        </Select>
       );
       break;
 
@@ -886,31 +952,31 @@ function BuiltInWidget({
 
     case 'objectFit':
       content = (
-        <SegmentedControl.Root
+        <SegmentedControl
           size="2"
           aria-label="Object fit"
           value={(data.objectFit as string) ?? 'fill'}
-          onValueChange={(v: string) => batchUpdate({ objectFit: v })}
+          onValueChange={(v: unknown) => batchUpdate({ objectFit: String(v) })}
         >
-          <SegmentedControl.Item value="fill">Fill</SegmentedControl.Item>
-          <SegmentedControl.Item value="cover">Cover</SegmentedControl.Item>
-          <SegmentedControl.Item value="contain">Contain</SegmentedControl.Item>
-        </SegmentedControl.Root>
+          <SegmentedItem value="fill">Fill</SegmentedItem>
+          <SegmentedItem value="cover">Cover</SegmentedItem>
+          <SegmentedItem value="contain">Contain</SegmentedItem>
+        </SegmentedControl>
       );
       break;
 
     case 'aspectLock': {
       const locked = (data.aspectLocked as boolean) ?? true;
       content = (
-        <ToggleIconButton
+        <Toggle
           size="2"
-          variant="soft"
+          iconOnly
           pressed={locked}
           onPressedChange={(v: boolean) => batchUpdate({ aspectLocked: v })}
           aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
         >
           {locked ? <LockIcon /> : <UnlockIcon />}
-        </ToggleIconButton>
+        </Toggle>
       );
       break;
     }
@@ -921,7 +987,7 @@ function BuiltInWidget({
 
   return (
     <>
-      {showSeparator && <Separator orientation="vertical" size="1" />}
+      {showSeparator && <ToolbarDivider />}
       {content}
     </>
   );

@@ -24,8 +24,17 @@ export const NO_OVERRIDE_SENTINEL: RGBColor = [-1, -1, -1];
  * mirrors. Built because the key used to be assembled with a template literal on every entity on
  * every frame.
  */
+/**
+ * A per-entity accent is a HUE, not a meaning, so these keep the graph's own frozen names.
+ *
+ * `red` here is a person choosing a red node, and `--destructive-9` is the colour of an invalid
+ * connection. They are the same pixel in v1 and different questions, and a blanket rename during
+ * the v2 swap briefly made them one — which would have moved every red-accented entity the day
+ * someone re-judged the destructive tone. The semantic pair lives in `THEME_COLORS`, reads from
+ * the design system, and is not in this table.
+ */
 const ACCENT_TOKEN_KEY: Record<AccentColor, string> = {
-  gray: '--gray-9',
+  gray: '--neutral-9',
   gold: '--gold-9',
   bronze: '--bronze-9',
   brown: '--brown-9',
@@ -80,28 +89,21 @@ export function resolveAccentColorRGB(
   // without the guard the lookup is undefined, `value[0]` throws inside useFrame, and R3F does not
   // catch frame-loop errors. The canvas would die rather than warn.
   const tokenKey = ACCENT_TOKEN_KEY[color] as keyof ThemeTokens | undefined;
-  const value = tokenKey ? tokens[tokenKey] : undefined;
-
-  // Check if it's a valid RGB array
-  if (Array.isArray(value) && value.length >= 3) {
-    return [value[0], value[1], value[2]];
-  }
 
   /**
-   * Then the frozen palette, for the twenty-one families KookieUI v2 does not have.
+   * The frozen palette first — see `resolveSocketColor` for why the order is this way round.
    *
-   * THIS BRANCH IS THE POINT, and its absence was a defect waiting to happen: `resolveAccentColorRGB`
-   * had NO route from a hex to an RGB triple — it looked the name up in `tokens` and gated on
-   * `Array.isArray`, so a hex string in the table would have failed that check silently and every
-   * one of those twenty-one accents would have fallen back to the global accent with one warning
-   * each. `resolveSocketColor` one file over already returns a verbatim colour, which is why the
-   * gap was easy to miss: the two palettes look symmetrical and were not.
-   *
-   * Ordered theme-then-frozen for the same reason as the socket palette: on v1 this is unreachable.
+   * In short: four of these hue names survive into v2 at v2's own values, so a theme-first
+   * resolver would give twenty-two entities their v1 accent and four of them a different one.
    */
   if (tokenKey) {
     const frozen = frozenHue(tokenKey, tokens.appearance);
     if (frozen) return hexToRGB(frozen);
+  }
+
+  const value = tokenKey ? tokens[tokenKey] : undefined;
+  if (Array.isArray(value) && value.length >= 3) {
+    return [value[0], value[1], value[2]];
   }
 
   // Fallback: return sentinel to use global accent.

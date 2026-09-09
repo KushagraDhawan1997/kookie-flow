@@ -98,32 +98,32 @@ interface VariantConfig {
 
 export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
   surface: {
-    background: '--gray-1',
-    backgroundHover: '--gray-2',
-    borderColor: '--gray-6',
-    borderColorHover: '--gray-7',
+    background: '--neutral-1',
+    backgroundHover: '--neutral-2',
+    borderColor: '--neutral-6',
+    borderColorHover: '--neutral-7',
     borderWidth: 1,
     shadow: 'none',
   },
   outline: {
     background: 'transparent',
-    backgroundHover: '--gray-2',
-    borderColor: '--gray-6',
-    borderColorHover: '--gray-7',
+    backgroundHover: '--neutral-2',
+    borderColor: '--neutral-6',
+    borderColorHover: '--neutral-7',
     borderWidth: 1,
     shadow: 'none',
   },
   soft: {
-    background: '--gray-2',
-    backgroundHover: '--gray-3',
+    background: '--neutral-2',
+    backgroundHover: '--neutral-3',
     borderColor: 'transparent',
     borderColorHover: 'transparent',
     borderWidth: 0,
     shadow: 'none',
   },
   classic: {
-    background: '--color-surface-solid',
-    backgroundHover: '--gray-2',
+    background: '--color-surface',
+    backgroundHover: '--neutral-2',
     borderColor: 'transparent',
     borderColorHover: 'transparent',
     borderWidth: 0,
@@ -131,7 +131,7 @@ export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
   },
   ghost: {
     background: 'transparent',
-    backgroundHover: '--gray-3',
+    backgroundHover: '--neutral-3',
     borderColor: 'transparent',
     borderColorHover: 'transparent',
     borderWidth: 0,
@@ -325,7 +325,7 @@ export function resolveEntityStyle(
   const headerPosition = HEADER_POSITION_MAP[header];
   const headerBackground = accentHeader
     ? resolveTokenColor('--accent-3', tokens)
-    : resolveTokenColor('--gray-3', tokens);
+    : resolveTokenColor('--neutral-3', tokens);
 
   // Header height uses fixed row height token (--space-7 = 40px)
   // This ensures header aligns with socket rows for widget layout

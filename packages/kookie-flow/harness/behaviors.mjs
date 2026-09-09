@@ -605,6 +605,14 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
    * all of them, and the instrument line below says so out loud rather than letting the law pass
    * quietly on an empty comparison.
    */
+  const system = await page.evaluate(() => {
+    const el =
+      document.querySelector('.radix-themes') ??
+      document.querySelector('.kui-theme') ??
+      document.documentElement;
+    return getComputedStyle(el).getPropertyValue('--neutral-1').trim() !== '' ? 'v2' : 'v1';
+  });
+
   const fidelity = await page.evaluate(() => {
     const appearance = window.__harness.themeTokens().appearance;
     const names = ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10',
@@ -612,7 +620,12 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
     return names.map((t) => {
       const css = window.__harness.lib.resolveColorToRGB(`var(${t})`);
       const frozen = window.__harness.lib.frozenHue(t, appearance);
-      if (!css || !frozen) return { t, checkable: false };
+      // An UNDEFINED custom property resolves to the probe's inherited colour, which is black —
+      // not null. So "the theme does not define this" reads as rgb(0,0,0) and the first spelling
+      // of this guard counted all nine as checkable and then failed on five of them. Black is the
+      // tell, and none of the frozen hues is black.
+      const undefinedInCss = !css || (css[0] === 0 && css[1] === 0 && css[2] === 0);
+      if (undefinedInCss || !frozen) return { t, checkable: false };
       const f = window.__harness.lib.parseColorToRGB(frozen);
       return {
         t,
@@ -624,18 +637,41 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
     });
   });
   const checkable = fidelity.filter((f) => f.checkable);
-  check(
-    'INSTRUMENT: the theme still defines the frozen hues, so fidelity is checkable',
-    checkable.length === fidelity.length,
-    `${checkable.length}/${fidelity.length} checkable — after the v2 swap this drops to 0 and the ` +
-      `frozen table becomes the only source`
+  console.log(
+    `  fidelity  ${checkable.length}/${fidelity.length} of the frozen hues are still defined by the theme`
   );
+  /**
+   * THE FROZEN VALUES ARE THE PALETTE, on both systems, and the fidelity check only tells us how
+   * much of it the theme still has an opinion about.
+   *
+   * On v1 all nine resolve and all nine must agree — that agreement is what proves the freeze
+   * captured what v1 painted. On v2 five of the nine are simply gone, and of the four that remain
+   * (blue, amber, orange, green) NONE agrees: v2 generates its own OKLCH scale, so `--blue-10`
+   * moved from `#0588f0` to `rgb(0,122,240)` and green from a muted forest to a near-fluorescent.
+   *
+   * That is why the resolver takes the frozen value FIRST rather than the theme's. A disagreement
+   * here is expected on v2 and is not a failure; a disagreement on v1 means the freeze is wrong.
+   */
   const drifted = checkable.filter((f) => !f.near);
-  check(
-    'every frozen hue equals what the theme resolves',
-    drifted.length === 0,
-    drifted.map((f) => `${f.t}: theme rgb(${f.css}) vs frozen ${f.frozen}`).join('; ')
-  );
+  if (system === 'v1') {
+    check(
+      'INSTRUMENT: v1 defines every frozen hue, so the freeze is fully checkable',
+      checkable.length === fidelity.length,
+      `${checkable.length}/${fidelity.length}`
+    );
+    check(
+      'every frozen hue equals what v1 resolves',
+      drifted.length === 0,
+      drifted.map((f) => `${f.t}: theme rgb(${f.css}) vs frozen ${f.frozen}`).join('; ')
+    );
+  } else {
+    check(
+      'v2 does not supply this palette, which is why it is frozen',
+      checkable.length < fidelity.length,
+      `${checkable.length}/${fidelity.length} still defined — if v2 ever ships all nine, revisit ` +
+        `whether the freeze is still the right answer`
+    );
+  }
 
   // Vacuity guard. A scan that found nothing would let every press below pass by never running,
   // and the read HAS come back empty for a real reason (see the backbuffer note above).
@@ -760,13 +796,18 @@ head('theme tokens');
 await withPage('count=6', async (page) => {
   const census = await page.evaluate(() => window.__harness.tokenCensus());
 
-  // Vacuity guard. An empty census makes "nothing is missing" true and meaningless, and the list
-  // is derived from the reader's own fallback table, which a refactor could rename out from under
-  // this.
+  // Vacuity guard, as a DERIVATION. An empty census makes "nothing is missing" true and
+  // meaningless — but so does a guard whose threshold is a number someone typed when the table
+  // was a different size. This was `> 50`, calibrated against 99 tokens, and it failed on correct
+  // code the day the 42 hue tokens moved into the graph's own frozen palette and left 40.
+  //
+  // The right question is whether the census covered everything the reader declares, which the
+  // fixture now reports alongside the result.
+  const censused = census.present.length + census.missing.length;
   check(
-    'INSTRUMENT: the census covers the tokens the reader asks for',
-    census.present.length + census.missing.length > 50,
-    `${census.present.length + census.missing.length} tokens censused`
+    'INSTRUMENT: the census covers every token the reader declares',
+    censused === census.declared && censused > 0,
+    `${censused} censused against ${census.declared} declared`
   );
 
   check(
@@ -1725,16 +1766,82 @@ await withPage('count=12&seed=1', async (page) => {
   const v = await page.evaluate(() => window.__harness.tokenValues());
   console.log(`  measured  ${Object.entries(v).map(([k, n]) => `${k}=${n}`).join('  ')}`);
 
-  // Expectations written against v1's shipped values. Each is a number a rename cannot preserve.
-  check('the socket row token is 40px', v['--space-7'] === 40, `--space-7=${v['--space-7']}`);
-  check('the widget height token is 32px', v['--space-6'] === 32, `--space-6=${v['--space-6']}`);
+  /**
+   * What the READER resolved, which is a different question from what the CSS says.
+   *
+   * The space scale is off by one index between v1 and v2 — v1's N is v2's N+1 — and every name
+   * exists on both systems, so the raw-CSS assertions above are about the design system while
+   * THIS is about the graph. The reader identifies which system is mounted and shifts the index,
+   * so a socket row is 40px and a widget 32px on either side of the swap. Those two numbers are
+   * the whole point of the shift; if they move, every node in the graph shrank by a fifth.
+   */
+  const resolved = await page.evaluate(() => {
+    const t = window.__harness.themeTokens();
+    return { s6: t['--space-6'], s7: t['--space-7'], s3: t['--space-3'] };
+  });
+  console.log(`  resolved  socket-row=${resolved.s7} widget=${resolved.s6} gap=${resolved.s3}`);
+  check(
+    'the reader resolves the socket row at 40px on either design system',
+    resolved.s7 === 40,
+    `reader says ${resolved.s7} (v1 --space-7 and v2 --space-8 are both 40)`
+  );
+  check(
+    'the reader resolves the widget height at 32px on either design system',
+    resolved.s6 === 32,
+    `reader says ${resolved.s6}`
+  );
+
+  /**
+   * The RAW palette, per design system.
+   *
+   * These were written against v1's numbers before the swap so they would FAIL during it, and they
+   * did — exactly here: v2's `--space-7` is 32 where v1's is 40, and `--space-6` is 24 where v1's
+   * is 32. Both names exist on both systems, so nothing else in the repo could have seen it.
+   *
+   * They are kept rather than deleted, and made per-system rather than loosened. The claim is
+   * still checkable and still specific: each palette has its own known shape, and a drift in
+   * either one is a real change. What is NOT asserted here any more is the graph's geometry —
+   * that is the reader's business and the two laws above own it, which is why the space shift
+   * shows up there as unchanged while it shows up here as a different palette.
+   */
+  // `themeRoot()` on the harness API returns a DESCRIPTOR, not the element — the element cannot
+  // cross the page boundary. Resolved inline, the same three-arm chain the fixture and the package
+  // both use.
+  const system = await page.evaluate(() => {
+    const el =
+      document.querySelector('.radix-themes') ??
+      document.querySelector('.kui-theme') ??
+      document.documentElement;
+    // `--neutral-1` is v2's and exists in no v1 build; v1's greys were `--gray-*`.
+    return getComputedStyle(el).getPropertyValue('--neutral-1').trim() !== '' ? 'v2' : 'v1';
+  });
+  const palette = system === 'v2'
+    ? { '--space-7': 32, '--space-6': 24 }
+    : { '--space-7': 40, '--space-6': 32 };
+  for (const [name, want] of Object.entries(palette)) {
+    check(
+      `${system}: ${name} is ${want}px`,
+      v[name] === want,
+      `${name}=${v[name]} on ${system}`
+    );
+  }
+  check('the label type step is 14px', v['--font-size-2'] === 14, `--font-size-2=${v['--font-size-2']}`);
+  check('the line box is 24px', v['--line-height-3'] === 24, `--line-height-3=${v['--line-height-3']}`);
+
+  /**
+   * A node body's corner is a corner.
+   *
+   * v2's DEFAULT radius level is `full`, where `--radius-1..5` are all `calc(9999px * var(--scale))`
+   * — and every SDF site clamps `r = min(r, min(halfW, halfH))`, so a node body becomes a stadium
+   * with no error, no missing token and nothing in the suite to notice. The fixture pins `large`
+   * so the swap stays a PORT; moving the node body onto `--radius-surface-N`, which is capsule-proof
+   * by construction at every level, is a design step of its own and is not being smuggled in here.
+   */
   check(
     'the node body radius token is a corner, not a capsule',
     v['--radius-4'] > 0 && v['--radius-4'] < 100,
-    `--radius-4=${v['--radius-4']}`
+    `--radius-4=${v['--radius-4']} — v2's default level is \`full\`, where this is 9999`
   );
-  check('the label type step is 14px', v['--font-size-2'] === 14, `--font-size-2=${v['--font-size-2']}`);
-  check('the line box is 24px', v['--line-height-3'] === 24, `--line-height-3=${v['--line-height-3']}`);
 });
 
 head('token read validity');
@@ -1907,24 +2014,42 @@ await withPage('scene=toolbar&toolbar=1', async (page) => {
   );
 
   // The other two entity types reach the rest of the built-in registry.
-  //
-  // Counts are MEASURED on v1, not guessed. The first spelling asserted `>= 3` for the comment
-  // toolbar from its three-entry widget list and measured 2 — a colour widget renders as one
-  // control, not one per swatch — so the number was a claim about the registry rather than about
-  // the DOM. Pinned per type, so the swap fails if a control disappears.
+  /**
+   * Counted by ACCESSIBLE NAME, not by element.
+   *
+   * Counts are measured, never guessed — the first spelling asserted `>= 3` for the comment
+   * toolbar from its three-entry widget list and measured 2, because a colour widget renders as
+   * one control and not one per swatch. But the second spelling counted raw elements, and that
+   * turned out to be a law about the design system's internals rather than about the toolbar:
+   * v2's `SegmentedItem` renders TWO elements where v1's rendered one, so the image toolbar went
+   * from 4 elements to 7 across the swap while offering the same four controls — Fill, Cover,
+   * Contain, and the aspect lock.
+   *
+   * A name is what a person operates and what a screen reader announces, and it survives a
+   * component library replacing its markup. Pinned per type, so the swap still fails if a control
+   * actually disappears.
+   */
   for (const [id, expected] of [['img', 4], ['note', 2]]) {
     await show(id);
     const n = await page.evaluate(() => {
       const el = document.querySelector('[data-kookie-flow-toolbar]');
+      const named = new Set();
+      for (const c of el.querySelectorAll('button, input, [role="combobox"], [role="radio"], [role="switch"]')) {
+        const n = (c.getAttribute('aria-label') || (c.textContent ?? '').trim()).trim();
+        if (n) named.add(n);
+      }
       return {
         visible: getComputedStyle(el).visibility === 'visible',
         controls: el.querySelectorAll('button, input, [role="combobox"], [role="radio"]').length,
+        named: named.size,
+        names: [...named],
       };
     });
     check(
-      `the ${id} toolbar shows, with the controls v1 rendered`,
-      n.visible && n.controls === expected,
-      `${JSON.stringify(n)} (v1 baseline: ${expected})`
+      `the ${id} toolbar shows, with the controls v1 offered`,
+      n.visible && n.named === expected,
+      `${n.named} named controls [${n.names.join(', ')}] in ${n.controls} elements ` +
+        `(v1 baseline: ${expected} named)`
     );
   }
 });

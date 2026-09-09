@@ -15,8 +15,12 @@ import type { AccentColor } from '../types';
 /** A theme that resolves no hue token at all — v2's shape for these 42 names. */
 function themeWithoutHues(appearance: 'light' | 'dark') {
   const t = { ...FALLBACK_TOKENS, appearance } as Record<string, unknown>;
+  // The families a design system DOES supply stay: neutral (every system has greys) and the two
+  // semantic ones (v2 ships `destructive` and `success` by those names). What is deleted is what
+  // v2 genuinely lacks, which is exactly what the freeze exists for.
+  const KEPT = new Set(['--accent-9', '--neutral-9', '--neutral-10', '--destructive-9', '--success-9']);
   for (const k of Object.keys(t)) {
-    if (/^--[a-z]+-(9|10)$/.test(k) && k !== '--accent-9') delete t[k];
+    if (/^--[a-z]+-(9|10)$/.test(k) && !KEPT.has(k)) delete t[k];
   }
   return t as unknown as typeof FALLBACK_TOKENS;
 }
@@ -27,6 +31,10 @@ describe('the frozen hue palette', () => {
     // frozen hue would resolve to the global accent on v2 and nobody would hear about it.
     const src = Object.keys(FROZEN_HUES).filter((k) => k.endsWith('-9'));
     expect(src.length).toBeGreaterThan(20);
+    // Grey, red and green are NOT in the freeze — they are the design system's, as neutral,
+    // destructive and success. Asserted so a future re-freeze cannot quietly take them back.
+    expect(src).not.toContain('--gray-9');
+    expect(Object.keys(FROZEN_HUES)).not.toContain('--gray-10');
 
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
@@ -57,11 +65,14 @@ describe('the frozen hue palette', () => {
     // and nothing in the repo read a socket's painted colour before this migration.
     const flipping = Object.entries(FROZEN_HUES).filter(([, v]) => typeof v !== 'string');
     expect(flipping.length, 'nothing flips — the freeze collapsed both appearances into one').toBe(
-      27
+      25
     );
-    // Every -10 flips; only grey flips at -9. Stated as the shape, not as a count alone.
-    expect(flipping.filter(([k]) => k.endsWith('-10')).length).toBe(26);
-    expect(flipping.filter(([k]) => k.endsWith('-9')).map(([k]) => k)).toEqual(['--gray-9']);
+    // EVERY frozen entry that flips is a -10, and none of the -9s do. That is the shape, not a
+    // number: step 9 is Radix's solid step and mode-invariant for every hue; step 10 is the hover
+    // step and moves toward the foreground in light, away from it in dark. Grey was the one
+    // exception at step 9 and it is no longer frozen — a neutral family is the design system's.
+    expect(flipping.every(([k]) => k.endsWith('-10'))).toBe(true);
+    expect(flipping.length).toBe(Object.keys(FROZEN_HUES).filter((k) => k.endsWith('-10')).length);
 
     for (const [name] of flipping) {
       expect(frozenHue(name, 'light')).not.toEqual(frozenHue(name, 'dark'));

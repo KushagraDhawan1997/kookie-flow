@@ -16,22 +16,22 @@ export type ColorTokenKey = keyof ThemeTokens & `--${string}`;
 
 /**
  * Semantic color configuration.
- * All values are Kookie UI token keys (e.g., '--gray-8').
+ * All values are Kookie UI token keys (e.g., '--neutral-8').
  */
 export const THEME_COLORS = {
   // ============================================
   // Canvas
   // ============================================
   canvas: {
-    background: '--gray-2',
+    background: '--neutral-2',
   },
 
   // ============================================
   // Grid
   // ============================================
   grid: {
-    lines: '--gray-3',
-    linesAccent: '--gray-4',
+    lines: '--neutral-3',
+    linesAccent: '--neutral-4',
   },
 
   // ============================================
@@ -47,26 +47,26 @@ export const THEME_COLORS = {
   // Edges
   // ============================================
   edge: {
-    default: '--gray-8',
+    default: '--neutral-8',
     selected: '--accent-9',
-    invalid: '--red-9',
+    invalid: '--destructive-9',
   },
 
   // ============================================
   // Sockets
   // ============================================
   socket: {
-    fallback: '--gray-8',
-    invalid: '--red-9',
-    validTarget: '--green-9',
+    fallback: '--neutral-8',
+    invalid: '--destructive-9',
+    validTarget: '--success-9',
   },
 
   // ============================================
   // Connection Line (drag preview)
   // ============================================
   connectionLine: {
-    default: '--gray-8',
-    invalid: '--red-9',
+    default: '--neutral-8',
+    invalid: '--destructive-9',
   },
 
   // ============================================
@@ -82,8 +82,8 @@ export const THEME_COLORS = {
   // ============================================
   entitySelection: {
     selected: '--accent-9',
-    hover: '--gray-8',
-    handleFill: '--gray-1',
+    hover: '--neutral-8',
+    handleFill: '--neutral-1',
     handleBorder: '--accent-9',
   },
 
@@ -91,8 +91,8 @@ export const THEME_COLORS = {
   // Text
   // ============================================
   text: {
-    primary: '--gray-12',
-    secondary: '--gray-11',
+    primary: '--neutral-12',
+    secondary: '--neutral-11',
   },
 
   // ============================================
@@ -102,8 +102,8 @@ export const THEME_COLORS = {
   // Shadow uses var(--shadow-3) directly from Kookie UI.
   // ============================================
   minimap: {
-    background: '--gray-1',
-    node: '--gray-4',
+    background: '--neutral-1',
+    node: '--neutral-4',
     nodeSelected: '--accent-9',
     viewport: '--accent-9',
     viewportBorder: '--accent-9',

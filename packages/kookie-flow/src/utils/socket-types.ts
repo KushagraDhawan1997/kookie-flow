@@ -13,18 +13,18 @@ import { rgbToHex, type RGBColor } from './color';
  * Supports both scale-9 (legacy) and scale-10 (current default).
  */
 type ColorTokenKey =
-  | '--gray-9'
-  | '--gray-10'
-  | '--gray-12'
+  | '--neutral-9'
+  | '--neutral-10'
+  | '--neutral-12'
   | '--blue-9'
   | '--blue-10'
   | '--purple-9'
   | '--purple-10'
   | '--violet-9'
   | '--violet-10'
-  | '--green-9'
+  | '--success-9'
   | '--green-10'
-  | '--red-9'
+  | '--destructive-9'
   | '--red-10'
   | '--amber-9'
   | '--amber-10'
@@ -54,25 +54,33 @@ function resolveSocketColor(color: string, tokens: ThemeTokens): string {
     return color;
   }
 
-  // The theme first, so an app that really does define the token still wins.
-  const tokenValue = tokens[color as keyof ThemeTokens];
-  if (tokenValue && Array.isArray(tokenValue) && tokenValue.length >= 3) {
-    return rgbToHex(tokenValue as RGBColor);
-  }
-
   /**
-   * Then the palette this package froze out of CSS.
+   * The frozen palette FIRST, for the names it owns.
    *
    * The hue families a socket palette needs are not tokens any design system owes us — KookieUI v2
    * ships six distinct pigments and a graph needs nine — so they live in `core/palette.ts` at the
    * values v1 resolved. See that file for why they were frozen and what it gives up.
    *
-   * Ordered theme-then-frozen rather than the reverse: on v1 every one of these names IS in the
-   * theme, so this branch is unreachable and the freeze is inert. It becomes the live path on the
-   * far side of the swap, which is what makes the swap paint identical pixels.
+   * THE ORDER WAS THEME-FIRST AND THAT WAS WRONG, measured on the far side of the swap: four of
+   * these names — blue, amber, orange, green — DO exist in v2, at v2's own generated values, so a
+   * theme-first resolver produced a per-family split whose only rationale was "the name still
+   * resolves". Measured, `--blue-10` went from `#0588f0` to `rgb(0,122,240)` and `--green-9` from
+   * a muted forest green to a near-fluorescent `#00f473`, while the other twenty-one kept the
+   * frozen value. A palette that is half one system's and half another's is not a palette.
+   *
+   * So the freeze is the answer for every name in it, on both systems, and the trade this makes is
+   * the one already recorded in `core/palette.ts`: an app that re-declares `--purple-10` in its
+   * own CSS no longer moves the socket colour. The escape is `socketTypes`, which takes any CSS
+   * colour verbatim — an app states its palette rather than overriding a token behind our back.
    */
   const frozen = frozenHue(color, tokens.appearance);
   if (frozen) return frozen;
+
+  // Then the theme, for any token name the freeze does not own.
+  const tokenValue = tokens[color as keyof ThemeTokens];
+  if (tokenValue && Array.isArray(tokenValue) && tokenValue.length >= 3) {
+    return rgbToHex(tokenValue as RGBColor);
+  }
 
   console.warn(`[kookie-flow] Unknown color token: ${color}`);
   return '#808080';

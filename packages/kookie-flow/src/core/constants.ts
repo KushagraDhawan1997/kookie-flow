@@ -72,7 +72,7 @@ export const DEFAULT_SOCKET_TYPES = {
   clip: { name: 'CLIP', color: '--teal-10' },
   vae: { name: 'VAE', color: '--teal-10' },
   // Wildcard — gray
-  any: { name: 'Any', color: '--gray-10' },
+  any: { name: 'Any', color: '--neutral-10' },
 };
 
 /** Minimum entity sizes (enforced during resize) */

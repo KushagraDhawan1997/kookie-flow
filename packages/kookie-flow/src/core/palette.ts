@@ -19,6 +19,12 @@
  * Re-measure with `harness/spikes/palette-freeze.mjs`. Freezing measured values is what makes the
  * v1 -> v2 swap a port: the graph paints identical pixels on either side of it.
  *
+ * GREY IS NOT HERE, and that is the line this file draws. A graph owns "purple means image";
+ * nobody owns "grey means unspecified" — every design system ships a neutral family, KookieUI v2
+ * included, so `--neutral-9` and `--neutral-10` come from the theme on both systems and move with
+ * the appearance the way the theme intends. What is frozen is only what v2 genuinely does not
+ * supply.
+ *
  * MODE. Step 9 is mode-invariant in Radix for every family but grey — measured, 25 of 26 — and
  * v2's steps 9 and 10 are mode-invariant for all ten of its families. Step 10 is NOT: every one
  * of them flips, because it is the hover step and hover moves toward the foreground in light and
@@ -43,7 +49,6 @@ export type FrozenColor = string | { light: string; dark: string };
  */
 export const FROZEN_HUES: Readonly<Record<string, FrozenColor>> = {
   // Step 9 — the solid step. Every family but grey is the same in both appearances.
-  '--gray-9': { light: '#8b8d98', dark: '#696e77' },
   '--gold-9': '#978365',
   '--bronze-9': '#a18072',
   '--brown-9': '#ad7f58',
@@ -71,7 +76,6 @@ export const FROZEN_HUES: Readonly<Record<string, FrozenColor>> = {
   '--sky-9': '#7ce2fe',
 
   // Step 10 — the hover step. Every one of these differs by appearance.
-  '--gray-10': { light: '#80838d', dark: '#777b84' },
   '--gold-10': { light: '#8c7a5e', dark: '#a39073' },
   '--bronze-10': { light: '#957468', dark: '#ae8c7e' },
   '--brown-10': { light: '#a07553', dark: '#b88c67' },

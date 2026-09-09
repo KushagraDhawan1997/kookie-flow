@@ -885,21 +885,28 @@ export interface KookieFlowProps {
   /** Width reserved for socket labels before widget starts. Default: 96 */
   socketLabelWidth?: number;
   /**
-   * Kookie UI Theme component for per-entity accent color support.
-   * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
-   * When provided, widgets on entities with `color` prop will use that accent color.
+   * A component to wrap each widget in — an opaque escape hatch for consumer-owned theming.
+   *
+   * PER-ENTITY ACCENT IS NO LONGER EXPRESSIBLE, and this prop's shape changed to say so. It used
+   * to pass `accentColor`, `hasBackground` and `asChild` to a KookieUI v1 `Theme`. KookieUI v2
+   * refuses all three as compile errors: it has ONE app-wide accent generated from config, and
+   * its neutrals derive their hue FROM that accent — so a per-subtree accent would mean a
+   * per-subtree palette, which is the thing v2 deliberately does not have. `hasBackground` simply
+   * disappears: v2 paints no page background in any direction, ever.
+   *
+   * What survives is the wrapper itself, typed to the one thing every wrapper needs. A consumer
+   * who wants per-widget theming states it in their own component.
+   *
+   * An entity's colour still reaches the graph — it drives the node header and selection in GL
+   * through `entity.color` — it just no longer re-themes the DOM widgets sitting on it.
    *
    * @example
    * ```tsx
-   * import { Theme } from '@kushagradhawan/kookie-ui';
+   * import { Theme } from '@kookie-ui/react';
    * <KookieFlow ThemeComponent={Theme} ... />
    * ```
    */
-  ThemeComponent?: React.ComponentType<{
-    accentColor?: AccentColor;
-    hasBackground?: boolean;
-    children: React.ReactNode;
-  }>;
+  ThemeComponent?: React.ComponentType<{ children: React.ReactNode }>;
 }
 
 // ============================================================================

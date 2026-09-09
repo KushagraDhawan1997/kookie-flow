@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { themeRoot } from '../utils/theme-root';
-import { parseColorToRGB, parseColorToRGBA, parsePx, type RGBColor, type RGBAColor } from '../utils/color';
+import { parseColorToRGB, parsePx, type RGBColor } from '../utils/color';
 
 /**
  * Simplified shadow for WebGL (single drop shadow, not multi-layer CSS).
@@ -39,98 +39,49 @@ export interface ThemeTokens {
   '--font-size-1': number;
   '--font-size-2': number;
   '--font-size-3': number;
-  '--font-size-4': number;
-  '--font-size-5': number;
 
   // Typography - Line heights (resolved to pixels)
   // Used for header heights to match text vertical rhythm
-  '--line-height-1': number;
-  '--line-height-2': number;
-  '--line-height-3': number;
-  '--line-height-4': number;
-  '--line-height-5': number;
 
   // Gray scale (as RGB arrays [0-1] for WebGL)
-  '--gray-1': RGBColor;
-  '--gray-2': RGBColor;
-  '--gray-3': RGBColor;
-  '--gray-4': RGBColor;
-  '--gray-5': RGBColor;
-  '--gray-6': RGBColor;
-  '--gray-7': RGBColor;
-  '--gray-8': RGBColor;
-  '--gray-9': RGBColor;
-  '--gray-10': RGBColor;
-  '--gray-11': RGBColor;
-  '--gray-12': RGBColor;
+  '--neutral-1': RGBColor;
+  '--neutral-2': RGBColor;
+  '--neutral-3': RGBColor;
+  '--neutral-4': RGBColor;
+  '--neutral-5': RGBColor;
+  '--neutral-6': RGBColor;
+  '--neutral-7': RGBColor;
+  '--neutral-8': RGBColor;
+  '--neutral-9': RGBColor;
+  '--neutral-10': RGBColor;
+  '--neutral-11': RGBColor;
+  '--neutral-12': RGBColor;
 
   // Gray alpha variants
-  '--gray-a3': RGBAColor;
-  '--gray-a6': RGBAColor;
 
   // Accent colors (from Theme's accentColor prop)
   '--accent-3': RGBColor;
   '--accent-9': RGBColor;
-  '--accent-a3': RGBAColor;
+  /**
+   * The two SEMANTIC colours the graph uses, as MEANINGS rather than as hues.
+   *
+   * An invalid connection is destructive and a valid drop target is a success. Those are the names
+   * KookieUI v2 gives them, and they are the one part of the old Radix hue palette that belongs to
+   * a design system rather than to `core/palette.ts`: a graph owns "purple means image", nobody
+   * owns "red means wrong". On v1 they resolve through `--red-9` / `--green-9`, which is what they
+   * have always been.
+   */
+  '--destructive-9': RGBColor;
+  '--success-9': RGBColor;
 
   // Radix color palette (all 26 AccentColor values at steps 9 and 10)
   // Used for socket types and per-entity color overrides
   // Note: --gray-9/10 are already defined in gray scale above
-  '--gold-9': RGBColor;
-  '--bronze-9': RGBColor;
-  '--brown-9': RGBColor;
-  '--yellow-9': RGBColor;
-  '--amber-9': RGBColor;
-  '--orange-9': RGBColor;
-  '--tomato-9': RGBColor;
-  '--red-9': RGBColor;
-  '--ruby-9': RGBColor;
-  '--crimson-9': RGBColor;
-  '--pink-9': RGBColor;
-  '--plum-9': RGBColor;
-  '--purple-9': RGBColor;
-  '--violet-9': RGBColor;
-  '--iris-9': RGBColor;
-  '--indigo-9': RGBColor;
-  '--blue-9': RGBColor;
-  '--cyan-9': RGBColor;
-  '--teal-9': RGBColor;
-  '--jade-9': RGBColor;
-  '--green-9': RGBColor;
-  '--grass-9': RGBColor;
-  '--lime-9': RGBColor;
-  '--mint-9': RGBColor;
-  '--sky-9': RGBColor;
 
   // Step 10 (hovered solid backgrounds) — used by socket type colors
-  '--gold-10': RGBColor;
-  '--bronze-10': RGBColor;
-  '--brown-10': RGBColor;
-  '--yellow-10': RGBColor;
-  '--amber-10': RGBColor;
-  '--orange-10': RGBColor;
-  '--tomato-10': RGBColor;
-  '--red-10': RGBColor;
-  '--ruby-10': RGBColor;
-  '--crimson-10': RGBColor;
-  '--pink-10': RGBColor;
-  '--plum-10': RGBColor;
-  '--purple-10': RGBColor;
-  '--violet-10': RGBColor;
-  '--iris-10': RGBColor;
-  '--indigo-10': RGBColor;
-  '--blue-10': RGBColor;
-  '--cyan-10': RGBColor;
-  '--teal-10': RGBColor;
-  '--jade-10': RGBColor;
-  '--green-10': RGBColor;
-  '--grass-10': RGBColor;
-  '--lime-10': RGBColor;
-  '--mint-10': RGBColor;
-  '--sky-10': RGBColor;
 
   // Surfaces
-  '--color-surface-solid': RGBColor;
+  '--color-surface': RGBColor;
 
   // Shadows (simplified for WebGL)
   '--shadow-1': SimpleShadow;
@@ -138,10 +89,9 @@ export interface ThemeTokens {
   '--shadow-3': SimpleShadow;
   '--shadow-4': SimpleShadow;
   '--shadow-5': SimpleShadow;
-  '--shadow-6': SimpleShadow;
 
   // Meta
-  '--scaling': number;
+  '--scale': number;
   appearance: 'light' | 'dark';
 }
 
@@ -172,95 +122,37 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--font-size-1': 12,
   '--font-size-2': 14,
   '--font-size-3': 16,
-  '--font-size-4': 18,
-  '--font-size-5': 20,
 
   // Typography - Line heights (assuming scaling = 1)
-  '--line-height-1': 16,
-  '--line-height-2': 20,
-  '--line-height-3': 24,
-  '--line-height-4': 26,
-  '--line-height-5': 28,
 
   // Gray (dark mode defaults)
-  '--gray-1': [0.067, 0.067, 0.067], // #111111
-  '--gray-2': [0.098, 0.098, 0.098], // #191919
-  '--gray-3': [0.133, 0.133, 0.133], // #222222
-  '--gray-4': [0.165, 0.165, 0.165], // #2a2a2a
-  '--gray-5': [0.196, 0.196, 0.196], // #323232
-  '--gray-6': [0.239, 0.239, 0.239], // #3d3d3d
-  '--gray-7': [0.306, 0.306, 0.306], // #4e4e4e
-  '--gray-8': [0.392, 0.392, 0.392], // #646464
-  '--gray-9': [0.553, 0.553, 0.553], // #8d8d8d
-  '--gray-10': [0.627, 0.627, 0.627], // #a0a0a0
-  '--gray-11': [0.737, 0.737, 0.737], // #bcbcbc
-  '--gray-12': [0.933, 0.933, 0.933], // #eeeeee
+  '--neutral-1': [0.067, 0.067, 0.067], // #111111
+  '--neutral-2': [0.098, 0.098, 0.098], // #191919
+  '--neutral-3': [0.133, 0.133, 0.133], // #222222
+  '--neutral-4': [0.165, 0.165, 0.165], // #2a2a2a
+  '--neutral-5': [0.196, 0.196, 0.196], // #323232
+  '--neutral-6': [0.239, 0.239, 0.239], // #3d3d3d
+  '--neutral-7': [0.306, 0.306, 0.306], // #4e4e4e
+  '--neutral-8': [0.392, 0.392, 0.392], // #646464
+  '--neutral-9': [0.545, 0.553, 0.596],
+  '--neutral-10': [0.502, 0.514, 0.553],
+  '--neutral-11': [0.737, 0.737, 0.737], // #bcbcbc
+  '--neutral-12': [0.933, 0.933, 0.933], // #eeeeee
 
   // Gray alpha (approximate)
-  '--gray-a3': [0.133, 0.133, 0.133, 0.5],
-  '--gray-a6': [0.239, 0.239, 0.239, 0.5],
 
   // Accent (indigo defaults)
   '--accent-3': [0.114, 0.118, 0.208], // Subtle accent background (indigo-3)
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
-  '--accent-a3': [0.392, 0.404, 0.961, 0.3],
+  '--destructive-9': [0.898, 0.282, 0.302], // #e5484d — v1's --red-9
+  '--success-9': [0.188, 0.643, 0.424], // #30a46c — v1's --green-9
 
   // Radix colors (all 26 AccentColor values at step 9, dark mode defaults)
-  '--gold-9': [0.906, 0.784, 0.392], // #e7c864
-  '--bronze-9': [0.647, 0.522, 0.392], // #a58564
-  '--brown-9': [0.678, 0.514, 0.388], // #ad8363
-  '--yellow-9': [1.0, 0.878, 0.224], // #ffe039
-  '--amber-9': [1.0, 0.773, 0.239], // #ffc53d
-  '--orange-9': [0.973, 0.522, 0.204], // #f88534
-  '--tomato-9': [0.906, 0.373, 0.322], // #e75f52
-  '--red-9': [0.906, 0.318, 0.365], // #e7515d
-  '--ruby-9': [0.878, 0.318, 0.404], // #e05167
-  '--crimson-9': [0.878, 0.294, 0.467], // #e04b77
-  '--pink-9': [0.878, 0.365, 0.576], // #e05d93
-  '--plum-9': [0.733, 0.365, 0.706], // #bb5db4
-  '--purple-9': [0.557, 0.341, 0.969], // #8e57f7
-  '--violet-9': [0.431, 0.337, 0.812], // #6e56cf
-  '--iris-9': [0.365, 0.365, 0.878], // #5d5de0
-  '--indigo-9': [0.392, 0.404, 0.961], // #6367f5
-  '--blue-9': [0.0, 0.565, 1.0], // #0090ff
-  '--cyan-9': [0.0, 0.647, 0.773], // #00a5c5
-  '--teal-9': [0.133, 0.631, 0.596], // #22a198
-  '--jade-9': [0.133, 0.639, 0.514], // #22a383
-  '--green-9': [0.18, 0.71, 0.486], // #2eb77c
-  '--grass-9': [0.275, 0.678, 0.376], // #46ad60
-  '--lime-9': [0.604, 0.773, 0.196], // #9ac532
-  '--mint-9': [0.522, 0.839, 0.769], // #85d6c4
-  '--sky-9': [0.494, 0.796, 0.988], // #7ecbfc
 
   // Radix colors step 10 (hovered solid backgrounds, dark mode defaults)
-  '--gold-10': [0.937, 0.820, 0.451], // #efd173
-  '--bronze-10': [0.694, 0.573, 0.451], // #b19273
-  '--brown-10': [0.725, 0.573, 0.447], // #b99272
-  '--yellow-10': [1.0, 0.906, 0.357], // #ffe75b
-  '--amber-10': [1.0, 0.812, 0.341], // #ffcf57
-  '--orange-10': [1.0, 0.573, 0.267], // #ff9244
-  '--tomato-10': [0.937, 0.431, 0.373], // #ef6e5f
-  '--red-10': [0.937, 0.380, 0.416], // #ef616a
-  '--ruby-10': [0.906, 0.380, 0.459], // #e76175
-  '--crimson-10': [0.906, 0.357, 0.522], // #e75b85
-  '--pink-10': [0.906, 0.420, 0.627], // #e76ba0
-  '--plum-10': [0.773, 0.420, 0.745], // #c56bbe
-  '--purple-10': [0.612, 0.400, 0.988], // #9c66fc
-  '--violet-10': [0.494, 0.400, 0.863], // #7e66dc
-  '--iris-10': [0.420, 0.420, 0.906], // #6b6be7
-  '--indigo-10': [0.443, 0.455, 0.980], // #7174fa
-  '--blue-10': [0.235, 0.624, 1.0], // #3c9fff
-  '--cyan-10': [0.141, 0.694, 0.820], // #24b1d1
-  '--teal-10': [0.059, 0.706, 0.624], // #0fb49f
-  '--jade-10': [0.180, 0.694, 0.565], // #2eb190
-  '--green-10': [0.227, 0.757, 0.537], // #3ac189
-  '--grass-10': [0.325, 0.725, 0.427], // #53b96d
-  '--lime-10': [0.647, 0.804, 0.247], // #a5cd3f
-  '--mint-10': [0.573, 0.863, 0.800], // #92dccc
-  '--sky-10': [0.557, 0.831, 0.996], // #8ed4fe
 
   // Surfaces
-  '--color-surface-solid': [0.098, 0.098, 0.098],
+  '--color-surface': [0.098, 0.098, 0.098],
 
   // Shadows (simplified approximations of CSS multi-layer shadows)
   '--shadow-1': { offsetY: 1, blur: 2, opacity: 0.1 },
@@ -268,17 +160,16 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--shadow-3': { offsetY: 4, blur: 8, opacity: 0.2 },
   '--shadow-4': { offsetY: 6, blur: 12, opacity: 0.25 },
   '--shadow-5': { offsetY: 8, blur: 16, opacity: 0.3 },
-  '--shadow-6': { offsetY: 12, blur: 24, opacity: 0.35 },
 
   // Meta
-  '--scaling': 1,
+  '--scale': 1,
   appearance: 'dark',
 };
 
 /**
  * Read a CSS variable from computed styles, trying each name in turn.
  *
- * The list is what carries this package across the v1 -> v2 rename: `['--neutral-2', '--gray-2']`
+ * The list is what carries this package across the v1 -> v2 rename: `['--neutral-2', '--neutral-2']`
  * reads the v2 name where it exists and the v1 name where it does not, so one build is correct on
  * both design systems and the swap is bisectable.
  *
@@ -328,18 +219,6 @@ function getCSSVarRGB(
   return parseColorToRGB(value);
 }
 
-/**
- * Read a CSS variable as an RGBA color.
- */
-function getCSSVarRGBA(
-  styles: CSSStyleDeclaration,
-  name: string | readonly string[],
-  fallback: RGBAColor
-): RGBAColor {
-  const value = getCSSVar(styles, name);
-  if (!value) return fallback;
-  return parseColorToRGBA(value);
-}
 
 /**
  * Detect appearance (light/dark) from a Radix Themes element.
@@ -372,15 +251,43 @@ function readTokensFromDOM(root: Element): ThemeTokens {
   const styles = getComputedStyle(root);
   const appearance = detectAppearance(root);
 
+  /**
+   * Which KookieUI is mounted.
+   *
+   * `--neutral-1` is emitted by v2 and by nothing in v1; the greys were `--gray-*` there. One
+   * probe, once per read, and the answer is needed because ONE family cannot be handled by the
+   * name-list every other token uses.
+   */
+  const isV2 = getCSSVar(styles, '--neutral-1') !== '';
+
+  /**
+   * The space scale is OFF BY ONE INDEX between the two systems, and this is the single most
+   * dangerous item in the migration because it is silent in every direction.
+   *
+   * v1 emits 4/8/12/16/24/32/40/48/64 for `--space-1..9`; v2 emits 2/4/8/12/16/24/32/40/48 — so
+   * v1's N is v2's N+1. Every name this reader asks for EXISTS on both systems, which means no
+   * missing token, no compile error, and no census failure; what changes is that a socket row
+   * goes 40px to 32px and a widget 32px to 24px, a 20-25% shrink across every node.
+   *
+   * The name-list trick (`['--space-2', '--space-1']`) cannot express it: both names exist on both
+   * systems at different values, so on v1 the v2-shaped first entry would win and be WRONG. The
+   * system has to be identified and the index shifted.
+   *
+   * The alternative was to take v2's palette as-is and re-judge every node metric. That is a
+   * design change wearing a migration's clothes; it can be made later, deliberately, against
+   * something visible.
+   */
+  const space = (n: number) => `--space-${isV2 ? n + 1 : n}` as const;
+
   return {
-    // Spacing
-    '--space-1': getCSSVarPx(styles, '--space-1', FALLBACK_TOKENS['--space-1']),
-    '--space-2': getCSSVarPx(styles, '--space-2', FALLBACK_TOKENS['--space-2']),
-    '--space-3': getCSSVarPx(styles, '--space-3', FALLBACK_TOKENS['--space-3']),
-    '--space-4': getCSSVarPx(styles, '--space-4', FALLBACK_TOKENS['--space-4']),
-    '--space-5': getCSSVarPx(styles, '--space-5', FALLBACK_TOKENS['--space-5']),
-    '--space-6': getCSSVarPx(styles, '--space-6', FALLBACK_TOKENS['--space-6']),
-    '--space-7': getCSSVarPx(styles, '--space-7', FALLBACK_TOKENS['--space-7']),
+    // Spacing — see `space()` above for why the index moves.
+    '--space-1': getCSSVarPx(styles, space(1), FALLBACK_TOKENS['--space-1']),
+    '--space-2': getCSSVarPx(styles, space(2), FALLBACK_TOKENS['--space-2']),
+    '--space-3': getCSSVarPx(styles, space(3), FALLBACK_TOKENS['--space-3']),
+    '--space-4': getCSSVarPx(styles, space(4), FALLBACK_TOKENS['--space-4']),
+    '--space-5': getCSSVarPx(styles, space(5), FALLBACK_TOKENS['--space-5']),
+    '--space-6': getCSSVarPx(styles, space(6), FALLBACK_TOKENS['--space-6']),
+    '--space-7': getCSSVarPx(styles, space(7), FALLBACK_TOKENS['--space-7']),
 
     // Radius
     '--radius-1': getCSSVarPx(styles, '--radius-1', FALLBACK_TOKENS['--radius-1']),
@@ -395,98 +302,44 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--font-size-1': getCSSVarPx(styles, '--font-size-1', FALLBACK_TOKENS['--font-size-1']),
     '--font-size-2': getCSSVarPx(styles, '--font-size-2', FALLBACK_TOKENS['--font-size-2']),
     '--font-size-3': getCSSVarPx(styles, '--font-size-3', FALLBACK_TOKENS['--font-size-3']),
-    '--font-size-4': getCSSVarPx(styles, '--font-size-4', FALLBACK_TOKENS['--font-size-4']),
-    '--font-size-5': getCSSVarPx(styles, '--font-size-5', FALLBACK_TOKENS['--font-size-5']),
 
     // Typography - Line heights
-    '--line-height-1': getCSSVarPx(styles, '--line-height-1', FALLBACK_TOKENS['--line-height-1']),
-    '--line-height-2': getCSSVarPx(styles, '--line-height-2', FALLBACK_TOKENS['--line-height-2']),
-    '--line-height-3': getCSSVarPx(styles, '--line-height-3', FALLBACK_TOKENS['--line-height-3']),
-    '--line-height-4': getCSSVarPx(styles, '--line-height-4', FALLBACK_TOKENS['--line-height-4']),
-    '--line-height-5': getCSSVarPx(styles, '--line-height-5', FALLBACK_TOKENS['--line-height-5']),
 
     // Gray scale
-    '--gray-1': getCSSVarRGB(styles, '--gray-1', FALLBACK_TOKENS['--gray-1']),
-    '--gray-2': getCSSVarRGB(styles, '--gray-2', FALLBACK_TOKENS['--gray-2']),
-    '--gray-3': getCSSVarRGB(styles, '--gray-3', FALLBACK_TOKENS['--gray-3']),
-    '--gray-4': getCSSVarRGB(styles, '--gray-4', FALLBACK_TOKENS['--gray-4']),
-    '--gray-5': getCSSVarRGB(styles, '--gray-5', FALLBACK_TOKENS['--gray-5']),
-    '--gray-6': getCSSVarRGB(styles, '--gray-6', FALLBACK_TOKENS['--gray-6']),
-    '--gray-7': getCSSVarRGB(styles, '--gray-7', FALLBACK_TOKENS['--gray-7']),
-    '--gray-8': getCSSVarRGB(styles, '--gray-8', FALLBACK_TOKENS['--gray-8']),
-    '--gray-9': getCSSVarRGB(styles, '--gray-9', FALLBACK_TOKENS['--gray-9']),
-    '--gray-10': getCSSVarRGB(styles, '--gray-10', FALLBACK_TOKENS['--gray-10']),
-    '--gray-11': getCSSVarRGB(styles, '--gray-11', FALLBACK_TOKENS['--gray-11']),
-    '--gray-12': getCSSVarRGB(styles, '--gray-12', FALLBACK_TOKENS['--gray-12']),
+    '--neutral-1': getCSSVarRGB(styles, ['--neutral-1', '--neutral-1'], FALLBACK_TOKENS['--neutral-1']),
+    '--neutral-2': getCSSVarRGB(styles, ['--neutral-2', '--neutral-2'], FALLBACK_TOKENS['--neutral-2']),
+    '--neutral-3': getCSSVarRGB(styles, ['--neutral-3', '--neutral-3'], FALLBACK_TOKENS['--neutral-3']),
+    '--neutral-4': getCSSVarRGB(styles, ['--neutral-4', '--neutral-4'], FALLBACK_TOKENS['--neutral-4']),
+    '--neutral-5': getCSSVarRGB(styles, ['--neutral-5', '--neutral-5'], FALLBACK_TOKENS['--neutral-5']),
+    '--neutral-6': getCSSVarRGB(styles, ['--neutral-6', '--neutral-6'], FALLBACK_TOKENS['--neutral-6']),
+    '--neutral-7': getCSSVarRGB(styles, ['--neutral-7', '--neutral-7'], FALLBACK_TOKENS['--neutral-7']),
+    '--neutral-8': getCSSVarRGB(styles, ['--neutral-8', '--neutral-8'], FALLBACK_TOKENS['--neutral-8']),
+    '--neutral-9': getCSSVarRGB(styles, ['--neutral-9', '--gray-9'], FALLBACK_TOKENS['--neutral-9']),
+    '--neutral-10': getCSSVarRGB(styles, ['--neutral-10', '--gray-10'], FALLBACK_TOKENS['--neutral-10']),
+    '--neutral-11': getCSSVarRGB(styles, ['--neutral-11', '--neutral-11'], FALLBACK_TOKENS['--neutral-11']),
+    '--neutral-12': getCSSVarRGB(styles, ['--neutral-12', '--neutral-12'], FALLBACK_TOKENS['--neutral-12']),
 
     // Gray alpha
-    '--gray-a3': getCSSVarRGBA(styles, '--gray-a3', FALLBACK_TOKENS['--gray-a3']),
-    '--gray-a6': getCSSVarRGBA(styles, '--gray-a6', FALLBACK_TOKENS['--gray-a6']),
 
     // Accent
     '--accent-3': getCSSVarRGB(styles, '--accent-3', FALLBACK_TOKENS['--accent-3']),
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
-    '--accent-a3': getCSSVarRGBA(styles, '--accent-a3', FALLBACK_TOKENS['--accent-a3']),
+    '--destructive-9': getCSSVarRGB(
+      styles,
+      ['--destructive-9', '--red-9'],
+      FALLBACK_TOKENS['--destructive-9']
+    ),
+    '--success-9': getCSSVarRGB(styles, ['--success-9', '--green-9'], FALLBACK_TOKENS['--success-9']),
 
     // Radix colors (all 26 AccentColor values)
-    '--gold-9': getCSSVarRGB(styles, '--gold-9', FALLBACK_TOKENS['--gold-9']),
-    '--bronze-9': getCSSVarRGB(styles, '--bronze-9', FALLBACK_TOKENS['--bronze-9']),
-    '--brown-9': getCSSVarRGB(styles, '--brown-9', FALLBACK_TOKENS['--brown-9']),
-    '--yellow-9': getCSSVarRGB(styles, '--yellow-9', FALLBACK_TOKENS['--yellow-9']),
-    '--amber-9': getCSSVarRGB(styles, '--amber-9', FALLBACK_TOKENS['--amber-9']),
-    '--orange-9': getCSSVarRGB(styles, '--orange-9', FALLBACK_TOKENS['--orange-9']),
-    '--tomato-9': getCSSVarRGB(styles, '--tomato-9', FALLBACK_TOKENS['--tomato-9']),
-    '--red-9': getCSSVarRGB(styles, '--red-9', FALLBACK_TOKENS['--red-9']),
-    '--ruby-9': getCSSVarRGB(styles, '--ruby-9', FALLBACK_TOKENS['--ruby-9']),
-    '--crimson-9': getCSSVarRGB(styles, '--crimson-9', FALLBACK_TOKENS['--crimson-9']),
-    '--pink-9': getCSSVarRGB(styles, '--pink-9', FALLBACK_TOKENS['--pink-9']),
-    '--plum-9': getCSSVarRGB(styles, '--plum-9', FALLBACK_TOKENS['--plum-9']),
-    '--purple-9': getCSSVarRGB(styles, '--purple-9', FALLBACK_TOKENS['--purple-9']),
-    '--violet-9': getCSSVarRGB(styles, '--violet-9', FALLBACK_TOKENS['--violet-9']),
-    '--iris-9': getCSSVarRGB(styles, '--iris-9', FALLBACK_TOKENS['--iris-9']),
-    '--indigo-9': getCSSVarRGB(styles, '--indigo-9', FALLBACK_TOKENS['--indigo-9']),
-    '--blue-9': getCSSVarRGB(styles, '--blue-9', FALLBACK_TOKENS['--blue-9']),
-    '--cyan-9': getCSSVarRGB(styles, '--cyan-9', FALLBACK_TOKENS['--cyan-9']),
-    '--teal-9': getCSSVarRGB(styles, '--teal-9', FALLBACK_TOKENS['--teal-9']),
-    '--jade-9': getCSSVarRGB(styles, '--jade-9', FALLBACK_TOKENS['--jade-9']),
-    '--green-9': getCSSVarRGB(styles, '--green-9', FALLBACK_TOKENS['--green-9']),
-    '--grass-9': getCSSVarRGB(styles, '--grass-9', FALLBACK_TOKENS['--grass-9']),
-    '--lime-9': getCSSVarRGB(styles, '--lime-9', FALLBACK_TOKENS['--lime-9']),
-    '--mint-9': getCSSVarRGB(styles, '--mint-9', FALLBACK_TOKENS['--mint-9']),
-    '--sky-9': getCSSVarRGB(styles, '--sky-9', FALLBACK_TOKENS['--sky-9']),
 
     // Radix colors step 10
-    '--gold-10': getCSSVarRGB(styles, '--gold-10', FALLBACK_TOKENS['--gold-10']),
-    '--bronze-10': getCSSVarRGB(styles, '--bronze-10', FALLBACK_TOKENS['--bronze-10']),
-    '--brown-10': getCSSVarRGB(styles, '--brown-10', FALLBACK_TOKENS['--brown-10']),
-    '--yellow-10': getCSSVarRGB(styles, '--yellow-10', FALLBACK_TOKENS['--yellow-10']),
-    '--amber-10': getCSSVarRGB(styles, '--amber-10', FALLBACK_TOKENS['--amber-10']),
-    '--orange-10': getCSSVarRGB(styles, '--orange-10', FALLBACK_TOKENS['--orange-10']),
-    '--tomato-10': getCSSVarRGB(styles, '--tomato-10', FALLBACK_TOKENS['--tomato-10']),
-    '--red-10': getCSSVarRGB(styles, '--red-10', FALLBACK_TOKENS['--red-10']),
-    '--ruby-10': getCSSVarRGB(styles, '--ruby-10', FALLBACK_TOKENS['--ruby-10']),
-    '--crimson-10': getCSSVarRGB(styles, '--crimson-10', FALLBACK_TOKENS['--crimson-10']),
-    '--pink-10': getCSSVarRGB(styles, '--pink-10', FALLBACK_TOKENS['--pink-10']),
-    '--plum-10': getCSSVarRGB(styles, '--plum-10', FALLBACK_TOKENS['--plum-10']),
-    '--purple-10': getCSSVarRGB(styles, '--purple-10', FALLBACK_TOKENS['--purple-10']),
-    '--violet-10': getCSSVarRGB(styles, '--violet-10', FALLBACK_TOKENS['--violet-10']),
-    '--iris-10': getCSSVarRGB(styles, '--iris-10', FALLBACK_TOKENS['--iris-10']),
-    '--indigo-10': getCSSVarRGB(styles, '--indigo-10', FALLBACK_TOKENS['--indigo-10']),
-    '--blue-10': getCSSVarRGB(styles, '--blue-10', FALLBACK_TOKENS['--blue-10']),
-    '--cyan-10': getCSSVarRGB(styles, '--cyan-10', FALLBACK_TOKENS['--cyan-10']),
-    '--teal-10': getCSSVarRGB(styles, '--teal-10', FALLBACK_TOKENS['--teal-10']),
-    '--jade-10': getCSSVarRGB(styles, '--jade-10', FALLBACK_TOKENS['--jade-10']),
-    '--green-10': getCSSVarRGB(styles, '--green-10', FALLBACK_TOKENS['--green-10']),
-    '--grass-10': getCSSVarRGB(styles, '--grass-10', FALLBACK_TOKENS['--grass-10']),
-    '--lime-10': getCSSVarRGB(styles, '--lime-10', FALLBACK_TOKENS['--lime-10']),
-    '--mint-10': getCSSVarRGB(styles, '--mint-10', FALLBACK_TOKENS['--mint-10']),
-    '--sky-10': getCSSVarRGB(styles, '--sky-10', FALLBACK_TOKENS['--sky-10']),
 
     // Surfaces
-    '--color-surface-solid': getCSSVarRGB(
+    '--color-surface': getCSSVarRGB(
       styles,
-      '--color-surface-solid',
-      FALLBACK_TOKENS['--color-surface-solid']
+      '--color-surface',
+      FALLBACK_TOKENS['--color-surface']
     ),
 
     // Shadows - we use simplified single drop shadows
@@ -496,10 +349,9 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--shadow-3': FALLBACK_TOKENS['--shadow-3'],
     '--shadow-4': FALLBACK_TOKENS['--shadow-4'],
     '--shadow-5': FALLBACK_TOKENS['--shadow-5'],
-    '--shadow-6': FALLBACK_TOKENS['--shadow-6'],
 
     // Meta
-    '--scaling': getCSSVarPx(styles, '--scaling', FALLBACK_TOKENS['--scaling']),
+    '--scale': getCSSVarPx(styles, ['--scale', '--scale'], FALLBACK_TOKENS['--scale']),
     appearance,
   };
 }

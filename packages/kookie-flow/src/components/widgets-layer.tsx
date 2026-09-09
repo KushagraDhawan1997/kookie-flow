@@ -37,16 +37,18 @@ import type {
   WidgetProps,
   ResolvedWidgetConfig,
   AccentColor,
+  KookieFlowProps,
 } from '../types';
 import { shallow } from 'zustand/shallow';
 
-/** Theme component type for per-entity accent color support */
-type ThemeComponentType = React.ComponentType<{
-  accentColor?: AccentColor;
-  hasBackground?: boolean;
-  asChild?: boolean;
-  children: React.ReactNode;
-}>;
+/**
+ * The wrapper a consumer supplies for widget theming.
+ *
+ * Declared ONCE, in `types/index.ts`, and imported here. There used to be two declarations and
+ * they disagreed: this one required `asChild` and the public one omitted it, so the type a
+ * consumer checks against admitted a component that could not accept the prop this file passed.
+ */
+type ThemeComponentType = NonNullable<KookieFlowProps['ThemeComponent']>;
 
 const EMPTY_WIDGET_TYPES: Record<string, React.ComponentType<WidgetProps>> = {};
 
@@ -183,7 +185,7 @@ const SocketWidget = memo(
     // Wrap in Theme if entity has custom color and ThemeComponent is provided
     if (entityColor && ThemeComponent) {
       return (
-        <ThemeComponent accentColor={entityColor} hasBackground={false} asChild>
+        <ThemeComponent>
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'stretch' }}>
             {widget}
           </div>

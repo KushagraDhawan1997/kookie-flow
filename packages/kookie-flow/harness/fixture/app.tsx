@@ -11,10 +11,10 @@
  *   ?count=1000&seed=1&widgets=0&preserveBuffer=1
  */
 
-import { StrictMode, useCallback, useEffect, useMemo, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
-import { Theme } from '@kushagradhawan/kookie-ui';
+import { Theme } from '@kookie-ui/react';
 import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
@@ -73,7 +73,7 @@ export interface HarnessApi {
   /** React commit counts, total and per window. */
   reactCommits(): { commits: number; marks: Record<string, number> };
   /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
-  tokenCensus(): { present: string[]; missing: string[] };
+  tokenCensus(): { present: string[]; missing: string[]; declared: number };
   /** Every MSDF glyph mesh: how many glyphs it draws and where its first one sits, in world space. */
   glyphs(): { count: number; x: number; y: number }[];
   /** Every drawn instance's world-space translation, labelled by mesh. The instanced half of `drawnVertices`. */
@@ -606,6 +606,14 @@ function Probe() {
   // helpers; this is the value itself, which is the only way to tell "the reader fell back to
   // its dark table" from "the reader read a dark theme".
   const liveTokens = useTheme();
+  // Through a REF, not the closure. The harness API object is built inside a `useEffect` that runs
+  // once, so `() => liveTokens` captured the FIRST render's value and never moved — which meant it
+  // reported the reader's initial fallback (the lazy initializer runs before the Theme has
+  // mounted) rather than what the GL layer is painting from. A law reading it could not see a
+  // token change at all: caught when a deliberate sabotage of the space-index shift failed to
+  // move the number it was supposed to move.
+  const liveTokensRef = useRef(liveTokens);
+  liveTokensRef.current = liveTokens;
 
   useEffect(() => {
     const canvas = () => document.querySelector<HTMLCanvasElement>('canvas');
@@ -704,6 +712,13 @@ function Probe() {
         host.appendChild(probe);
         const out: Record<string, number> = {};
         for (const name of [
+          '--space-1',
+          '--space-2',
+          '--space-3',
+          '--space-4',
+          '--space-5',
+          '--space-8',
+          '--space-9',
           '--space-6',
           '--space-7',
           '--radius-4',
@@ -745,13 +760,19 @@ function Probe() {
           if (!key.startsWith('--')) continue; // `appearance` is derived, not read from CSS
           (styles.getPropertyValue(key).trim() ? present : missing).push(key);
         }
-        return { present, missing };
+        // The DENOMINATOR, so the vacuity guard can be a derivation rather than a magic number.
+        // It used to be "> 50 tokens censused", calibrated to a table of 99; deleting the 42 hue
+        // tokens the graph now owns took it to 40 and the guard failed on correct code — a guard
+        // about the census's own size, not about whether it ran.
+        const declared = Object.keys(FALLBACK_TOKENS).filter((k) => k.startsWith('--')).length;
+        return { present, missing, declared };
       },
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
       lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, frozenHue },
-      themeTokens: () => liveTokens as unknown as Readonly<Record<string, number | number[] | string>>,
+      themeTokens: () =>
+        liveTokensRef.current as unknown as Readonly<Record<string, number | number[] | string>>,
       /**
        * What the PACKAGE resolves a length token to, through its own shipped path.
        *
@@ -847,7 +868,17 @@ function App() {
   ));
 
   return (
-    <Theme appearance={p.appearance} {...(p.radius ? { radius: p.radius } : {})}>
+    /*
+       `radius` defaults to `large`, not to the design system's own default.
+
+       v2's default level is `full`, where `--radius-1..5` all resolve to 9999px. Every SDF site in
+       the renderer clamps the corner, so a node body silently becomes a stadium — no error, no
+       missing token, nothing in the suite to catch it. `large` is the level whose values sit
+       closest to what v1's `medium` gave, which keeps the v1 -> v2 swap a port rather than a
+       redesign. Moving the node body onto `--radius-surface-N` — capsule-proof at every level — is
+       a design step of its own and has not been taken.
+    */
+    <Theme appearance={p.appearance} radius={p.radius ?? 'large'}>
       <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
         {flows}
       </div>
@@ -857,7 +888,7 @@ function App() {
         id="dom-swatches"
         style={{ position: 'fixed', bottom: 0, left: 0, display: 'flex', zIndex: 10 }}
       >
-        {['--gray-2', '--gray-3', '--gray-4', '--accent-9'].map((t) => (
+        {['--neutral-2', '--neutral-3', '--neutral-4', '--accent-9'].map((t) => (
           <div
             key={t}
             data-token={t}

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { Box, Slider } from '@kushagradhawan/kookie-ui';
+import { Box, Slider } from '@kookie-ui/react';
 import type { WidgetProps } from '../../types';
 
 export function SliderWidget({
@@ -23,8 +23,10 @@ export function SliderWidget({
   const sliderValue = useMemo(() => [numValue], [numValue]);
 
   const handleValueChange = useCallback(
-    (values: number[]) => {
-      onChange(values[0]);
+    // The primitive types this as `number | readonly number[]` — it renders one thumb per array
+    // entry, and we always hand it one. Narrowed here so the widget's own contract stays a number.
+    (values: number | readonly number[]) => {
+      onChange(typeof values === 'number' ? values : values[0]);
     },
     [onChange]
   );
@@ -34,7 +36,6 @@ export function SliderWidget({
       <Slider
         aria-label={label}
         size="2"
-        variant="soft"
         value={sliderValue}
         onValueChange={handleValueChange}
         min={min}

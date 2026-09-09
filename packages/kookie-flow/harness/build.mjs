@@ -31,7 +31,7 @@ await build({
 
 copyFileSync(join(here, 'fixture', 'index.html'), join(out, 'index.html'));
 copyFileSync(
-  require.resolve('@kushagradhawan/kookie-ui/styles.css'),
+  require.resolve('@kookie-ui/react/styles.css'),
   join(out, 'kookie-ui.css')
 );
 console.log('fixture built ->', out);
