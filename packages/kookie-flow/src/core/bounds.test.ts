@@ -86,7 +86,7 @@ describe('computed boxes contain what they were computed from', () => {
       ['a', 'b'],
       'frame',
       entities,
-      buildAdjacencyIndex(entities, []),
+      buildAdjacencyIndex([]),
       LAYOUT
     );
 
