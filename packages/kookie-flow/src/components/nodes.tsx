@@ -197,6 +197,13 @@ export function Entities() {
         varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
 
         float roundedBoxSDF(vec2 p, vec2 b, float r) {
+          // A rounded box is only defined for r <= min(b.x, b.y). Past that every fragment
+          // lands outside the shape and the early-discard erases the box entirely — which is
+          // exactly what --radius-full (9999px) did: measured, node body ink fell from
+          // 170/170 sampled pixels to 3/170. Clamp here rather than at the call sites: the
+          // three callers pass different radii (uCornerRadius, +vPadding, -vOutlineWidth) and
+          // a repeated clamp would drift.
+          r = min(r, min(b.x, b.y));
           vec2 q = abs(p) - b + r;
           return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
         }

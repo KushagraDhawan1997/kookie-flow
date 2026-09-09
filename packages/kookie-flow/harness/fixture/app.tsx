@@ -70,6 +70,8 @@ function params() {
     widgets: q.get('widgets') === '1',
     grid: q.get('grid') !== '0',
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
+    radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
+    entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
   };
 }
 
@@ -332,7 +334,7 @@ function App() {
   }, []);
 
   return (
-    <Theme appearance={p.appearance}>
+    <Theme appearance={p.appearance} {...(p.radius ? { radius: p.radius } : {})}>
       <div style={{ position: 'fixed', inset: 0 }}>
         <KookieFlow
           entities={entities}
@@ -342,6 +344,7 @@ function App() {
           showWidgets={p.widgets}
           showGrid={p.grid}
           showMinimap={false}
+          {...(p.entityRadius ? { radius: p.entityRadius } : {})}
         >
           <Probe />
         </KookieFlow>
