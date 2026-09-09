@@ -10,7 +10,7 @@ import {
 } from '../core/constants';
 import type { ResolvedSocketLayout } from './style-resolver';
 import { getEntitySocketLayout, type EntitySocketLayoutCache } from './socket-layout-cache';
-import type { SocketQuadtree, SocketEntry } from '../core/spatial';
+import { getEntityBounds, type SocketQuadtree, type SocketEntry } from '../core/spatial';
 
 /**
  * Convert screen coordinates to world coordinates.
@@ -40,19 +40,29 @@ export function worldToScreen(
 
 /**
  * Check if a point is inside an entity's bounds.
+ *
+ * PASS THE LAYOUT. Without it an entity that states no height is assumed to be
+ * `DEFAULT_ENTITY_HEIGHT` (100), while the renderer draws it at its computed height — 144 for an
+ * ordinary three-socket node — so the bottom 44px of the box a user can see is not part of the box
+ * this reports. The app's own hit testing goes through the quadtree, which has taken the layout
+ * since it was written; this is the PUBLIC helper, and the shape a consumer is pointed at by
+ * `useContextMenu`'s own documentation.
+ *
+ * The parameter is optional only because omitting it is the existing published behaviour and
+ * making it required would break every caller to fix them.
  */
 export function isPointInEntity(
   point: XYPosition,
-  entity: Entity
+  entity: Entity,
+  layout?: ResolvedSocketLayout
 ): boolean {
-  const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-  const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+  const bounds = getEntityBounds(entity, layout);
 
   return (
-    point.x >= entity.position.x &&
-    point.x <= entity.position.x + width &&
-    point.y >= entity.position.y &&
-    point.y <= entity.position.y + height
+    point.x >= bounds.x &&
+    point.x <= bounds.x + bounds.width &&
+    point.y >= bounds.y &&
+    point.y <= bounds.y + bounds.height
   );
 }
 
@@ -63,11 +73,12 @@ export function isPointInEntity(
  */
 export function getEntityAtPosition(
   worldPos: XYPosition,
-  entities: Entity[]
+  entities: Entity[],
+  layout?: ResolvedSocketLayout
 ): Entity | null {
   // Iterate in reverse to find topmost entity first
   for (let i = entities.length - 1; i >= 0; i--) {
-    if (isPointInEntity(worldPos, entities[i])) {
+    if (isPointInEntity(worldPos, entities[i], layout)) {
       return entities[i];
     }
   }
@@ -95,7 +106,8 @@ export function boxesIntersect(
 export function getEntitiesInBox(
   start: XYPosition,
   end: XYPosition,
-  entities: Entity[]
+  entities: Entity[],
+  layout?: ResolvedSocketLayout
 ): Entity[] {
   // Normalize the box (handle any drag direction)
   const boxX = Math.min(start.x, end.x);
@@ -110,15 +122,7 @@ export function getEntitiesInBox(
     height: boxHeight,
   };
 
-  return entities.filter((entity) => {
-    const entityBox = {
-      x: entity.position.x,
-      y: entity.position.y,
-      width: entity.width ?? DEFAULT_ENTITY_WIDTH,
-      height: entity.height ?? DEFAULT_ENTITY_HEIGHT,
-    };
-    return boxesIntersect(selectionBox, entityBox);
-  });
+  return entities.filter((entity) => boxesIntersect(selectionBox, getEntityBounds(entity, layout)));
 }
 
 /**
@@ -253,8 +257,9 @@ export function getSocketAtPosition(
   // Iterate in reverse for z-ordering (topmost entity first)
   for (let i = entities.length - 1; i >= 0; i--) {
     const entity = entities[i];
-    const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-    const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+    // Through the layout, so a taller-than-default entity is not culled out of its own hit test:
+    // the assumed height was 44px short of the drawn one, against 50px of padding.
+    const { width, height } = getEntityBounds(entity, layout);
 
     // Skip entities outside viewport
     if (
