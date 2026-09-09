@@ -27,9 +27,27 @@ argument for building the harness first; it is a measurement.
 | 9 | **Same for the selection outline** — found only by the round trip; it came back as a partial rectangle and never recovered. | `entity-selection.tsx` | Round trip drifted by 382px; now identical |
 | 10 | **OKLCH, lab and every modern colour function resolved to mid-grey**, silently. Chrome returns them from `getComputedStyle` unchanged. | `utils/color.ts` | 10 formats verified against an independent canvas readback |
 | 11 | **The per-edge layer cache was a zero-length array**, never grown while its three siblings were, so every write was silently discarded and the change-detection comparison was always true — the selection fast path rewrote every vertex of every edge. | `edges.tsx` | Correctness covered by the selection behaviours; the perf benefit is **unmeasured** |
+| 12 | **A socket was not grabbable where it was painted, three ways.** The index defaulted a width-less entity to 200 while the renderer uses `DEFAULT_ENTITY_WIDTH` (240); the update path wrote `x + width` where the insert path wrote `x + width + SOCKET_OFFSET`; and the index ignored an explicit `socket.position` that all three renderer copies honour. | `core/store.ts` (4 paths), `utils/geometry.ts` | Falsified in Chromium: pressing the painted dot started **no** connection, and a press 40px left over empty canvas did |
 
 Fixes 7–9 are one mistake in three files, and **fixing 5 is what made them reachable at all** —
 while theme changes never arrived, the meshes were never reconstructed.
+
+### What fix 12 says about the shape of this codebase
+
+Three renderer copies, one geometry helper and one store copy of the same arithmetic; the store's
+copy was wrong on every one of the three facts it had to get right, and each of the three had a
+different cause. The repair is not three patches — `getSocketWorldX` and `getSocketYOffset` in
+`utils/geometry.ts` are now the only place a socket's position is computed, and the store's four
+paths call them.
+
+**That unification broke the first law written for it, which is worth recording.** The obvious law
+is "the index agrees with `getSocketPosition`" — and once both sides call one function they agree by
+construction. Three separate sabotages of the shared arithmetic all left the sweep green. The file
+is now in two halves: the sweep catches the store re-growing a private copy (falsified — putting
+`position.x + (entity.width ?? 200)` back fails it), and value laws state each fact against the
+constants directly so a change to the shared function fails there. Neither half reads the renderer,
+so a third law lives in `harness/behaviors.mjs`: find the socket dots by colour with no help from
+the index, press each one, and require a connection to start. All three geometry sabotages kill it.
 
 Fix 11 is honest about its limits: it is plainly correct by inspection and the selection behaviours
 prove it did not break anything, but the work it saves cannot be measured here. Frame times on a
@@ -79,17 +97,20 @@ The five `migration-blocker` findings that need your decision:
 
 The audit's remediation plan orders the rest into eight phases. The highest-value remaining work:
 
-**Phase 0 (harness) — partly done.** Built here: the browser fixture, 31 behaviours, the colour
-spikes, the theme round trip, the perf scaffold. Not yet done, and named as the highest-leverage
-commit in the plan: **the fixture sets `width: 200, height: 120` on every entity**, which
-simultaneously masks a 240-vs-200 index/paint mismatch and the entire auto-height divergence. Any
-baseline built on it blesses both bugs. Also missing: a jsdom tier (`vitest.config.ts` globs
-`src/**/*.test.ts`, so a `.test.tsx` file would be **silently skipped**), and a counts-and-
-allocations spike so the ~32 perf findings get a valid measurement under software rasterisation.
+**Phase 0 (harness) — done except the measurement.** Built here: the browser fixture, 33
+behaviours, the colour spikes, the theme round trip, the perf scaffold, and the two-project vitest
+split (a `.test.tsx` file used to be **silently skipped**). The degenerate fixture is gone —
+`explicitSize` now defaults false, and `makeShapes` adds seven entities chosen because one of the
+divergent paths gets each of them wrong. Writing it is what exposed fix 12; a uniform 200×120 grid
+agrees everywhere and proves nothing. Still missing: a counts-and-allocations spike, so the ~32
+perf findings get a valid measurement under software rasterisation, and the perf baseline itself,
+which needs a quiet machine.
 
 **T2 — one measurement, four implementations.** `getEntitySocketLayout` is the source of truth for
 entity height and socket Y, and `edges.tsx`, `connection-line.tsx`, `minimap.tsx` and `store.ts`
-each re-derive it independently with different fallbacks. Edges detach from their sockets.
+each re-derive it independently with different fallbacks. Edges detach from their sockets. Fix 12
+closed the store's copy — the socket INDEX now shares the renderer's arithmetic — but the three
+rendering copies are untouched, and the edge endpoint path (C11) is the next one.
 
 **T3 — the frame loop has no granularity.** Edges and sockets are never viewport-culled; every
 pointermove during a connection drag triggers a full rebuild of every socket in the graph.

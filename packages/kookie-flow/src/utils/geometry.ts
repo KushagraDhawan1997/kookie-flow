@@ -122,6 +122,66 @@ export function getEntitiesInBox(
 }
 
 /**
+ * Vertical offset of a socket from its entity's origin, in world units.
+ *
+ * Third copy of one fact, and the third to be found disagreeing. The renderer (sockets.tsx, twice)
+ * and `getSocketPosition` both honour an explicit `socket.position` — a 0..1 fraction of the
+ * entity's height that bypasses row layout entirely — while the store's socket index did not, and
+ * returned the row-layout Y instead. Measured in a real browser on an entity whose three sockets
+ * carry positions 0.1 / 0.9 / 0.5: the index held them 57.6px, 17.6px and 40px away from where
+ * they were painted, so all three were grabbable over empty canvas and dead where they were drawn.
+ *
+ * Takes the socket's INDEX rather than its id: the store's insert and update loops already have it,
+ * and a `findIndex` per socket would make them quadratic in the socket count.
+ */
+export function getSocketYOffset(
+  entity: Entity,
+  socketIndex: number,
+  isInput: boolean,
+  layout?: ResolvedSocketLayout | null
+): number {
+  const sockets = (isInput ? entity.inputs : entity.outputs) ?? [];
+  const socket = sockets[socketIndex];
+
+  if (layout) {
+    const entityLayout = getEntitySocketLayout(entity, layout);
+    const height = entity.height ?? entityLayout.computedHeight;
+    if (socket?.position !== undefined) return socket.position * height;
+    const centerOffset = (height - entityLayout.computedHeight) / 2;
+    const cached = (isInput ? entityLayout.inputs : entityLayout.outputs)[socketIndex];
+    return (cached?.yOffset ?? layout.marginTop + layout.rowHeight / 2) + centerOffset;
+  }
+
+  // Legacy fallback, used only for the frames before socketLayout syncs from React context.
+  const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
+  if (socket?.position !== undefined) return socket.position * height;
+  return SOCKET_MARGIN_TOP + socketIndex * SOCKET_SPACING;
+}
+
+/**
+ * World X of a socket's grab point.
+ *
+ * The renderer and the socket index have to agree on this number or the grabbable socket sits
+ * somewhere the painted one is not. They disagreed twice, both measured:
+ *
+ *   - the index defaulted a width-less entity to 200 while the renderer uses
+ *     DEFAULT_ENTITY_WIDTH (240), so an output socket was grabbable 40px left of its paint, over
+ *     empty canvas;
+ *   - the index's UPDATE path wrote `x + width` where its INSERT path wrote
+ *     `x + width + SOCKET_OFFSET`, so every socket on an entity jumped 12px — outputs left,
+ *     inputs right — the first time anything moved it, including a reposition to the coordinates
+ *     it already had.
+ *
+ * One function called from every site is what makes a third divergence impossible. It deliberately
+ * takes no socket id: the store's insert/update loops already have the index in hand, and a
+ * `findIndex` per socket would make those loops quadratic in the socket count.
+ */
+export function getSocketWorldX(entity: Entity, isInput: boolean): number {
+  const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+  return isInput ? entity.position.x - SOCKET_OFFSET : entity.position.x + width + SOCKET_OFFSET;
+}
+
+/**
  * Calculate world position of a socket on an entity.
  * Inputs are on the left edge, outputs on the right edge.
  *
@@ -147,37 +207,9 @@ export function getSocketPosition(
   const index = sockets.findIndex((s) => s.id === socketId);
   if (index === -1) return null;
 
-  const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
-  const socket = sockets[index];
-  let yOffset: number;
-
-  if (layout) {
-    const entityLayout = getEntitySocketLayout(entity, layout);
-    const height = entity.height ?? entityLayout.computedHeight;
-
-    if (socket.position !== undefined) {
-      yOffset = socket.position * height;
-    } else {
-      const centerOffset = (height - entityLayout.computedHeight) / 2;
-      const positions = isInput ? entityLayout.inputs : entityLayout.outputs;
-      const cachedPos = positions[index];
-      yOffset = cachedPos
-        ? cachedPos.yOffset + centerOffset
-        : layout.marginTop + layout.rowHeight / 2 + centerOffset;
-    }
-  } else {
-    const height = entity.height ?? DEFAULT_ENTITY_HEIGHT;
-    if (socket.position !== undefined) {
-      yOffset = socket.position * height;
-    } else {
-      // Legacy fallback for backward compatibility
-      yOffset = SOCKET_MARGIN_TOP + index * SOCKET_SPACING;
-    }
-  }
-
   return {
-    x: isInput ? entity.position.x - SOCKET_OFFSET : entity.position.x + width + SOCKET_OFFSET,
-    y: entity.position.y + yOffset,
+    x: getSocketWorldX(entity, isInput),
+    y: entity.position.y + getSocketYOffset(entity, index, isInput, layout),
   };
 }
 

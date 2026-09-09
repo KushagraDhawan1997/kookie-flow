@@ -425,6 +425,139 @@ await withPage('count=12&seed=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- sockets
+
+console.log('\nsockets');
+
+/**
+ * A socket must be grabbable where it is PAINTED.
+ *
+ * The renderer, `getSocketPosition` and the store's socket index are three implementations of one
+ * fact, and two of them were wrong. Measured on this scene before the repair: an output socket on
+ * a width-less entity was indexed 40px left of its paint (the index defaulted to 200 where the
+ * renderer uses DEFAULT_ENTITY_WIDTH), every socket jumped 12px the first time its entity moved
+ * (the update path dropped the SOCKET_OFFSET its insert path applied), and a socket carrying an
+ * explicit `position` was indexed at its row-layout Y instead of its fraction of the entity height
+ * — 57.6px out on one of them. In each case pressing the visible dot did nothing at all.
+ *
+ * The unit laws in src/core/socket-index.test.ts cover the same ground far more cheaply, but they
+ * cannot cover THIS: the arithmetic is now shared, so both sides of any in-process comparison move
+ * together. The renderer is the independent third implementation, and the only way to read it is
+ * to look at the pixels. So this finds the dots by COLOUR, with no help from the index, and then
+ * presses each one.
+ */
+await withPage('scene=shapes&preserveBuffer=1', async (page) => {
+  // The shapes sit in one row ~2.3k wide. A 1280 viewport culls most of them, and a socket that
+  // is off-screen is a socket this law silently does not check.
+  await page.setViewportSize({ width: 2700, height: 800 });
+  await page.waitForTimeout(200);
+
+  // The backbuffer is only valid straight after a draw, and R3F renders on demand — a read taken
+  // after an idle wait finds a cleared buffer, which reads as "the renderer drew nothing" over a
+  // canvas showing seven nodes. Nudging the pointer forces a frame; the read runs inside a rAF so
+  // it lands after that frame rather than before it.
+  await page.mouse.move(1350, 400);
+  await page.waitForTimeout(150);
+
+  const dots = await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() =>
+          resolve(
+            (() => {
+              const canvas = window.__harness.canvas();
+              const gl = canvas.getContext('webgl2');
+              const w = gl.drawingBufferWidth;
+              const h = gl.drawingBufferHeight;
+              const buf = new Uint8Array(w * h * 4);
+              gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+              const dpr = w / canvas.clientWidth;
+
+              // The socket palette, resolved through the library's own token reader rather than
+              // restated here — a second copy of the theme is a second thing to go stale.
+              const want = new Set(
+                ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10']
+                  .map((t) => window.__harness.lib.resolveColorToRGB(`var(${t})`))
+                  .filter(Boolean)
+                  .map(([r, g, b]) =>
+                    `${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`
+                  )
+              );
+
+              const at = (x, y) => {
+                const i = (y * w + x) * 4;
+                return `${buf[i]},${buf[i + 1]},${buf[i + 2]}`;
+              };
+              const seen = new Uint8Array(w * h);
+              const blobs = [];
+              for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                  if (seen[y * w + x] || !want.has(at(x, y))) continue;
+                  const stack = [[x, y]];
+                  seen[y * w + x] = 1;
+                  let sx = 0;
+                  let sy = 0;
+                  let n = 0;
+                  while (stack.length) {
+                    const [cx, cy] = stack.pop();
+                    sx += cx;
+                    sy += cy;
+                    n++;
+                    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                      const nx = cx + dx;
+                      const ny = cy + dy;
+                      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                      if (seen[ny * w + nx] || !want.has(at(nx, ny))) continue;
+                      seen[ny * w + nx] = 1;
+                      stack.push([nx, ny]);
+                    }
+                  }
+                  // readPixels is bottom-left origin; CSS is top-left.
+                  blobs.push({ n, x: sx / n / dpr, y: (h - sy / n) / dpr });
+                }
+              }
+
+              const st = window.__harness.store.getState();
+              let sockets = 0;
+              for (const e of st.entities) {
+                sockets += (e.inputs?.length ?? 0) + (e.outputs?.length ?? 0);
+              }
+              return { blobs, sockets };
+            })()
+          )
+        )
+      )
+  );
+
+  // Vacuity guard. A scan that found nothing would let every press below pass by never running,
+  // and the read HAS come back empty for a real reason (see the backbuffer note above).
+  check(
+    'INSTRUMENT: the scan finds a socket-coloured dot for every socket',
+    dots.blobs.length >= dots.sockets,
+    `${dots.blobs.length} blobs for ${dots.sockets} sockets`
+  );
+
+  const dead = [];
+  for (const dot of dots.blobs) {
+    await page.mouse.move(dot.x, dot.y);
+    await page.mouse.down();
+    await page.mouse.move(dot.x + 25, dot.y + 25, { steps: 3 });
+    const draft = await page.evaluate(() => {
+      const d = window.__harness.store.getState().connectionDraft;
+      return d ? `${d.source.entityId}/${d.source.socketId}` : null;
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+    if (!draft) dead.push(`${dot.x.toFixed(0)},${dot.y.toFixed(0)}`);
+  }
+
+  check(
+    'pressing a painted socket starts a connection',
+    dead.length === 0,
+    dead.length ? `${dead.length}/${dots.blobs.length} painted dots did nothing: ${dead.join(' ')}` : undefined
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(`\n${passed} passed, ${failures.length} failed\n`);
