@@ -59,7 +59,7 @@ npm install react react-dom three @react-three/fiber @react-three/drei
 For full theming support with design tokens:
 
 ```bash
-npm install @kushagradhawan/kookie-ui
+npm install @kookie-ui/react
 ```
 
 ## Quick Start
@@ -454,9 +454,9 @@ Overview navigation panel with viewport indicator:
 Full Kookie UI design system integration:
 
 ```tsx
-import { Theme } from '@kushagradhawan/kookie-ui';
+import { Theme } from '@kookie-ui/react';
 
-<Theme accentColor="indigo" grayColor="slate" radius="medium">
+<Theme material="regular" radius="medium">
   <KookieFlow
     size="2"
     variant="surface"
@@ -466,7 +466,12 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 </Theme>
 ```
 
-**Styling props:**
+The graph reads its colours from the tokens the nearest `Theme` resolves, so it follows the
+appearance the app is in without being told. `accentColor` and `grayColor` are not v2 props —
+v2 refuses them as compile errors — and the hue set the graph paints from is frozen in the
+package rather than read from CSS. See `plans/migration/decisions.md`.
+
+**Styling props** (these are KookieFlow's own, not the Theme's):
 - `size` — Entity sizing tier ('1' - '5')
 - `variant` — Visual style ('surface', 'outline', 'soft', 'classic', 'ghost')
 - `radius` — Border radius ('none', 'small', 'medium', 'large', 'full')
@@ -481,16 +486,21 @@ const entities = [
 ];
 ```
 
-**Widget theming with per-entity colors:**
+**Consumer-supplied widgets:**
 ```tsx
-import { Theme } from '@kushagradhawan/kookie-ui';
+import { Theme } from '@kookie-ui/react';
 
 <KookieFlow
-  ThemeComponent={Theme}  // Enable per-entity accent colors for widgets
+  ThemeComponent={Theme}  // Wraps consumer-supplied widget components
   entities={entities}
   edges={edges}
 />
 ```
+
+`ThemeComponent` is an opaque wrapper now. It used to give each entity's widgets that entity's
+accent colour; v2 refuses `accentColor` and `asChild` as compile errors, so there is nothing
+left to hand the colour to. The built-in widgets draw in WebGL and take their colours from the
+resolved tokens directly.
 
 ### Plugins
 - **useClipboard** — Copy, paste, cut operations with internal clipboard

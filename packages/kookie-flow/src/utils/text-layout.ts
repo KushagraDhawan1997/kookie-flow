@@ -197,7 +197,28 @@ export interface GlyphInstance {
  * Two parsers for one format is the shape that produced five copies of the socket arithmetic,
  * three of them wrong. One is enough.
  */
+const parsedColorCache = new Map<string, [number, number, number]>();
+
+/**
+ * Memoised, because `populateGlyphBuffers` called this once per ENTRY and the input space is
+ * about two strings — the primary and secondary text colours, plus whatever an edge label
+ * overrides. Each call allocated a slice, a regex match array and two small arrays, so a collect
+ * pass spent thousands of allocations re-deriving the same two tuples.
+ *
+ * The returned tuple is SHARED between callers. Every call site destructures it immediately, so
+ * nothing holds or mutates it; if that ever stops being true this has to go back to returning a
+ * fresh array.
+ */
 function parseColor(color: string): [number, number, number] {
+  let parsed = parsedColorCache.get(color);
+  if (parsed === undefined) {
+    parsed = parseColorUncached(color);
+    parsedColorCache.set(color, parsed);
+  }
+  return parsed;
+}
+
+function parseColorUncached(color: string): [number, number, number] {
   // Handle hex colors
   if (color.startsWith('#')) {
     return hexToRGB(color);

@@ -2,9 +2,10 @@
  * TextEntities - Renders text entities using instanced MSDF glyph rendering.
  * Phase 10B: MSDF-based text (replaces Canvas2D texture approach)
  *
- * Supports multiple font weights with separate InstancedMesh per weight
- * (one draw call per weight). Uses the same MSDF pipeline as node/socket/edge
- * labels but with multi-line word-wrap support.
+ * Supports multiple font weights with a separate InstancedMesh per weight, and each weight is
+ * split again into a background and a foreground batch so that selection can promote ONE text
+ * entity without dragging the rest of its weight with it (see TextEntityWeightMesh). Uses the
+ * same MSDF pipeline as node/socket/edge labels but with multi-line word-wrap support.
  *
  * Key advantages over Canvas2D textures:
  * - Crisp at any zoom level (resolution-independent SDF)
@@ -60,14 +61,23 @@ const SENTINEL_ENTRIES: MultiLineTextEntry[] = [];
 interface TextEntityWeightMeshProps {
   fontData: LoadedFontWeight;
   entriesRef: React.MutableRefObject<MultiLineTextEntry[]>;
-  storeRef: React.MutableRefObject<ReturnType<typeof useFlowStoreApi>>;
+  renderOrder: number;
 }
 
 /**
  * Renders text entities for a single font weight using instanced MSDF.
  * Manages its own GPU buffers and capacity.
+ *
+ * The batch's render order is fixed by the caller and never computed here.
+ * `renderOrder` is a property of the MESH, and every text entity of a given weight used to be
+ * glyphs in this one mesh — so the frame loop scanned the entries for any selected id and, on a
+ * hit, moved the ENTIRE batch from the background layer to the foreground one. Selecting a single
+ * piece of text re-ordered every other piece of text that happened to share its font weight
+ * against the node bodies behind them. The parent now routes selected entries into their own
+ * mesh, the way nodes.tsx routes selected entities into a second InstancedMesh, so a batch is
+ * either foreground or background for its whole life and this loop does not read the store at all.
  */
-function TextEntityWeightMesh({ fontData, entriesRef, storeRef }: TextEntityWeightMeshProps) {
+function TextEntityWeightMesh({ fontData, entriesRef, renderOrder }: TextEntityWeightMeshProps) {
   const { metrics, texture, glyphMap, kerningMap } = fontData;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
@@ -217,17 +227,6 @@ function TextEntityWeightMesh({ fontData, entriesRef, storeRef }: TextEntityWeig
     }
 
     mesh.count = safeGlyphCount;
-
-    // renderOrder: use foreground for selected text entities
-    const { selectedEntityIds } = storeRef.current.getState();
-    let hasSelected = false;
-    for (const entry of entries) {
-      if (entry.id !== undefined && selectedEntityIds.has(entry.id)) {
-        hasSelected = true;
-        break;
-      }
-    }
-    mesh.renderOrder = hasSelected ? RENDER_ORDER_FG : RENDER_ORDER_BG;
   });
 
   return (
@@ -236,7 +235,7 @@ function TextEntityWeightMesh({ fontData, entriesRef, storeRef }: TextEntityWeig
       ref={meshRef}
       args={[geometry, material, capacity]}
       frustumCulled={false}
-      renderOrder={RENDER_ORDER_BG}
+      renderOrder={renderOrder}
     />
   );
 }
@@ -262,18 +261,24 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   onEntitiesChangeRef.current = onEntitiesChange;
 
-  // Stable store ref for children
-  const storeRef = useRef(store);
-  storeRef.current = store;
-
   // Deferred dimension updates — batched via queueMicrotask to avoid store
   // mutations (array spread + quadtree update) inside the render loop.
   const pendingDimUpdatesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
   const dimFlushScheduledRef = useRef(false);
 
-  // Entries by weight — refs for same-frame child reads
-  const regularEntriesRef = useRef<MultiLineTextEntry[]>([]);
-  const semiboldEntriesRef = useRef<MultiLineTextEntry[]>([]);
+  /**
+   * Entries by weight AND by layer — refs for same-frame child reads.
+   *
+   * Four lists, not two, because renderOrder lives on the mesh: a selected text entity has to be
+   * glyphs in a different InstancedMesh from an unselected one or promoting it promotes every
+   * entity that shares its font weight. The foreground meshes stay mounted whether or not anything
+   * is selected — an InstancedMesh at count 0 is a skipped draw, while mounting one on the first
+   * selected character would allocate a fresh glyph buffer in the middle of a box-select drag.
+   */
+  const regularBgEntriesRef = useRef<MultiLineTextEntry[]>([]);
+  const regularFgEntriesRef = useRef<MultiLineTextEntry[]>([]);
+  const semiboldBgEntriesRef = useRef<MultiLineTextEntry[]>([]);
+  const semiboldFgEntriesRef = useRef<MultiLineTextEntry[]>([]);
 
   // Track whether semibold entries exist (for conditional mount)
   const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
@@ -336,9 +341,11 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     const viewBottom = (size.height - viewport.y) * invZoom;
     const cullPadding = 100;
 
-    // Collect multi-line text entries, split by weight
-    const regularEntries: MultiLineTextEntry[] = [];
-    const semiboldEntries: MultiLineTextEntry[] = [];
+    // Collect multi-line text entries, split by weight and by selection layer
+    const regularBgEntries: MultiLineTextEntry[] = [];
+    const regularFgEntries: MultiLineTextEntry[] = [];
+    const semiboldBgEntries: MultiLineTextEntry[] = [];
+    const semiboldFgEntries: MultiLineTextEntry[] = [];
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -433,8 +440,13 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       // Resolve text color
       const textColor = data.textColor ?? primaryTextColor;
 
-      // Target entry list based on weight
-      const targetEntries = useSemibold ? semiboldEntries : regularEntries;
+      // Target entry list based on weight and on whether this entity is selected. The selection
+      // read is the one the child mesh used to do for the whole batch; done per entity here it
+      // decides which mesh the glyphs land in instead of moving everyone's render order.
+      const isSelected = selectedForDepth.has(entity.id);
+      const targetEntries = useSemibold
+        ? (isSelected ? semiboldFgEntries : semiboldBgEntries)
+        : (isSelected ? regularFgEntries : regularBgEntries);
 
       // Handle empty content — show placeholder
       if (!content || !content.trim()) {
@@ -481,13 +493,15 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     }
 
     // Write new arrays to refs — children detect change via reference identity
-    regularEntriesRef.current = regularEntries;
-    semiboldEntriesRef.current = semiboldEntries;
+    regularBgEntriesRef.current = regularBgEntries;
+    regularFgEntriesRef.current = regularFgEntries;
+    semiboldBgEntriesRef.current = semiboldBgEntries;
+    semiboldFgEntriesRef.current = semiboldFgEntries;
 
     dirtyRef.current = false;
 
     // Update hasSemiboldEntries only when presence changes (avoids React re-renders)
-    const hasSemibold = semiboldEntries.length > 0;
+    const hasSemibold = semiboldBgEntries.length > 0 || semiboldFgEntries.length > 0;
     if (hasSemibold !== hasSemiboldEntries) {
       setHasSemiboldEntries(hasSemibold);
     }
@@ -523,15 +537,27 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     <>
       <TextEntityWeightMesh
         fontData={regularFont}
-        entriesRef={regularEntriesRef}
-        storeRef={storeRef}
+        entriesRef={regularBgEntriesRef}
+        renderOrder={RENDER_ORDER_BG}
+      />
+      <TextEntityWeightMesh
+        fontData={regularFont}
+        entriesRef={regularFgEntriesRef}
+        renderOrder={RENDER_ORDER_FG}
       />
       {semiboldFont && hasSemiboldEntries && (
-        <TextEntityWeightMesh
-          fontData={semiboldFont}
-          entriesRef={semiboldEntriesRef}
-          storeRef={storeRef}
-        />
+        <>
+          <TextEntityWeightMesh
+            fontData={semiboldFont}
+            entriesRef={semiboldBgEntriesRef}
+            renderOrder={RENDER_ORDER_BG}
+          />
+          <TextEntityWeightMesh
+            fontData={semiboldFont}
+            entriesRef={semiboldFgEntriesRef}
+            renderOrder={RENDER_ORDER_FG}
+          />
+        </>
       )}
     </>
   );

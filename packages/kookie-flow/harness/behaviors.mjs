@@ -196,6 +196,35 @@ await withPage('count=12&seed=1', async (page, errors) => {
   check('viewport starts at origin, zoom 1', st.viewport.x === 0 && st.viewport.y === 0 && st.viewport.zoom === 1);
   check('nothing is selected on mount', st.selected.length === 0);
   check('mount raises no page error', errors.length === 0, errors[0]);
+
+  /**
+   * The two driver facts, asserted at the only place they exist.
+   *
+   * Both of these have already shipped broken and neither cost a single failing test.
+   *
+   * The context was created with `depth: false` — a stale comment called it a Safari performance
+   * choice — so DEPTH_BITS was 0 and every `depthTest: true` in the package did nothing. Ordering
+   * fell back to `renderOrder`, which is per LAYER, so every widget in the scene painted above
+   * every unselected node body and two overlapping nodes interleaved. entity-depth.test.ts still
+   * passed: it asserts the arithmetic and never leaves JS.
+   *
+   * And a fragment shader once referenced an instanced attribute, which does not exist in a
+   * fragment shader, so the program failed to link and every field, select and colour widget drew
+   * nothing at all. three logs it and carries on with a null program — the mesh is still in the
+   * scene graph, `drawnInstances` still reports its instances, and every count law stays green
+   * while the screen is empty.
+   */
+  const facts = await page.evaluate(() => window.__harness.contextFacts());
+  check(
+    'the canvas asks for a depth buffer and gets one',
+    facts.depth?.requested === true && facts.depth.bits > 0,
+    JSON.stringify(facts.depth) + ' — with 0 bits every depthTest in the package is a no-op'
+  );
+  check(
+    'every shader links',
+    facts.linkFailures.length === 0,
+    facts.linkFailures.map((f) => f.log.trim().split('\n')[0]).join(' | ')
+  );
 });
 
 // ---------------------------------------------------------------- labels are GL
@@ -605,14 +634,6 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
    * all of them, and the instrument line below says so out loud rather than letting the law pass
    * quietly on an empty comparison.
    */
-  const system = await page.evaluate(() => {
-    const el =
-      document.querySelector('.radix-themes') ??
-      document.querySelector('.kui-theme') ??
-      document.documentElement;
-    return getComputedStyle(el).getPropertyValue('--neutral-1').trim() !== '' ? 'v2' : 'v1';
-  });
-
   const fidelity = await page.evaluate(() => {
     const appearance = window.__harness.themeTokens().appearance;
     const names = ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10',
@@ -640,44 +661,98 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
   console.log(
     `  fidelity  ${checkable.length}/${fidelity.length} of the frozen hues are still defined by the theme`
   );
+
   /**
-   * THE FROZEN VALUES ARE THE PALETTE, on both systems, and the fidelity check only tells us how
-   * much of it the theme still has an opinion about.
+   * WHICH of the nine v2 still defines, named one by one — not how many.
    *
-   * On v1 all nine resolve and all nine must agree — that agreement is what proves the freeze
-   * captured what v1 painted. On v2 five of the nine are simply gone, and of the four that remain
-   * (blue, amber, orange, green) NONE agrees: v2 generates its own OKLCH scale, so `--blue-10`
-   * moved from `#0588f0` to `rgb(0,122,240)` and green from a muted forest to a near-fluorescent.
+   * This used to fork on a `system` probe that asked whether `--neutral-1` resolved, answering
+   * 'v1' when it did not. Under v2 that token is declared at `:root` and re-declared in both
+   * appearance scopes, so the probe could only ever answer 'v2' — and the two laws inside the v1
+   * arm ("v1 defines every frozen hue" and "every frozen hue equals what v1 resolves") stopped
+   * executing entirely. They did not fail. They vanished, and a suite that prints one fewer `ok`
+   * line reports exactly the same `0 failed` as one that prints them all. That is the shape this
+   * file hunts for elsewhere and had a live instance of.
    *
-   * That is why the resolver takes the frozen value FIRST rather than the theme's. A disagreement
-   * here is expected on v2 and is not a failure; a disagreement on v1 means the freeze is wrong.
+   * What replaced it is stronger than the inequality it also replaces. `checkable.length <
+   * fidelity.length` passed at 3/9 and would keep passing at 8/9 — it could not tell which hues
+   * v2 dropped, so v2 re-adding `--purple-10` with a different value than the frozen one slid
+   * straight under it. The partition is asserted by name: v2 either dropping or re-adding a hue
+   * goes red, and the person who reads the failure is told which one moved.
+   */
+  const SUPPLIED_BY_V2 = ['--blue-10', '--amber-10', '--orange-10'];
+  const supplied = checkable.map((f) => f.t).sort();
+  check(
+    'v2 supplies exactly three of the frozen hues, which is why the rest are frozen',
+    supplied.join(',') === [...SUPPLIED_BY_V2].sort().join(','),
+    `defined: ${supplied.join(', ') || '(none)'} — expected ${SUPPLIED_BY_V2.join(', ')}. ` +
+      `A hue moving in or out of this set means v2's palette changed; decide whether the freeze ` +
+      `is still the right answer before editing this list.`
+  );
+
+  /**
+   * The three v2 DOES define do not agree with the freeze, and that is the finding, not a fault.
+   *
+   * v2 generates its own OKLCH scale, so `--blue-10` moved from `#0588f0` to `rgb(0,122,240)`.
+   * That disagreement is exactly why `resolveColorToRGB` takes the frozen value FIRST rather than
+   * the theme's. Asserting it here means the day v2's scale converges on the frozen one, someone
+   * is told — rather than the fact sitting in a comment that says "NONE agrees" about four hues
+   * while the list next to it names three.
    */
   const drifted = checkable.filter((f) => !f.near);
-  if (system === 'v1') {
-    check(
-      'INSTRUMENT: v1 defines every frozen hue, so the freeze is fully checkable',
-      checkable.length === fidelity.length,
-      `${checkable.length}/${fidelity.length}`
-    );
-    check(
-      'every frozen hue equals what v1 resolves',
-      drifted.length === 0,
-      drifted.map((f) => `${f.t}: theme rgb(${f.css}) vs frozen ${f.frozen}`).join('; ')
-    );
-  } else {
-    check(
-      'v2 does not supply this palette, which is why it is frozen',
-      checkable.length < fidelity.length,
-      `${checkable.length}/${fidelity.length} still defined — if v2 ever ships all nine, revisit ` +
-        `whether the freeze is still the right answer`
-    );
-  }
-
-  // Vacuity guard. A scan that found nothing would let every press below pass by never running,
-  // and the read HAS come back empty for a real reason (see the backbuffer note above).
   check(
-    'INSTRUMENT: the scan finds a socket-coloured dot for every socket',
-    dots.blobs.length >= dots.sockets,
+    'the hues v2 does define disagree with the freeze, so the freeze is doing the work',
+    checkable.length > 0 && drifted.length === checkable.length,
+    drifted.map((f) => `${f.t}: theme rgb(${f.css}) vs frozen ${f.frozen}`).join('; ') ||
+      '(nothing checkable — the instrument above should have caught this)'
+  );
+
+  /**
+   * WHERE EVERY SOCKET WAS DRAWN, against where the index says a press is answered.
+   *
+   * This replaces a blob-count guard that read `blobs.length >= sockets` — and that comparison was
+   * never measuring what its name claimed. A flood fill counts CONNECTED COMPONENTS of
+   * socket-coloured pixels, and a socket dot is not reliably one of those: a hollow ring crossed by
+   * anything breaks into arcs, so one socket can yield four blobs of one to four pixels each, and
+   * an occluded one yields none. Measured on the shapes scene: 17 sockets produced ten whole dots
+   * plus six fragments, and the law reported 16 — a number arrived at by two errors cancelling.
+   * It had been failing by one for as long as the scene has existed, and the fragments were why.
+   *
+   * Counting pixels was the wrong instrument for the question. `drawnInstances()` reports the
+   * translation the GPU was actually handed for each socket, and `indexedSockets()` reports what
+   * the quadtree will answer a press with. Comparing those two is exact, names the socket that
+   * moved, and is the same shape as the widget paint-vs-press law.
+   */
+  const placement = await page.evaluate(() => {
+    const drawn = window.__harness
+      .drawnInstances()
+      .filter((d) => d.kind === 'sockets' || d.kind === 'sockets-selected');
+    const indexed = window.__harness.indexedSockets();
+    const missing = indexed.filter(
+      (s) => !drawn.some((d) => Math.hypot(d.x - s.x, d.y - s.y) < 1.5)
+    );
+    return {
+      drawn: drawn.length,
+      indexed: indexed.length,
+      missing: missing.map((s) => `${s.entityId}/${s.socketId}@${Math.round(s.x)},${Math.round(s.y)}`),
+    };
+  });
+  check(
+    'INSTRUMENT: the scene indexes sockets to check',
+    placement.indexed === dots.sockets && placement.indexed > 0,
+    `${placement.indexed} indexed, ${dots.sockets} on the entities`
+  );
+  check(
+    'every socket is drawn where pressing it is answered',
+    placement.missing.length === 0,
+    `${placement.missing.length} of ${placement.indexed} not drawn at their indexed point: ` +
+      placement.missing.join(' ')
+  );
+
+  // Vacuity guard for the PRESS sweep below, which walks painted pixels. Blob count is not socket
+  // count (see above), so this asks only that the scan found something to press.
+  check(
+    'INSTRUMENT: the scan finds socket-coloured pixels to press',
+    dots.blobs.length > 0,
     `${dots.blobs.length} blobs for ${dots.sockets} sockets`
   );
 
@@ -1290,21 +1365,27 @@ await withPage('count=4&seed=1&widgets=1&customWidget=1', async (page) => {
   });
   await page.waitForTimeout(300);
 
-  if (wrote) {
-    const shows = await page.evaluate(
-      (id) => {
-        const scope = document.querySelector(`[data-entity-id="${id}"]`)?.parentElement;
-        if (!scope) return null;
-        return Array.from(scope.querySelectorAll('input,textarea')).map((el) => el.value);
-      },
-      wrote
-    );
-    check(
-      'a widget value follows an external write',
-      Array.isArray(shows) && shows.includes('from outside'),
-      JSON.stringify(shows)
-    );
-  }
+  // The law below used to sit inside `if (wrote)` with no `else`. When the socket named 'added'
+  // is not on any entity — a fixture edit, a setEntities that drops unknown sockets — the whole
+  // law EVAPORATED: one fewer `ok` line, `failures` still empty, and the summary still `0 failed`.
+  // Nothing in this runner compares the pass count against an expected total, so a suite that
+  // quietly shrinks is indistinguishable from one that quietly passes.
+  check('INSTRUMENT: the added socket reached an entity', wrote !== null, String(wrote));
+
+  const shows = await page.evaluate(
+    (id) => {
+      if (!id) return null;
+      const scope = document.querySelector(`[data-entity-id="${id}"]`)?.parentElement;
+      if (!scope) return null;
+      return Array.from(scope.querySelectorAll('input,textarea')).map((el) => el.value);
+    },
+    wrote
+  );
+  check(
+    'a widget value follows an external write',
+    Array.isArray(shows) && shows.includes('from outside'),
+    JSON.stringify(shows)
+  );
 });
 
 // ---------------------------------------------------------------- selection outlines
@@ -1382,12 +1463,12 @@ await withPage('scene=group', async (page) => {
         new Promise((resolve) =>
           requestAnimationFrame(() => {
             const s = window.__harness.store.getState();
-            let painted = 0;
-            for (const e of s.entities) {
-              const r = window.__harness.socketRanges?.(e.id);
-              void r;
-            }
-            // Count what the socket index holds, which is the hit-test side.
+            // What the socket INDEX holds, which is the hit-test side. There used to be a second
+            // loop above this one that called `window.__harness.socketRanges?.(e.id)` to count
+            // painted dots — but no such method exists on the harness API, so the optional call
+            // short-circuited to undefined on every iteration, the counter it fed was incremented
+            // nowhere, and both were then `void`ed. A loop with a dead body, kept alive by `?.`,
+            // inside a function whose name promised it counted paint.
             let indexed = 0;
             for (const e of s.entities) {
               for (const q of s.socketQuadtree.queryPoint(e.position.x + 100, e.position.y + 100, 1400, [])) {
@@ -1395,7 +1476,6 @@ await withPage('scene=group', async (page) => {
                 indexed++;
               }
             }
-            void painted;
             resolve({ indexed, hidden: s.hiddenEntityIds.size });
           })
         )
@@ -1403,6 +1483,9 @@ await withPage('scene=group', async (page) => {
 
   const before = await socketDots();
   check('INSTRUMENT: nothing is hidden to begin with', before.hidden === 0, JSON.stringify(before));
+  // And the index has something in it, or the post-collapse comparison below is measuring a drop
+  // from zero to zero.
+  check('INSTRUMENT: the socket index is populated before collapsing', before.indexed > 0, JSON.stringify(before));
 
   // Collapse the frame, then read what is DRAWN — vertices, not attributes.
   await page.evaluate(() => {
@@ -1427,7 +1510,15 @@ await withPage('scene=group', async (page) => {
      * never have seen a socket at all: it was measuring edges the whole time, and passing on
      * stale ribbon vertices past the draw range before that.
      */
-    const socketPoints = window.__harness.drawnInstances().filter((p) => p.kind.startsWith('Circle'));
+    // Matched by NAME, not by geometry type. This read `kind.startsWith('Circle')`, which worked
+    // only while the socket meshes were anonymous and `drawnInstances` fell back to describing
+    // their geometry — so naming them (which a placement law needed, to tell them apart from
+    // whatever else is round) silently emptied this list and the law started reporting zero
+    // sockets painted, which is the answer it wants to hear. A name is an identity; a geometry
+    // type is a shape that anything may share.
+    const socketPoints = window.__harness
+      .drawnInstances()
+      .filter((p) => p.kind === 'sockets' || p.kind === 'sockets-selected');
     const verts = window.__harness.drawnVertices();
 
     let paintedSockets = 0;
@@ -1758,18 +1849,42 @@ await withPage('count=12&seed=1', async (page) => {
    *
    * The package's answer is reachable only through its behaviour: `getColorProbe` (src/utils/
    * color.ts) parents a hidden span to whatever IT resolved, so forcing a colour resolution and
-   * then finding that span tells us where the PACKAGE thinks the theme is.
+   * watching where that span lands tells us where the PACKAGE thinks the theme is.
+   *
+   * WATCHED DURING THE CALL, not looked for afterwards. The probes are ephemeral now — attached,
+   * read and removed inside one synchronous call — because a probe left parented inside the
+   * server-rendered `.kui-theme` element during a React hydration render makes React 19 throw a
+   * mismatch on the leftover sibling, which is what the docs app was reporting. So a law that
+   * queries the document after the call finds nothing and fails, which is what this one did the
+   * moment the probes changed. Hooking `appendChild` still observes the package's own choice
+   * rather than assuming it, so the law is as capable of failing as it was.
    */
   const agree = await page.evaluate(() => {
-    // Force the package to build and parent its probe.
-    window.__harness.lib.resolveColorToRGB('var(--accent-9)');
-    const spans = [...document.querySelectorAll('span')].filter(
-      (el) => el.style.visibility === 'hidden' && el.style.position === 'absolute'
-    );
-    const pkg = spans.length ? spans[spans.length - 1].parentElement : null;
+    const parents = [];
+    const original = Element.prototype.appendChild;
+    Element.prototype.appendChild = function patched(node) {
+      const result = original.call(this, node);
+      if (
+        node instanceof HTMLElement &&
+        node.tagName === 'SPAN' &&
+        node.style.visibility === 'hidden' &&
+        node.style.position === 'absolute'
+      ) {
+        parents.push(this);
+      }
+      return result;
+    };
+    try {
+      // Force the package to build and parent its probe.
+      window.__harness.lib.resolveColorToRGB('var(--accent-9)');
+    } finally {
+      Element.prototype.appendChild = original;
+    }
+
+    const pkg = parents.length ? parents[parents.length - 1] : null;
     const fixture = window.__harness.themeRoot();
     return {
-      found: spans.length,
+      found: parents.length,
       same:
         pkg !== null &&
         pkg.tagName === fixture.tag &&
@@ -1817,31 +1932,23 @@ await withPage('count=12&seed=1', async (page) => {
    * did — exactly here: v2's `--space-7` is 32 where v1's is 40, and `--space-6` is 24 where v1's
    * is 32. Both names exist on both systems, so nothing else in the repo could have seen it.
    *
-   * They are kept rather than deleted, and made per-system rather than loosened. The claim is
-   * still checkable and still specific: each palette has its own known shape, and a drift in
-   * either one is a real change. What is NOT asserted here any more is the graph's geometry —
-   * that is the reader's business and the two laws above own it, which is why the space shift
-   * shows up there as unchanged while it shows up here as a different palette.
+   * They are kept rather than deleted, and stated as v2's numbers rather than loosened. The claim
+   * is still checkable and still specific: the palette has a known shape, and a drift in it is a
+   * real change. What is NOT asserted here any more is the graph's geometry — that is the
+   * reader's business and the two laws above own it, which is why the space shift shows up there
+   * as unchanged while it shows up here as a different palette.
+   *
+   * THE PER-SYSTEM FORK IS GONE, and not because it was tidy. It asked whether `--neutral-1`
+   * resolved and answered 'v1' when it did not — but v1 is no longer installable in this repo, so
+   * the probe could only ever answer 'v2' and the v1 arm was unreachable code shaped like a law.
+   * It also computed the check's own NAME from that value, so the name could not fail either.
    */
-  // `themeRoot()` on the harness API returns a DESCRIPTOR, not the element — the element cannot
-  // cross the page boundary. Resolved inline, the same three-arm chain the fixture and the package
-  // both use.
-  const system = await page.evaluate(() => {
-    const el =
-      document.querySelector('.radix-themes') ??
-      document.querySelector('.kui-theme') ??
-      document.documentElement;
-    // `--neutral-1` is v2's and exists in no v1 build; v1's greys were `--gray-*`.
-    return getComputedStyle(el).getPropertyValue('--neutral-1').trim() !== '' ? 'v2' : 'v1';
-  });
-  const palette = system === 'v2'
-    ? { '--space-7': 32, '--space-6': 24 }
-    : { '--space-7': 40, '--space-6': 32 };
+  const palette = { '--space-7': 32, '--space-6': 24 };
   for (const [name, want] of Object.entries(palette)) {
     check(
-      `${system}: ${name} is ${want}px`,
+      `v2: ${name} is ${want}px`,
       v[name] === want,
-      `${name}=${v[name]} on ${system}`
+      `${name}=${v[name]}`
     );
   }
   check('the label type step is 14px', v['--font-size-2'] === 14, `--font-size-2=${v['--font-size-2']}`);
@@ -2098,10 +2205,45 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
     () => new Promise((r) => requestAnimationFrame(() => r(window.__harness.drawnInstances())))
   );
   const widgetInstances = drawn.filter((d) => d.kind === 'widgets');
+
+  /**
+   * The EXACT count, derived from the store rather than guessed at.
+   *
+   * This was `>= 4` against a scene that is fully known and holds exactly six. At that threshold
+   * the colour widget and the select could both stop being emitted and the law would still report
+   * ok — and those two are the kinds with the most branching in the fragment shader and the two
+   * that no press law below touches. A floor is the right shape for a scan whose yield varies;
+   * this scene does not vary.
+   */
+  const expected = await page.evaluate(() => window.__harness.widgetSockets());
+  check('INSTRUMENT: the scene has widgets to draw', expected.length > 0, `${expected.length} expected`);
   check(
-    'widgets reach the GPU as instances',
-    widgetInstances.length >= 4,
-    `${widgetInstances.length} widget instances of ${drawn.length} total`
+    'every widget in the scene reaches the GPU as an instance',
+    widgetInstances.length === expected.length,
+    `${widgetInstances.length} drawn, ${expected.length} expected, of ${drawn.length} total instances`
+  );
+
+  /**
+   * WHERE the shader was handed each quad, against where the geometry says it goes.
+   *
+   * Every press law below takes its point from `widgetPoint`, which calls `getWidgetBox` — and so
+   * does `getWidgetAt`, the hit test. Both sides of every press law are therefore ONE
+   * implementation, and agree by construction: sabotaging the geometry moves both and the suite
+   * stays green. That is the defect socket-index.test.ts names in its own docstring, live here.
+   *
+   * The third implementation is the instance matrix widgets-gl writes, which no law reads. This
+   * closes that loop: `drawnInstances` reports the translation the GPU received (Y negated back
+   * into store space by the fixture), and a constant offset added to the instance write — the
+   * socket-geometry defect verbatim, a control painted 40px from where pressing it works — now
+   * fails here instead of passing everywhere.
+   */
+  const misplaced = expected.filter(
+    (w) => !widgetInstances.some((d) => Math.hypot(d.x - w.x, d.y - w.y) < 2)
+  );
+  check(
+    'every widget is drawn where it is pressed',
+    misplaced.length === 0,
+    misplaced.map((w) => `${w.entityId}/${w.socketId} expected (${Math.round(w.x)},${Math.round(w.y)})`).join('; ')
   );
 
   // (b) NOT IN THE DOM. The built-ins have no DOM at rest — that is the claim the whole layer

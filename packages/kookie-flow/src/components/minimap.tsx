@@ -122,7 +122,8 @@ const POSITION_STYLES: Record<string, CSSProperties> = {
  * - Canvas 2D for efficient rendering of 10k+ rectangles (single composite)
  * - RAF-throttled updates (single render per frame)
  * - Fine-grained dirty flags (skip entity redraw for viewport-only changes)
- * - Position hash for bounds invalidation (detects entity moves)
+ * - Cached offscreen entity layer in standard mode, blitted on viewport-only frames
+ * - Array identity plus position hash for bounds invalidation (detects entity moves)
  * - Inline coordinate math (zero object allocations in render loop)
  * - Culling for sub-pixel entities
  * - ResizeObserver for container size (no layout queries in render)
@@ -184,7 +185,33 @@ export function Minimap({
 
   // Change detection
   const lastPositionHashRef = useRef<number>(0);
+  const lastEntitiesRef = useRef<Entity[] | null>(null);
   const lastSelectionRef = useRef<Set<string> | null>(null);
+
+  /**
+   * Offscreen entity layer — standard mode only.
+   *
+   * In standard mode the transform is fitted to the entity bounds alone, so the entity rectangles
+   * land on exactly the same minimap pixels frame after frame no matter where the main viewport
+   * sits; only the indicator moves. The draw loop ran anyway, unguarded. Because the subscription
+   * below has no selector, every `set()` in the store wakes this component, so a pan, a connection
+   * drag, a widget slider or a plain hover each paid one `fillStyle` assignment and one `fillRect`
+   * per entity per frame — a thousand of each at a thousand nodes — to repaint pixels that were
+   * already identical. The dirty flags to skip that work were computed and reset but gated nothing
+   * except the transform recompute.
+   *
+   * The entity pixels now live on this canvas and are repainted only when the entities or the
+   * selection actually change. A viewport-only frame is a clear, one `drawImage`, and the
+   * indicator.
+   *
+   * The zoomable branch deliberately gets none of this. There the entity screen positions are
+   * derived from `viewport.zoom` and `viewport.x/y` on every frame, so its pixels genuinely do
+   * change with the viewport and a cache keyed on entities alone would freeze the graph in place
+   * while the user pans.
+   */
+  const entityLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const entityLayerCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const entityLayerValidRef = useRef(false);
 
   // Container size (updated via ResizeObserver, not layout queries)
   const containerSizeRef = useRef({ width: 0, height: 0 });
@@ -217,14 +244,30 @@ export function Minimap({
     const containerWidth = containerSizeRef.current.width;
     const containerHeight = containerSizeRef.current.height;
 
-    // Check what actually changed
+    /**
+     * What actually changed.
+     *
+     * Array identity is the primary signal now, because every store path that touches entities
+     * rebuilds the array. It catches what the position hash cannot see — a resize, a socket added
+     * or removed, an entity added or deleted, `fitEntityToContent` stripping an explicit
+     * width/height — and all of those change the pixels the cached layer holds. Missing them was
+     * free while the loop repainted unconditionally; behind a cache it would show as a stale
+     * minimap, so the cheaper signal is also the stricter one.
+     *
+     * The hash stays because it is the only thing that notices a position mutated in place, behind
+     * the store's back, without the array being replaced.
+     *
+     * The second clause here used to read `entities.length !== (lastPositionHashRef.current === 0 ?
+     * 0 : entities.length)`, which compares a value with itself and is therefore always false. It
+     * was meant to catch a count change and never could; identity does.
+     */
     const currentHash = hashEntityPositions(entities);
     const entitiesChanged =
-      currentHash !== lastPositionHashRef.current ||
-      entities.length !== (lastPositionHashRef.current === 0 ? 0 : entities.length);
+      entities !== lastEntitiesRef.current || currentHash !== lastPositionHashRef.current;
     const selectionChanged = selectedEntityIds !== lastSelectionRef.current;
 
     if (entitiesChanged) {
+      lastEntitiesRef.current = entities;
       lastPositionHashRef.current = currentHash;
       dirtyRef.current.entities = true;
     }
@@ -259,6 +302,10 @@ export function Minimap({
       const offsetX = width / 2 - worldCenterX * minimapScale;
       const offsetY = height / 2 - worldCenterY * minimapScale;
 
+      // Drawn straight onto the visible canvas every frame, with no cached layer: `minimapScale`
+      // and the offsets above are functions of the live viewport, so these pixels really do change
+      // whenever the user pans or zooms. Caching them would freeze the graph mid-pan.
+      //
       // Draw entities - inline coordinate math, no object allocations
       for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
@@ -328,37 +375,60 @@ export function Minimap({
 
       const { scale, offsetX, offsetY } = transformRef.current;
 
-      // Draw entities - inline coordinate math, no object allocations
-      for (let i = 0; i < entities.length; i++) {
-        const entity = entities[i];
-        const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
-        const outputCount = entity.outputs?.length ?? 0;
-        const inputCount = entity.inputs?.length ?? 0;
-        const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
+      // The entity layer goes to the offscreen canvas when there is one, and is repainted only
+      // when the entities or the selection moved. If the environment refused a second 2D context
+      // we fall back to painting straight onto the visible canvas on every frame — exactly the old
+      // behaviour, because a minimap that costs too much still beats a blank one.
+      const layer = entityLayerRef.current;
+      const layerCtx = entityLayerCtxRef.current;
+      const target = layerCtx ?? ctx;
+      const canCache = layer !== null && layerCtx !== null;
 
-        const scaledW = w * scale;
-        const scaledH = h * scale;
+      if (
+        !canCache ||
+        !entityLayerValidRef.current ||
+        dirtyRef.current.entities ||
+        dirtyRef.current.selection
+      ) {
+        if (layerCtx) layerCtx.clearRect(0, 0, width, height);
 
-        // Culling: skip sub-pixel entities (unlikely in standard mode but check anyway)
-        if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
+        // Draw entities - inline coordinate math, no object allocations
+        for (let i = 0; i < entities.length; i++) {
+          const entity = entities[i];
+          const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+          const outputCount = entity.outputs?.length ?? 0;
+          const inputCount = entity.inputs?.length ?? 0;
+          const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
 
-        // Inline worldToMinimap: x = worldX * scale + offsetX
-        const x = entity.position.x * scale + offsetX;
-        const y = entity.position.y * scale + offsetY;
+          const scaledW = w * scale;
+          const scaledH = h * scale;
 
-        const isSelected = selectedEntityIds.has(entity.id);
-        ctx.fillStyle = isSelected
-          ? selectedEntityColor
-          : typeof entityColor === 'function'
-            ? entityColor(entity)
-            : entityColor;
-        ctx.fillRect(
-          x,
-          y,
-          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
-          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
-        );
+          // Culling: skip sub-pixel entities (unlikely in standard mode but check anyway)
+          if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
+
+          // Inline worldToMinimap: x = worldX * scale + offsetX
+          const x = entity.position.x * scale + offsetX;
+          const y = entity.position.y * scale + offsetY;
+
+          const isSelected = selectedEntityIds.has(entity.id);
+          target.fillStyle = isSelected
+            ? selectedEntityColor
+            : typeof entityColor === 'function'
+              ? entityColor(entity)
+              : entityColor;
+          target.fillRect(
+            x,
+            y,
+            Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
+            Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
+          );
+        }
+
+        entityLayerValidRef.current = canCache;
       }
+
+      // Blit before the indicator: the indicator has always been drawn on top of the entities.
+      if (layer && layerCtx) ctx.drawImage(layer, 0, 0, width, height);
 
       // Draw viewport indicator
       if (containerWidth > 0 && containerHeight > 0) {
@@ -407,6 +477,12 @@ export function Minimap({
     viewportColor,
     viewportBorderColor,
     zoomable,
+    // `socketLayout` is read in the draw loop and by `calculateMinimapTransform`, but was missing
+    // here, so a theme or entity-size change left this closure holding the old row heights. That
+    // was survivable while the loop repainted on every store write and the numbers eventually
+    // caught up; with the entity layer cached it would stick, so the dependency is now honest.
+    // It comes from a `useMemo` in StyleContext, so listing it costs nothing in practice.
+    socketLayout,
   ]);
 
   // Schedule render via RAF
@@ -669,6 +745,41 @@ export function Minimap({
       if (!c) return null;
       c.scale(dpr, dpr);
       ctxRef.current = c;
+
+      /**
+       * The offscreen entity layer is sized and scaled here, beside the visible canvas, because
+       * the two must never disagree about resolution: the blit maps the layer onto the same
+       * backing pixels, so a layer left at the old ratio after a monitor change is precisely the
+       * soft, upscaled minimap this whole block exists to prevent.
+       *
+       * Same ordering trap as above — assigning `width`/`height` resets the layer context's
+       * transform, so the scale is re-applied after, not before. It also discards the layer's
+       * contents, which is why the cache is marked invalid on the way out. That invalidation
+       * doubles as the hook for everything else that changes what the layer should contain: this
+       * effect re-runs whenever `render` changes identity, which is whenever the size, padding,
+       * colours, socket layout or mode change.
+       *
+       * Zoomable mode gets no layer at all — it draws every frame from the live viewport, so a
+       * second backing store there would be half a megabyte of pixels nothing ever reads.
+       */
+      entityLayerValidRef.current = false;
+      if (zoomable) {
+        entityLayerRef.current = null;
+        entityLayerCtxRef.current = null;
+        return c;
+      }
+
+      let layer = entityLayerRef.current;
+      if (!layer) {
+        layer = document.createElement('canvas');
+        entityLayerRef.current = layer;
+      }
+      layer.width = width * dpr;
+      layer.height = height * dpr;
+      const layerCtx = layer.getContext('2d');
+      if (layerCtx) layerCtx.scale(dpr, dpr);
+      entityLayerCtxRef.current = layerCtx;
+
       return c;
     };
 
@@ -704,7 +815,7 @@ export function Minimap({
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-  }, [store, width, height, render, scheduleRender]);
+  }, [store, width, height, zoomable, render, scheduleRender]);
 
   // ResizeObserver for container size changes - avoids layout queries in render loop
   useEffect(() => {

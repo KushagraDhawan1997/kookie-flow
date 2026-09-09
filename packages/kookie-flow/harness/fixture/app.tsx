@@ -25,6 +25,8 @@ import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { frozenHue } from '../../src/core/palette';
 import { getWidgetBox } from '../../src/utils/widget-geometry';
+import { resolveWidgetConfig } from '../../src/utils/widgets';
+import { DEFAULT_SOCKET_TYPES } from '../../src/core/constants';
 
 declare global {
   interface Window {
@@ -99,6 +101,29 @@ export interface HarnessApi {
   widgetValue(entityId: string, socketId: string): unknown;
   /** Where a widget's centre is on screen, so a law can press the thing it drew. */
   widgetPoint(entityId: string, socketId: string): { x: number; y: number } | null;
+  /**
+   * Every widget the library says should be drawn, with its WORLD centre.
+   *
+   * The count is what an instance-count law needs in order to assert an exact number instead of a
+   * floor; the centres are what a paint-vs-press law needs, because `drawnInstances()` reports
+   * where the shader was actually handed the quad and this reports where the geometry says it
+   * should be.
+   */
+  widgetSockets(): { entityId: string; socketId: string; x: number; y: number }[];
+  /**
+   * Every socket the INDEX holds, in world space — the hit-test side of the socket geometry.
+   *
+   * Paired with the `sockets` entries from `drawnInstances()`, this closes the paint-vs-press loop
+   * for sockets the way `widgetSockets()` does for widgets: one side is where a press is answered,
+   * the other is where the shader was handed the quad.
+   */
+  indexedSockets(): { entityId: string; socketId: string; isInput: boolean; x: number; y: number }[];
+  uploadHistogram(): { bucket: number; calls: number; bytes: number }[];
+  /** What the driver said about the flow's own context, and any shader that failed to link. */
+  contextFacts(): {
+    depth: { requested: boolean; bits: number } | null;
+    linkFailures: { log: string }[];
+  };
 }
 
 function params() {
@@ -159,6 +184,18 @@ interface GlSnapshot {
   instancedDrawCalls: number;
   instancesDrawn: number;
   clears: number;
+  /**
+   * Bytes handed to the driver through bufferData/bufferSubData in this window.
+   *
+   * The number that decides whether a partial-upload fix was worth making, and nothing measured it
+   * before. A layer that sets `needsUpdate` on a capacity-sized attribute re-sends the WHOLE array
+   * for the handful of floats it changed — at a thousand nodes the socket instance matrix alone is
+   * over half a megabyte per frame — and every counter here reported that identically to uploading
+   * nothing. Declaring an update RANGE instead trades a few small objects of CPU garbage for two
+   * orders of magnitude fewer bytes on the bus, and the allocation counter alone makes that trade
+   * look like a regression.
+   */
+  bytesUploaded: number;
   viewportSize: [number, number] | null;
 }
 
@@ -220,12 +257,58 @@ const live: GlLifetimes = {
   texturesDeleted: 0,
 };
 
+/**
+ * Two facts about the driver that no law could previously see, and both have already shipped
+ * broken.
+ *
+ * `depth` — the context was created with `depth: false` for the whole life of the widget
+ * migration. DEPTH_BITS was 0, so every `depthTest: true` in the package was a no-op and the only
+ * thing ordering the scene was `renderOrder`, which is per LAYER. Every widget drew above every
+ * unselected body. Nothing failed: entity-depth.test.ts asserts the arithmetic and never leaves
+ * JS, and no pixel law overlapped two nodes. One number off the context would have said it.
+ *
+ * `linkFailures` — a fragment shader referenced an instanced ATTRIBUTE, which does not exist in a
+ * fragment shader at all, so the program failed to link with "'aRadiusV' : undeclared identifier"
+ * and every field, select and colour widget drew nothing. three logs it to the console and
+ * carries on with a null program; the scene graph still holds the mesh, `drawnInstances` still
+ * reports its instances, and the count laws stay green while the screen is empty. The driver is
+ * the only place the truth exists.
+ */
+interface ContextFacts {
+  depth: { requested: boolean; bits: number } | null;
+  linkFailures: { log: string }[];
+}
+
+const contextFacts: ContextFacts = { depth: null, linkFailures: [] };
+
+/**
+ * Upload sizes bucketed by power of two, so a gesture's uploads can be attributed to a buffer.
+ *
+ * A NEGATIVE bucket is a RANGED upload — `bufferSubData(target, dstOffset, src, srcOffset, length)`
+ * — and a positive one is a whole-array upload. Telling them apart is the entire point: the first
+ * version of this counter read `byteLength(src)` for both, so every partial upload was charged the
+ * size of the buffer it was writing a sliver of. It reported a node drag at 1000 nodes as 754 MB
+ * where the real figure is 38 MB, and made a working partial-upload path look like the largest
+ * cost in the package. An instrument that cannot tell a sliver from the whole array is not
+ * measuring uploads, it is measuring buffer sizes.
+ */
+const uploadHistogram = new Map<number, { calls: number; bytes: number }>();
+function tallyUpload(bytes: number, ranged = false) {
+  if (bytes <= 0) return;
+  const bucket = (ranged ? -1 : 1) * (1 << Math.ceil(Math.log2(bytes)));
+  const e = uploadHistogram.get(bucket) ?? { calls: 0, bytes: 0 };
+  e.calls++;
+  e.bytes += bytes;
+  uploadHistogram.set(bucket, e);
+}
+
 const gl: GlSnapshot = {
   contexts: 0,
   drawCalls: 0,
   instancedDrawCalls: 0,
   instancesDrawn: 0,
   clears: 0,
+  bytesUploaded: 0,
   viewportSize: null,
 };
 
@@ -244,6 +327,29 @@ function installGlProbe() {
       return original.apply(this, args);
     };
   };
+
+  // `bufferData(target, sizeOrData, usage)` and `bufferSubData(target, offset, data, ...)` — the
+  // payload sits in a different argument for each, and bufferData also accepts a bare size.
+  const byteLength = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    if (ArrayBuffer.isView(v)) return v.byteLength;
+    if (v instanceof ArrayBuffer) return v.byteLength;
+    return 0;
+  };
+  wrap('bufferData', (a) => { gl.bytesUploaded += byteLength(a[1]); tallyUpload(byteLength(a[1])); });
+  wrap('bufferSubData', (a) => {
+    // A RANGED upload passes (target, dstOffset, src, srcOffset, length); a whole-array upload
+    // passes three arguments. The byte count differs accordingly.
+    const ranged = a.length >= 5;
+    const src = a[2];
+    const perElement =
+      typeof src === 'object' && src !== null && 'BYTES_PER_ELEMENT' in src
+        ? (src as { BYTES_PER_ELEMENT: number }).BYTES_PER_ELEMENT
+        : 4;
+    const bytes = ranged ? Number(a[4]) * perElement : byteLength(src);
+    gl.bytesUploaded += bytes;
+    tallyUpload(bytes, ranged);
+  });
 
   wrap('drawElements', () => { gl.drawCalls++; });
   wrap('drawArrays', () => { gl.drawCalls++; });
@@ -272,6 +378,17 @@ function installGlProbe() {
   wrap('viewport', (a) => { gl.viewportSize = [Number(a[2] ?? 0), Number(a[3] ?? 0)]; });
 
   wrap('createProgram', () => { live.programsCreated++; });
+
+  // Link status has to be read AFTER the call, which `wrap` (a before-hook) cannot do — so this
+  // one replaces the method rather than hooking it.
+  const linkProgram = proto.linkProgram;
+  proto.linkProgram = function patchedLink(this: WebGL2RenderingContext, program: WebGLProgram) {
+    linkProgram.call(this, program);
+    if (!this.getProgramParameter(program, this.LINK_STATUS)) {
+      contextFacts.linkFailures.push({ log: this.getProgramInfoLog(program) ?? '(no log)' });
+    }
+  };
+
   wrap('deleteProgram', () => { live.programsDeleted++; });
   wrap('createBuffer', () => { live.buffersCreated++; });
   wrap('deleteBuffer', () => { live.buffersDeleted++; });
@@ -292,7 +409,17 @@ function installGlProbe() {
       args[1] = { ...(args[1] as object | undefined), preserveDrawingBuffer: true };
     }
     const ctx = (getContext as unknown as (...a: unknown[]) => unknown).apply(this, args);
-    if (ctx instanceof WebGL2RenderingContext) gl.contexts++;
+    if (ctx instanceof WebGL2RenderingContext) {
+      gl.contexts++;
+      // Keyed to the flow's own canvas: `describeRenderer` and any other probe creates throwaway
+      // contexts of its own, and the last one to be created must not overwrite the answer.
+      if (this.closest?.('[data-kookie-flow-container]')) {
+        contextFacts.depth = {
+          requested: ctx.getContextAttributes()?.depth === true,
+          bits: ctx.getParameter(ctx.DEPTH_BITS) as number,
+        };
+      }
+    }
     return ctx;
   } as typeof HTMLCanvasElement.prototype.getContext;
 }
@@ -361,8 +488,9 @@ installSceneProbe();
  * never fail. Two implementations, one law that they agree — the rule this repo already applies to
  * every mechanism with two homes.
  *
- * The fallback order matters. v1 scoped its tokens to `.radix-themes`, so a probe outside it
- * resolved nothing, loudly. v2 declares at `:root` and re-declares inside the Theme's own
+ * The fallback is a last resort and never a working path. v1 scoped its tokens to
+ * `.radix-themes`, so a probe outside it resolved nothing, loudly — that arm is gone with v1
+ * itself. v2 declares at `:root` and re-declares inside the Theme's own
  * `[data-appearance]` scope, so falling through to `<html>` returns a complete, valid palette of
  * the WRONG MODE — measured, the present/missing split over all 99 tokens is identical at `<html>`
  * and inside the Theme, so the census literally cannot tell them apart.
@@ -407,20 +535,17 @@ function CustomTextWidget({ value, onChange, label }: {
 const CUSTOM_WIDGET_TYPES = { text: CustomTextWidget, string: CustomTextWidget };
 
 function themeRoot(): Element {
-  return (
-    document.querySelector('.radix-themes') ??
-    document.querySelector('.kui-theme') ??
-    document.documentElement
-  );
+  return document.querySelector('.kui-theme') ?? document.documentElement;
 }
 
 /**
- * Flip the appearance, on either design system.
+ * Flip the appearance.
  *
- * v1 carries light/dark in `classList`; v2 stamps `data-appearance` on the Theme element and its
- * generated selectors key on the attribute alone — measured, adding a `dark` class to a
- * `.kui-theme` div changes NOTHING, every token byte-identical. Doing both is harmless on either:
- * v1 ignores the attribute, v2 ignores the class.
+ * v2 stamps `data-appearance` on the Theme element and its generated selectors key on the
+ * attribute ALONE — measured, adding a `dark` class to a `.kui-theme` div changes nothing, every
+ * token byte-identical. This used to write the class too, for v1, which carried light/dark in
+ * `classList`; with v1 gone the class write is a no-op that made the helper's own report read
+ * `className` and come back empty.
  *
  * It lives here rather than inline in five call sites because those five had drifted into two
  * spellings already, and because a `querySelector` that returns null throws a TypeError inside
@@ -428,10 +553,8 @@ function themeRoot(): Element {
  */
 function setAppearanceOn(mode: string): { ok: boolean; on: string } {
   const el = themeRoot();
-  el.classList.remove('light', 'dark');
-  el.classList.add(mode);
   el.setAttribute('data-appearance', mode);
-  return { ok: true, on: el.className || el.tagName };
+  return { ok: true, on: el.getAttribute('data-appearance') ?? el.tagName };
 }
 
 function drawnVertices(): { x: number; y: number; kind: string }[] {
@@ -626,6 +749,8 @@ function resetGlCounters() {
   gl.instancedDrawCalls = 0;
   gl.instancesDrawn = 0;
   gl.clears = 0;
+  gl.bytesUploaded = 0;
+  uploadHistogram.clear();
 }
 
 /** Lives inside KookieFlow so it can reach the store's provider. */
@@ -760,6 +885,30 @@ function Probe() {
           y: wy * s.viewport.zoom + s.viewport.y + rect.top,
         };
       },
+      widgetSockets() {
+        const s = store.getState();
+        const out: { entityId: string; socketId: string; x: number; y: number }[] = [];
+        if (!s.socketLayout) return out;
+        for (const e of s.entities) {
+          if (s.hiddenEntityIds.has(e.id)) continue;
+          const inputs = e.inputs ?? [];
+          for (let i = 0; i < inputs.length; i++) {
+            const socket = inputs[i];
+            // The same two skips widgets-gl applies before it writes an instance.
+            if (s.connectedSockets.has(`${e.id}:${socket.id}:input`)) continue;
+            if (!resolveWidgetConfig(socket, DEFAULT_SOCKET_TYPES)) continue;
+            const box = getWidgetBox(e, i, s.socketLayout);
+            if (!box) continue;
+            out.push({
+              entityId: e.id,
+              socketId: socket.id,
+              x: box.x + box.width / 2,
+              y: box.y + box.height / 2,
+            });
+          }
+        }
+        return out;
+      },
       /**
        * The census proves a token is DEFINED. This proves it means what it meant.
        *
@@ -823,9 +972,23 @@ function Probe() {
         const styles = getComputedStyle(root);
         const present: string[] = [];
         const missing: string[] = [];
+        /**
+         * CENSUS WHAT THE READER READS, not what the fallback table is spelled with.
+         *
+         * `readTokensFromDOM` shifts the space scale by one — `--space-${n + 1}` — because v1's
+         * `--space-N` is v2's `--space-N+1`, so the reader actually consumes `--space-2`..
+         * `--space-8` while FALLBACK_TOKENS is keyed `--space-1`..`--space-7`. Censusing the
+         * table's own spelling therefore checked `--space-1` (which the reader never asks for)
+         * and never checked `--space-8` — the token the 40px socket row depends on. The census
+         * reported full coverage of a scale it was one off from.
+         */
+        const readerName = (key: string) => {
+          const m = /^--space-(\d+)$/.exec(key);
+          return m ? `--space-${Number(m[1]) + 1}` : key;
+        };
         for (const key of Object.keys(FALLBACK_TOKENS)) {
           if (!key.startsWith('--')) continue; // `appearance` is derived, not read from CSS
-          (styles.getPropertyValue(key).trim() ? present : missing).push(key);
+          (styles.getPropertyValue(readerName(key)).trim() ? present : missing).push(key);
         }
         // The DENOMINATOR, so the vacuity guard can be a derivation rather than a magic number.
         // It used to be "> 50 tokens censused", calibrated to a table of 99; deleting the 42 hue
@@ -838,6 +1001,20 @@ function Probe() {
       resetGl: resetGlCounters,
       frames: frameStats,
       lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, frozenHue },
+      contextFacts: () => ({ depth: contextFacts.depth, linkFailures: [...contextFacts.linkFailures] }),
+      uploadHistogram: () => [...uploadHistogram.entries()].map(([b, v]) => ({ bucket: b, ...v })),
+      indexedSockets() {
+        const s = store.getState();
+        // One sweep wide enough to cover the whole fixture. This is an instrument, not a hit test.
+        const found = s.socketQuadtree.queryPoint(0, 0, 1e6, []);
+        return found.map((q) => ({
+          entityId: q.entityId,
+          socketId: q.socketId,
+          isInput: q.isInput,
+          x: q.x,
+          y: q.y,
+        }));
+      },
       themeTokens: () =>
         liveTokensRef.current as unknown as Readonly<Record<string, number | number[] | string>>,
       /**

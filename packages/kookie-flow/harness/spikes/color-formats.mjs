@@ -68,7 +68,7 @@ const result = await page.evaluate(() => {
 
   // A theme token has to be read from inside the theme, so resolve it to a literal first.
   const themeEl =
-    document.querySelector('.radix-themes') ?? document.querySelector('.kui-theme');
+    document.querySelector('.kui-theme');
   const rawAccent = themeEl ? getComputedStyle(themeEl).getPropertyValue('--accent-9').trim() : null;
 
   const cases = [

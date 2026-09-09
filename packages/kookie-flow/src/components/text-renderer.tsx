@@ -60,6 +60,101 @@ const MIN_SOCKET_ZOOM = 0.35; // Below this, hide socket labels
 const MIN_EDGE_ZOOM = 0.25; // Below this, hide edge labels
 
 /**
+ * How far past the screen edge a collected entry set reaches, as a fraction of the visible
+ * world rect on each side.
+ *
+ * THE DEFECT THIS FIXES. The viewport subscription marked the entry list dirty on every pan
+ * frame, and a pan produces one store write per pointermove. Every one of those frames rebuilt
+ * the whole entry list, re-walked every character of every label to count glyphs, re-tessellated
+ * all of them into the instance buffers, and then re-uploaded the FULL capacity of four
+ * attributes — instanceMatrix alone is capacity * 64 bytes — to the GPU. Measured on a dense
+ * graph that is megabytes per frame of `bufferSubData` for data that had not changed by one bit:
+ * glyph transforms are WORLD space, so panning the camera moves none of them. The only thing a
+ * pan can change is which labels survive the cull.
+ *
+ * So the set is collected for a rect wider than the screen, and re-collected only once the
+ * screen has slid out of that rect. Everything collected outside the screen is still uploaded
+ * and still drawn, which is why the margin is a fraction and not a large constant: the standing
+ * cost is (1 + 2f)^2 more glyph instances every frame, against saving a full re-collect and
+ * re-upload on roughly 1/f of the frames of a continuous pan. At 0.15 that is 1.7x the
+ * instances for something like a 10x cut in dirty frames.
+ *
+ * Labels cannot pop in at the edge because `cullPadding` inside `collectTextEntries` is applied
+ * on top of this rect, so an entity is collected well before its glyphs could reach the screen.
+ */
+const CULL_HYSTERESIS = 0.15;
+
+/**
+ * Which LOD gates the current zoom passes, as a bitmask.
+ *
+ * The hysteresis above answers "did the camera leave the rect we collected for"; it says nothing
+ * about zoom, and zoom has three cliffs where the ANSWER changes without the rect changing —
+ * zooming in past 0.35 has to make socket labels appear even though the visible rect only shrank
+ * and is therefore still contained. Comparing the bucket catches every crossing in both
+ * directions with one integer compare.
+ */
+export function lodBucket(zoom: number): number {
+  return (
+    (zoom >= MIN_TEXT_ZOOM ? 1 : 0) |
+    (zoom >= MIN_EDGE_ZOOM ? 2 : 0) |
+    (zoom >= MIN_SOCKET_ZOOM ? 4 : 0)
+  );
+}
+
+/** A world-space rect in the renderer's Y-down coordinates: `top` is the smaller y. */
+export interface CullRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * Widen a visible world rect into the rect an entry set is collected for. Writes into `out`
+ * rather than returning a rect: this runs inside the frame loop and must not allocate.
+ */
+export function inflateViewRect(
+  out: CullRect,
+  left: number,
+  right: number,
+  top: number,
+  bottom: number
+): void {
+  const marginX = (right - left) * CULL_HYSTERESIS;
+  const marginY = (bottom - top) * CULL_HYSTERESIS;
+  out.left = left - marginX;
+  out.right = right + marginX;
+  out.top = top - marginY;
+  out.bottom = bottom + marginY;
+}
+
+/**
+ * Whether a set collected for `collected` at `collectedLod` still answers this view.
+ *
+ * The whole point of the hysteresis is that this returns false for most frames of a pan, so it is
+ * the thing worth pinning down in a test: a set stays usable while the screen is inside the rect
+ * it was collected for AND the zoom still passes the same LOD gates, and stops the instant either
+ * stops being true.
+ */
+export function collectedSetIsStale(
+  collected: CullRect,
+  collectedLod: number,
+  zoom: number,
+  left: number,
+  right: number,
+  top: number,
+  bottom: number
+): boolean {
+  if (lodBucket(zoom) !== collectedLod) return true;
+  return (
+    left < collected.left ||
+    right > collected.right ||
+    top < collected.top ||
+    bottom > collected.bottom
+  );
+}
+
+/**
  * Font data for a single weight.
  * @deprecated Use LoadedFontWeight from FontContext instead.
  */
@@ -230,6 +325,26 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
 
     // Update instance matrices (cap to capacity to prevent buffer overflow)
     const safeGlyphCount = Math.min(glyphCount, capacity);
+
+    // A bare `needsUpdate` with no update range makes three upload the WHOLE array: its
+    // WebGLAttributes.updateBuffer falls back to `bufferSubData(bufferType, 0, array)` when
+    // `updateRanges` is empty. These arrays are sized to CAPACITY, which grows to 1.5x the peak
+    // glyph count ever collected and never shrinks — so after one zoom-out the four attributes
+    // kept re-uploading megabytes of untouched tail on every dirty frame, for glyphs that
+    // `mesh.count` was not even drawing. Only the first `safeGlyphCount` glyphs were written by
+    // `populateGlyphBuffers` and only that many are drawn, so that is the only range worth
+    // sending; whatever stale bytes sit past it in GPU memory are unreachable. Same call
+    // edges.tsx already uses for its partial edge rewrites. Three clears the ranges itself once
+    // it has uploaded them, so they do not accumulate.
+    if (safeGlyphCount > 0) {
+      mesh.instanceMatrix.addUpdateRange(0, safeGlyphCount * 16);
+      if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
+        buffers.uvOffsetAttr.addUpdateRange(0, safeGlyphCount * 4);
+        buffers.colorAttr.addUpdateRange(0, safeGlyphCount * 3);
+        buffers.opacityAttr.addUpdateRange(0, safeGlyphCount);
+      }
+    }
+
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
@@ -323,8 +438,22 @@ export function MultiWeightTextRenderer({
   // Dirty flag — only re-collect when something relevant changes
   const dirtyRef = useRef(true);
 
-  // Track whether we have semibold entries (for conditional rendering)
-  const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
+  // The camera moved. Unlike `dirtyRef` this is a QUESTION, not a verdict: the frame loop still
+  // has to decide whether the move took the screen outside the rect the current set was
+  // collected for. See CULL_HYSTERESIS.
+  const viewMovedRef = useRef(false);
+
+  // The world rect the current entry set was collected for, and the LOD gates the zoom passed
+  // when it was collected. Mutated in place — this is read and written every frame and must not
+  // allocate. The zeroed rect plus an impossible bucket makes the first frame always collect.
+  const collectedRectRef = useRef({ left: 0, right: 0, top: 0, bottom: 0 });
+  const collectedLodRef = useRef(-1);
+
+  // Canvas size in CSS pixels as of the last collect. A resize changes the visible world rect
+  // without touching `viewport`, so nothing in the store would report it and labels would simply
+  // be missing from the newly revealed strip until something else marked the set dirty.
+  const collectedWidthRef = useRef(0);
+  const collectedHeightRef = useRef(0);
 
   // Build socket index map
   const rebuildSocketIndexMap = useCallback(() => {
@@ -360,7 +489,8 @@ export function MultiWeightTextRenderer({
 
       if (!regularFont) return { regular, semibold };
 
-      const { entities, edges, entityMap, selectedEntityIds, stackOrder } = store.getState();
+      const { entities, edges, entityMap, selectedEntityIds, stackOrder, hiddenEntityIds } =
+        store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
@@ -369,6 +499,13 @@ export function MultiWeightTextRenderer({
       // Entity headers (semibold) — skip types that render their own content
       for (const entity of entities) {
         if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text' || entity.type === 'image') continue;
+
+        // Collapsing a frame hides everything inside it, and this layer was the one place that
+        // never asked. nodes.tsx, widgets-gl.tsx, sockets.tsx, image-entities.tsx, text-entities.tsx
+        // and edges.tsx all skip on `hiddenEntityIds`; text did not, so collapsing a frame took
+        // away the children's bodies, sockets and widgets and left their titles and every socket
+        // label floating over the collapsed box, through every subsequent pan and zoom.
+        if (hiddenEntityIds.has(entity.id)) continue;
 
         const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const entityLayout = getEntitySocketLayout(entity, socketLayout);
@@ -415,6 +552,8 @@ export function MultiWeightTextRenderer({
       // Socket labels (regular)
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
         for (const entity of entities) {
+          if (hiddenEntityIds.has(entity.id)) continue;
+
           const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
           const height = entity.height ?? entityLayout.computedHeight;
@@ -504,6 +643,10 @@ export function MultiWeightTextRenderer({
         for (const edge of edges) {
           if (!edge.label) continue;
 
+          // Both endpoints, matching edges.tsx: an edge crossing a collapse boundary is not drawn
+          // on either side, so its label must not be either.
+          if (hiddenEntityIds.has(edge.source) || hiddenEntityIds.has(edge.target)) continue;
+
           const labelConfig = normalizeEdgeLabel(edge.label);
           const t = labelConfig.position ?? 0.5;
 
@@ -527,9 +670,22 @@ export function MultiWeightTextRenderer({
             continue;
           }
 
+          // Every other entry here sits on the depth ladder; the edge label used to be pinned at
+          // a hardcoded z of 0.15. The camera is orthographic at z=100 and bodies write depth
+          // from -850 upward, so 0.15 was nearer than anything in the scene could ever be and the
+          // depth test always passed — an edge label routed under a node drew straight through
+          // it, as if the node were transparent. A label belongs to its edge, and an edge belongs
+          // to the higher of its two endpoints, so it takes that endpoint's slice: it now covers
+          // the nodes its edge is in front of and is covered by the ones it is behind.
+          const labelDepth =
+            Math.max(
+              entityDepth(edge.source, stackOrder, selectedEntityIds),
+              entityDepth(edge.target, stackOrder, selectedEntityIds)
+            ) + DEPTH_LAYER.label;
+
           regular.push({
             text: labelConfig.text,
-            position: [position.x, position.y, 0.15],
+            position: [position.x, position.y, labelDepth],
             fontSize: labelConfig.fontSize ?? 11,
             color: labelConfig.textColor ?? primaryTextColor,
             anchor: 'center',
@@ -573,8 +729,17 @@ export function MultiWeightTextRenderer({
 
     // Entity positions/dimensions/data affect header + socket label positions
     const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
-    // Viewport changes affect culling + LOD
-    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
+    // A pan or zoom is the one change that does NOT necessarily invalidate the entry list, so it
+    // gets its own flag: the frame loop tests the new view rect against the margin the set was
+    // collected for and only re-collects once the camera has actually escaped it. See
+    // CULL_HYSTERESIS. Marking `dirtyRef` here instead would rebuild and re-upload every glyph on
+    // every pointermove of a pan.
+    const unsubViewport = store.subscribe((s) => s.viewport, () => { viewMovedRef.current = true; });
+    // Collapsing a frame changes which labels exist. `applyEntityChanges` rebuilds derived state
+    // into a fresh Set on every collapse, and — unlike a topology change — bumps no version
+    // counter, so this identity subscription is the only signal that fires. Same subscription
+    // nodes.tsx uses.
+    const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
     // Edge labels
     const unsubEdges = store.subscribe((s) => s.edges, markDirty);
     // Depth is per entity and selection boosts it, so both of these move the labels in z.
@@ -585,30 +750,36 @@ export function MultiWeightTextRenderer({
       unsubEntityCount();
       unsubPositions();
       unsubViewport();
+      unsubHidden();
       unsubEdges();
       unsubSelection();
       unsubStack();
     };
   }, [store, rebuildSocketIndexMap]);
 
-  // Re-collect when theme colors or style config changes
+  /**
+   * Re-collect whenever any input to collection changes.
+   *
+   * This used to list the theme colours and the style config by hand, which left out the fonts —
+   * and the fonts load asynchronously. Before the hysteresis below that hole was invisible,
+   * because the first pan marked the set dirty and collected the labels that the font-less first
+   * pass had skipped. Now a pan inside the collected margin is deliberately free, so nothing
+   * would ever ask again and the graph would stay silently unlabelled until the user dragged a
+   * node. Depending on the memoised callback instead of on a hand-written list means the deps of
+   * `collectTextEntries` are the single place that has to be right.
+   */
   useEffect(() => {
     dirtyRef.current = true;
-  }, [primaryTextColor, secondaryTextColor, config, style, socketLayout]);
+  }, [collectTextEntries]);
 
   // Collect entries on frame — only when dirty (avoids allocations on idle frames)
   useFrame(({ size }) => {
-    if (!dirtyRef.current) return;
+    const resized =
+      size.width !== collectedWidthRef.current || size.height !== collectedHeightRef.current;
+
+    if (!dirtyRef.current && !viewMovedRef.current && !resized) return;
 
     const { viewport, entities } = store.getState();
-
-    if (!regularFont || viewport.zoom < MIN_TEXT_ZOOM) {
-      regularEntriesRef.current = [];
-      semiboldEntriesRef.current = [];
-      dirtyRef.current = false;
-      if (hasSemiboldEntries) setHasSemiboldEntries(false);
-      return;
-    }
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -616,29 +787,55 @@ export function MultiWeightTextRenderer({
     const viewTop = -viewport.y * invZoom;
     const viewBottom = (size.height - viewport.y) * invZoom;
 
+    const rect = collectedRectRef.current;
+
+    if (!dirtyRef.current) {
+      // Nothing about the graph changed — only the camera, or the canvas. Glyph transforms are
+      // world space, so the set already on the GPU is still the right answer as long as the
+      // screen has not slid out of the margin it was collected for and the zoom has not crossed
+      // an LOD cliff. This is the branch that makes a pan free.
+      viewMovedRef.current = false;
+      if (
+        !collectedSetIsStale(
+          rect,
+          collectedLodRef.current,
+          viewport.zoom,
+          viewLeft,
+          viewRight,
+          viewTop,
+          viewBottom
+        )
+      ) {
+        collectedWidthRef.current = size.width;
+        collectedHeightRef.current = size.height;
+        return;
+      }
+    }
+
     if (entities.length > 0 && socketIndexMapRef.current.size === 0) {
       rebuildSocketIndexMap();
     }
 
+    // Collect for a rect wider than the screen so the next several frames of a pan can reuse it.
+    inflateViewRect(rect, viewLeft, viewRight, viewTop, viewBottom);
+
     const { regular, semibold } = collectTextEntries(
       viewport.zoom,
-      viewLeft,
-      viewRight,
-      viewTop,
-      viewBottom
+      rect.left,
+      rect.right,
+      rect.top,
+      rect.bottom
     );
 
     // Update refs directly - available immediately to child useFrame calls
     regularEntriesRef.current = regular;
     semiboldEntriesRef.current = semibold;
 
+    collectedLodRef.current = lodBucket(viewport.zoom);
+    collectedWidthRef.current = size.width;
+    collectedHeightRef.current = size.height;
     dirtyRef.current = false;
-
-    // Only trigger React re-render if semibold presence changes (for conditional mount)
-    const hasSemibold = semibold.length > 0;
-    if (hasSemibold !== hasSemiboldEntries) {
-      setHasSemiboldEntries(hasSemibold);
-    }
+    viewMovedRef.current = false;
   });
 
   // If no fonts available, render nothing (graceful degradation to DOM mode)
@@ -652,7 +849,19 @@ export function MultiWeightTextRenderer({
         fontData={regularFont}
         entriesRef={regularEntriesRef}
       />
-      {semiboldFont && hasSemiboldEntries && (
+      {/*
+        The semibold mesh used to be gated on a piece of React state set from inside useFrame,
+        flipped by whether any semibold entry survived the cull. Entity headers are the only
+        semibold source and they are viewport-culled, so panning the last titled node off screen
+        and back was a setState per crossing, mid-pan: a React re-render that unmounted this
+        child, ran its disposal effects on the geometry and material, and then rebuilt an
+        InstancedMesh and three attribute buffers on the way back in. That is the exact thing
+        CLAUDE.md forbids during an interaction, bought for one idle draw call. Mounting it
+        whenever the font exists costs that draw call and nothing else — the child already sets
+        `mesh.count = 0` when its entries are empty, which draws no instances, and one mesh per
+        weight is still one draw call per weight.
+      */}
+      {semiboldFont && (
         <TextWeightRenderer
           fontData={semiboldFont}
           entriesRef={semiboldEntriesRef}

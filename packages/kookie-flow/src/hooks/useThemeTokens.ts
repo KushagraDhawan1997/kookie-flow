@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { themeRoot } from '../utils/theme-root';
-import { parseColorToRGB, parsePx, type RGBColor } from '../utils/color';
+import { parseColorToRGB, parsePx, type RGBColor, withProbes } from '../utils/color';
 
 /**
  * Simplified shadow for WebGL (single drop shadow, not multi-layer CSS).
@@ -167,30 +167,24 @@ export const FALLBACK_TOKENS: ThemeTokens = {
 };
 
 /**
- * Read a CSS variable from computed styles, trying each name in turn.
+ * Read a CSS variable from computed styles.
  *
- * The list is what carries this package across the v1 -> v2 rename: `'--neutral-2'`
- * reads the v2 name where it exists and the v1 name where it does not, so one build is correct on
- * both design systems and the swap is bisectable.
+ * This took `string | readonly string[]` and tried each name in turn — the mechanism that carried
+ * the package across the v1 to v2 rename, reading the v2 name where it existed and the v1 name
+ * where it did not, so one build was correct on both systems and the swap was bisectable. v1 is
+ * gone, every one of the ~30 callers below passes a single string literal, and the array arm was
+ * dead code describing a dual read that no longer happens.
  *
- * WHY A LIST AND NOT A CSS `var()` FALLBACK CHAIN, which is the obvious spelling and is silently
- * catastrophic: `getPropertyValue` takes a custom-property NAME, not an expression. Handed
- * `'var(--neutral-2, var(--gray-2))'` it returns `''` — for EVERY token — so every reader below
- * takes its fallback branch and the whole of FALLBACK_TOKENS paints instead. That table is
- * entirely dark by construction (see its header), so a light app renders a black canvas with
- * every token "present", every law green, and no warning anywhere. The chain also cannot work in
- * principle here: v1 declares `--space-8` too, at a different value, so its arm would win.
- *
- * Order is v2-first, v1-second, deliberately: when both resolve — and 40 of the 99 names do — the
- * new system's value is the intended one.
+ * WHAT IS WORTH KEEPING is the hazard that arm existed to avoid, because it is still live and
+ * still silent. `getPropertyValue` takes a custom-property NAME, not an expression. Handed a CSS
+ * fallback chain — `'var(--neutral-2, var(--gray-2))'`, which is the obvious spelling — it
+ * returns `''`. For every token. Every reader below then takes its fallback branch and the whole
+ * of FALLBACK_TOKENS paints instead, and that table is entirely dark by construction: a light app
+ * renders a black canvas with every token "present", every law green, and no warning anywhere.
+ * Pass a name.
  */
-function getCSSVar(styles: CSSStyleDeclaration, name: string | readonly string[]): string {
-  if (typeof name === 'string') return styles.getPropertyValue(name).trim();
-  for (const n of name) {
-    const v = styles.getPropertyValue(n).trim();
-    if (v) return v;
-  }
-  return '';
+function getCSSVar(styles: CSSStyleDeclaration, name: string): string {
+  return styles.getPropertyValue(name).trim();
 }
 
 /**
@@ -198,7 +192,7 @@ function getCSSVar(styles: CSSStyleDeclaration, name: string | readonly string[]
  */
 function getCSSVarPx(
   styles: CSSStyleDeclaration,
-  name: string | readonly string[],
+  name: string,
   fallback: number
 ): number {
   const value = getCSSVar(styles, name);
@@ -211,7 +205,7 @@ function getCSSVarPx(
  */
 function getCSSVarRGB(
   styles: CSSStyleDeclaration,
-  name: string | readonly string[],
+  name: string,
   fallback: RGBColor
 ): RGBColor {
   const value = getCSSVar(styles, name);
@@ -221,12 +215,15 @@ function getCSSVarRGB(
 
 
 /**
- * Detect appearance (light/dark) from a Radix Themes element.
- * Radix Themes uses .light/.dark classes, or inherits from system preference.
+ * Which appearance the theme root is in.
+ *
+ * The `.light` / `.dark` CLASSES are v1's spelling and are checked first only because a host page
+ * may still carry them; v2 stamps `data-appearance` on the Theme element and its generated
+ * selectors key on that attribute alone — measured, adding a `dark` class to a `.kui-theme` div
+ * changes nothing, every token byte-identical. The attribute is the answer that matters.
  */
 function detectAppearance(root: Element): 'light' | 'dark' {
-  // Check for explicit class (Radix Themes uses .light or .dark)
-  // IMPORTANT: Check light FIRST since we want explicit light to override dark
+  // Explicit class first, so an explicit light overrides an inherited dark.
   if (root.classList.contains('light')) return 'light';
   if (root.classList.contains('dark')) return 'dark';
 
@@ -264,7 +261,12 @@ function readTokensFromDOM(root: Element): ThemeTokens {
    */
   const space = (n: number) => `--space-${n + 1}` as const;
 
-  return {
+  // One attach/detach of the measuring probes for the whole pass rather than one per token.
+  // The probes are ephemeral by design (see utils/color.ts — leaving one attached across a
+  // React hydration render is what made the docs app throw a mismatch), and this pass resolves
+  // over a hundred values, so without the wrapper it would append and remove an element that
+  // many times on every mount and every theme change.
+  return withProbes(() => ({
     // Spacing — see `space()` above for why the index moves.
     '--space-1': getCSSVarPx(styles, space(1), FALLBACK_TOKENS['--space-1']),
     '--space-2': getCSSVarPx(styles, space(2), FALLBACK_TOKENS['--space-2']),
@@ -334,7 +336,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Meta
     '--scale': getCSSVarPx(styles, '--scale', FALLBACK_TOKENS['--scale']),
     appearance,
-  };
+  }));
 }
 
 /**

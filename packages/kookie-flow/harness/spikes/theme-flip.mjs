@@ -118,7 +118,6 @@ const sample = () =>
       // v2 and reports "no theme" for a theme that is present and working.
       themeAppearance: (() => {
         const el =
-          document.querySelector('.radix-themes') ??
           document.querySelector('.kui-theme') ??
           document.documentElement;
         return el.getAttribute('data-appearance') ?? el.className ?? null;

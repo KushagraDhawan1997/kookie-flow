@@ -5,6 +5,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "test": "turbo test",
+    "test:browser": "turbo test:browser",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs": "pnpm --filter docs dev",

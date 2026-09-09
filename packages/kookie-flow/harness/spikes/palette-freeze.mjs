@@ -53,7 +53,7 @@ for (const mode of ['light', 'dark']) {
   await page.waitForTimeout(300);
   out[mode] = await page.evaluate((fams) => {
     const el = window.__harness.themeRoot();
-    const host = document.querySelector('.radix-themes') ?? document.querySelector('.kui-theme') ?? document.documentElement;
+    const host = document.querySelector('.kui-theme') ?? document.documentElement;
     void el;
     const probe = document.createElement('span');
     probe.style.cssText = 'position:absolute;visibility:hidden';

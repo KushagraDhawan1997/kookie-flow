@@ -457,11 +457,28 @@ export function EntitySelection() {
         }
       }
 
+      /**
+       * Upload the instances that were written, not the whole buffer.
+       *
+       * `needsUpdate` on its own re-sends the entire typed array, and the array is sized from the
+       * selection, not from what survived the cull — so a pan, which marks this layer dirty on
+       * every pointermove, re-sent every byte of it sixty times a second to draw the handful of
+       * outlines still on screen. The capacity never shrinks either, so the bill stayed at the
+       * high-water mark long after the selection came back down. Only the first `count` instances
+       * are ever drawn (see the `outlineMesh.count` line below), so the bytes past the range are
+       * unread; three still does a full `bufferData` the first time a freshly remounted mesh is
+       * uploaded, which is what keeps the untouched tail from being garbage.
+       */
+      outlineMesh.instanceMatrix.addUpdateRange(0, outlineCount * 16);
       outlineMesh.instanceMatrix.needsUpdate = true;
       if (outlineBuffers.sizeAttr && outlineBuffers.typeAttr && outlineBuffers.outlineWidthAttr && outlineBuffers.paddingAttr) {
+        outlineBuffers.sizeAttr.addUpdateRange(0, outlineCount * 2);
         outlineBuffers.sizeAttr.needsUpdate = true;
+        outlineBuffers.typeAttr.addUpdateRange(0, outlineCount);
         outlineBuffers.typeAttr.needsUpdate = true;
+        outlineBuffers.outlineWidthAttr.addUpdateRange(0, outlineCount);
         outlineBuffers.outlineWidthAttr.needsUpdate = true;
+        outlineBuffers.paddingAttr.addUpdateRange(0, outlineCount);
         outlineBuffers.paddingAttr.needsUpdate = true;
       }
 
@@ -575,6 +592,11 @@ export function EntitySelection() {
         }
       }
 
+      // Same reason as the outline mesh above: the handle buffer is grown to
+      // selectedEntityIds.size * 8 * 1.5 and never shrinks, so a thousand-node select-all left a
+      // 750 KiB instanceMatrix being re-uploaded on every frame of a pan to draw the eight handles
+      // per node still on screen. `handleMesh.count` clamps the draw to what was written.
+      handleMesh.instanceMatrix.addUpdateRange(0, handleCount * 16);
       handleMesh.instanceMatrix.needsUpdate = true;
 
       // Update zoom uniform

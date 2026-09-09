@@ -62,9 +62,13 @@ export interface WidgetsLayerProps {
   /** Minimum zoom level to show widgets. Default: 0.4 */
   minWidgetZoom?: number;
   /**
-   * Kookie UI Theme component for per-entity accent color support.
-   * Pass `Theme` from @kushagradhawan/kookie-ui to enable widget theming.
-   * When provided, widgets on entities with `color` prop will use that accent color.
+   * An opaque wrapper mounted around consumer-supplied widgets.
+   *
+   * It used to be documented as per-entity accent colour support — pass a `Theme` and a widget on
+   * an entity with a `color` would take that accent. That is NO LONGER EXPRESSIBLE, and the
+   * public type says so at its declaration: KookieUI v2 refuses `accentColor`, `hasBackground`
+   * and `asChild` as compile errors, so there is nothing for an entity's colour to be handed to.
+   * See the `ThemeComponentType` declaration in ../types for the whole story.
    */
   ThemeComponent?: ThemeComponentType;
   /** Default entity width when entity.width is not specified. Default: 240 */
@@ -291,8 +295,9 @@ export function WidgetsLayer({
         const socket = entity.inputs[inputIndex];
         const key = `${entity.id}:${socket.id}`;
 
-        // Skip if socket is connected
-        if (connectedSockets.has(key)) continue;
+        // Skip if socket is connected. The connected set is keyed per direction; these are
+        // inputs.
+        if (connectedSockets.has(`${key}:input`)) continue;
 
         // Resolve widget config
         const config = resolveWidgetConfig(socket, socketTypes);

@@ -220,15 +220,23 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       return;
     }
 
-    const { selectedEntityIds, viewport } = store.getState();
+    const { selectedEntityIds, entityMap, viewport } = store.getState();
     if (selectedEntityIds.size === 0) {
       el.style.visibility = 'hidden';
       return;
     }
 
-    // Check if any selected entity has a toolbar config
-    const entities = getSelectedEntitiesWithToolbar(store.getState(), entityTypes);
-    if (entities.length === 0 && !renderOverride) {
+    // Whether ANY selected entity carries a toolbar config is the whole question here, and that is
+    // what it asks now. It used to build the full array of those entities and read `.length` off
+    // it. Every pan frame and every wheel tick writes the viewport, and the viewport subscription
+    // lands in this function, so a selection of a thousand entities allocated a thousand-element
+    // array and did a thousand map lookups per input event to answer a yes/no. A short-circuiting
+    // predicate normally stops at the first entity and allocates nothing; a `children` override
+    // skips the scan entirely, because it shows the toolbar whatever the answer would have been.
+    if (
+      !renderOverride &&
+      !hasSelectedEntityWithToolbar(selectedEntityIds, entityMap, entityTypes)
+    ) {
       el.style.visibility = 'hidden';
       return;
     }
@@ -392,20 +400,24 @@ function getSelectedEntitiesFromIds(ids: Set<string>, entityMap: Map<string, Ent
   return result;
 }
 
-function getSelectedEntitiesWithToolbar(
-  state: { selectedEntityIds: Set<string>; entityMap: Map<string, Entity> },
+/**
+ * Does the selection contain at least one entity whose type declares a toolbar?
+ *
+ * Runs on every viewport write, so it returns on the first match and never builds a list. Its
+ * callers only ever asked the yes/no.
+ */
+export function hasSelectedEntityWithToolbar(
+  selectedEntityIds: Set<string>,
+  entityMap: Map<string, Entity>,
   entityTypes: Record<string, EntityTypeDefinition>
-): Entity[] {
-  const result: Entity[] = [];
-  for (const id of state.selectedEntityIds) {
-    const entity = state.entityMap.get(id);
+): boolean {
+  for (const id of selectedEntityIds) {
+    const entity = entityMap.get(id);
     if (!entity) continue;
     const typeDef = entityTypes[entity.type];
-    if (typeDef?.toolbar != null && typeDef.toolbar !== false) {
-      result.push(entity);
-    }
+    if (typeDef?.toolbar != null && typeDef.toolbar !== false) return true;
   }
-  return result;
+  return false;
 }
 
 /**

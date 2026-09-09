@@ -100,7 +100,14 @@ export function useAppearance(): AppearanceChoice {
     const mq = matchMedia('(prefers-color-scheme: dark)');
     // While the choice is "system", the OS can flip underneath us.
     const onChange = () => {
-      if (appearanceChoice() === 'system') apply();
+      // `emit()` as well as `apply()`. Without it an OS-level light/dark flip repainted the DOM
+      // and told no subscriber, so anything reading through this store — a toggle, a canvas that
+      // re-reads its tokens — stayed on the previous mode until something else happened to
+      // notify it.
+      if (appearanceChoice() === 'system') {
+        apply();
+        emit();
+      }
     };
     mq.addEventListener('change', onChange);
     // The other tab is a second writer to the same key. `storage` fires only in the tabs that
@@ -120,4 +127,17 @@ export function useAppearance(): AppearanceChoice {
   }, []);
 
   return choice;
+}
+
+/**
+ * The appearance actually in force right now, read from the one element that carries it.
+ *
+ * Distinct from `useAppearance()`, which reports the CHOICE — and "system" is not an appearance,
+ * it is a deferral. A caller that needs to know which way to flip needs this one. Deliberately
+ * not a hook and deliberately never called during render: reading the DOM in a render body is
+ * what produced the hydration mismatch this pair of files exists to have fixed.
+ */
+export function resolvedAppearance(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'light';
+  return document.documentElement.getAttribute('data-appearance') === 'dark' ? 'dark' : 'light';
 }

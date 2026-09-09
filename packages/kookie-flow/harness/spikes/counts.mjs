@@ -118,6 +118,8 @@ async function measure(name, run) {
     drawCalls: gl.drawCalls,
     instancedDrawCalls: gl.instancedDrawCalls,
     instancesDrawn: gl.instancesDrawn,
+    kbUploaded: Math.round(gl.bytesUploaded / 1024),
+    kbUploadedPerFrame: Math.round(gl.bytesUploaded / 1024 / f),
     drawsPerFrame: Number((gl.drawCalls / f).toFixed(1)),
     instancesPerFrame: Math.round(gl.instancesDrawn / f),
     frames,
@@ -244,14 +246,17 @@ if (AS_JSON) {
     `  ${pad('interaction', 18)}${pad('react', 7)}${pad('frames', 8)}${pad('draws/f', 9)}${pad(
       'inst/f',
       10
-    )}${pad('alloc B/f', 11)}wall*`
+    )}${pad('upKB/f', 9)}${pad('alloc B/f', 11)}wall*`
   );
   for (const r of results) {
     console.log(
       `  ${pad(r.name, 18)}${pad(r.reactCommits, 7)}${pad(r.frames.count ?? 0, 8)}${pad(
         r.drawsPerFrame,
         9
-      )}${pad(r.instancesPerFrame, 10)}${pad(r.allocBytesPerFrame, 11)}${r.wallMs}ms`
+      )}${pad(r.instancesPerFrame, 10)}${pad(r.kbUploadedPerFrame, 9)}${pad(
+        r.allocBytesPerFrame,
+        11
+      )}${r.wallMs}ms`
     );
   }
   console.log('\n  where the bytes went\n');

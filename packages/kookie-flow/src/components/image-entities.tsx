@@ -126,7 +126,17 @@ void main() {
   }
 
   vec4 texColor = texture2D(map, sampledUV);
-  gl_FragColor = vec4(texColor.rgb, texColor.a * opacity);
+  float a = texColor.a * opacity;
+
+  // The quad writes depth (see the material), and a fragment that is not drawn writes none.
+  // Without this discard a PNG's transparent background stamped the image's whole bounding
+  // rectangle into the depth buffer, and anything behind it — a node body at a higher stack
+  // index, another image — was clipped by an invisible box the shape of the quad. Every other
+  // layer that shares this depth buffer already follows the convention; nodes.tsx does the same
+  // thing for the same reason, and its shadow pass was split into its own mesh over it.
+  if (a < 0.01) discard;
+
+  gl_FragColor = vec4(texColor.rgb, a);
 
   #include <colorspace_fragment>
 }`;
@@ -253,6 +263,21 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     () => createPlaceholderMaterial(errorColor),
     [errorColor]
   );
+
+  /**
+   * The comment above claimed these were freed on a theme change. They were not — the pair of
+   * cleanups that would do it did not exist, so each of the two memos rebuilt on a light/dark flip
+   * and abandoned its predecessor inside the renderer's caches, which three never reclaims on
+   * garbage collection. Two materials and their program refcounts leaked per toggle, and both
+   * leaked again on unmount.
+   *
+   * Keyed on the memoised value itself, for the reason nodes.tsx spells out: the cleanup closes
+   * over the previous render's material, which is exactly the one being replaced. It is safe to
+   * free it because nothing still points at it — the same render that builds the replacement also
+   * re-applies it as the `material` prop of every image mesh.
+   */
+  useEffect(() => () => { placeholderMat.dispose(); }, [placeholderMat]);
+  useEffect(() => () => { errorMat.dispose(); }, [errorMat]);
 
   /**
    * The texture manager and the materials have different lifetimes, and conflating them was a bug.

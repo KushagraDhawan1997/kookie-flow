@@ -98,6 +98,52 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+/** What one frame of the edge renderer actually has to do, derived from the four dirty flags. */
+export interface EdgeUpdatePlan {
+  /** Rewrite `aLayer` for every edge whose bg/fg assignment changed, and re-bound the fg draw range. */
+  layer: boolean;
+  /** Rewrite `aColor` for every edge from the recorded vertex layout. */
+  color: boolean;
+  /** `full` relays the whole buffer out, `partial` rewrites the moved edges in place, `none` means the passes above are the whole frame. */
+  geometry: 'full' | 'partial' | 'none';
+}
+
+/**
+ * Decide which passes a frame runs.
+ *
+ * This lived as three inline conditions and one of them was wrong. The layer pass was gated on
+ * nothing having moved this frame, so a frame that was both position-dirty and layer-dirty —
+ * which is what clicking an unselected node and dragging it in a single pointermove produces,
+ * one handler setting selectedEntityIds and updateEntityPositions in the same tick — fell
+ * through to the rebuild path, whose layer write is guarded to full rebuilds only, and then
+ * cleared layerDirty at the end regardless. The flip was requested and silently dropped: the
+ * dragged node's edges kept layer 0, drew from the background mesh, and disappeared behind every
+ * node body they were dragged across until something else forced a full rebuild.
+ *
+ * A full rebuild writes both layer and colour inline for every edge, so those passes are
+ * redundant there and only there. A PARTIAL update is the case the old gate got wrong: it visits
+ * only the edges that moved, so an edge that changed layer without moving — the node that just
+ * got deselected — needs the pass as much as an idle frame does.
+ *
+ * Colour is deliberately not run alongside a partial update. Unlike layers, the colour buffer is
+ * uploaded through the partial path's addUpdateRange, so writing colours outside the moved range
+ * would leave them stranded on the CPU side; the caller keeps colorDirty set instead and pays one
+ * pass on the first frame after the drag settles.
+ */
+export function planEdgeUpdate(dirty: {
+  geometry: boolean;
+  position: boolean;
+  color: boolean;
+  layer: boolean;
+}): EdgeUpdatePlan {
+  const geometry = dirty.geometry ? 'full' : dirty.position ? 'partial' : 'none';
+  return {
+    layer: dirty.layer && geometry !== 'full',
+    color: dirty.color && geometry === 'none',
+    geometry,
+  };
+}
+
 /**
  * High-performance mesh-based edge renderer.
  *
@@ -188,6 +234,12 @@ export function Edges({
   // Reverse index: entityId → edge array indices (for O(K) partial updates)
   const entityToEdgeIndicesRef = useRef<Map<string, number[]>>(new Map());
 
+  // The set of edges touched by this frame's move, held across frames rather than allocated
+  // inside one. It is refilled from scratch every drag frame either way, and a whole-graph drag
+  // makes every edge affected — so the old `new Set<number>()` built and discarded a
+  // 2000-element Set sixty times a second for no benefit over reusing one.
+  const affectedEdgeIndicesRef = useRef<Set<number>>(new Set());
+
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
@@ -204,8 +256,23 @@ export function Edges({
     const c = tokens[THEME_COLORS.edge.invalid];
     return new THREE.Color(c[0], c[1], c[2]);
   }, [tokens]);
-  // Temp color for socket type lookups (avoids GC in hot path)
-  const tempColor = useMemo(() => new THREE.Color(), []);
+  /**
+   * Socket-type colours parsed once per socketTypes identity, not once per edge per frame.
+   *
+   * Both colour paths below used to call `tempColor.set(typeConfig.color)` for every edge they
+   * touched, and each of those calls re-parses a hex string through THREE.Color.setStyle: a regex
+   * match and three parseInts, producing numbers that are identical from frame to frame. A
+   * whole-graph drag of 2000 edges paid 2000 of those per frame to read a table with a dozen
+   * entries in it. The colours arrive here already resolved to hex by resolveSocketTypes, so they
+   * can be parsed when the prop changes and read as three floats afterwards.
+   */
+  const socketTypeColors = useMemo(() => {
+    const table = new Map<string, THREE.Color>();
+    for (const [name, config] of Object.entries(socketTypes)) {
+      if (config?.color) table.set(name, new THREE.Color(config.color));
+    }
+    return table;
+  }, [socketTypes]);
 
   // Mark color dirty when theme colors change
   useEffect(() => {
@@ -490,34 +557,63 @@ export function Edges({
       edgeLayersRef.current = grownLayers;
     }
 
-    // Fast path: layer and/or color update only (no geometry or position changes)
-    if (!geometryDirtyRef.current && !positionDirtyRef.current && (layerDirtyRef.current || colorDirtyRef.current)) {
+    const plan = planEdgeUpdate({
+      geometry: geometryDirtyRef.current,
+      position: positionDirtyRef.current,
+      color: colorDirtyRef.current,
+      layer: layerDirtyRef.current,
+    });
+
+    // Layer pass: flip aLayer for edges whose bg/fg assignment changed. It runs OUTSIDE the
+    // fast path below because a selection change and a move can land in the same frame — see
+    // planEdgeUpdate for the drag that dropped the flip when this was gated on nothing moving.
+    if (plan.layer) {
       const evStarts = edgeVertexStartsRef.current;
       const evCounts = edgeVertexCountsRef.current;
       const edgeLayers = edgeLayersRef.current;
 
-      // Layer update: flip aLayer for edges whose bg/fg assignment changed
-      if (layerDirtyRef.current) {
-        for (let i = 0; i < edges.length; i++) {
-          const edge = edges[i];
-          const newLayer = (selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target)) ? 1 : 0;
-          if (newLayer !== edgeLayers[i]) {
-            edgeLayers[i] = newLayer;
-            const start = evStarts[i];
-            const count = evCounts[i];
-            for (let v = 0; v < count; v++) {
-              buffers.layers[start + v] = newLayer;
-            }
+      // Highest vertex the foreground mesh can need this frame. Both meshes used to draw the
+      // whole buffer and let the shader throw away what did not belong to them, so with nothing
+      // selected the foreground pass ran a vertex shader over every vertex of every edge to emit
+      // precisely nothing — half a million invocations a frame for an empty result.
+      //
+      // The bound is the END OF THE LAST SELECTED EDGE'S SLOT, read from the next edge's
+      // recorded start rather than from this edge's vertex count. A partial update can write
+      // fewer vertices than the rebuild laid out, because it skips degenerate segments, and can
+      // write them back on a later frame; a bound taken from evCounts would then be too low and
+      // would clip the tail off a selected edge mid-drag. Starts are monotonic, so the next
+      // edge's start is the slot boundary and never moves.
+      let fgVertexMax = 0;
+      for (let i = 0; i < edges.length; i++) {
+        const edge = edges[i];
+        const newLayer = (selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target)) ? 1 : 0;
+        if (newLayer !== edgeLayers[i]) {
+          edgeLayers[i] = newLayer;
+          const start = evStarts[i];
+          const count = evCounts[i];
+          for (let v = 0; v < count; v++) {
+            buffers.layers[start + v] = newLayer;
           }
         }
-        if (buffers.layerAttr) {
-          buffers.layerAttr.needsUpdate = true;
+        if (newLayer === 1) {
+          fgVertexMax = i + 1 < edges.length ? evStarts[i + 1] : buffers.lastVertexCount;
         }
-        layerDirtyRef.current = false;
       }
+      if (buffers.layerAttr) {
+        buffers.layerAttr.needsUpdate = true;
+      }
+      fgMeshRef.current.geometry.setDrawRange(0, fgVertexMax);
+      layerDirtyRef.current = false;
+    }
+
+    // Fast path: colour-only frame. Nothing moved and nothing was rebuilt, so the recorded vertex
+    // layout still describes the buffer and only aColor needs rewriting.
+    if (plan.geometry === 'none') {
+      const evStarts = edgeVertexStartsRef.current;
+      const evCounts = edgeVertexCountsRef.current;
 
       // Color update: update colors for all edges using recorded vertex layout
-      if (colorDirtyRef.current) {
+      if (plan.color) {
         for (let i = 0; i < edges.length; i++) {
           const edge = edges[i];
           const vertexStart = evStarts[i];
@@ -534,25 +630,22 @@ export function Edges({
             cg = invalidColor.g;
             cb = invalidColor.b;
           } else {
-            let foundColor = false;
+            let typeColor: THREE.Color | undefined;
             if (edge.sourceSocket) {
               const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
               if (socketInfo) {
-                const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
-                if (typeConfig) {
-                  tempColor.set(typeConfig.color);
-                  foundColor = true;
-                }
+                typeColor =
+                  socketTypeColors.get(socketInfo.socket.type) ?? socketTypeColors.get('any');
               }
             }
-            if (!foundColor) {
+            if (typeColor) {
+              cr = typeColor.r;
+              cg = typeColor.g;
+              cb = typeColor.b;
+            } else {
               cr = defaultColor.r;
               cg = defaultColor.g;
               cb = defaultColor.b;
-            } else {
-              cr = tempColor.r;
-              cg = tempColor.g;
-              cb = tempColor.b;
             }
           }
 
@@ -573,7 +666,7 @@ export function Edges({
     }
 
     // Determine update mode: partial (position-only) vs full rebuild
-    const isPartialUpdate = positionDirtyRef.current && !geometryDirtyRef.current;
+    const isPartialUpdate = plan.geometry === 'partial';
 
     // Ensure endpoint cache and layout arrays have capacity
     const neededCacheSize = edges.length * 4;
@@ -604,7 +697,8 @@ export function Edges({
       const movedIds = store.getState().getMovedEntityIds();
       const entityEdgeMap = entityToEdgeIndicesRef.current;
       if (movedIds.size > 0 && entityEdgeMap.size > 0) {
-        affectedEdgeIndices = new Set<number>();
+        affectedEdgeIndices = affectedEdgeIndicesRef.current;
+        affectedEdgeIndices.clear();
         for (const entityId of movedIds) {
           const edgeIndices = entityEdgeMap.get(entityId);
           if (edgeIndices) {
@@ -617,6 +711,9 @@ export function Edges({
     // Full geometry rebuild or partial position update path
     // Single pass: all edges in natural order, aLayer attribute controls bg/fg visibility
     let vertexIndex = 0;
+    // Foreground high-water mark, kept in step with the layer writes below so the fg mesh draws
+    // only as far as the last selected edge. See the layer pass above for why it exists.
+    let fgVertexMax = 0;
     const edgeLayers = edgeLayersRef.current;
 
     {
@@ -659,13 +756,19 @@ export function Edges({
         const targetHeight =
           targetEntity.height ?? getEntitySocketLayout(targetEntity, socketLayout).computedHeight;
 
+        // Resolved once and read twice: the geometry needs the socket's row index and the colour
+        // block below needs the socket's type, and both used to build the same key string and hit
+        // the same map inside the same iteration. Looking it up here keeps the read live — the
+        // socket index map is rebuilt from the store, never cached per edge, so nothing here can
+        // outlive a socket being added, removed or reordered.
+        const sourceSocketInfo = edge.sourceSocket
+          ? socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`)
+          : undefined;
+
         // Fallback to the entity's centre for an edge that names no socket.
         let sourceYOffset = sourceHeight / 2;
-        if (edge.sourceSocket) {
-          const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
-          if (socketInfo) {
-            sourceYOffset = getSocketYOffset(sourceEntity, socketInfo.index, false, socketLayout);
-          }
+        if (sourceSocketInfo) {
+          sourceYOffset = getSocketYOffset(sourceEntity, sourceSocketInfo.index, false, socketLayout);
         }
 
         let targetYOffset = targetHeight / 2;
@@ -764,26 +867,19 @@ export function Edges({
           cg = invalidColor.g;
           cb = invalidColor.b;
         } else {
-          // Get source socket type color - O(1) via socketIndexMap
-          let foundColor = false;
-          if (edge.sourceSocket) {
-            const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
-            if (socketInfo) {
-              const typeConfig = socketTypes[socketInfo.socket.type] ?? socketTypes.any;
-              if (typeConfig) {
-                tempColor.set(typeConfig.color);
-                foundColor = true;
-              }
-            }
-          }
-          if (!foundColor) {
+          // Get source socket type color - O(1) from the socket resolved above and the pre-parsed
+          // colour table
+          const typeColor = sourceSocketInfo
+            ? socketTypeColors.get(sourceSocketInfo.socket.type) ?? socketTypeColors.get('any')
+            : undefined;
+          if (typeColor) {
+            cr = typeColor.r;
+            cg = typeColor.g;
+            cb = typeColor.b;
+          } else {
             cr = defaultColor.r;
             cg = defaultColor.g;
             cb = defaultColor.b;
-          } else {
-            cr = tempColor.r;
-            cg = tempColor.g;
-            cb = tempColor.b;
           }
         }
 
@@ -1157,6 +1253,7 @@ export function Edges({
           for (let v = edgeVertexStart; v < vertexIndex; v++) {
             buffers.layers[v] = layer;
           }
+          if (layer === 1) fgVertexMax = vertexIndex;
         }
 
         // Cache endpoints (full rebuild only — partial update caches above)
@@ -1228,15 +1325,21 @@ export function Edges({
       }
     }
 
-    // Set draw ranges on both geometries — both draw all vertices, shader filters by layer
+    // Set draw ranges. The background mesh covers everything and the shader drops the selected
+    // vertices out of it; the foreground mesh stops at the last selected edge, which is zero when
+    // nothing is selected and saves that whole pass.
     if (!isPartialUpdate) {
       bgMeshRef.current!.geometry.setDrawRange(0, vertexIndex);
-      fgMeshRef.current!.geometry.setDrawRange(0, vertexIndex);
+      fgMeshRef.current!.geometry.setDrawRange(0, fgVertexMax);
       buffers.lastVertexCount = vertexIndex;
     }
     geometryDirtyRef.current = false;
     positionDirtyRef.current = false;
-    colorDirtyRef.current = false;
+    // A partial update rewrites only the edges that moved, so a colour change asked for in the
+    // same frame has not been serviced for the rest of the graph. Clearing the flag here would
+    // throw that request away the way the layer flip used to be thrown away; leaving it set costs
+    // one colour pass on the first frame after the drag settles.
+    if (!isPartialUpdate) colorDirtyRef.current = false;
     layerDirtyRef.current = false;
   });
 

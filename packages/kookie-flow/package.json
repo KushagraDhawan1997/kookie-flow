@@ -65,7 +65,8 @@
     "harness:perf": "node harness/spikes/perf-baseline.mjs",
     "harness:spike:theme": "node harness/spikes/theme-flip.mjs",
     "harness:counts": "node harness/spikes/counts.mjs",
-    "harness:tokens": "node harness/spikes/token-census.mjs"
+    "harness:tokens": "node harness/spikes/token-census.mjs",
+    "test:browser": "node harness/build.mjs && node harness/behaviors.mjs"
   },
   "dependencies": {
     "zustand": "^5.0.10"
@@ -79,9 +80,6 @@
     "@kookie-ui/react": "*"
   },
   "peerDependenciesMeta": {
-    "@kushagradhawan/kookie-ui": {
-      "optional": true
-    },
     "@kookie-ui/react": {
       "optional": true
     }

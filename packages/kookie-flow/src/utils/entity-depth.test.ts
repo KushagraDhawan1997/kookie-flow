@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { entityDepth, topmostEntityId, DEPTH_LAYER, STACK_STEP, STACK_COMPACT_AT } from './entity-depth';
+import {
+  entityDepth,
+  topmostEntityId,
+  DEPTH_LAYER,
+  DEPTH_QUANTUM,
+  STACK_STEP,
+  STACK_COMPACT_AT,
+} from './entity-depth';
 
 const none = new Set<string>();
 
@@ -22,6 +29,21 @@ describe('entityDepth', () => {
     expect(DEPTH_LAYER.body).toBeLessThan(DEPTH_LAYER.widget);
     expect(DEPTH_LAYER.widget).toBeLessThan(DEPTH_LAYER.socket);
     expect(DEPTH_LAYER.socket).toBeLessThan(DEPTH_LAYER.label);
+  });
+
+  it('every distinct depth is separable on a 16-bit buffer', () => {
+    // WebGL guarantees 16 bits; `depth: true` asks, it does not promise. The first draft of these
+    // numbers put the entire ladder inside ONE quantum — STACK_STEP 0.01 against a 0.0153 tick,
+    // and layer offsets of 0.002/0.004/0.006 — so on 16-bit hardware a body, its widgets, its
+    // sockets and its labels all rounded to the same depth and everything this file separates
+    // would have re-interleaved. Two quanta of margin, not one, because the rounding can land
+    // either way.
+    const steps = [DEPTH_LAYER.body, DEPTH_LAYER.widget, DEPTH_LAYER.socket, DEPTH_LAYER.label];
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i] - steps[i - 1]).toBeGreaterThan(DEPTH_QUANTUM * 2);
+    }
+    // And one entity's topmost part to the next entity's body.
+    expect(STACK_STEP - DEPTH_LAYER.label).toBeGreaterThan(DEPTH_QUANTUM * 2);
   });
 
   it('a selected entity is above every unselected one, whatever their stack indices', () => {

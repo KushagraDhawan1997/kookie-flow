@@ -5,9 +5,10 @@ import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
-import { resolveAccentColorRGB } from '../utils/accent-colors';
+import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
-import type { EntityStatus } from '../types';
+import type { AccentColor, EntityStatus } from '../types';
+import type { RGBColor } from '../utils/color';
 import { entityDepth } from '../utils/entity-depth';
 
 // Status enum encoding for GPU (matches aStatus attribute)
@@ -72,10 +73,37 @@ function initMeshBuffers(mesh: THREE.InstancedMesh, bufs: InstanceBuffers) {
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 }
 
-function markBuffersForUpload(bufs: InstanceBuffers) {
-  if (bufs.sizeAttr) bufs.sizeAttr.needsUpdate = true;
-  if (bufs.accentColorAttr) bufs.accentColorAttr.needsUpdate = true;
-  if (bufs.statusAttr) bufs.statusAttr.needsUpdate = true;
+/**
+ * Upload only the instances this frame actually wrote.
+ *
+ * These buffers are sized to CAPACITY, not to the live node count, and capacity is grown well
+ * ahead of demand — so a bare `needsUpdate` handed three the whole array every dirty frame for
+ * the handful of instances a viewport cull left visible. Measured on a pan at 5000 nodes: 1.2 MB
+ * per frame, sixty times a second, to move about thirty nodes' worth of matrices. At 1000 nodes it
+ * was 250 KB per frame. The figure scaled with the SIZE OF THE GRAPH rather than with what was on
+ * screen, which is the signature of an upload that is not culled even though the draw is.
+ *
+ * Instances are written from index 0 upward for each mesh, so the written span is exactly
+ * `[0, count)` and one range describes it. three merges overlapping ranges itself and clears them
+ * once the upload lands, so a range left behind by a frame that never reached the GPU widens the
+ * next upload rather than truncating it — the safe direction.
+ *
+ * A count of zero declares nothing and uploads nothing, which is what an empty graph should cost.
+ */
+function markBuffersForUpload(bufs: InstanceBuffers, count: number) {
+  if (count <= 0) return;
+  if (bufs.sizeAttr) {
+    bufs.sizeAttr.addUpdateRange(0, count * 2);
+    bufs.sizeAttr.needsUpdate = true;
+  }
+  if (bufs.accentColorAttr) {
+    bufs.accentColorAttr.addUpdateRange(0, count * 3);
+    bufs.accentColorAttr.needsUpdate = true;
+  }
+  if (bufs.statusAttr) {
+    bufs.statusAttr.addUpdateRange(0, count);
+    bufs.statusAttr.needsUpdate = true;
+  }
 }
 
 /**
@@ -446,6 +474,31 @@ export function Entities() {
     };
   }, [store, capacity]);
 
+  /**
+   * The accent a node is painted with is a pure function of (colour name, theme), so resolve it
+   * once per pair instead of once per node per frame.
+   *
+   * `resolveAccentColorRGB` looks cheap and is not: for any entity carrying a `color` it goes
+   * through `frozenHue` into `hexToRGB`, which slices the leading `#`, runs a regex, builds a
+   * match array, parses three integers and allocates an RGBA array to return three of its four
+   * elements. The viewport subscription above marks this layer dirty on every pointermove of a
+   * pan, so that whole parse ran per visible accented node per frame — measured in the hundreds
+   * of kilobytes of young-generation garbage a second on a canvas of a thousand coloured nodes,
+   * to recompute an answer drawn from a closed set of twenty-six hues.
+   *
+   * The cache is filled lazily through the real resolver rather than built up front from the
+   * `AccentColor` union, and that is deliberate: the resolver owns the frozen-palette ordering
+   * and the once-per-colour warning for a colour that arrived from stored JSON and is not in the
+   * table. Going around it would have re-introduced the per-frame console.warn that
+   * `accent-colors.ts` keeps a module-scope Set to prevent. A miss pays the old cost exactly
+   * once; every later frame is a Map lookup.
+   *
+   * Keyed on `tokens` and nothing else. `useThemeTokens` deep-compares before it publishes a new
+   * object, so the identity changes when — and only when — a hue actually moved; a narrower dep
+   * would leave every accented node painted in the previous theme.
+   */
+  const accentCache = useMemo(() => new Map<AccentColor, RGBColor>(), [tokens]);
+
   // Track whether any entity has an animated status (running/success)
   const hasAnimatedStatusRef = useRef(false);
 
@@ -467,6 +520,20 @@ export function Entities() {
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
+      /**
+       * The shadows have to be zeroed HERE too, not only on the path below.
+       *
+       * A shadow mesh draws the body mesh's instance matrices by aliasing the same attribute, and
+       * that array is never cleared — only `count` decides how much of it is drawn. This early
+       * return used to zero the two body counts and leave the shadow counts at whatever the last
+       * populated frame set, so deleting the last node (select all, delete) erased every body and
+       * left its soft halo painted at its old position until a node was added back. The shadow
+       * pass writes no depth and nothing was left in front of it to hide it.
+       */
+      const bgShadowEmpty = bgShadowRef.current;
+      const fgShadowEmpty = fgShadowRef.current;
+      if (bgShadowEmpty) bgShadowEmpty.count = 0;
+      if (fgShadowEmpty) fgShadowEmpty.count = 0;
       dirtyRef.current = false;
       return;
     }
@@ -530,7 +597,19 @@ export function Entities() {
       bufs.sizes[idx * 2] = width;
       bufs.sizes[idx * 2 + 1] = height;
 
-      const accentRGB = resolveAccentColorRGB(entity.color, tokens);
+      const color = entity.color;
+      let accentRGB: RGBColor;
+      if (!color) {
+        accentRGB = NO_OVERRIDE_SENTINEL;
+      } else {
+        const cached = accentCache.get(color);
+        if (cached) {
+          accentRGB = cached;
+        } else {
+          accentRGB = resolveAccentColorRGB(color, tokens);
+          accentCache.set(color, accentRGB);
+        }
+      }
       bufs.accentColor[idx * 3] = accentRGB[0];
       bufs.accentColor[idx * 3 + 1] = accentRGB[1];
       bufs.accentColor[idx * 3 + 2] = accentRGB[2];
@@ -545,15 +624,21 @@ export function Entities() {
 
     hasAnimatedStatusRef.current = hasAnimated;
 
-    // Update GPU buffers for both meshes
-    bgMesh.instanceMatrix.needsUpdate = true;
-    fgMesh.instanceMatrix.needsUpdate = true;
-    markBuffersForUpload(bgBuffers);
-    markBuffersForUpload(fgBuffers);
-
     // Safety: never exceed buffer capacity to prevent WebGL errors
     bgMesh.count = Math.min(bgCount, capacity);
     fgMesh.count = Math.min(fgCount, capacity);
+
+    // Update GPU buffers for both meshes, over the span each one actually wrote.
+    if (bgMesh.count > 0) {
+      bgMesh.instanceMatrix.addUpdateRange(0, bgMesh.count * 16);
+      bgMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (fgMesh.count > 0) {
+      fgMesh.instanceMatrix.addUpdateRange(0, fgMesh.count * 16);
+      fgMesh.instanceMatrix.needsUpdate = true;
+    }
+    markBuffersForUpload(bgBuffers, bgMesh.count);
+    markBuffersForUpload(fgBuffers, fgMesh.count);
 
     // The shadow passes alias the body passes' instance matrices — the same trick sockets.tsx
     // uses for its two layers — so they are positioned by the write above and never by a copy.

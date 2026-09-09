@@ -25,8 +25,10 @@ import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout, useResolvedStyle } from '../contexts/StyleContext';
 import { getWidgetBox } from '../utils/widget-geometry';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { THEME_COLORS } from '../core/theme-colors';
 import { resolveTokenColor } from '../utils/style-resolver';
@@ -37,8 +39,13 @@ const BUFFER_GROWTH_FACTOR = 1.5;
 const INITIAL_CAPACITY = 64;
 const MAX_CAPACITY = 20000;
 
-/** Widgets stop drawing below this zoom — at that size they are noise, not controls. */
-const MIN_WIDGET_ZOOM = 0.4;
+/**
+ * Widgets stop drawing below this zoom — at that size they are noise, not controls. Imported
+ * rather than declared, because `widget-hit.ts` states the invariant this number carries: a
+ * threshold the painter honours and the presser does not is an invisible control. Two copies of
+ * it are two chances for exactly that to come back.
+ */
+const MIN_WIDGET_ZOOM = HIT_MIN_WIDGET_ZOOM;
 
 /**
  * TWO MESHES, ROUTED BY SELECTION, exactly as nodes.tsx and sockets.tsx do — and for the reason
@@ -96,15 +103,54 @@ function sliderFraction(value: unknown, config: ResolvedWidgetConfig): number {
   return Math.min(1, Math.max(0, (v - min) / span));
 }
 
-/** Parse a widget's colour value to RGB, falling back to mid-grey rather than throwing. */
-function colorOf(value: unknown): [number, number, number] {
-  if (typeof value !== 'string') return [0.5, 0.5, 0.5];
-  const hex = value.trim().replace('#', '');
-  if (hex.length !== 6) return [0.5, 0.5, 0.5];
-  const n = Number.parseInt(hex, 16);
-  if (!Number.isFinite(n)) return [0.5, 0.5, 0.5];
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+/**
+ * Parse a widget's colour value to RGB into `out` at `offset`, falling back to mid-grey rather
+ * than throwing.
+ *
+ * It writes into the caller's array instead of returning a tuple because the only hot caller is
+ * the per-widget loop below, which was allocating a fresh three-element array for EVERY widget on
+ * EVERY dirty frame — a colour widget got one from here, and everything else got a literal
+ * `[0, 0, 0]` it read three numbers out of and dropped. The loop runs on every frame of a pan, so
+ * that was a few hundred arrays a frame of pure nursery churn in the layer whose entire reason for
+ * existing is that a pan costs nothing. The destination is the instance buffer itself, so the
+ * three components now go straight where they were always headed.
+ */
+function writeColor(value: unknown, out: { [index: number]: number }, offset: number): void {
+  let r = 0.5;
+  let g = 0.5;
+  let b = 0.5;
+  if (typeof value === 'string') {
+    const hex = value.trim().replace('#', '');
+    if (hex.length === 6) {
+      const n = Number.parseInt(hex, 16);
+      if (Number.isFinite(n)) {
+        r = ((n >> 16) & 255) / 255;
+        g = ((n >> 8) & 255) / 255;
+        b = (n & 255) / 255;
+      }
+    }
+  }
+  out[offset] = r;
+  out[offset + 1] = g;
+  out[offset + 2] = b;
 }
+
+/**
+ * The same parse, as a tuple, for callers outside the hot loop. One implementation, because two
+ * would eventually disagree about what an unparseable colour looks like.
+ */
+function colorOf(value: unknown): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  writeColor(value, out, 0);
+  return out;
+}
+
+/**
+ * One matrix, reused for every instance on every frame, exactly as nodes.tsx and sockets.tsx do
+ * it. It is only ever written and immediately flushed into the instance array, so nothing can
+ * observe it between iterations.
+ */
+const tempMatrix = new THREE.Matrix4();
 
 export interface WidgetsGLProps {
   /** Socket type definitions, for resolving which widget a socket gets. */
@@ -399,20 +445,37 @@ export function WidgetsGL({
     const right = left + size.width / viewport.zoom + pad * 2;
     const bottom = top + size.height / viewport.zoom + pad * 2;
 
-    const m = new THREE.Matrix4();
     let bgCount = 0;
     let fgCount = 0;
-    let needed = 0;
+    // Counted per mesh, not as one total — see the growth check below for why the sum was wrong.
+    let neededBg = 0;
+    let neededFg = 0;
 
     for (const entity of entities) {
       if (hiddenEntityIds.has(entity.id)) continue;
-      const inputs = entity.inputs ?? [];
-      if (inputs.length === 0) continue;
+      // Not `entity.inputs ?? []`: that minted an empty array for every entity in the graph that
+      // has no inputs, on every frame of a pan, purely to ask its length.
+      const inputs = entity.inputs;
+      if (!inputs || inputs.length === 0) continue;
       if (
         entity.position.x > right ||
         entity.position.y > bottom ||
         entity.position.x + (entity.width ?? defaultEntityWidth) < left
       ) continue;
+      // The fourth side, which this cull was missing while every other layer had it. An entity
+      // entirely ABOVE the viewport got all the way into the socket loop, and its widgets were
+      // rejected one at a time by the per-widget vertical test further down — but only AFTER
+      // being counted as needed, so a downward pan through a tall graph ratcheted the capacity up
+      // toward MAX_CAPACITY on widgets that were never drawn, remounting both InstancedMeshes and
+      // re-allocating both buffer sets on each step, mid-gesture.
+      //
+      // The height comes through the layout rather than a default, for the reason geometry.ts
+      // states about the hit test: an auto-sized entity is routinely taller than the assumed
+      // height, and guessing here would cull widgets that are still on screen. The lookup is a
+      // cached O(1) WeakMap hit, and it is paid only by entities that survived the three cheap
+      // tests above.
+      const entityLayout = getEntitySocketLayout(entity, socketLayout);
+      if (entity.position.y + (entity.height ?? entityLayout.computedHeight) < top) continue;
 
       // Route to the foreground mesh when selected, so the widgets ride above the selected body.
       const isSelected = selectedEntityIds.has(entity.id);
@@ -423,16 +486,22 @@ export function WidgetsGL({
       for (let i = 0; i < inputs.length; i++) {
         const socket = inputs[i];
         if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+
         const config = resolveWidgetConfig(socket, socketTypes);
         if (!config) continue;
-
-        needed++;
-        const n = isSelected ? fgCount : bgCount;
-        if (n >= capacity) continue;
 
         const box = getWidgetBox(entity, i, socketLayout, defaultEntityWidth, socketLabelWidth);
         if (!box) continue;
         if (box.y > bottom || box.y + box.height < top) continue;
+
+        // Counted here, below every test, so the count is the number of widgets that were eligible
+        // to draw. It used to be taken above the two lines before this one, which handed the
+        // growth check below widgets that were culled and never written — the count only ever went
+        // up, and so did the capacity.
+        if (isSelected) neededFg++;
+        else neededBg++;
+        const n = isSelected ? fgCount : bgCount;
+        if (n >= capacity) continue;
 
         // A widget's value lives on the ENTITY, keyed by socket id — `entity.data.values[id]` —
         // which is the same place the DOM widgets read it from. A socket carries its shape, not
@@ -449,19 +518,28 @@ export function WidgetsGL({
         buffers.radius[n] = Math.min(resolved.borderRadius, box.height * 0.5);
         buffers.kind[n] = kindFor(config.type, value);
         buffers.value[n] = config.type === 'slider' ? sliderFraction(value, config) : 0;
-        const tint = config.type === 'color' ? colorOf(value) : [0, 0, 0];
-        buffers.tint[n * 3] = tint[0];
-        buffers.tint[n * 3 + 1] = tint[1];
-        buffers.tint[n * 3 + 2] = tint[2];
+        if (config.type === 'color') {
+          writeColor(value, buffers.tint, n * 3);
+        } else {
+          buffers.tint[n * 3] = 0;
+          buffers.tint[n * 3 + 1] = 0;
+          buffers.tint[n * 3 + 2] = 0;
+        }
 
-        m.identity();
-        m.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), z);
-        m.toArray(mesh.instanceMatrix.array as unknown as number[], n * 16);
+        tempMatrix.identity();
+        tempMatrix.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), z);
+        tempMatrix.toArray(mesh.instanceMatrix.array as unknown as number[], n * 16);
         if (isSelected) fgCount++;
         else bgCount++;
       }
     }
 
+    // The capacity is a ceiling on EACH mesh, not on their sum, so the number to grow against is
+    // the larger of the two. This used to add them: forty unselected widgets beside forty selected
+    // ones read as eighty and grew buffers that sixty-four already fitted, and every growth is a
+    // React re-render that remounts both meshes. Taking the max cannot under-provision — each
+    // count is checked against the same per-mesh capacity it will be written into.
+    const needed = neededBg > neededFg ? neededBg : neededFg;
     if (needed > capacity && capacity < MAX_CAPACITY) {
       setCapacity(Math.min(MAX_CAPACITY, Math.ceil(needed * BUFFER_GROWTH_FACTOR)));
     }
@@ -506,4 +584,4 @@ export function WidgetsGL({
   );
 }
 
-export { KIND as WIDGET_KIND, kindFor, sliderFraction, colorOf };
+export { KIND as WIDGET_KIND, kindFor, sliderFraction, colorOf, writeColor };

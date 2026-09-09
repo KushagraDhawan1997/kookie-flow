@@ -17,39 +17,67 @@ export function rgbToHex(rgb: RGBColor): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-// Reusable probe element for color resolution
+/**
+ * The measuring probes are EPHEMERAL: attached, read and removed inside one synchronous call.
+ *
+ * They used to be attached and left there, and that is what produced the docs app's hydration
+ * mismatch. The colour probe's host is the theme element — a real, server-rendered `.kui-theme`
+ * div wrapping the whole app — and the token read happens in a `useState` lazy initialiser,
+ * which on the client IS the hydration render. So React would finish hydrating a host element,
+ * find a leftover hydratable sibling that the server never sent, and throw. React 19's
+ * `popHydrationState` treats any element node as hydratable, so a hidden, empty, absolutely
+ * positioned span counts.
+ *
+ * Every other route was weighed. `suppressHydrationWarning` does not apply — this is a thrown
+ * mismatch on a sibling, not a warned attribute diff. Deferring the read to an effect would fix
+ * hydration and break first paint: the tokens would be unread for a frame, `areTokensValid`
+ * would reject the empty result, and the canvas would paint one frame from the entirely-dark
+ * FALLBACK table under a light theme — the exact black-canvas failure this file has already had
+ * once. Ephemeral keeps the read where it is and makes "is the probe still attached?" a question
+ * with no answer, which is the only version of it that cannot be got wrong.
+ *
+ * The elements themselves are still cached at module scope, so this costs no allocation per
+ * call — only an append and a remove, which do not invalidate style or force layout on their own.
+ * A depth counter lets one caller wrap a whole token pass (`withProbes`) and pay that once
+ * instead of ~112 times.
+ */
 let colorProbe: HTMLSpanElement | null = null;
+let colorProbeDepth = 0;
 
 /**
- * Get or create a hidden element used to resolve CSS colors.
+ * Get or create a hidden element used to resolve CSS colors, ATTACHED for the caller's use.
  *
- * The probe MUST live inside the theme element, not on <body>. Design tokens are scoped to
- * `.radix-themes`, so a probe outside it cannot see them: measured, `var(--accent-9)` resolves to
- * rgb(0,0,0) from body and rgb(0,144,255) from inside the theme, and `--gray-2` gives the untinted
- * rgb(249,249,249) instead of the real rgb(249,249,251).
+ * The probe MUST live inside the theme element, not on <body>. v1 scoped its tokens to
+ * `.radix-themes`, so a probe outside it could not see them at all: measured, `var(--accent-9)`
+ * resolved to rgb(0,0,0) from body against rgb(0,144,255) from inside.
  *
- * Under v2 the same mistake is WORSE rather than louder, which is why the host now comes from the
- * one shared resolver instead of a second `?? document.body` written here. v2 declares its tokens
- * at `:root` and re-declares them inside the Theme's own `[data-appearance]` scope, so a probe
- * outside the Theme resolves every token successfully — at the ROOT appearance. Nothing is missing
- * and nothing warns; the colours are simply the other mode's.
+ * Under v2 the same mistake is WORSE rather than louder, which is why the host comes from the one
+ * shared resolver instead of a second `?? document.body` written here. v2 declares its tokens at
+ * `:root` and re-declares them inside the Theme's own `[data-appearance]` scope, so a probe
+ * outside the Theme resolves every token successfully — at the ROOT appearance. Nothing is
+ * missing and nothing warns; the colours are simply the other mode's.
  *
- * The host is re-checked on every call rather than cached once, because the theme element mounts
- * after this module first runs.
+ * The host is resolved on every call rather than cached, because the theme element mounts after
+ * this module first runs. Every caller must pair this with `releaseColorProbe()`, in a `finally`.
  */
 function getColorProbe(): HTMLSpanElement | null {
   if (typeof document === 'undefined' || !document.body) return null;
-
-  const host = themeRoot();
 
   if (!colorProbe) {
     colorProbe = document.createElement('span');
     colorProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
   }
-  if (colorProbe.parentElement !== host) {
-    host.appendChild(colorProbe);
-  }
+  // `appendChild` on an already-parented node MOVES it, which is exactly what re-hosting needs
+  // when the theme element has mounted or changed since the last call.
+  themeRoot().appendChild(colorProbe);
+  colorProbeDepth++;
   return colorProbe;
+}
+
+/** Detach the colour probe once the outermost caller is done with it. */
+function releaseColorProbe(): void {
+  colorProbeDepth = Math.max(0, colorProbeDepth - 1);
+  if (colorProbeDepth === 0) colorProbe?.remove();
 }
 
 /**
@@ -71,23 +99,27 @@ function readProbe(colorValue: string): string | null {
   const probe = getColorProbe();
   if (!probe) return null;
 
-  probe.style.color = PROBE_SENTINEL;
-  probe.style.color = `color-mix(in srgb, ${colorValue} 100%, transparent 0%)`;
-  let computed = getComputedStyle(probe).color;
-
-  if (computed === PROBE_SENTINEL) {
-    // color-mix rejected it. Try the value on its own.
+  // `finally`, not a cleanup line per exit: there are three ways out of this function and the
+  // probe must be detached on all of them, including a throw. Leaving it attached on any one path
+  // is the whole hydration defect.
+  try {
     probe.style.color = PROBE_SENTINEL;
-    probe.style.color = colorValue;
-    computed = getComputedStyle(probe).color;
-    if (computed === PROBE_SENTINEL) {
-      probe.style.color = '';
-      return null;
-    }
-  }
+    probe.style.color = `color-mix(in srgb, ${colorValue} 100%, transparent 0%)`;
+    let computed = getComputedStyle(probe).color;
 
-  probe.style.color = '';
-  return computed;
+    if (computed === PROBE_SENTINEL) {
+      // color-mix rejected it. Try the value on its own.
+      probe.style.color = PROBE_SENTINEL;
+      probe.style.color = colorValue;
+      computed = getComputedStyle(probe).color;
+      if (computed === PROBE_SENTINEL) return null;
+    }
+
+    return computed;
+  } finally {
+    probe.style.color = '';
+    releaseColorProbe();
+  }
 }
 
 /**
@@ -391,15 +423,29 @@ export function parseColorToRGBA(color: string): RGBAColor {
   return [0.5, 0.5, 0.5, 1];
 }
 
-// Reusable probe element for dimension resolution
 let dimensionProbe: HTMLDivElement | null = null;
-
-/**
- * Get or create a hidden element used to resolve CSS dimensions.
- * The browser will compute calc() expressions to actual pixel values.
- */
+let dimensionProbeDepth = 0;
 let warnedDetachedProbe = false;
 
+/**
+ * Get or create a hidden element used to resolve CSS dimensions, ATTACHED for the caller's use.
+ * The browser computes calc() expressions to actual pixel values on it.
+ *
+ * EPHEMERAL, for the reason given at the colour probe above, and it also closes a second failure
+ * this one had on its own. It used to be appended once and re-attached only when found
+ * disconnected — and the earlier diagnosis of WHY it kept being found disconnected was wrong. It
+ * was not that React regenerated `<body>`'s children over this node; React 19 does not treat
+ * body children as hydratable. It was collateral: the COLOUR probe's mismatch threw, React
+ * client-rendered the root from scratch, and this element went with the subtree. `getComputedStyle`
+ * on a detached element resolves nothing, `parsePx` returned 0 for every length, `areTokensValid`
+ * read that as a failed read, and the hook kept FALLBACK_TOKENS — dark by construction. A black
+ * canvas under a working light theme.
+ *
+ * With the lifetime shortened to one synchronous call, "is it still attached?" stops being a
+ * question anything can get wrong. The host stays `<body>`: every length token is px arithmetic
+ * with `var()` already substituted by the time `getPropertyValue` returns, so there is no em/rem
+ * scope to inherit and no reason to reach for the theme element.
+ */
 function getDimensionProbe(): HTMLDivElement | null {
   if (typeof document === 'undefined' || !document.body) return null;
 
@@ -407,28 +453,33 @@ function getDimensionProbe(): HTMLDivElement | null {
     dimensionProbe = document.createElement('div');
     dimensionProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
   }
-
-  /**
-   * RE-ATTACH EVERY TIME, and this is the whole bug rather than a defensive habit.
-   *
-   * The probe is appended to `<body>` while React is still hydrating, so React finds a node
-   * the server did not send, reports a hydration mismatch and REGENERATES that subtree —
-   * which detaches this element. `getComputedStyle` on a detached element resolves nothing,
-   * so `width` came back empty, `parsePx` returned 0 for EVERY length, `areTokensValid` read
-   * that as a failed token read, and the hook kept FALLBACK_TOKENS — a table that is dark by
-   * construction. The result was a black canvas under a perfectly working light theme, and
-   * it only appeared once something forced a remount, because the first reads happen before
-   * hydration finishes.
-   *
-   * Colours never showed the fault because `getColorProbe` below has always re-parented on
-   * every call. This function created once and trusted the node to stay. Same mechanism, one
-   * of them checked.
-   */
-  if (!dimensionProbe.isConnected) {
-    document.body.appendChild(dimensionProbe);
-  }
-
+  document.body.appendChild(dimensionProbe);
+  dimensionProbeDepth++;
   return dimensionProbe;
+}
+
+/** Detach the dimension probe once the outermost caller is done with it. */
+function releaseDimensionProbe(): void {
+  dimensionProbeDepth = Math.max(0, dimensionProbeDepth - 1);
+  if (dimensionProbeDepth === 0) dimensionProbe?.remove();
+}
+
+/**
+ * Hold both probes attached for the length of one pass, instead of per lookup.
+ *
+ * A full token read resolves upwards of a hundred values, and without this each one appends and
+ * removes an element. Correctness does not depend on it — attach/detach per call is already
+ * safe — it only stops the mount and theme-change paths churning the DOM a hundred times over.
+ */
+export function withProbes<T>(fn: () => T): T {
+  const color = getColorProbe();
+  const dim = getDimensionProbe();
+  try {
+    return fn();
+  } finally {
+    if (dim) releaseDimensionProbe();
+    if (color) releaseColorProbe();
+  }
 }
 
 /**
@@ -449,15 +500,21 @@ export function parsePx(value: string): number {
   const probe = getDimensionProbe();
   if (!probe) return 0;
 
-  // Set width to the value and read computed width
-  probe.style.width = trimmed;
-  const computed = getComputedStyle(probe).width;
-  probe.style.width = '';
+  let computed: string;
+  try {
+    probe.style.width = trimmed;
+    computed = getComputedStyle(probe).width;
+  } finally {
+    probe.style.width = '';
+    releaseDimensionProbe();
+  }
 
   const px = parseFloat(computed);
   if (Number.isNaN(px)) {
-    // The probe resolved nothing, which means it is not in the document — see getDimensionProbe.
-    // Returning a bare 0 here is what kept that failure silent: a zero length is
+    // The probe was attached for the read, so this is the environment declining to lay anything
+    // out rather than the probe being lost — jsdom, most often, which computes no widths at all.
+    //
+    // Returning a bare 0 is what kept the original failure silent: a zero length is
     // indistinguishable from a token that is legitimately zero, so the whole token read was
     // reported as failed and the canvas painted from the dark fallback table under a light
     // theme. Warned ONCE, because the caller is a render path.
@@ -465,7 +522,8 @@ export function parsePx(value: string): number {
       warnedDetachedProbe = true;
       console.warn(
         `[kookie-flow] Could not resolve the length ${JSON.stringify(trimmed)}: ` +
-          'the measuring probe is detached from the document.'
+          'the measuring probe computed no width. This is expected under jsdom, which lays ' +
+          'nothing out; in a browser it means layout is unavailable on this document.'
       );
     }
     return 0;

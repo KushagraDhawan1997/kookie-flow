@@ -94,9 +94,7 @@ export const THEME_COLORS = {
    * On-node widget chrome, drawn in GL.
    *
    * A widget is a CONTROL on a surface, so it wears the field family's dress: a well one step off
-   * the node body, a hairline, and the accent where it is filled or ticked. These name v2 roles
-   * with the v1 name as the second entry wherever they differ, the way every other token this
-   * package reads does.
+   * the node body, a hairline, and the accent where it is filled or ticked.
    */
   widget: {
     /** The field well. One step off the node body so a control reads as recessed. */

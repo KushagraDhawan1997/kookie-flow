@@ -41,3 +41,22 @@ h5,
 h6 {
   scroll-margin-top: 120px;
 }
+
+/*
+ * The appearance toggle renders BOTH icons and lets this pick, so the server HTML is identical
+ * in every appearance and hydration has nothing to diff. See dark-mode.tsx for the mismatch this
+ * replaces. Keyed on <html>, which is where the pre-paint script and the appearance store both
+ * write — the same single source of truth `<Theme appearance="inherit">` reads.
+ */
+.appearance-icon {
+  display: inline-flex;
+}
+.appearance-icon--dark {
+  display: none;
+}
+html[data-appearance='dark'] .appearance-icon--dark {
+  display: inline-flex;
+}
+html[data-appearance='dark'] .appearance-icon--light {
+  display: none;
+}

@@ -62,7 +62,13 @@ import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
-import { getWidgetAt, sliderValueAt, nextSelectValue, type WidgetHit } from '../utils/widget-hit';
+import {
+  getWidgetAt,
+  sliderValueAt,
+  nextSelectValue,
+  MIN_WIDGET_ZOOM,
+  type WidgetHit,
+} from '../utils/widget-hit';
 import { WidgetEditOverlay } from './widget-edit-overlay';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
@@ -85,6 +91,28 @@ import * as THREE from 'three';
 import { topmostEntityId } from '../utils/entity-depth';
 
 /**
+ * The defaults for the three props whose IDENTITY is a dependency downstream.
+ *
+ * A default parameter is evaluated on every call, so `socketTypes = {}` in the signature handed
+ * every consumer who omitted the prop a brand-new object on every render. That fed
+ * `resolveSocketTypes`'s useMemo, which therefore missed every time and produced a new resolved
+ * map, which was `FlowSync`'s prop, whose edge effect lists it as a dependency — so every render
+ * of the consumer's tree re-ran that effect and called `setEdges` with edges that had not
+ * changed. `setEdges` rebuilds `connectedSockets` and the adjacency index over every edge and
+ * bumps `topologyVersion`, which marks every GL layer dirty; the next frame retessellated every
+ * edge and rebuilt every socket and widget instance buffer. Several milliseconds and a multi-
+ * megabyte buffer upload, to arrive at the graph that was already on screen.
+ *
+ * Module scope fixes it because there is exactly one of each object for the life of the module,
+ * so a consumer who omits the prop pins the memo instead of defeating it. A consumer who passes
+ * a fresh literal every render still churns — that is theirs to hold stable, and it is the same
+ * contract every other config prop in this package keeps.
+ */
+const NO_SOCKET_TYPES: Record<string, SocketType> = {};
+const NO_ENTITY_TYPES: NonNullable<KookieFlowProps['entityTypes']> = {};
+const DEFAULT_SNAP_GRID: [number, number] = [20, 20];
+
+/**
  * Main KookieFlow component.
  * Renders a WebGL canvas with an optional DOM overlay.
  *
@@ -94,8 +122,8 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
   {
     entities,
     edges,
-    entityTypes = {},
-    socketTypes = {},
+    entityTypes = NO_ENTITY_TYPES,
+    socketTypes = NO_SOCKET_TYPES,
     onEntitiesChange,
     onEdgesChange,
     onConnect,
@@ -117,7 +145,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     showSocketLabels = true,
     showEdgeLabels = true,
     snapToGrid = false,
-    snapGrid = [20, 20],
+    snapGrid = DEFAULT_SNAP_GRID,
     defaultEdgeType = 'bezier',
     maxImageTextureSize,
     connectionMode = 'loose',
@@ -142,7 +170,12 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
   },
   ref
 ) {
-  const resolvedSocketTypes = { ...DEFAULT_SOCKET_TYPES, ...socketTypes };
+  // Memoised for its IDENTITY, not for the cost of the spread — see NO_SOCKET_TYPES above for
+  // what a fresh object here bought downstream.
+  const resolvedSocketTypes = useMemo(
+    () => ({ ...DEFAULT_SOCKET_TYPES, ...socketTypes }),
+    [socketTypes]
+  );
 
   return (
     <ThemeProvider>
@@ -295,6 +328,12 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
     const tokens = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
 
+    // Handed to the store at construction so its FIRST quadtree build uses the real socket row
+    // heights. Without it that build ran on defaults — wrong entity heights, wrong bounds — and
+    // then the mount effect below threw both quadtrees away and rebuilt them from the resolved
+    // layout, so every mount paid for two full builds and the first one was wrong anyway.
+    const containerSocketLayout = useSocketLayout();
+
     // Resolve socket type colors from theme tokens (memoized)
     const resolvedSocketTypes = useMemo(
       () => resolveSocketTypes(socketTypes, tokens),
@@ -323,7 +362,14 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
 
     return (
       <div ref={containerRef} className={className} style={containerStyle}>
-        <FlowProvider initialState={{ entities, edges, viewport: defaultViewport }}>
+        <FlowProvider
+          initialState={{
+            entities,
+            edges,
+            viewport: defaultViewport,
+            socketLayout: containerSocketLayout,
+          }}
+        >
           <FlowInstanceHandle
             ref={ref}
             containerRef={containerRef}
@@ -623,8 +669,14 @@ function InputHandler({
    * one thing this codebase's rules forbid outright. The EDIT is state, because a borrowed DOM
    * input is a mounted element — that happens once per edit, not once per frame, which is exactly
    * what React state is for.
+   *
+   * The drag carries the POINTER that started it. Without it every branch below answered any
+   * pointer at all: a second finger put down anywhere on the canvas drove the slider the first
+   * finger was holding — its pointermoves reach the drag branch before anything else — while a
+   * pinch-zoom ran at the same time, and lifting either finger ended the drag while the other was
+   * still down. A gesture belongs to the pointer that began it.
    */
-  const widgetDragRef = useRef<WidgetHit | null>(null);
+  const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
   const [widgetEdit, setWidgetEdit] = useState<WidgetHit | null>(null);
   const onWidgetChangeRef = useRef(onWidgetChange);
   onWidgetChangeRef.current = onWidgetChange;
@@ -641,6 +693,35 @@ function InputHandler({
     },
     [store]
   );
+
+  /**
+   * An open field closes when its entity goes away.
+   *
+   * The overlay snapshots the widget's world box at press time and follows the viewport from
+   * there; it never re-derives from the entity, so it has no way of noticing the entity is gone.
+   * Nothing else was watching either — the edit was opened on press and closed on blur, and a
+   * removal that does not blur the input (a consumer-driven change from a live source, an undo, a
+   * programmatic delete) left a focused input floating over empty canvas, still writing values
+   * for an id nothing holds.
+   *
+   * Subscribed rather than derived because `entityMap` changes on a store transition, not on a
+   * React render, and this component does not re-render when entities change. It costs one Map
+   * lookup per entity write, and only while a field is actually open.
+   */
+  useEffect(() => {
+    if (!widgetEdit) return;
+    const entityId = widgetEdit.entityId;
+    if (!store.getState().entityMap.has(entityId)) {
+      setWidgetEdit(null);
+      return;
+    }
+    return store.subscribe(
+      (s) => s.entityMap,
+      (entityMap) => {
+        if (!entityMap.has(entityId)) setWidgetEdit(null);
+      }
+    );
+  }, [store, widgetEdit]);
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -1100,8 +1181,12 @@ function InputHandler({
          * A checkbox and a slider are answered entirely in GL, with no DOM at any moment. The
          * other four borrow a real input for the duration of one edit, which is the rule this
          * whole layer exists to satisfy.
+         *
+         * Gated on the same zoom the renderer paints at: below MIN_WIDGET_ZOOM there is no widget
+         * chrome on screen, and a press that lands in an invisible control is worse than a press
+         * that does nothing — see the constant.
          */
-        if (clickedEntity && showWidgets) {
+        if (clickedEntity && showWidgets && viewport.zoom >= MIN_WIDGET_ZOOM) {
           const hit = getWidgetAt(
             clickedEntity,
             worldPos.x,
@@ -1109,6 +1194,7 @@ function InputHandler({
             socketTypes,
             socketLayout,
             store.getState().connectedSockets,
+            store.getState().widgetValues,
             defaultEntityWidth,
             socketLabelWidth
           );
@@ -1125,7 +1211,7 @@ function InputHandler({
               return;
             }
             if (hit.config.type === 'slider') {
-              widgetDragRef.current = hit;
+              widgetDragRef.current = { hit, pointerId: e.pointerId };
               containerRef.current?.setPointerCapture(e.pointerId);
               emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, worldPos.x));
               return;
@@ -1226,16 +1312,30 @@ function InputHandler({
        * No React state, by design: this runs on every pointermove for the length of the gesture,
        * and the value goes straight out through the consumer's callback.
        */
-      if (widgetDragRef.current) {
-        const hit = widgetDragRef.current;
-        const rect = cachedRectRef.current;
-        const { viewport } = store.getState();
-        const world = screenToWorld(
-          { x: e.clientX - rect.left, y: e.clientY - rect.top },
-          viewport
-        );
-        emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, world.x));
-        return;
+      const widgetDrag = widgetDragRef.current;
+      if (widgetDrag && widgetDrag.pointerId === e.pointerId) {
+        /**
+         * The button has to still be down. This branch returns unconditionally and sits above the
+         * safety-cleanup block below, so the one net that catches a missed pointerup could never
+         * reach it: a `pointercancel` — the OS taking a touch gesture, palm rejection, a
+         * notification — cleared nothing, and from then on every bare pointermove over the canvas,
+         * with no button at all, wrote a new slider value and returned. Panning, marquee select,
+         * node dragging and connections were all dead until the component unmounted.
+         */
+        if ((e.buttons & 1) === 0) {
+          widgetDragRef.current = null;
+          // Fall through: the safety cleanup below handles whatever else this stale gesture left.
+        } else {
+          const { hit } = widgetDrag;
+          const rect = cachedRectRef.current;
+          const { viewport } = store.getState();
+          const world = screenToWorld(
+            { x: e.clientX - rect.left, y: e.clientY - rect.top },
+            viewport
+          );
+          emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, world.x));
+          return;
+        }
       }
 
       const { connectionDraft, selectionBox } = store.getState();
@@ -1250,7 +1350,10 @@ function InputHandler({
           selectionBox ||
           connectionDraft ||
           pointerDownPos.current ||
-          lastPointerPos.current
+          lastPointerPos.current ||
+          // A slider drag whose pointer never sent another move of its own — the branch above only
+          // clears the one it belongs to, and this net is meant to catch every stuck gesture.
+          widgetDragRef.current
         ) {
           // Cancel any active operations
           if (autoScrollRef.current.rafId) {
@@ -1285,6 +1388,7 @@ function InputHandler({
           pointerDownPos.current = null;
           lastPointerPos.current = null;
           hasDragged.current = false;
+          widgetDragRef.current = null;
         }
         // Fall through to hover state handling below
       }
@@ -1715,7 +1819,12 @@ function InputHandler({
     (e: ReactPointerEvent) => {
       // A slider drag ends here and nowhere else. Released first so a gesture that started on a
       // widget cannot fall through into the selection logic below and clear the selection.
-      if (widgetDragRef.current) {
+      //
+      // Only its OWN pointer ends it. This used to end on whichever pointer happened to come up,
+      // and released capture for that one too — so on a touch device, lifting a second finger
+      // ended a slider drag the first finger was still holding, and handed the release to a
+      // pointer the container had never captured.
+      if (widgetDragRef.current && widgetDragRef.current.pointerId === e.pointerId) {
         widgetDragRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
         return;
@@ -2332,7 +2441,10 @@ function InputHandler({
         });
       }
 
-      if (touchState.current.touches.size === 2) {
+      // A second finger does not start a pinch while a slider is being held. The pointer and touch
+      // handlers run in parallel, so putting a finger down anywhere during a slider drag used to
+      // zoom the canvas out from under the control the first finger was still on.
+      if (touchState.current.touches.size === 2 && !widgetDragRef.current) {
         const touches = Array.from(touchState.current.touches.values());
         const dx = touches[1].x - touches[0].x;
         const dy = touches[1].y - touches[0].y;
@@ -2445,6 +2557,17 @@ function InputHandler({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      /**
+       * A cancelled gesture ends the same way a released one does.
+       *
+       * `pointercancel` fires with no `pointerup` to follow when the OS takes the gesture — a
+       * system edge swipe, a notification, palm rejection on a touch device. Nothing here listened
+       * for it, so a slider drag cancelled that way left `widgetDragRef` set for the life of the
+       * component, and the move handler's widget branch, which sits above the safety cleanup and
+       * returns unconditionally, swallowed every pointermove after it. The minimap has had this
+       * handler all along; the canvas is the one that lacked it.
+       */
+      onPointerCancel={handlePointerUp}
       onPointerLeave={(e) => {
         handlePointerUp(e);
         store.getState().setHoveredEntityId(null);

@@ -1188,9 +1188,24 @@ export default function DemoPage() {
           ];
         });
         if (changes.length > 0) onEntitiesChange(changes);
+        // Cleared once flushed. Held, this map only ever grows: every entity ever touched in the
+        // session gets rewritten on every later flush, so nudging one slider fifty times rewrites
+        // fifty entities that nobody has touched since.
+        pendingValuesRef.current = {};
+        debounceTimeoutRef.current = null;
       }, 150);
     },
     [onEntitiesChange]
+  );
+
+  // A pending flush outlives the component otherwise, and fires `setWidgetValues` on an unmounted
+  // tree. React only warns about that in development, so in production it is a silent write into
+  // a dead closure — the last 150ms of anything the person typed, dropped without a sign.
+  useEffect(
+    () => () => {
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+    },
+    []
   );
 
   // Phase 7E: Add node on edge drop — when a connection drag ends on empty canvas,

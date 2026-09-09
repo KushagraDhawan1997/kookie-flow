@@ -126,12 +126,37 @@ function expectIndexMatchesPaint(store: ReturnType<typeof createFlowStore>, when
     ] as const) {
       for (const socket of sockets) {
         const painted = paintedAt(store, entity.id, socket.id, isInput);
+
+        /**
+         * THE COMPARISON WAS VACUOUS WHENEVER `painted` CAME BACK NULL, which is the same shape
+         * this file's own docstring warns about, one level down.
+         *
+         * `indexedAt` bails to null on exactly the condition `painted` is null — it calls
+         * `paintedAt` first and returns null if that is null, never querying the quadtree at all.
+         * So null was compared against null, `toEqual` passed, and the sweep reported agreement
+         * having compared nothing. `getSocketPosition` returns null on two reachable paths
+         * (a missing socket array, and an id that is not found), so any change that made sockets
+         * unlocatable by id would turn every one of these five tests green while locating none.
+         *
+         * And the vacuity guard below could not catch it: `checked` counted LOOP ITERATIONS, so
+         * it stayed at 9 and stayed above zero while every comparison was null-to-null.
+         *
+         * The fixture guarantees every socket exists, so a null here is an INSTRUMENT failure
+         * rather than a datum, and it is asserted as one.
+         */
+        expect(
+          painted,
+          `${when}: ${entity.id}/${socket.id} has no painted position — the instrument is broken, ` +
+            `not the index`
+        ).not.toBeNull();
+
         const indexed = indexedAt(store, entity.id, socket.id, isInput);
         expect(
           { where: `${when}: ${entity.id}/${socket.id}`, indexed },
           `${when}: ${entity.id}/${socket.id} is painted at ${JSON.stringify(painted)}`
         ).toEqual({ where: `${when}: ${entity.id}/${socket.id}`, indexed: painted });
-        checked++;
+        // Counts real comparisons, not iterations — see above.
+        if (painted) checked++;
       }
     }
   }

@@ -12,7 +12,7 @@ import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
-import type { Entity, SocketType } from '../types';
+import type { Edge, Entity, SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
@@ -90,13 +90,69 @@ function initSharedSocketBuffers(
   fgMesh.instanceMatrix = bgMesh.instanceMatrix;
 }
 
+/**
+ * A whole-buffer upload, for the paths that rewrote the whole buffer.
+ *
+ * The update ranges have to be cleared first. three only empties them when it actually uploads,
+ * so a range left behind by a partial update that never reached the GPU — the mesh drew nothing
+ * that frame, say — would silently turn this full upload into that one stale sliver.
+ */
 function markSocketBuffersForUpload(bufs: SocketBuffers) {
-  if (bufs.colorAttr) bufs.colorAttr.needsUpdate = true;
-  if (bufs.hoveredAttr) bufs.hoveredAttr.needsUpdate = true;
-  if (bufs.connectedAttr) bufs.connectedAttr.needsUpdate = true;
-  if (bufs.validTargetAttr) bufs.validTargetAttr.needsUpdate = true;
-  if (bufs.invalidHoverAttr) bufs.invalidHoverAttr.needsUpdate = true;
-  if (bufs.layerAttr) bufs.layerAttr.needsUpdate = true;
+  if (bufs.colorAttr) { bufs.colorAttr.clearUpdateRanges(); bufs.colorAttr.needsUpdate = true; }
+  if (bufs.hoveredAttr) { bufs.hoveredAttr.clearUpdateRanges(); bufs.hoveredAttr.needsUpdate = true; }
+  if (bufs.connectedAttr) { bufs.connectedAttr.clearUpdateRanges(); bufs.connectedAttr.needsUpdate = true; }
+  if (bufs.validTargetAttr) { bufs.validTargetAttr.clearUpdateRanges(); bufs.validTargetAttr.needsUpdate = true; }
+  if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.clearUpdateRanges(); bufs.invalidHoverAttr.needsUpdate = true; }
+  if (bufs.layerAttr) { bufs.layerAttr.clearUpdateRanges(); bufs.layerAttr.needsUpdate = true; }
+}
+
+/**
+ * Upload only the instances a fast path actually rewrote.
+ *
+ * These buffers are sized to CAPACITY, not to the live socket count, so a bare `needsUpdate`
+ * hands three the entire array: at a thousand nodes the instance matrix alone is over half a
+ * megabyte, re-sent every drag frame for the handful of floats one moved node changed. three
+ * merges overlapping ranges itself inside `updateBuffer` and clears them once the upload lands,
+ * so a caller only has to declare the span it touched.
+ */
+function markSocketRangeForUpload(bufs: SocketBuffers, start: number, count: number) {
+  if (count <= 0) return;
+  if (bufs.colorAttr) { bufs.colorAttr.addUpdateRange(start * 3, count * 3); bufs.colorAttr.needsUpdate = true; }
+  if (bufs.hoveredAttr) { bufs.hoveredAttr.addUpdateRange(start, count); bufs.hoveredAttr.needsUpdate = true; }
+  if (bufs.connectedAttr) { bufs.connectedAttr.addUpdateRange(start, count); bufs.connectedAttr.needsUpdate = true; }
+  if (bufs.validTargetAttr) { bufs.validTargetAttr.addUpdateRange(start, count); bufs.validTargetAttr.needsUpdate = true; }
+  if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.addUpdateRange(start, count); bufs.invalidHoverAttr.needsUpdate = true; }
+}
+
+/**
+ * Build the per-entity, per-direction index of which sockets carry an edge.
+ *
+ * Kept out of the component so both the edges subscription and the initial seed use one
+ * implementation; they drifted apart as two copies of the same loop.
+ */
+export function indexConnectedSockets(
+  edges: readonly Edge[],
+  inputs: Map<string, Set<string>>,
+  outputs: Map<string, Set<string>>
+): void {
+  for (const edge of edges) {
+    if (edge.sourceSocket) {
+      let set = outputs.get(edge.source);
+      if (!set) {
+        set = new Set();
+        outputs.set(edge.source, set);
+      }
+      set.add(edge.sourceSocket);
+    }
+    if (edge.targetSocket) {
+      let set = inputs.get(edge.target);
+      if (!set) {
+        set = new Set();
+        inputs.set(edge.target, set);
+      }
+      set.add(edge.targetSocket);
+    }
+  }
 }
 
 interface SocketsProps {
@@ -115,21 +171,67 @@ export function Sockets({
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
   const positionDirtyRef = useRef(false);
-  const selectionDirtyRef = useRef(false);
+  /**
+   * Hover gets its own flag, because it used to share `dirtyRef` with structural change.
+   *
+   * A pointer crossing a row of sockets flips `hoveredSocketId` twice per socket, and each flip
+   * re-ran the whole graph's socket build — every matrix, every colour, every attribute, then a
+   * full upload of all six buffers — to change one instance's `hovered` float from 0 to 1. The set
+   * records which entities the hover moved between, since several flips can land between two
+   * frames and only the frame gets to write.
+   */
+  const hoverDirtyRef = useRef(false);
+  const hoverTouchedRef = useRef<Set<string>>(new Set());
   const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
 
-  // Reverse index: entityId → { mesh: 'bg'|'fg', instanceStart, instanceCount }
-  // for O(K) position updates
-  const entitySocketRangesRef = useRef<Map<string, { mesh: 'bg' | 'fg'; start: number; count: number }>>(new Map());
+  // Reverse index: entityId → the run of instances that entity owns, for O(K) position updates.
+  // It used to carry a `mesh: 'bg' | 'fg'` field as well, read only by a selection fast path that
+  // could never execute. Both meshes draw every instance and the shader picks by `aLayer`, so
+  // nothing else ever needed to know which of the two an entity "belongs" to.
+  const entitySocketRangesRef = useRef<Map<string, { start: number; count: number }>>(new Map());
 
   // Derive colors from semantic theme config
   const invalidColor = tokens[THEME_COLORS.socket.invalid];
   const validTargetColor = tokens[THEME_COLORS.socket.validTarget];
   const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
 
-  // Cached connected sockets Set (rebuilt only when edges change, not every frame)
-  const connectedSocketsRef = useRef<Set<string>>(new Set());
+  /**
+   * Which sockets have an edge on them, indexed by entity and split by direction.
+   *
+   * This was one flat `Set<string>` of `entityId:socketId:input` keys, which meant the build loop
+   * had to construct that key — a fresh template-literal string — for every socket in the graph on
+   * every rebuild, just to ask a yes/no question. Five thousand sockets, five thousand throwaway
+   * strings. Indexing by entity lets the loop look the entity's set up once and then ask about
+   * each socket id it already holds, which allocates nothing at all. Rebuilt only when edges
+   * change, never per frame.
+   */
+  const connectedInputsRef = useRef<Map<string, Set<string>>>(new Map());
+  const connectedOutputsRef = useRef<Map<string, Set<string>>>(new Map());
+
+  /**
+   * Socket type colours, parsed once per theme instead of once per socket per rebuild.
+   *
+   * `tempColor.set(typeConfig.color)` is `THREE.Color.setStyle`, which runs two regexes and
+   * allocates a match array. It sat in the innermost build loop, so a graph of a thousand nodes
+   * re-parsed the same handful of CSS colour strings five thousand times on every rebuild —
+   * measured at around 0.7ms of pure string work per hover. There are only ever as many distinct
+   * colours as there are socket types, and they change only when the theme does.
+   */
+  const { typeRGB, defaultRGB } = useMemo(() => {
+    const table = new Map<string, readonly [number, number, number]>();
+    for (const typeName of Object.keys(socketTypes)) {
+      tempColor.set(socketTypes[typeName].color);
+      table.set(typeName, [tempColor.r, tempColor.g, tempColor.b] as const);
+    }
+    // Mirrors the old `socketTypes[type] ?? socketTypes.any ?? { color: fallback }` chain.
+    let fallback = table.get('any');
+    if (!fallback) {
+      tempColor.set(fallbackSocketColor);
+      fallback = [tempColor.r, tempColor.g, tempColor.b] as const;
+    }
+    return { typeRGB: table, defaultRGB: fallback };
+  }, [socketTypes, fallbackSocketColor]);
 
   // Deferred capacity update (avoids React re-render inside useFrame)
   const pendingCapacityRef = useRef<number | null>(null);
@@ -345,8 +447,12 @@ export function Sockets({
     );
     const unsubHoveredSocket = store.subscribe(
       (state) => state.hoveredSocketId,
-      () => {
-        dirtyRef.current = true;
+      (hovered, previous) => {
+        // Only two entities can be affected by a hover moving: the one it left and the one it
+        // entered. Record both, and let the frame rewrite just those two runs of instances.
+        hoverDirtyRef.current = true;
+        if (previous) hoverTouchedRef.current.add(previous.entityId);
+        if (hovered) hoverTouchedRef.current.add(hovered.entityId);
       }
     );
     const unsubConnectionDraft = store.subscribe(
@@ -364,40 +470,37 @@ export function Sockets({
     const unsubEdges = store.subscribe(
       (state) => state.edges,
       (edges) => {
-        // Rebuild connected sockets Set when edges change (not every frame)
-        const connectedSockets = connectedSocketsRef.current;
-        connectedSockets.clear();
-        for (const edge of edges) {
-          if (edge.sourceSocket) {
-            connectedSockets.add(`${edge.source}:${edge.sourceSocket}:output`);
-          }
-          if (edge.targetSocket) {
-            connectedSockets.add(`${edge.target}:${edge.targetSocket}:input`);
-          }
-        }
+        // Rebuild the connected-socket index when edges change (not every frame)
+        connectedInputsRef.current.clear();
+        connectedOutputsRef.current.clear();
+        indexConnectedSockets(edges, connectedInputsRef.current, connectedOutputsRef.current);
         dirtyRef.current = true;
       }
     );
-    // Selection changes: only flip layer attribute (no full rebuild needed)
+    /**
+     * Selection is a full rebuild, and there is no cheaper path available.
+     *
+     * There used to be one beside this: a block that flipped only `aLayer` for the entities whose
+     * selection changed. It was dead code — this subscriber set `dirtyRef` too, and the block's
+     * guard required `dirtyRef` to be clear — and it could not be revived as written, because
+     * selection also changes an entity's depth (see utils/entity-depth.ts, which applies a boost
+     * to selected entities). Depth lives in the instance matrix, and `aLayer` cannot write it, so
+     * a layer-only path would leave a selected node's sockets sorted under the nodes they should
+     * now sit above. That is the interleaving defect entity-depth.ts exists to fix.
+     */
     const unsubSelection = store.subscribe(
       (state) => state.selectedEntityIds,
       () => {
-        // Selection changes depth (see entity-depth.ts), which the aLayer fast path cannot write.
         dirtyRef.current = true;
-        selectionDirtyRef.current = true;
       }
     );
 
     // Initialize connected sockets from current edges
-    const { edges: initialEdges } = store.getState();
-    for (const edge of initialEdges) {
-      if (edge.sourceSocket) {
-        connectedSocketsRef.current.add(`${edge.source}:${edge.sourceSocket}:output`);
-      }
-      if (edge.targetSocket) {
-        connectedSocketsRef.current.add(`${edge.target}:${edge.targetSocket}:input`);
-      }
-    }
+    indexConnectedSockets(
+      store.getState().edges,
+      connectedInputsRef.current,
+      connectedOutputsRef.current
+    );
 
     // A press moved something to the front: every socket's depth may have changed.
     const unsubStack = store.subscribe(
@@ -425,9 +528,14 @@ export function Sockets({
     hoveredSocketId: { entityId: string; socketId: string; isInput: boolean } | null,
     connectionDraft: { source: { entityId: string; socketId: string; isInput: boolean } } | null,
     sourceSocketType: string | null,
-    connectedSockets: Set<string>,
+    connectedInputs: Map<string, Set<string>>,
+    connectedOutputs: Map<string, Set<string>>,
   ): number => {
     let idx = startIdx;
+    // One lookup per entity, then a socket-id membership test per socket — the old shape built a
+    // composite key string per socket instead.
+    const entityConnectedInputs = connectedInputs.get(entity.id);
+    const entityConnectedOutputs = connectedOutputs.get(entity.id);
     // Hoisted out of the socket loops and handed to getSocketYOffset: without it, moving these
     // four sites onto the shared arithmetic would turn one layout-cache lookup per ENTITY into
     // one per SOCKET, in the hottest loop the renderer has.
@@ -452,12 +560,10 @@ export function Sockets({
         );
         tempMatrix.toArray(matrixArray, idx * 16);
 
-        const typeConfig =
-          socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
-        tempColor.set(typeConfig.color);
-        bufs.colors[idx * 3] = tempColor.r;
-        bufs.colors[idx * 3 + 1] = tempColor.g;
-        bufs.colors[idx * 3 + 2] = tempColor.b;
+        const rgb = typeRGB.get(socket.type) ?? defaultRGB;
+        bufs.colors[idx * 3] = rgb[0];
+        bufs.colors[idx * 3 + 1] = rgb[1];
+        bufs.colors[idx * 3 + 2] = rgb[2];
 
         const isHovered =
           hoveredSocketId?.entityId === entity.id &&
@@ -465,8 +571,8 @@ export function Sockets({
           hoveredSocketId?.isInput === true;
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
-        const socketKey = `${entity.id}:${socket.id}:input`;
-        bufs.connected[idx] = connectedSockets.has(socketKey) ? 1.0 : 0.0;
+        bufs.connected[idx] =
+          entityConnectedInputs !== undefined && entityConnectedInputs.has(socket.id) ? 1.0 : 0.0;
 
         let isValidTarget = 0.0;
         if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
@@ -504,12 +610,10 @@ export function Sockets({
         );
         tempMatrix.toArray(matrixArray, idx * 16);
 
-        const typeConfig =
-          socketTypes[socket.type] ?? socketTypes.any ?? { color: fallbackSocketColor };
-        tempColor.set(typeConfig.color);
-        bufs.colors[idx * 3] = tempColor.r;
-        bufs.colors[idx * 3 + 1] = tempColor.g;
-        bufs.colors[idx * 3 + 2] = tempColor.b;
+        const rgb = typeRGB.get(socket.type) ?? defaultRGB;
+        bufs.colors[idx * 3] = rgb[0];
+        bufs.colors[idx * 3 + 1] = rgb[1];
+        bufs.colors[idx * 3 + 2] = rgb[2];
 
         const isHovered =
           hoveredSocketId?.entityId === entity.id &&
@@ -517,8 +621,8 @@ export function Sockets({
           hoveredSocketId?.isInput === false;
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
-        const socketKey = `${entity.id}:${socket.id}:output`;
-        bufs.connected[idx] = connectedSockets.has(socketKey) ? 1.0 : 0.0;
+        bufs.connected[idx] =
+          entityConnectedOutputs !== undefined && entityConnectedOutputs.has(socket.id) ? 1.0 : 0.0;
 
         let isValidTarget = 0.0;
         if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
@@ -543,6 +647,82 @@ export function Sockets({
     return idx;
   };
 
+  /**
+   * The type of the socket a connection draft started from, cached for the life of the draft.
+   *
+   * Lifted out of the full rebuild so the hover fast path can reach it too: hover feeds
+   * `invalidHover`, which is only meaningful relative to the draft's source type, and a fast path
+   * that could not answer this question would have had to fall back to a full rebuild on exactly
+   * the gesture where hover changes most often.
+   */
+  const resolveSourceSocketType = (
+    connectionDraft: { source: { entityId: string; socketId: string; isInput: boolean } } | null,
+    entityMap: Map<string, Entity>
+  ): string | null => {
+    if (!connectionDraft) {
+      sourceSocketCacheRef.current = null;
+      return null;
+    }
+    const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+    if (sourceSocketCacheRef.current?.key === cacheKey) {
+      return sourceSocketCacheRef.current.type;
+    }
+    const sourceEntity = entityMap.get(connectionDraft.source.entityId);
+    if (!sourceEntity) return null;
+    const sourceSockets = connectionDraft.source.isInput
+      ? sourceEntity.inputs
+      : sourceEntity.outputs;
+    const sourceSocket = sourceSockets?.find((s) => s.id === connectionDraft.source.socketId);
+    const sourceSocketType = sourceSocket?.type ?? null;
+    if (sourceSocketType) {
+      sourceSocketCacheRef.current = { key: cacheKey, type: sourceSocketType };
+    }
+    return sourceSocketType;
+  };
+
+  /**
+   * Rewrite just the entities a hover moved between.
+   *
+   * Returns false when it cannot safely do so, and the caller then falls back to a full rebuild.
+   * The two refusals both come from the same invariant: a run of instances belongs to one entity
+   * only when its length matches that entity's socket count. A hidden entity holds an explicit
+   * zero-count range, and the last entity's run is truncated when the buffer is at capacity;
+   * writing `inputs.length + outputs.length` instances from `range.start` in either case lands on
+   * the NEXT entity's instances. That is the same defect the position fast path guards against.
+   *
+   * The whole entity is rebuilt rather than only its `hovered` floats, because hover also drives
+   * `invalidHover` — the red ring on an incompatible drop target — and reusing `writeEntitySockets`
+   * keeps the two derivations from drifting apart. It is ten sockets of work, not five thousand.
+   */
+  const writeHoverFastPath = (bgMesh: THREE.InstancedMesh): boolean => {
+    const socketRanges = entitySocketRangesRef.current;
+    const { entityMap, hoveredSocketId, connectionDraft } = store.getState();
+    const sourceSocketType = resolveSourceSocketType(connectionDraft, entityMap);
+    const matrixArray = bgMesh.instanceMatrix.array as Float32Array;
+
+    for (const entityId of hoverTouchedRef.current) {
+      const range = socketRanges.get(entityId);
+      const entity = entityMap.get(entityId);
+      if (!range || !entity) return false;
+
+      const socketCount = (entity.inputs?.length ?? 0) + (entity.outputs?.length ?? 0);
+      if (range.count !== socketCount) return false;
+
+      writeEntitySockets(
+        entity, sharedBuffers, matrixArray, range.start,
+        hoveredSocketId, connectionDraft, sourceSocketType,
+        connectedInputsRef.current, connectedOutputsRef.current,
+      );
+      markSocketRangeForUpload(sharedBuffers, range.start, range.count);
+      // `writeEntitySockets` rewrites the matrices too. Their values are unchanged here — depth
+      // and position both dirty the full path — but uploading the same span keeps the matrix
+      // buffer and the attribute buffers from ever describing different frames.
+      bgMesh.instanceMatrix.addUpdateRange(range.start * 16, range.count * 16);
+      bgMesh.instanceMatrix.needsUpdate = true;
+    }
+    return true;
+  };
+
   // RAF-synchronized updates
   useFrame(({ size }) => {
     const bgMesh = bgMeshRef.current;
@@ -556,6 +736,16 @@ export function Sockets({
       dirtyRef.current = true;
     }
 
+    // Hover fast path. Deliberately does not return: a frame can carry both a hover change and a
+    // position change, and the position path below still has to run.
+    if (!dirtyRef.current && hoverDirtyRef.current) {
+      if (!writeHoverFastPath(bgMesh)) {
+        dirtyRef.current = true;
+      }
+      hoverDirtyRef.current = false;
+      hoverTouchedRef.current.clear();
+    }
+
     // Position-only fast path: only update instance matrices for moved entities
     if (!dirtyRef.current && positionDirtyRef.current) {
       const movedIds = store.getState().getMovedEntityIds();
@@ -564,6 +754,14 @@ export function Sockets({
       if (movedIds.size > 0 && socketRanges.size > 0) {
         const { entityMap, stackOrder, selectedEntityIds } = store.getState();
         tempMatrix.identity();
+
+        // The span of instances this frame actually rewrote. Without it, `needsUpdate` alone made
+        // three re-send the whole instance matrix — sized to CAPACITY, so over half a megabyte at
+        // a thousand nodes — every drag frame, to deliver the few hundred bytes one moved node
+        // changed. Min/max rather than a range per entity, because a range is an object and this
+        // loop runs on every pointermove.
+        let dirtyMin = Number.POSITIVE_INFINITY;
+        let dirtyMax = -1;
 
         for (const entityId of movedIds) {
           const range = socketRanges.get(entityId);
@@ -575,6 +773,9 @@ export function Sockets({
 
           const entity = entityMap.get(entityId);
           if (!entity) continue;
+
+          if (range.start < dirtyMin) dirtyMin = range.start;
+          if (range.start + range.count > dirtyMax) dirtyMax = range.start + range.count;
 
           // Both meshes share bgMesh's instanceMatrix
           const mesh = bgMesh;
@@ -610,31 +811,13 @@ export function Sockets({
           }
         }
 
-        bgMesh.instanceMatrix.needsUpdate = true;
-      }
-
-      positionDirtyRef.current = false;
-      return;
-    }
-
-    // Selection-only fast path: flip aLayer for changed entities (no full rebuild)
-    if (!dirtyRef.current && selectionDirtyRef.current && !positionDirtyRef.current) {
-      const { selectedEntityIds } = store.getState();
-      const socketRanges = entitySocketRangesRef.current;
-
-      for (const [entityId, range] of socketRanges) {
-        const newLayer = selectedEntityIds.has(entityId) ? 1 : 0;
-        const oldLayer = range.mesh === 'fg' ? 1 : 0;
-        if (newLayer !== oldLayer) {
-          range.mesh = newLayer === 1 ? 'fg' : 'bg';
-          for (let j = range.start; j < range.start + range.count; j++) {
-            sharedBuffers.layers[j] = newLayer;
-          }
+        if (dirtyMax > dirtyMin) {
+          bgMesh.instanceMatrix.addUpdateRange(dirtyMin * 16, (dirtyMax - dirtyMin) * 16);
+          bgMesh.instanceMatrix.needsUpdate = true;
         }
       }
 
-      if (sharedBuffers.layerAttr) sharedBuffers.layerAttr.needsUpdate = true;
-      selectionDirtyRef.current = false;
+      positionDirtyRef.current = false;
       return;
     }
 
@@ -643,33 +826,8 @@ export function Sockets({
     const { entities, entityMap, hoveredSocketId, connectionDraft, selectedEntityIds, hiddenEntityIds } =
       store.getState();
 
-    // Use cached connected sockets Set (rebuilt only when edges change)
-    const connectedSockets = connectedSocketsRef.current;
-
     // Get source socket type with caching (O(1) after first lookup per connection draft)
-    let sourceSocketType: string | null = null;
-    if (connectionDraft) {
-      const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
-      if (sourceSocketCacheRef.current?.key === cacheKey) {
-        sourceSocketType = sourceSocketCacheRef.current.type;
-      } else {
-        const sourceEntity = entityMap.get(connectionDraft.source.entityId);
-        if (sourceEntity) {
-          const sourceSockets = connectionDraft.source.isInput
-            ? sourceEntity.inputs
-            : sourceEntity.outputs;
-          const sourceSocket = sourceSockets?.find(
-            (s) => s.id === connectionDraft.source.socketId
-          );
-          sourceSocketType = sourceSocket?.type ?? null;
-          if (sourceSocketType) {
-            sourceSocketCacheRef.current = { key: cacheKey, type: sourceSocketType };
-          }
-        }
-      }
-    } else {
-      sourceSocketCacheRef.current = null;
-    }
+    const sourceSocketType = resolveSourceSocketType(connectionDraft, entityMap);
 
     let totalCount = 0;
     const socketRanges = entitySocketRangesRef.current;
@@ -685,18 +843,18 @@ export function Sockets({
       // matrices from `range.start`; without a range that says zero, a hidden entity being dragged
       // would overwrite its neighbour's instances.
       if (hiddenEntityIds.has(entity.id)) {
-        socketRanges.set(entity.id, { mesh: isSelected ? 'fg' : 'bg', start: entitySocketStart, count: 0 });
+        socketRanges.set(entity.id, { start: entitySocketStart, count: 0 });
         continue;
       }
 
       totalCount = writeEntitySockets(
         entity, sharedBuffers, matrixArray, totalCount,
-        hoveredSocketId, connectionDraft, sourceSocketType, connectedSockets,
+        hoveredSocketId, connectionDraft, sourceSocketType,
+        connectedInputsRef.current, connectedOutputsRef.current,
       );
 
       const socketsWritten = totalCount - entitySocketStart;
       socketRanges.set(entity.id, {
-        mesh: isSelected ? 'fg' : 'bg',
         start: entitySocketStart,
         count: socketsWritten,
       });
@@ -725,7 +883,10 @@ export function Sockets({
       }
     }
 
-    // Update GPU buffers (shared between both meshes)
+    // Update GPU buffers (shared between both meshes). Ranges left over from a fast path that
+    // bailed into this rebuild have to go, or three would upload that sliver instead of the whole
+    // buffer this path just rewrote.
+    bgMesh.instanceMatrix.clearUpdateRanges();
     bgMesh.instanceMatrix.needsUpdate = true;
     markSocketBuffersForUpload(sharedBuffers);
 
@@ -735,7 +896,8 @@ export function Sockets({
     fgMesh.count = clampedCount;
     dirtyRef.current = false;
     positionDirtyRef.current = false;
-    selectionDirtyRef.current = false;
+    hoverDirtyRef.current = false;
+    hoverTouchedRef.current.clear();
   });
 
   return (
@@ -743,6 +905,10 @@ export function Sockets({
       <instancedMesh
         key={`bg-${capacity}`}
         ref={attachBg}
+        // Named so a law can identify this mesh rather than infer it from geometry type and render
+        // order, the same reason widgets-gl.tsx names its two. Without a name it reports as
+        // `CircleGeometry:r2`, which is a description of a shape and not an identity.
+        name="sockets"
         args={[bgGeometry, bgMaterial, capacity]}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
@@ -750,6 +916,7 @@ export function Sockets({
       <instancedMesh
         key={`fg-${capacity}`}
         ref={attachFg}
+        name="sockets-selected"
         args={[fgGeometry, fgMaterial, capacity]}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}

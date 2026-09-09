@@ -91,7 +91,7 @@ export function resolveWidgetConfig(
  *
  * @param entityId - The entity ID containing the socket
  * @param socketId - The socket ID to check
- * @param connectedSockets - Set of connected socket keys in format "entityId:socketId"
+ * @param connectedSockets - Set of connected socket keys, `entityId:socketId:input|output`
  * @returns true if the socket has an incoming connection
  */
 export function isSocketConnected(
@@ -99,7 +99,9 @@ export function isSocketConnected(
   socketId: string,
   connectedSockets: Set<string>
 ): boolean {
-  return connectedSockets.has(`${entityId}:${socketId}`);
+  // Inputs only: a widget stands in for a value the socket does not receive, and only an input
+  // receives one. The direction suffix is not decoration — see rebuildConnectedSockets.
+  return connectedSockets.has(`${entityId}:${socketId}:input`);
 }
 
 /**

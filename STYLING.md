@@ -2,6 +2,21 @@
 
 > Integrate with Kookie UI's design system for consistent, polished node styling.
 
+> **HISTORICAL — this is the v1-era styling plan, superseded 2026-09-10.**
+>
+> It specifies a `--gray-1..12` token interface, `.radix-themes` as the token host, and v1
+> `<Theme accentColor grayColor>` props. None of those exist any more: the package runs on
+> KookieUI v2, which declares `--neutral-*` at `:root` and re-declares it under
+> `[data-appearance]`, scopes to `.kui-theme`, and refuses `accentColor` and `grayColor` as
+> compile errors. Forty-two hues the graph paints from are now frozen in the package rather than
+> read from CSS at all.
+>
+> It is kept rather than rewritten because the MEASUREMENTS in it are the record of how the
+> token pipeline was arrived at, and those are still the reasoning behind the current code. For
+> what is true now, read `packages/kookie-flow/src/hooks/useThemeTokens.ts` (what is read and
+> what happens when a read fails), `packages/kookie-flow/src/core/theme-colors.ts` (which token
+> each painted thing takes), and `plans/migration/decisions.md`.
+
 ---
 
 ## Goals

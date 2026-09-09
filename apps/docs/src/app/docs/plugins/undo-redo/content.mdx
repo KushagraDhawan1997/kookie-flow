@@ -35,7 +35,7 @@ function useHistory(maxHistory = 50) {
     setPast((p) => p.slice(0, -1));
 
     // Restore state
-    store.getState().setNodes(previous.nodes);
+    store.getState().setEntities(previous.entities);
     store.getState().setEdges(previous.edges);
   }, [store, past]);
 
@@ -49,7 +49,7 @@ function useHistory(maxHistory = 50) {
     setFuture((f) => f.slice(1));
 
     // Restore state
-    store.getState().setNodes(next.nodes);
+    store.getState().setEntities(next.entities);
     store.getState().setEdges(next.edges);
   }, [store, future]);
 
@@ -216,3 +216,5 @@ function FlowWithCommands() {
 3. **Limit history size** - Cap the history stack to prevent memory issues.
 
 4. **Consider Immer** - For complex undo/redo with structural sharing, consider using [Immer](https://immerjs.github.io/) with patches.
+
+5. **Know what a snapshot leaves out** - `toObject()` returns `entities`, `edges` and `viewport`. It does not capture stacking order (which node is in front, set by the last press) or any widget value the person has set but your `onEntitiesChange` handler has not echoed back onto the entity yet. Undoing restores what the entities say; a node that was brought to the front stays in front, and an un-echoed in-flight value is lost rather than restored.

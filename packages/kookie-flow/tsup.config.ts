@@ -18,7 +18,6 @@ export default defineConfig({
     '@react-three/fiber',
     '@react-three/drei',
     '@kookie-ui/react',
-    '@kushagradhawan/kookie-ui',
   ],
   treeshake: true,
 });

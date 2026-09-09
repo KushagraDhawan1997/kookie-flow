@@ -34,7 +34,7 @@ import {
 import * as graphEngine from './graph';
 import type { AdjacencyIndex, CachedAnalysis } from './graph';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
-import { widgetKey } from '../utils/widget-values';
+import { widgetKey, type WidgetOverride } from '../utils/widget-values';
 import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
 import { STACK_COMPACT_AT } from '../utils/entity-depth';
 
@@ -74,7 +74,7 @@ export interface FlowState {
    * fresh Map per move is exactly the allocation that rule forbids. Subscribers watch
    * `widgetValuesVersion` instead, which is the dirty flag beside it.
    */
-  widgetValues: Map<string, unknown>;
+  widgetValues: Map<string, WidgetOverride>;
   widgetValuesVersion: number;
 
   /**
@@ -493,22 +493,131 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
   return { entityMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenEntityIds };
 }
 
-// Helper to rebuild connected sockets set from edges
-function rebuildConnectedSockets(edges: Edge[]): Set<string> {
+/**
+ * Which sockets have an edge on them, keyed `entityId:socketId:input|output`.
+ *
+ * THE DIRECTION SUFFIX IS THE WHOLE POINT, and its absence was a silent three-way defect. This
+ * used to write `entityId:socketId` while four of its five readers asked for the three-part key —
+ * `sockets.tsx` for both directions, `widget-hit.ts` and `widgets-gl.tsx` for inputs — so those
+ * four lookups could never match anything and every one of them silently answered "not
+ * connected", forever. A connected input kept its widget painted AND kept taking presses, so a
+ * value arriving down an edge could be typed over by a control that should not have been there;
+ * and no socket dot on any node ever rendered in its connected state.
+ *
+ * Socket ids are scoped per direction — an entity may legally have an input and an output that
+ * share one id — so the two-part key was also ambiguous in principle, not only mismatched in
+ * practice. Both ends of every edge are recorded: an output with an edge leaving it is as
+ * connected as the input it arrives at, which is what `sockets.tsx` was already asking about.
+ */
+function rebuildConnectedSockets(edges: Edge[], widgetValues?: Map<string, WidgetOverride>): Set<string> {
   const connected = new Set<string>();
   for (const edge of edges) {
     if (edge.targetSocket) {
-      connected.add(`${edge.target}:${edge.targetSocket}`);
+      connected.add(`${edge.target}:${edge.targetSocket}:input`);
+    }
+    if (edge.sourceSocket) {
+      connected.add(`${edge.source}:${edge.sourceSocket}:output`);
+    }
+  }
+
+  // A widget stops being drawn the moment its socket is connected, and the local override for it
+  // retires only where it IS drawn (utils/widget-values.ts, read from widgets-gl.tsx). So an
+  // override set just before an edge landed on that socket survived — hidden, and with no path
+  // left to retire it — and then resurfaced as a stale value the moment the edge was removed,
+  // beating every external write to that socket until one happened to equal it. This is the one
+  // place that knows a socket's fate has changed, so this is where the override goes.
+  //
+  // No key parsing: `widgetKey` is `entityId:socketId` and the connected key is that plus
+  // `:input`.
+  if (widgetValues) {
+    for (const key of widgetValues.keys()) {
+      if (connected.has(`${key}:input`)) widgetValues.delete(key);
     }
   }
   return connected;
+}
+
+/**
+ * Drop what an entity's widgets had pending, because the entity is gone.
+ *
+ * `widgetValues` had two writers and one eraser, and the eraser only ran when a value round-tripped
+ * through a painted widget. Nothing at all cleared a key when its entity was deleted, so the map
+ * grew for the life of the session — and worse, an id that came back (an undo restores ids
+ * verbatim) inherited the override the previous life of that id had left behind: the restored
+ * entity's own value was shown over by a number the person had set before deleting it, and the
+ * restore looked like it had failed.
+ *
+ * Both directions are swept. `setWidgetValue` is public and takes any socket id, so an output key
+ * is reachable even though only inputs currently draw widgets. Returns whether anything went, so
+ * the caller can bump `widgetValuesVersion` only when there is something to notice.
+ */
+function dropWidgetValues(widgetValues: Map<string, WidgetOverride>, entity: Entity): boolean {
+  if (widgetValues.size === 0) return false;
+  let dropped = false;
+  for (const sockets of [entity.inputs, entity.outputs]) {
+    if (!sockets) continue;
+    for (const socket of sockets) {
+      if (widgetValues.delete(widgetKey(entity.id, socket.id))) dropped = true;
+    }
+  }
+  return dropped;
+}
+
+/**
+ * The same sweep for a wholesale replacement of the entity array, where there is no list of what
+ * was removed: keep only the keys the new entities can still account for. This is the widget-value
+ * twin of `reconcileStackOrder`, and it exists for the same reason — `setEntities` is the one
+ * reconciler, so a key it does not clean up here is a key nothing will ever clean up.
+ */
+function reconcileWidgetValues(widgetValues: Map<string, WidgetOverride>, entities: Entity[]): boolean {
+  if (widgetValues.size === 0) return false;
+  const live = new Set<string>();
+  for (const entity of entities) {
+    for (const sockets of [entity.inputs, entity.outputs]) {
+      if (!sockets) continue;
+      for (const socket of sockets) live.add(widgetKey(entity.id, socket.id));
+    }
+  }
+  let dropped = false;
+  for (const key of widgetValues.keys()) {
+    if (!live.has(key)) {
+      widgetValues.delete(key);
+      dropped = true;
+    }
+  }
+  return dropped;
+}
+
+/** Narrow an entity's open-ended `data.values` bag without asserting it into shape. */
+function isValueBag(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial entities and edges
   const initialEntities = initialState?.entities ?? [];
   const initialEdges = initialState?.edges ?? [];
-  const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } = rebuildDerivedState(initialEntities);
+  /**
+   * The resolved socket layout, when the caller already knows it — and <KookieFlow> does, because
+   * StyleProvider resolves it above the FlowProvider that builds this store.
+   *
+   * Without it this build ran on default row heights and was then thrown away whole. The mount
+   * effect in kookie-flow.tsx calls `setSocketLayout`, which found `socketLayout === null`, could
+   * not take its value-equality skip, and rebuilt both quadtrees a second time — every socket
+   * offset and every entity bound computed twice on mount, the first time from numbers that were
+   * wrong, and one extra notification to every subscriber watching the derived state. Seeding it
+   * makes the first build the correct one and lets the effect skip.
+   *
+   * It stays optional, and the layout-less build below stays the fallback rather than becoming a
+   * deferred build. FlowProvider is a public export that can be mounted with no style context at
+   * all, and geometry.ts documents the no-layout branch as the path the frames before the sync
+   * take; hit testing depends on both quadtrees being usable the moment the store exists, so
+   * "leave them empty until someone supplies a layout" would leave a standalone FlowProvider with
+   * every click and hover dead.
+   */
+  const initialSocketLayout = initialState?.socketLayout ?? null;
+  const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } =
+    rebuildDerivedState(initialEntities, undefined, initialSocketLayout);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
 
   /**
@@ -589,7 +698,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       hoveredSocketId: null,
       connectionDraft: null,
       selectionBox: null,
-      widgetValues: new Map<string, unknown>(),
+      widgetValues: new Map<string, WidgetOverride>(),
       widgetValuesVersion: 0,
       stackOrder: initialStackOrder,
       stackVersion: 0,
@@ -625,7 +734,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       mutedEntityIds: new Set<string>(),
 
       // Socket layout (synced from React context for correct quadtree bounds)
-      socketLayout: null,
+      socketLayout: initialSocketLayout,
 
       // Setters - rebuild derived state when entities change
       getMovedEntityIds: () => movedEntityIds,
@@ -638,19 +747,26 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // renderers (edges, sockets, widgets) detect the full replacement
         const state = get();
         reconcileStackOrder(state.stackOrder, entities);
+        // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
+        // a key left behind for an id that is no longer here comes back to life if that id does,
+        // and shows a value the restored entity never held.
+        const widgetValuesDropped = reconcileWidgetValues(state.widgetValues, entities);
         set({
           entities,
           ...derived,
           topologyVersion: state.topologyVersion + 1,
           positionVersion: state.positionVersion + 1,
           stackVersion: state.stackVersion + 1,
+          ...(widgetValuesDropped
+            ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+            : {}),
         });
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
         set({
           edges,
-          connectedSockets: rebuildConnectedSockets(edges),
+          connectedSockets: rebuildConnectedSockets(edges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
           topologyVersion: get().topologyVersion + 1,
         });
@@ -745,8 +861,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       setWidgetValue: (entityId, socketId, value) => {
-        const { widgetValues, widgetValuesVersion } = get();
-        widgetValues.set(widgetKey(entityId, socketId), value);
+        const { widgetValues, widgetValuesVersion, entityMap } = get();
+        // The BASELINE — what the entity says right now — is recorded alongside the value,
+        // because that is what tells us later whether the consumer has answered. See
+        // utils/widget-values.ts: comparing the echo against the value the person SET means a
+        // consumer that clamps or rounds never closes the round trip, and the widget shows the
+        // rejected value forever.
+        const values = entityMap.get(entityId)?.data.values;
+        const baseline = isValueBag(values) ? values[socketId] : undefined;
+        widgetValues.set(widgetKey(entityId, socketId), { value, baseline });
         set({ widgetValuesVersion: widgetValuesVersion + 1 });
       },
 
@@ -785,6 +908,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextEntities = [...entities];
         let collapsedChanged = false;
         let topologyChanged = false;
+        let widgetValuesDropped = false;
         const nextCollapsed = new Set(currentCollapsed);
 
         // Build id->index map once for O(1) lookups: O(n)
@@ -812,9 +936,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             case 'remove': {
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
+                const removed = nextEntities[index];
                 nextEntities.splice(index, 1);
                 topologyChanged = true;
                 get().stackOrder.delete(change.id);
+                // The stack index was already cleaned up here; the widget overrides were not, and
+                // an id that returns must not inherit them.
+                if (dropWidgetValues(get().widgetValues, removed)) widgetValuesDropped = true;
                 // Update indices for subsequent removals (shift down)
                 idToIndex.delete(change.id);
                 for (let i = index; i < nextEntities.length; i++) {
@@ -920,6 +1048,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           ...(topologyChanged
             ? { topologyVersion: get().topologyVersion + 1, stackVersion: get().stackVersion + 1 }
             : {}),
+          ...(widgetValuesDropped
+            ? { widgetValuesVersion: get().widgetValuesVersion + 1 }
+            : {}),
         });
       },
 
@@ -968,7 +1099,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         if (topologyChanged) cachedAnalysis = null;
         set({
           edges: nextEdges,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           ...(topologyChanged ? {
             adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
             topologyVersion: get().topologyVersion + 1,
@@ -1244,7 +1375,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       fitEntityToContent: (id) => {
-        const { entities, entityMap, quadtree, socketLayout } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
         const existing = entityMap.get(id);
         if (!existing) return;
 
@@ -1259,7 +1390,32 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         entityMap.set(id, entity);
         quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
-        set({ entities: nextEntities });
+        // Dropping the explicit size is a resize, so it has to finish like one. This used to set
+        // `entities` and nothing else: the socket index kept the sockets where the OLD width put
+        // them, so after a fit the output dot's hit box sat off to one side of the dot and a press
+        // on the visible socket missed; and with no `positionVersion` bump the edges layer, which
+        // watches only that counter and the entity count, never redrew — every edge on the entity
+        // stayed anchored to the old geometry. `updateEntityDimensions` does both, and this is the
+        // same operation with the target size computed rather than given.
+        const pos = entity.position;
+        const inputX = getSocketWorldX(entity, true);
+        const outputX = getSocketWorldX(entity, false);
+        if (entity.inputs) {
+          for (let i = 0; i < entity.inputs.length; i++) {
+            const socket = entity.inputs[i];
+            const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+            socketQuadtree.update(id, socket.id, true, inputX, pos.y + yOffset);
+          }
+        }
+        if (entity.outputs) {
+          for (let i = 0; i < entity.outputs.length; i++) {
+            const socket = entity.outputs[i];
+            const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+            socketQuadtree.update(id, socket.id, false, outputX, pos.y + yOffset);
+          }
+        }
+
+        set({ entities: nextEntities, positionVersion: positionVersion + 1 });
       },
 
       // ========================================
@@ -1349,7 +1505,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       addElements: (batch) => {
-        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout } = get();
+        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout, stackOrder, stackVersion } = get();
         const { entities: newEntities = [], edges: newEdges = [] } = batch;
 
         if (newEntities.length === 0 && newEdges.length === 0) return;
@@ -1395,20 +1551,29 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
         }
 
+        // Everything arriving here lands on top, exactly as applyEntityChanges' add branch puts a
+        // new entity there. Without an index these entities fell through `stackOrder.get(id) ?? 0`
+        // to the bottom of the stack: a paste at the default {50,50} offset painted BEHIND the
+        // entity it was copied from, and a press on the overlap picked the original, because
+        // topmostEntityId was comparing the paste's 0 against the original's real index. Paste,
+        // insert-on-edge and collapse all reach the graph through here.
+        assignStackOrder(stackOrder, newEntities);
+
         cachedAnalysis = null;
         // Length/order changed: the drag fast path's index is stale until this runs.
         rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: get().topologyVersion + 1,
+          stackVersion: stackVersion + 1,
         });
       },
 
       deleteElements: (batch) => {
-        const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree } = get();
+        const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree, stackOrder, stackVersion, widgetValues, widgetValuesVersion } = get();
         const { entityIds = [], edgeIds = [] } = batch;
 
         if (entityIds.length === 0 && edgeIds.length === 0) return;
@@ -1426,6 +1591,16 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         // Incremental removal from spatial structures O(k log n)
         // Remove sockets first, then entities
+        //
+        // The two per-entity maps that are NOT derived state have to be swept here as well.
+        // `stackOrder` and `widgetValues` are mutated in place and never rebuilt, and this path
+        // cleaned up neither: with delete bound to a key, as the shortcuts docs recommend, both
+        // grew without bound while `entities.length` stayed flat, and bringToFront's compaction
+        // then renumbered the dead ids too, so they permanently held indices ahead of live
+        // entities. A restored id also inherited whatever override its previous life left behind.
+        // applyEntityChanges' remove branch already did the stackOrder half; this is the same
+        // removal reached through the batch API.
+        let widgetValuesDropped = false;
         for (const entityId of entityIdsToDelete) {
           const entity = entityMap.get(entityId);
           if (entity) {
@@ -1439,8 +1614,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 socketQuadtree.remove(entityId, socket.id, false);
               }
             }
+            if (dropWidgetValues(widgetValues, entity)) widgetValuesDropped = true;
           }
           entityMap.delete(entityId);
+          stackOrder.delete(entityId);
         }
         quadtree.incrementalRemove(Array.from(entityIdsToDelete));
 
@@ -1464,11 +1641,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({
           entities: nextEntities,
           edges: nextEdges,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: get().topologyVersion + 1,
+          stackVersion: stackVersion + 1,
           selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
+          ...(widgetValuesDropped ? { widgetValuesVersion: widgetValuesVersion + 1 } : {}),
         });
       },
 
@@ -1548,9 +1727,49 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         deleteSelected();
       },
 
+      /**
+       * The document as it stands — including what the person has set on a widget and the consumer
+       * has not echoed back.
+       *
+       * This used to return `entities` untouched, which meant a save did not match the canvas. In
+       * an uncontrolled graph nothing ever echoes, so `widgetValues` is where the slider's value
+       * lives permanently (utils/widget-values.ts states that trade outright: "a consumer that
+       * never echoes keeps showing the local value"). Dragging a slider from 0.25 to 0.8 and saving
+       * wrote 0.25, and reloading snapped the slider back — the person's edit was visible on screen
+       * and absent from the file.
+       *
+       * Folding, not retiring: `readWidgetValue` drops a key once the value has round-tripped, and
+       * that belongs to the paint, which is the only thing that knows a widget was actually shown.
+       * A save reads. It also keeps the entity objects it was given whenever there is nothing
+       * pending for them, so the common case allocates nothing.
+       */
       toObject: (): FlowObject => {
-        const { entities, edges, viewport } = get();
-        return { entities, edges, viewport };
+        const { entities, edges, viewport, widgetValues } = get();
+        if (widgetValues.size === 0) return { entities, edges, viewport };
+
+        const folded = entities.map((entity) => {
+          let pending: Record<string, unknown> | null = null;
+          for (const sockets of [entity.inputs, entity.outputs]) {
+            if (!sockets) continue;
+            for (const socket of sockets) {
+              const key = widgetKey(entity.id, socket.id);
+              if (!widgetValues.has(key)) continue;
+              if (pending === null) pending = {};
+              pending[socket.id] = widgetValues.get(key)?.value;
+            }
+          }
+          if (pending === null) return entity;
+          // Same place the widgets read from: `entity.data.values`, keyed by socket id.
+          const existing = entity.data.values;
+          return {
+            ...entity,
+            data: {
+              ...entity.data,
+              values: { ...(isValueBag(existing) ? existing : {}), ...pending },
+            },
+          };
+        });
+        return { entities: folded, edges, viewport };
       },
 
       getSelectedEntities: (): Entity[] => {
@@ -1773,6 +1992,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
+        // The entity dropped onto the edge is the thing the person just made, so it arrives on top.
+        // With no index it sat at 0 and painted under the two entities it was inserted between.
+        state.stackOrder.set(positionedEntity.id, ++stackCounter);
         // Length/order changed: the drag fast path's index is stale until this runs.
         rebuildIdToIndex(nextEntities);
         set({
@@ -1780,7 +2002,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          stackVersion: state.stackVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           ...derived,
         });
       },
@@ -1798,6 +2021,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
 
+        // A bypass removes an entity, so it owes the same sweep every other removal owes: the two
+        // in-place maps keyed by entity id are not derived state and no rebuild will clear them.
+        const bypassed = state.entityMap.get(changes.removeEntityId);
+        state.stackOrder.delete(changes.removeEntityId);
+        const widgetValuesDropped = bypassed
+          ? dropWidgetValues(state.widgetValues, bypassed)
+          : false;
+
         // Update selection
         const nextSelectedEntityIds = new Set(state.selectedEntityIds);
         nextSelectedEntityIds.delete(entityId);
@@ -1811,10 +2042,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          stackVersion: state.stackVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
           ...derived,
+          ...(widgetValuesDropped
+            ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+            : {}),
         });
       },
 
@@ -1909,6 +2144,19 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
+
+        // The new frame goes on top of the graph and its children go on top of IT — bringToFront's
+        // ordering for a frame, kept here for its reason: a frame body drawn above the entities it
+        // contains hides them. The frame had no stack index at all before, which put it at the
+        // bottom of the whole graph, behind entities it has nothing to do with.
+        state.stackOrder.set(frameEntity.id, ++stackCounter);
+        for (const child of sortByDepth(
+          nextEntities.filter((n) => childIdSet.has(n.id)),
+          derived.entityMap
+        )) {
+          state.stackOrder.set(child.id, ++stackCounter);
+        }
+
         // Length/order changed: the drag fast path's index is stale until this runs.
         rebuildIdToIndex(nextEntities);
         set({
@@ -1916,7 +2164,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          stackVersion: state.stackVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           ...derived,
         });
       },
@@ -1946,6 +2195,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
 
+        // An expand both removes the frame and brings entities back, and the restored ones may
+        // never have had an index in this store at all — they arrive as arguments. Reconciling
+        // against the final array is the one operation that covers both halves: drop the frame's
+        // key, hand every id that lacks one the next index. Without it the frame's entry outlived
+        // the frame and every restored child sat at 0, behind the rest of the graph.
+        reconcileStackOrder(state.stackOrder, nextEntities);
+        const widgetValuesDropped = reconcileWidgetValues(state.widgetValues, nextEntities);
+
         // Update selection
         const nextSelectedEntityIds = new Set(state.selectedEntityIds);
         nextSelectedEntityIds.delete(groupId);
@@ -1959,10 +2216,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           edges: nextEdges,
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: state.topologyVersion + 1,
-          connectedSockets: rebuildConnectedSockets(nextEdges),
+          stackVersion: state.stackVersion + 1,
+          connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
           ...derived,
+          ...(widgetValuesDropped
+            ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+            : {}),
         });
       },
     }))

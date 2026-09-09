@@ -35,6 +35,9 @@ const MAX_DEPTH = 10;
 /** Default socket quadtree capacity (sockets are smaller, need finer granularity) */
 const SOCKET_CAPACITY = 16;
 
+/** Slack left around the content bounding box when the root is (re)sized. */
+const BOUNDS_PADDING = 1000;
+
 /**
  * Quadtree for O(log n) spatial queries on entity bounding boxes.
  * Supports point queries (hover/click) and range queries (box selection).
@@ -249,12 +252,11 @@ export class Quadtree {
     }
 
     // Add padding to bounds
-    const padding = 1000;
     this.bounds = {
-      x: minX - padding,
-      y: minY - padding,
-      width: maxX - minX + padding * 2,
-      height: maxY - minY + padding * 2,
+      x: minX - BOUNDS_PADDING,
+      y: minY - BOUNDS_PADDING,
+      width: maxX - minX + BOUNDS_PADDING * 2,
+      height: maxY - minY + BOUNDS_PADDING * 2,
     };
 
     // Insert all entities
@@ -269,6 +271,48 @@ export class Quadtree {
    */
   update(id: string, bounds: Bounds): void {
     this.remove(id);
+    this.insertOrGrow(id, bounds);
+  }
+
+  /**
+   * Insert, and if the entity falls outside the root, grow the root to cover it and re-index.
+   *
+   * `rebuild` replaces the wide fixed root the store constructs with the content bounding box plus
+   * `BOUNDS_PADDING`. Once narrowed, an entity added or dragged past that padding failed the very
+   * first `intersects` check in `insert`, which returned false — and both callers threw the return
+   * value away. The entity was then simply absent from the index: it could not be hovered,
+   * clicked, dragged or box-selected, and stayed that way until some unrelated change happened to
+   * run a full rebuild. Every hit test in the app assumes the index is total, so the index has to
+   * be total. Growing costs one O(n) re-index on the rare crossing and nothing at all otherwise.
+   */
+  private insertOrGrow(id: string, bounds: Bounds): void {
+    if (this.insert(id, bounds)) {
+      return;
+    }
+
+    const existing = Array.from(this.idToEntry.values());
+    const minX = Math.min(this.bounds.x, bounds.x - BOUNDS_PADDING);
+    const minY = Math.min(this.bounds.y, bounds.y - BOUNDS_PADDING);
+    const maxX = Math.max(
+      this.bounds.x + this.bounds.width,
+      bounds.x + bounds.width + BOUNDS_PADDING
+    );
+    const maxY = Math.max(
+      this.bounds.y + this.bounds.height,
+      bounds.y + bounds.height + BOUNDS_PADDING
+    );
+
+    this.clear();
+    this.bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+    for (const entry of existing) {
+      // `update` removes before inserting, so `id` is normally absent here; skipping it defends
+      // against a caller that inserts the same id twice, which would otherwise leave a duplicate
+      // entry that only one `remove` can reach.
+      if (entry.id !== id) {
+        this.insert(entry.id, entry.bounds);
+      }
+    }
     this.insert(id, bounds);
   }
 
@@ -301,10 +345,11 @@ export class Quadtree {
   incrementalAdd(entities: Entity[], socketLayout?: ResolvedSocketLayout): void {
     if (entities.length === 0) return;
 
-    // Fast path: insert new entities individually
-    // Our initial bounds are large (-10000 to 10000) so most entities will fit
+    // The initial bounds are large (-10000 to 10000), so most entities fit without any work;
+    // `insertOrGrow` covers the ones that do not, including everything outside the much tighter
+    // box a previous `rebuild` left behind.
     for (const entity of entities) {
-      this.insert(entity.id, getEntityBounds(entity, socketLayout));
+      this.insertOrGrow(entity.id, getEntityBounds(entity, socketLayout));
     }
   }
 
@@ -464,15 +509,43 @@ export class SocketQuadtree {
    * Insert a socket into the quadtree.
    */
   insert(entry: SocketEntry): boolean {
+    return this.insertWithKey(
+      entry,
+      SocketQuadtree.getKey(entry.entityId, entry.socketId, entry.isInput)
+    );
+  }
+
+  /**
+   * Remove a socket from the quadtree.
+   */
+  remove(entityId: string, socketId: string, isInput: boolean): boolean {
+    return this.removeWithKey(
+      entityId,
+      socketId,
+      isInput,
+      SocketQuadtree.getKey(entityId, socketId, isInput)
+    );
+  }
+
+  /**
+   * The recursion carries the key instead of rebuilding it.
+   *
+   * `getKey` is a template literal, and it used to be evaluated at every node the recursion
+   * touched — in `remove`, that includes the three sibling quadrants that immediately bail out one
+   * line later, so a single socket move allocated roughly twenty throwaway strings. `update` is
+   * called once per socket of every moved entity on every pointermove (see `updateEntityPositions`
+   * in the store), so at a thousand selected nodes that was six figures of garbage per drag frame,
+   * and it dominated the drag profile. Threading the key down leaves the traversal, the entry
+   * ordering and the return values exactly as they were; only the string construction moved out of
+   * the recursion and into the two public entry points.
+   */
+  private insertWithKey(entry: SocketEntry, key: string): boolean {
     // Check if point is within bounds
     if (!this.containsPoint(entry.x, entry.y)) {
       return false;
     }
 
-    const key = SocketQuadtree.getKey(entry.entityId, entry.socketId, entry.isInput);
-
     // If we have capacity and haven't subdivided, store here
-
     if (this.entries.length < this.capacity && !this.divided) {
       this.entries.push(entry);
       this.keyToEntry.set(key, entry);
@@ -492,19 +565,19 @@ export class SocketQuadtree {
     }
 
     // Insert into appropriate child
-    if (this.nw!.insert(entry)) {
+    if (this.nw!.insertWithKey(entry, key)) {
       this.keyToEntry.set(key, entry);
       return true;
     }
-    if (this.ne!.insert(entry)) {
+    if (this.ne!.insertWithKey(entry, key)) {
       this.keyToEntry.set(key, entry);
       return true;
     }
-    if (this.sw!.insert(entry)) {
+    if (this.sw!.insertWithKey(entry, key)) {
       this.keyToEntry.set(key, entry);
       return true;
     }
-    if (this.se!.insert(entry)) {
+    if (this.se!.insertWithKey(entry, key)) {
       this.keyToEntry.set(key, entry);
       return true;
     }
@@ -512,29 +585,32 @@ export class SocketQuadtree {
     return false;
   }
 
-  /**
-   * Remove a socket from the quadtree.
-   */
-  remove(entityId: string, socketId: string, isInput: boolean): boolean {
-    const key = SocketQuadtree.getKey(entityId, socketId, isInput);
+  private removeWithKey(
+    entityId: string,
+    socketId: string,
+    isInput: boolean,
+    key: string
+  ): boolean {
     if (!this.keyToEntry.has(key)) {
       return false;
     }
 
-    // Remove from local entries
-    const idx = this.entries.findIndex(
-      (e) => e.entityId === entityId && e.socketId === socketId && e.isInput === isInput
-    );
-    if (idx !== -1) {
-      this.entries.splice(idx, 1);
+    // Remove from local entries. An index loop rather than `findIndex`, because the predicate
+    // closure was another per-node allocation on the same drag-frame path as the key strings.
+    for (let i = 0; i < this.entries.length; i++) {
+      const e = this.entries[i];
+      if (e.entityId === entityId && e.socketId === socketId && e.isInput === isInput) {
+        this.entries.splice(i, 1);
+        break;
+      }
     }
 
     // Remove from children
     if (this.divided) {
-      this.nw!.remove(entityId, socketId, isInput);
-      this.ne!.remove(entityId, socketId, isInput);
-      this.sw!.remove(entityId, socketId, isInput);
-      this.se!.remove(entityId, socketId, isInput);
+      this.nw!.removeWithKey(entityId, socketId, isInput, key);
+      this.ne!.removeWithKey(entityId, socketId, isInput, key);
+      this.sw!.removeWithKey(entityId, socketId, isInput, key);
+      this.se!.removeWithKey(entityId, socketId, isInput, key);
     }
 
     this.keyToEntry.delete(key);
@@ -583,8 +659,9 @@ export class SocketQuadtree {
    * Update a socket's position.
    */
   update(entityId: string, socketId: string, isInput: boolean, x: number, y: number): void {
-    this.remove(entityId, socketId, isInput);
-    this.insert({ entityId, socketId, isInput, x, y });
+    const key = SocketQuadtree.getKey(entityId, socketId, isInput);
+    this.removeWithKey(entityId, socketId, isInput, key);
+    this.insertWithKey({ entityId, socketId, isInput, x, y }, key);
   }
 
   /**

@@ -66,11 +66,7 @@ const nextConfig = {
   env: {
     KOOKIE_FLOW_VERSION: packageJson.version,
   },
-  transpilePackages: [
-    '@kushagradhawan/kookie-flow',
-    '@kushagradhawan/kookie-ui',
-    '@kushagradhawan/kookie-blocks',
-  ],
+  transpilePackages: ['@kushagradhawan/kookie-flow'],
   trailingSlash: false,
   async headers() {
     return [

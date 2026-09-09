@@ -14,8 +14,23 @@
 
 import { getWidgetBox, isPointInWidget, type WidgetBox } from './widget-geometry';
 import { resolveWidgetConfig } from './widgets';
+import { readWidgetValue, widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
 import type { Entity, ResolvedWidgetConfig, SocketType } from '../types';
+
+/**
+ * The zoom below which widgets are not drawn, and therefore must not be pressable.
+ *
+ * This number exists because `widgets-gl.tsx` stops painting widget chrome under it — at that
+ * size they are noise, not controls. It lives here as well as there because a threshold that the
+ * painter honours and the presser does not is an invisible control: zoomed to 0.2, which the
+ * default MIN_ZOOM of 0.01 allows, a node showed no widget row at all and a single click on it
+ * still flipped a checkbox, set a slider from the click x, or opened a borrowed text input at a
+ * fifth scale. Nothing on screen said a widget was there.
+ *
+ * One number, one meaning: `widgets-gl.tsx` should import this rather than declare its own.
+ */
+export const MIN_WIDGET_ZOOM = 0.4;
 
 export interface WidgetHit {
   entityId: string;
@@ -24,11 +39,21 @@ export interface WidgetHit {
   index: number;
   box: WidgetBox;
   config: ResolvedWidgetConfig;
-  /** The value the widget is showing, straight off the entity. */
+  /** The value the widget is SHOWING — the entity's, with a pending local write on top. */
   value: unknown;
 }
 
-/** The widget under this world point on this entity, or null. */
+/**
+ * The widget under this world point on this entity, or null.
+ *
+ * `widgetValues` is the store's map of what the person has set and the consumer has not echoed
+ * back yet, and it is here for the same reason the renderer reads it (widgets-gl.tsx): the press
+ * path has to compute from the value on screen, not the value in the entity. Without it a
+ * checkbox read `false` off the entity on the second press as well as the first and emitted
+ * `true` twice, so it never unchecked; a select advanced one option and stayed there; and a text
+ * field reopened showing the string it had before the last edit, underneath a GL widget already
+ * showing the new one. Any consumer that batches, debounces or declines to echo saw all three.
+ */
 export function getWidgetAt(
   entity: Entity,
   worldX: number,
@@ -36,6 +61,7 @@ export function getWidgetAt(
   socketTypes: Record<string, SocketType>,
   socketLayout: ResolvedSocketLayout,
   connectedSockets: Set<string>,
+  widgetValues: Map<string, WidgetOverride>,
   defaultWidth?: number,
   labelWidth?: number
 ): WidgetHit | null {
@@ -56,7 +82,11 @@ export function getWidgetAt(
       index: i,
       box,
       config,
-      value: values?.[socket.id] ?? config.defaultValue,
+      value: readWidgetValue(
+        widgetValues,
+        widgetKey(entity.id, socket.id),
+        values?.[socket.id] ?? config.defaultValue
+      ),
     };
   }
   return null;
@@ -78,7 +108,14 @@ export function sliderValueAt(hit: WidgetHit, worldX: number): number {
   // Snapped relative to `min`, not to zero: a range of 1..10 stepping by 3 offers 1/4/7/10, and
   // snapping to absolute multiples would offer 3/6/9 — values outside the stated range.
   const snapped = min + Math.round((raw - min) / step) * step;
-  return Math.min(max, Math.max(min, snapped));
+  // Clamped to the ORDERED pair, not to (min, max) as written. A config with min above max —
+  // `min: 10, max: 0`, a descending slider — made `Math.max(min, snapped)` answer `min` for every
+  // pointer position, since min exceeds everything in range, and the outer `Math.min(max, min)`
+  // then answered `max`. The slider was frozen at one value and the grip never moved. `raw` is
+  // already inside the pair by construction, so this only ever pulls a snap back in.
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  return Math.min(hi, Math.max(lo, snapped));
 }
 
 /** The option a select moves to when it is pressed, cycling and wrapping. */
