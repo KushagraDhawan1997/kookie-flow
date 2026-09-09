@@ -304,7 +304,17 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       width: '100%',
       height: '100%',
       overflow: 'hidden',
-      backgroundColor: 'var(--gray-2, #191919)',
+      // v2 name first, v1 name as the fallback arm, and the literal last.
+      //
+      // A CSS `var()` chain is right HERE and wrong in the token reader, and the difference is
+      // worth stating because the two look identical: this is a real declaration the browser
+      // resolves, where the reader hands a string to `getPropertyValue`, which takes a property
+      // NAME and returns '' for an expression.
+      //
+      // The literal was `#191919` — near-black — so under a design system that defines neither
+      // name this painted a dark canvas into a light app, silently. It is the light value now,
+      // because an un-themed page is a light page; a consumer wanting dark states a theme.
+      backgroundColor: 'var(--neutral-2, var(--gray-2, #f9f9f9))',
     };
 
     return (

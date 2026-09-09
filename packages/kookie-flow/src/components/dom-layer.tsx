@@ -360,7 +360,11 @@ const commentStyle: CSSProperties = {
   borderRadius: '4px',
   boxSizing: 'border-box',
   overflow: 'hidden',
-  fontFamily: 'var(--font-sans, system-ui, -apple-system, sans-serif)',
+  // `--font-sans` is defined by NEITHER design system — v1 emits `--default-font-family`, v2
+  // emits `--font-body` — so this has always resolved to the literal. Both names first, so it
+  // starts matching the app's own face instead of guessing at it.
+  fontFamily:
+    'var(--font-body, var(--default-font-family, system-ui, -apple-system, sans-serif))',
   lineHeight: '1.4',
   whiteSpace: 'pre-wrap',
   wordWrap: 'break-word',

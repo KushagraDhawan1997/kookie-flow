@@ -52,7 +52,13 @@ const { present, missing } = await page.evaluate(() => window.__harness.tokenCen
 // Also report what each present token RESOLVES to, because "defined" and "sensible" are different
 // questions and the second one is what a port gets wrong.
 const values = await page.evaluate((keys) => {
-  const root = document.querySelector('.radix-themes') ?? document.body;
+  // Same resolver as the fixture and the package. `?? document.body` was a second answer to one
+  // question, and under v2 it is a fully working WRONG answer: the tokens resolve at :root, so a
+  // census taken on body comes back complete and in the wrong appearance.
+  const root =
+    document.querySelector('.radix-themes') ??
+    document.querySelector('.kui-theme') ??
+    document.documentElement;
   const styles = getComputedStyle(root);
   return Object.fromEntries(keys.map((k) => [k, styles.getPropertyValue(k).trim()]));
 }, present);

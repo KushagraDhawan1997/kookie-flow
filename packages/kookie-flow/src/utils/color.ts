@@ -2,6 +2,8 @@
  * Color parsing utilities for converting CSS colors to WebGL-compatible formats.
  */
 
+import { themeRoot } from './theme-root';
+
 export type RGBColor = [number, number, number]; // [0-1, 0-1, 0-1]
 export type RGBAColor = [number, number, number, number]; // [0-1, 0-1, 0-1, 0-1]
 
@@ -26,13 +28,19 @@ let colorProbe: HTMLSpanElement | null = null;
  * rgb(0,0,0) from body and rgb(0,144,255) from inside the theme, and `--gray-2` gives the untinted
  * rgb(249,249,249) instead of the real rgb(249,249,251).
  *
+ * Under v2 the same mistake is WORSE rather than louder, which is why the host now comes from the
+ * one shared resolver instead of a second `?? document.body` written here. v2 declares its tokens
+ * at `:root` and re-declares them inside the Theme's own `[data-appearance]` scope, so a probe
+ * outside the Theme resolves every token successfully — at the ROOT appearance. Nothing is missing
+ * and nothing warns; the colours are simply the other mode's.
+ *
  * The host is re-checked on every call rather than cached once, because the theme element mounts
  * after this module first runs.
  */
 function getColorProbe(): HTMLSpanElement | null {
   if (typeof document === 'undefined' || !document.body) return null;
 
-  const host = document.querySelector('.radix-themes') ?? document.body;
+  const host = themeRoot();
 
   if (!colorProbe) {
     colorProbe = document.createElement('span');

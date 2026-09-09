@@ -202,9 +202,17 @@ await withPage('count=12&seed=1', async (page, errors) => {
 
 head('labels');
 await withPage('count=12&seed=1', async (page) => {
+    // Scoped to the flow's own container, not the whole document.
+    //
+    // The claim is "kookie-flow draws no label in the DOM", and an unscoped sweep answers a
+    // different question: "is there any text-bearing leaf div on the page". Those agree only while
+    // the fixture renders nothing but the canvas. Mounting the Toolbar — which is the point of the
+    // next step, because toolbar.tsx has zero coverage from all 76 browser laws — puts real
+    // design-system controls in the document, and the law would go red announcing that the DOM
+    // label path came back. It would be wrong.
   const domText = await page.evaluate(() => {
     let n = 0;
-    for (const el of document.querySelectorAll('div')) {
+    for (const el of document.querySelectorAll('[data-kookie-flow-container] div')) {
       if (el.children.length === 0 && (el.textContent ?? '').trim().length > 0) n++;
     }
     return n;
@@ -1516,15 +1524,12 @@ head('GPU teardown');
  *    touch it — see the finding printed with it.
  */
 await withPage('count=12&seed=1', async (page) => {
-  const setAppearance = async (from, to) => {
-    await page.evaluate(
-      ([f, t]) => {
-        const el = document.querySelector('.radix-themes');
-        el.classList.remove(f);
-        el.classList.add(t);
-      },
-      [from, to]
-    );
+  // Through the fixture's own helper rather than a class swap written here. v2 keys appearance on
+  // `data-appearance`, not on a class — measured, adding `dark` to a `.kui-theme` div changes
+  // nothing — and `document.querySelector('.radix-themes')` returns null under v2, which throws a
+  // TypeError inside page.evaluate and CRASHES the run rather than failing a law.
+  const setAppearance = async (_from, to) => {
+    await page.evaluate((t) => window.__harness.setAppearance(t), to);
     await page.waitForTimeout(400);
   };
 
@@ -1596,6 +1601,162 @@ await withPage('count=12&seed=1', async (page) => {
     'the known per-flip buffer leak does not get worse',
     dBuf <= FLIPS * 20,
     `${dBuf} buffers over ${FLIPS} flips (about ${Math.round(dBuf / FLIPS)} per flip; ~16 is the recorded pre-existing rate)`
+  );
+});
+
+head('theme plumbing');
+
+/**
+ * The two things the token census cannot see, and both of them are what a design-system swap gets
+ * wrong.
+ *
+ * THE HOST. The census asks "is this token defined". Under v1 that question had teeth, because v1
+ * scoped its tokens to `.radix-themes` and a probe outside it resolved nothing at all. v2 declares
+ * at `:root` and re-declares inside the Theme's own `[data-appearance]` scope, so a probe on
+ * `<html>` resolves EVERY token successfully — at the root appearance rather than the Theme's.
+ * Measured: the present/missing split over all 99 tokens is identical at `<html>` and inside the
+ * Theme, so the census's own verdict is blind to the difference. The only defence is asserting
+ * WHICH NODE is being read.
+ *
+ * THE VALUES. `--space-N` in v1 is `--space-(N+1)` in v2 — every name the reader asks for exists
+ * in both, so a socket row goes 40px to 32px and a widget 32px to 24px with the census green and
+ * nothing else in the repo reading a space value at all. Same shape for radius: v2's default level
+ * is `full`, where `--radius-4` is 9999px and every SDF site clamps the corner, so a node body
+ * becomes a stadium with no error anywhere.
+ *
+ * These run on v1 today. That is the point — they are written BEFORE the swap so they can fail
+ * during it.
+ */
+await withPage('count=12&seed=1', async (page) => {
+  const root = await page.evaluate(() => window.__harness.themeRoot());
+
+  check(
+    'the token host is the theme element, not the document',
+    !root.isDocumentElement && root.tag !== 'BODY',
+    JSON.stringify(root)
+  );
+
+  /**
+   * The package resolves the host independently of the fixture, and this asserts they AGREE.
+   *
+   * THE FIRST SPELLING OF THIS LAW COULD NOT FAIL, and its own sabotage caught it: it created a
+   * span, appended it to the fixture's answer, and then checked the span's parent was the fixture's
+   * answer — true by construction, and it stayed green while the fixture was sabotaged to return
+   * `document.documentElement`. Comparing a mechanism against itself is not an agreement law.
+   *
+   * The package's answer is reachable only through its behaviour: `getColorProbe` (src/utils/
+   * color.ts) parents a hidden span to whatever IT resolved, so forcing a colour resolution and
+   * then finding that span tells us where the PACKAGE thinks the theme is.
+   */
+  const agree = await page.evaluate(() => {
+    // Force the package to build and parent its probe.
+    window.__harness.lib.resolveColorToRGB('var(--accent-9)');
+    const spans = [...document.querySelectorAll('span')].filter(
+      (el) => el.style.visibility === 'hidden' && el.style.position === 'absolute'
+    );
+    const pkg = spans.length ? spans[spans.length - 1].parentElement : null;
+    const fixture = window.__harness.themeRoot();
+    return {
+      found: spans.length,
+      same:
+        pkg !== null &&
+        pkg.tagName === fixture.tag &&
+        (pkg.className || '') === fixture.className &&
+        (pkg === document.documentElement) === fixture.isDocumentElement,
+      pkg: pkg ? `${pkg.tagName}.${pkg.className}` : null,
+      fixture: `${fixture.tag}.${fixture.className}`,
+    };
+  });
+  check('INSTRUMENT: the package built a probe to locate', agree.found > 0, JSON.stringify(agree));
+  check('the fixture and the package resolve the same host', agree.same, JSON.stringify(agree));
+
+  const v = await page.evaluate(() => window.__harness.tokenValues());
+  console.log(`  measured  ${Object.entries(v).map(([k, n]) => `${k}=${n}`).join('  ')}`);
+
+  // Expectations written against v1's shipped values. Each is a number a rename cannot preserve.
+  check('the socket row token is 40px', v['--space-7'] === 40, `--space-7=${v['--space-7']}`);
+  check('the widget height token is 32px', v['--space-6'] === 32, `--space-6=${v['--space-6']}`);
+  check(
+    'the node body radius token is a corner, not a capsule',
+    v['--radius-4'] > 0 && v['--radius-4'] < 100,
+    `--radius-4=${v['--radius-4']}`
+  );
+  check('the label type step is 14px', v['--font-size-2'] === 14, `--font-size-2=${v['--font-size-2']}`);
+  check('the line box is 24px', v['--line-height-3'] === 24, `--line-height-3=${v['--line-height-3']}`);
+});
+
+head('token read validity');
+
+/**
+ * A legal theme setting must not make the GL layer STOP LISTENING.
+ *
+ * `areTokensValid` decides whether a DOM read succeeded, and every later read is discarded when it
+ * says no — so a false negative does not paint one wrong frame, it freezes the graph at whatever
+ * it read first and ignores every theme change after that, silently and for the life of the page.
+ *
+ * The sentinel used to be `--space-3 > 0 && --radius-4 > 0`, and a radius is a DESIGNER'S CHOICE,
+ * not evidence about whether a read worked. `<Theme radius="none">` is an ordinary setting on both
+ * design systems — v1 multiplies its whole radius scale by `--radius-factor: 0` at that level
+ * (measured: the reader receives `calc(12px * 1 * 0)` and parses 0), v2 emits `--radius-4: 0px`
+ * outright — so this has been live since the sentinel was written and is not a v2 hazard at all.
+ * The partner is a type step now, which no legal configuration zeroes.
+ *
+ * THE FIRST VERSION OF THIS LAW ASSERTED THE WRONG THING and its sabotage caught it. It claimed a
+ * dark canvas, on the reasoning that the reader keeps its entirely-dark FALLBACK table. Measured,
+ * that is not what happens: the FIRST read lands before the Theme has stamped `data-radius`, is
+ * accepted, and the tokens freeze there — light and correct-looking. So the law asserted a
+ * symptom the defect does not produce, and passed identically with the bug restored. What the
+ * defect actually costs is the NEXT change, which is what this drives.
+ *
+ * It also carries the suite's first painted-colour assertions. `readPixel` had ZERO callers among
+ * all 84 laws before this, so every colour claim in the repo was unmeasured.
+ */
+await withPage('count=6&seed=1&appearance=light&radius=none&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(500);
+
+  const sample = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => {
+            const c = document.querySelector('canvas');
+            const ctx = c.getContext('webgl2');
+            const dpr = c.width / c.clientWidth;
+            const buf = new Uint8Array(4);
+            let ink = 0, r = 0, g = 0, b = 0;
+            for (let x = 20; x < 190; x += 6) {
+              for (let y = 20; y < 120; y += 6) {
+                ctx.readPixels(
+                  Math.round(x * dpr), Math.round(c.height - y * dpr),
+                  1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, buf
+                );
+                if (buf[3] > 10) { ink++; r += buf[0]; g += buf[1]; b += buf[2]; }
+              }
+            }
+            resolve({ ink, mean: ink ? (r + g + b) / (3 * ink) : null });
+          })
+        )
+    );
+
+  const light = await sample();
+  check('INSTRUMENT: node pixels are drawn at radius="none"', light.ink > 20, JSON.stringify(light));
+  check(
+    'a light theme paints light node bodies at radius="none"',
+    light.mean !== null && light.mean > 128,
+    `mean channel ${light.mean} over ${light.ink} node pixels`
+  );
+
+  // The one that catches the sentinel. Under the radius gate every read after the first is
+  // discarded, so this flip reaches the DOM and never reaches the GL layer.
+  await page.evaluate(() => window.__harness.setAppearance('dark'));
+  await page.waitForTimeout(700);
+  const dark = await sample();
+
+  check(
+    'a theme change still reaches the GL layer at radius="none"',
+    dark.mean !== null && light.mean !== null && light.mean - dark.mean > 60,
+    `light ${light.mean} -> dark ${dark.mean} (the graph freezes at its first read when the ` +
+      `validity sentinel rides a token the designer is allowed to zero)`
   );
 });
 

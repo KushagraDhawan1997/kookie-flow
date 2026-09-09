@@ -114,19 +114,24 @@ const sample = () =>
       wideInk,
       wideTotal,
       mean: ink ? [Math.round(r / ink), Math.round(g / ink), Math.round(b / ink)] : null,
-      themeClass: document.querySelector('.radix-themes')?.className ?? null,
+      // The RESOLVED appearance, not the class name. `?.className` optional-chains to null under
+      // v2 and reports "no theme" for a theme that is present and working.
+      themeAppearance: (() => {
+        const el =
+          document.querySelector('.radix-themes') ??
+          document.querySelector('.kui-theme') ??
+          document.documentElement;
+        return el.getAttribute('data-appearance') ?? el.className ?? null;
+      })(),
     };
   });
 
+// Through the fixture's helper: v1 carries appearance in classList, v2 in `data-appearance`, and
+// the old spelling returned null under v2 — a TypeError inside page.evaluate, which crashes the
+// spike rather than reporting a failure.
 const setAppearance = async (from, to) => {
-  await page.evaluate(
-    ([f, t]) => {
-      const el = document.querySelector('.radix-themes');
-      el.classList.remove(f);
-      el.classList.add(t);
-    },
-    [from, to]
-  );
+  void from;
+  await page.evaluate((t) => window.__harness.setAppearance(t), to);
   await page.waitForTimeout(1500);
 };
 
@@ -145,8 +150,8 @@ const roundTrip = await sample();
 await page.screenshot({ path: join(dist, 'theme-flip-after.png') });
 
 console.log('\ntheme flip: light -> dark\n');
-console.log(`before  class="${before.themeClass}"  nodeInk=${before.ink}/${before.total}  canvasInk=${before.wideInk}/${before.wideTotal}  mean=${before.mean}`);
-console.log(`after   class="${after.themeClass}"  nodeInk=${after.ink}/${after.total}  canvasInk=${after.wideInk}/${after.wideTotal}  mean=${after.mean}`);
+console.log(`before  class="${before.themeAppearance}"  nodeInk=${before.ink}/${before.total}  canvasInk=${before.wideInk}/${before.wideTotal}  mean=${before.mean}`);
+console.log(`after   class="${after.themeAppearance}"  nodeInk=${after.ink}/${after.total}  canvasInk=${after.wideInk}/${after.wideTotal}  mean=${after.mean}`);
 
 let failures = 0;
 

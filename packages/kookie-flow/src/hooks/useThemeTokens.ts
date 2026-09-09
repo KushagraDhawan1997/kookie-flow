@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { themeRoot } from '../utils/theme-root';
 import { parseColorToRGB, parseColorToRGBA, parsePx, type RGBColor, type RGBAColor } from '../utils/color';
 
 /**
@@ -275,17 +276,40 @@ export const FALLBACK_TOKENS: ThemeTokens = {
 };
 
 /**
- * Read a CSS variable value from computed styles.
- * Returns empty string if not found.
+ * Read a CSS variable from computed styles, trying each name in turn.
+ *
+ * The list is what carries this package across the v1 -> v2 rename: `['--neutral-2', '--gray-2']`
+ * reads the v2 name where it exists and the v1 name where it does not, so one build is correct on
+ * both design systems and the swap is bisectable.
+ *
+ * WHY A LIST AND NOT A CSS `var()` FALLBACK CHAIN, which is the obvious spelling and is silently
+ * catastrophic: `getPropertyValue` takes a custom-property NAME, not an expression. Handed
+ * `'var(--neutral-2, var(--gray-2))'` it returns `''` — for EVERY token — so every reader below
+ * takes its fallback branch and the whole of FALLBACK_TOKENS paints instead. That table is
+ * entirely dark by construction (see its header), so a light app renders a black canvas with
+ * every token "present", every law green, and no warning anywhere. The chain also cannot work in
+ * principle here: v1 declares `--space-8` too, at a different value, so its arm would win.
+ *
+ * Order is v2-first, v1-second, deliberately: when both resolve — and 40 of the 99 names do — the
+ * new system's value is the intended one.
  */
-function getCSSVar(styles: CSSStyleDeclaration, name: string): string {
-  return styles.getPropertyValue(name).trim();
+function getCSSVar(styles: CSSStyleDeclaration, name: string | readonly string[]): string {
+  if (typeof name === 'string') return styles.getPropertyValue(name).trim();
+  for (const n of name) {
+    const v = styles.getPropertyValue(n).trim();
+    if (v) return v;
+  }
+  return '';
 }
 
 /**
  * Read a CSS variable as a pixel value.
  */
-function getCSSVarPx(styles: CSSStyleDeclaration, name: string, fallback: number): number {
+function getCSSVarPx(
+  styles: CSSStyleDeclaration,
+  name: string | readonly string[],
+  fallback: number
+): number {
   const value = getCSSVar(styles, name);
   if (!value) return fallback;
   return parsePx(value);
@@ -294,7 +318,11 @@ function getCSSVarPx(styles: CSSStyleDeclaration, name: string, fallback: number
 /**
  * Read a CSS variable as an RGB color.
  */
-function getCSSVarRGB(styles: CSSStyleDeclaration, name: string, fallback: RGBColor): RGBColor {
+function getCSSVarRGB(
+  styles: CSSStyleDeclaration,
+  name: string | readonly string[],
+  fallback: RGBColor
+): RGBColor {
   const value = getCSSVar(styles, name);
   if (!value) return fallback;
   return parseColorToRGB(value);
@@ -303,7 +331,11 @@ function getCSSVarRGB(styles: CSSStyleDeclaration, name: string, fallback: RGBCo
 /**
  * Read a CSS variable as an RGBA color.
  */
-function getCSSVarRGBA(styles: CSSStyleDeclaration, name: string, fallback: RGBAColor): RGBAColor {
+function getCSSVarRGBA(
+  styles: CSSStyleDeclaration,
+  name: string | readonly string[],
+  fallback: RGBAColor
+): RGBAColor {
   const value = getCSSVar(styles, name);
   if (!value) return fallback;
   return parseColorToRGBA(value);
@@ -477,8 +509,20 @@ function readTokensFromDOM(root: Element): ThemeTokens {
  * During hydration, getComputedStyle may return empty/zero values briefly.
  */
 function areTokensValid(tokens: ThemeTokens): boolean {
-  // Check a few critical values - if these are all 0, the read likely failed
-  return tokens['--space-3'] > 0 && tokens['--radius-4'] > 0;
+  /**
+   * Two lengths that are non-zero under every legal theme configuration.
+   *
+   * `--radius-4` used to be the second one and it is NOT level-invariant: v2 emits
+   * `--radius-4: 0px` under `[data-radius="none"]`, which is an ordinary setting a consumer can
+   * choose. A zero there made this function report the read as FAILED, so the hook kept
+   * FALLBACK_TOKENS — a table that is entirely dark by construction — and a light app rendered a
+   * black canvas with the theme working perfectly. A validity check has to be about whether the
+   * READ worked, never about what the designer chose.
+   *
+   * A type step is the right partner for a space step: both are non-zero at every density,
+   * radius level, pointer world and appearance.
+   */
+  return tokens['--space-3'] > 0 && tokens['--font-size-2'] > 0;
 }
 
 /**
@@ -496,13 +540,13 @@ export function useThemeTokens(): ThemeTokens {
   // This avoids the dark→light flash from using FALLBACK_TOKENS initially
   const [tokens, setTokens] = useState<ThemeTokens>(() => {
     if (typeof document === 'undefined') return FALLBACK_TOKENS;
-    const root = document.querySelector('.radix-themes') ?? document.documentElement;
+    const root = themeRoot();
     const domTokens = readTokensFromDOM(root);
     return areTokensValid(domTokens) ? domTokens : FALLBACK_TOKENS;
   });
 
   useEffect(() => {
-    const root = document.querySelector('.radix-themes') ?? document.documentElement;
+    const root = themeRoot();
 
     // Compare tokens to avoid unnecessary re-renders
     /**
@@ -569,6 +613,20 @@ export function useThemeTokens(): ThemeTokens {
         // v2 carries appearance and contrast as data attributes on the element it stamps.
         'data-appearance',
         'data-contrast',
+        // The other three axes v2's Theme stamps, and each of them MOVES A VALUE this reader
+        // consumes — this is the `class` defect above, re-committed on three new attributes if
+        // they are left out. Measured against v2's emitted tokens: `[data-density="compact"]`
+        // takes `--layout-space-3` from 8px to 4px and `--control-height-2` from 32px to 28px;
+        // `[data-radius="none"]` takes `--radius-4` from 9999px to 0px; `[data-pointer="coarse"]`
+        // re-prices the whole control ladder and raises the reading type steps.
+        //
+        // Latent today, on purpose: the reader consumes no density-, radius- or pointer-indexed
+        // token yet, so nothing moves under v1. It is here rather than later because the cost of
+        // forgetting is a graph frozen at the old palette while every DOM control repaints, which
+        // is precisely the bug the `class` entry was added to fix.
+        'data-density',
+        'data-pointer',
+        'data-depth',
       ],
     });
 

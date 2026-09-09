@@ -75,7 +75,10 @@ const rows = [];
     // path came back, which is the regression this guards.
     const probe = await page.evaluate(() => {
       let domTextish = 0;
-      for (const el of document.querySelectorAll('div')) {
+      // Scoped to the flow's container — see the same change in behaviors.mjs. An unscoped sweep
+      // answers "is there a text-bearing leaf div on the page", which stops being the same
+      // question the moment anything else is mounted beside the canvas.
+      for (const el of document.querySelectorAll('[data-kookie-flow-container] div')) {
         if (el.children.length === 0 && (el.textContent ?? '').trim().length > 0) domTextish++;
       }
       window.__harness.resetGl();

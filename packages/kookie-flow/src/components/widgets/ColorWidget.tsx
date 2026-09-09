@@ -39,7 +39,7 @@ export function ColorWidget({ label, value, onChange, disabled }: WidgetProps) {
         style={{
           fontFamily: 'var(--font-mono)',
           fontSize: 'var(--font-size-1)',
-          color: 'var(--gray-11)',
+          color: 'var(--neutral-11, var(--gray-11))',
         }}
       >
         {colorValue}

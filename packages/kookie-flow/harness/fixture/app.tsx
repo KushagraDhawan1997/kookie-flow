@@ -19,8 +19,9 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
 import { makeGraph, makeShapes, makeGroup, makeComments } from './graph';
-import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB } from '../../src/utils/color';
+import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
+import { useTheme } from '../../src/contexts/ThemeContext';
 
 declare global {
   interface Window {
@@ -46,6 +47,7 @@ export interface HarnessApi {
     parseColorToRGB(v: string): [number, number, number];
     parseColorToRGBA(v: string): [number, number, number, number];
     resolveColorToRGB(v: string): [number, number, number] | null;
+    parsePx(v: string): number;
   };
   /** Read one pixel from the WebGL canvas, in CSS pixel coordinates from the top-left. */
   readPixel(x: number, y: number): [number, number, number, number] | null;
@@ -79,6 +81,16 @@ export interface HarnessApi {
   glLifetimes(): GlLifetimes;
   /** Cumulative three-side dispose calls, by resource kind. Also never reset. */
   disposals(): { material: number; geometry: number; texture: number };
+  /** The element the design system's tokens are scoped to, as the fixture resolves it. */
+  themeRoot(): { className: string; tag: string; isDocumentElement: boolean };
+  /** Resolved PIXEL values for the tokens whose value, not merely whose name, has to survive. */
+  tokenValues(): Record<string, number>;
+  /** What the package's own reader resolves a length token to, and the raw text it started from. */
+  readLength(name: string): { raw: string; parsed: number };
+  /** The live token object the GL layer paints from — the flow's own ThemeContext. */
+  themeTokens(): Readonly<Record<string, number | number[] | string>>;
+  /** Flip the appearance on either design system (class for v1, data-appearance for v2). */
+  setAppearance(mode: string): { ok: boolean; on: string };
 }
 
 function params() {
@@ -329,6 +341,50 @@ installSceneProbe();
  * back. Instanced meshes are skipped: their per-vertex positions are a unit quad and say nothing
  * about where anything sits, which is what `instanceMatrix` carries.
  */
+/**
+ * The element the design system's tokens are scoped to — the fixture's copy of
+ * `src/utils/theme-root.ts`.
+ *
+ * Copied rather than imported ON PURPOSE, and the divergence is the point: the harness must be
+ * able to disagree with the package. If the fixture imported the package's resolver, a law reading
+ * "the census host and the reader root are the same node" would hold by construction and could
+ * never fail. Two implementations, one law that they agree — the rule this repo already applies to
+ * every mechanism with two homes.
+ *
+ * The fallback order matters. v1 scoped its tokens to `.radix-themes`, so a probe outside it
+ * resolved nothing, loudly. v2 declares at `:root` and re-declares inside the Theme's own
+ * `[data-appearance]` scope, so falling through to `<html>` returns a complete, valid palette of
+ * the WRONG MODE — measured, the present/missing split over all 99 tokens is identical at `<html>`
+ * and inside the Theme, so the census literally cannot tell them apart.
+ */
+function themeRoot(): Element {
+  return (
+    document.querySelector('.radix-themes') ??
+    document.querySelector('.kui-theme') ??
+    document.documentElement
+  );
+}
+
+/**
+ * Flip the appearance, on either design system.
+ *
+ * v1 carries light/dark in `classList`; v2 stamps `data-appearance` on the Theme element and its
+ * generated selectors key on the attribute alone — measured, adding a `dark` class to a
+ * `.kui-theme` div changes NOTHING, every token byte-identical. Doing both is harmless on either:
+ * v1 ignores the attribute, v2 ignores the class.
+ *
+ * It lives here rather than inline in five call sites because those five had drifted into two
+ * spellings already, and because a `querySelector` that returns null throws a TypeError inside
+ * `page.evaluate` — which CRASHES the run instead of failing a law.
+ */
+function setAppearanceOn(mode: string): { ok: boolean; on: string } {
+  const el = themeRoot();
+  el.classList.remove('light', 'dark');
+  el.classList.add(mode);
+  el.setAttribute('data-appearance', mode);
+  return { ok: true, on: el.className || el.tagName };
+}
+
 function drawnVertices(): { x: number; y: number; kind: string }[] {
   const out: { x: number; y: number; kind: string }[] = [];
   const v = new THREE.Vector3();
@@ -526,6 +582,11 @@ function resetGlCounters() {
 /** Lives inside KookieFlow so it can reach the store's provider. */
 function Probe() {
   const store = useFlowStoreApi();
+  // The LIVE token object the GL layer is actually painting from — the flow's own ThemeContext,
+  // read from inside the flow. Every other probe here asks the browser or asks the reader's
+  // helpers; this is the value itself, which is the only way to tell "the reader fell back to
+  // its dark table" from "the reader read a dark theme".
+  const liveTokens = useTheme();
 
   useEffect(() => {
     const canvas = () => document.querySelector<HTMLCanvasElement>('canvas');
@@ -543,7 +604,8 @@ function Probe() {
       resolveToken(name: string) {
         // Two things here are load-bearing and both were bugs in the first draft:
         //
-        // 1. The probe MUST live inside the theme element. Tokens are scoped to `.radix-themes`,
+        // 1. The probe MUST live inside the theme element. Under v1 tokens are scoped to
+        //    `.radix-themes`,
         //    so a probe on <body> cannot see them: measured, `var(--accent-9)` resolves to
         //    rgb(0,0,0) from body and rgb(0,144,255) from inside the theme, and `--gray-2` gives
         //    the untinted rgb(249,249,249) instead of the real rgb(249,249,251).
@@ -554,7 +616,7 @@ function Probe() {
         //    yields `color(srgb r g b)` at full float precision.
         //
         // See plans/migration/finding-colour-pipeline.md.
-        const host = document.querySelector('.radix-themes') ?? document.body;
+        const host = themeRoot();
         const probe = document.createElement('span');
         probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
         probe.style.color = `color-mix(in srgb, var(${name}) 100%, transparent 0%)`;
@@ -595,6 +657,47 @@ function Probe() {
       bulkCopies: () => bulk.copies,
       glLifetimes: () => ({ ...live }),
       disposals: () => ({ ...disposals }),
+      themeRoot: () => {
+        const el = themeRoot();
+        return {
+          className: el.className || '',
+          tag: el.tagName,
+          isDocumentElement: el === document.documentElement,
+        };
+      },
+      setAppearance: setAppearanceOn,
+      /**
+       * The census proves a token is DEFINED. This proves it means what it meant.
+       *
+       * Every one of these resolves under BOTH design systems by name, which is exactly why they
+       * need a value law: v1's `--space-N` is v2's `--space-(N+1)`, so a socket row silently goes
+       * 40px to 32px and a widget 32px to 24px with the census green, no missing token, no compile
+       * error and no existing law anywhere. The radius entry catches the other silent one: v2's
+       * default radius level is `full`, where `--radius-4` is 9999px, and every SDF site clamps
+       * the corner so a node body becomes a stadium without erroring.
+       *
+       * Read off a probe INSIDE the theme, through the same resolver everything else uses.
+       */
+      tokenValues() {
+        const host = themeRoot();
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+        host.appendChild(probe);
+        const out: Record<string, number> = {};
+        for (const name of [
+          '--space-6',
+          '--space-7',
+          '--radius-4',
+          '--font-size-2',
+          '--line-height-3',
+        ]) {
+          probe.style.width = `var(${name})`;
+          const px = parseFloat(getComputedStyle(probe).width);
+          out[name] = Number.isFinite(px) ? px : NaN;
+        }
+        probe.remove();
+        return out;
+      },
       mark(name: string) {
         react.current = name;
         react.marks[name] ??= 0;
@@ -615,7 +718,7 @@ function Probe() {
        * reader is censused without anyone remembering to add it here.
        */
       tokenCensus() {
-        const root = document.querySelector('.radix-themes') ?? document.body;
+        const root = themeRoot();
         const styles = getComputedStyle(root);
         const present: string[] = [];
         const missing: string[] = [];
@@ -628,7 +731,22 @@ function Probe() {
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
-      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB },
+      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx },
+      themeTokens: () => liveTokens as unknown as Readonly<Record<string, number | number[] | string>>,
+      /**
+       * What the PACKAGE resolves a length token to, through its own shipped path.
+       *
+       * Deliberately different from `tokenValues()`, which asks the browser by setting the value
+       * on a probe inside the theme. This asks the way `readTokensFromDOM` does:
+       * `getComputedStyle(themeRoot()).getPropertyValue(name)` — which returns a custom property's
+       * DECLARED TEXT, `calc(12px * var(--scaling) * var(--radius-factor))`, not a resolved
+       * length — and then hands that string to the exported `parsePx`. Where the two disagree,
+       * the GL layer is painting the second number and the CSS is painting the first.
+       */
+      readLength(name: string) {
+        const raw = getComputedStyle(themeRoot()).getPropertyValue(name).trim();
+        return { raw, parsed: parsePx(raw) };
+      },
     };
 
     // With more than one KookieFlow mounted, each Probe registers its own store. `__harness`

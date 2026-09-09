@@ -44,7 +44,7 @@ export class CanvasErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
             alignItems: 'center',
             justifyContent: 'center',
             gap: 12,
-            color: 'var(--gray-11, #999)',
+            color: 'var(--neutral-11, var(--gray-11, #6b6b6b))',
             fontFamily: 'system-ui, sans-serif',
             fontSize: 14,
           }}
@@ -55,10 +55,10 @@ export class CanvasErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
             onClick={this.handleRetry}
             style={{
               padding: '6px 16px',
-              border: '1px solid var(--gray-7, #444)',
+              border: '1px solid var(--neutral-7, var(--gray-7, #d0d0d0))',
               borderRadius: 6,
-              background: 'var(--gray-3, #222)',
-              color: 'var(--gray-11, #999)',
+              background: 'var(--neutral-3, var(--gray-3, #f0f0f0))',
+              color: 'var(--neutral-11, var(--gray-11, #6b6b6b))',
               cursor: 'pointer',
               fontSize: 13,
             }}
