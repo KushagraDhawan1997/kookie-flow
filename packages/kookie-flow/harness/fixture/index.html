@@ -8,4 +8,40 @@
   #root { height: 100%; }
 </style>
 <div id="root"></div>
+<script>
+  /*
+   * React commit counter, installed HERE and not in app.tsx.
+   *
+   * React reads `window.__REACT_DEVTOOLS_GLOBAL_HOOK__` once, when its own module is evaluated,
+   * and keeps whatever it finds. ES imports are hoisted, so anything app.tsx does in its module
+   * body runs AFTER React has already looked — the first version of this probe lived there and
+   * reported a confident zero commits for every interaction, including a node drag that calls
+   * setState through the controlled-component contract. A classic instrument that measures
+   * nothing and looks like good news.
+   *
+   * A plain <script> before the module is the only place that is genuinely earlier.
+   *
+   * Counting COMMITS rather than renders is deliberate: a commit is React actually touching the
+   * tree, which is what CLAUDE.md's "zero React re-renders during interactions" is about.
+   */
+  (function () {
+    if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) return; // real DevTools present; do not shadow it
+    var state = { commits: 0, marks: {}, current: null };
+    window.__kfReact = state;
+    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      // The minimum surface React probes for. Miss any of it and React skips the hook entirely,
+      // which reads as zero — the exact failure this comment is about.
+      isDisabled: false,
+      supportsFiber: true,
+      renderers: new Map(),
+      inject: function () { return 1; },
+      onCommitFiberRoot: function () {
+        state.commits++;
+        if (state.current) state.marks[state.current] = (state.marks[state.current] || 0) + 1;
+      },
+      onCommitFiberUnmount: function () {},
+      onPostCommitFiberRoot: function () {},
+    };
+  })();
+</script>
 <script type="module" src="./app.js"></script>

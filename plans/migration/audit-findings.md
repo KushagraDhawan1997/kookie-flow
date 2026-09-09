@@ -106,14 +106,24 @@ The five `migration-blocker` findings that need your decision:
 
 The audit's remediation plan orders the rest into eight phases. The highest-value remaining work:
 
-**Phase 0 (harness) — done except the measurement.** Built here: the browser fixture, 33
-behaviours, the colour spikes, the theme round trip, the perf scaffold, and the two-project vitest
-split (a `.test.tsx` file used to be **silently skipped**). The degenerate fixture is gone —
+**Phase 0 (harness) — done except the timings.** Built here: the browser fixture, 35 behaviours,
+the colour spikes, the theme round trip, the two-project vitest split (a `.test.tsx` file used to
+be **silently skipped**), and `harness/spikes/counts.mjs`. The degenerate fixture is gone —
 `explicitSize` now defaults false, and `makeShapes` adds seven entities chosen because one of the
 divergent paths gets each of them wrong. Writing it is what exposed fix 12; a uniform 200×120 grid
-agrees everywhere and proves nothing. Still missing: a counts-and-allocations spike, so the ~32
-perf findings get a valid measurement under software rasterisation, and the perf baseline itself,
-which needs a quiet machine.
+agrees everywhere and proves nothing.
+
+`counts.mjs` is what Phase 3 was missing: nine perf commits, each naming a count as its proof, and
+no instrument to produce one. It reports React commits, draw calls, instances rewritten and bytes
+allocated per interaction, all per FRAME so a busy machine cannot move them — timing is not a
+metric under software rasterisation, work is. **Its React counter was dead on the first attempt and
+looked like a pass**: it lived in `app.tsx`'s module body, React reads the DevTools hook when its
+own module is evaluated, and ES imports are hoisted — so it reported zero commits for every
+interaction, including a drag that demonstrably calls `setState`. Zero is also the answer this
+codebase wants to hear. The counter is now a plain `<script>` in `index.html`, and the spike
+refuses to report anything unless two viewport resizes move it first.
+
+Still missing: the frame-time baseline at 1k/10k/50k, which needs a machine doing nothing else.
 
 **T2 — one measurement, four implementations. CLOSED for sockets, open for the minimap.** Fixes 12
 and 13 collapsed five copies of the socket arithmetic into one, held there by a source law. What

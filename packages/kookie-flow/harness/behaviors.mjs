@@ -638,6 +638,42 @@ await withPage('scene=shapes', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- theme tokens
+
+console.log('\ntheme tokens');
+
+/**
+ * Every token the GL layer reads is actually defined by the theme.
+ *
+ * The reader takes a FALLBACK for anything it cannot find, and the whole fallback table is DARK.
+ * A missing token therefore does not throw, does not warn, and does not look obviously wrong in
+ * dark mode — it silently paints one dark value into a light UI, and the more tokens are missing
+ * the more of the canvas is quietly hardcoded instead of themed.
+ *
+ * This is the v1 -> v2 tripwire. Today it passes: v1 defines everything the reader asks for. The
+ * commit that swaps the design system will fail here and NAME each token that stopped resolving,
+ * which is the difference between porting a theme and discovering six months later that half the
+ * canvas never moved.
+ */
+await withPage('count=6', async (page) => {
+  const census = await page.evaluate(() => window.__harness.tokenCensus());
+
+  // Vacuity guard. An empty census makes "nothing is missing" true and meaningless, and the list
+  // is derived from the reader's own fallback table, which a refactor could rename out from under
+  // this.
+  check(
+    'INSTRUMENT: the census covers the tokens the reader asks for',
+    census.present.length + census.missing.length > 50,
+    `${census.present.length + census.missing.length} tokens censused`
+  );
+
+  check(
+    'every token the GL layer reads is defined by the theme',
+    census.missing.length === 0,
+    census.missing.length ? `${census.missing.length} fall back to a dark default: ${census.missing.join(' ')}` : undefined
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(`\n${passed} passed, ${failures.length} failed\n`);

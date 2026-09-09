@@ -20,6 +20,7 @@ import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
 import { makeGraph, makeShapes, makeGroup } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB } from '../../src/utils/color';
+import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 
 declare global {
   interface Window {
@@ -58,6 +59,16 @@ export interface HarnessApi {
   resetGl(): void;
   /** Frame-interval distribution for the current window. */
   frames(): unknown;
+  /**
+   * Open a named measurement window. Everything counted between mark(name) and the next mark is
+   * attributed to `name`, so one page can measure pan, drag and a connection drag separately
+   * without a reload between them.
+   */
+  mark(name: string): void;
+  /** React commit counts, total and per window. */
+  reactCommits(): { commits: number; marks: Record<string, number> };
+  /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
+  tokenCensus(): { present: string[]; missing: string[] };
 }
 
 function params() {
@@ -188,6 +199,26 @@ function installGlProbe() {
     return ctx;
   } as typeof HTMLCanvasElement.prototype.getContext;
 }
+
+/**
+ * React commit counts, installed by a plain <script> in index.html.
+ *
+ * NOT here: React reads `__REACT_DEVTOOLS_GLOBAL_HOOK__` when its own module is evaluated, and ES
+ * imports are hoisted, so this module's body runs after React has already looked. The first
+ * version lived at module scope right here and reported zero commits for every interaction —
+ * including a node drag that calls setState through the controlled-component contract, so the
+ * answer was not just unproven but wrong. See index.html for the counter itself.
+ */
+interface CommitCounter {
+  commits: number;
+  marks: Record<string, number>;
+  current: string | null;
+}
+
+const react: CommitCounter =
+  (window as unknown as { __kfReact?: CommitCounter }).__kfReact ??
+  { commits: 0, marks: {}, current: null };
+
 
 installGlProbe();
 
@@ -367,6 +398,35 @@ function Probe() {
       },
       canvas,
       drawnVertices,
+      mark(name: string) {
+        react.current = name;
+        react.marks[name] ??= 0;
+        resetGlCounters();
+      },
+      reactCommits: () => ({ commits: react.commits, marks: { ...react.marks } }),
+      /**
+       * Which tokens the theme actually defines.
+       *
+       * The token reader takes a FALLBACK for every value it cannot find, and the whole fallback
+       * table is DARK. So a theme missing a token does not fail, or look obviously wrong in dark
+       * mode — it silently paints one dark value into a light UI, and the more tokens are missing
+       * the more of the canvas is quietly hardcoded. The v1 -> v2 swap is exactly that situation
+       * at scale, which is why this exists before the swap rather than after it.
+       *
+       * The list is derived from FALLBACK_TOKENS rather than restated, so a token added to the
+       * reader is censused without anyone remembering to add it here.
+       */
+      tokenCensus() {
+        const root = document.querySelector('.radix-themes') ?? document.body;
+        const styles = getComputedStyle(root);
+        const present: string[] = [];
+        const missing: string[] = [];
+        for (const key of Object.keys(FALLBACK_TOKENS)) {
+          if (!key.startsWith('--')) continue; // `appearance` is derived, not read from CSS
+          (styles.getPropertyValue(key).trim() ? present : missing).push(key);
+        }
+        return { present, missing };
+      },
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
