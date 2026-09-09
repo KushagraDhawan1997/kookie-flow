@@ -4,6 +4,8 @@
  */
 
 import type { Entity, XYPosition } from '../types';
+import type { ResolvedSocketLayout } from './style-resolver';
+import { getEntityBounds } from '../core/spatial';
 
 /** Group padding when calculating bounds from children */
 export const GROUP_PADDING = 24;
@@ -129,7 +131,8 @@ export function getVisibleEntities(
 export function calculateGroupBounds(
   entities: Entity[],
   groupId: string,
-  padding: number = GROUP_PADDING
+  padding: number = GROUP_PADDING,
+  layout?: ResolvedSocketLayout
 ): Bounds | null {
   const children = getGroupChildren(entities, groupId);
 
@@ -143,8 +146,10 @@ export function calculateGroupBounds(
   let maxY = -Infinity;
 
   for (const child of children) {
-    const width = child.width ?? 200;
-    const height = child.height ?? 100;
+    // A width-less, height-less child is drawn at DEFAULT_ENTITY_WIDTH by its computed height, not
+    // at 200x100. With the wrong numbers the frame this returns is too small and its own children
+    // hang out of it — 40px to the right, and however much taller than 100 the entity is.
+    const { width, height } = getEntityBounds(child, layout);
 
     minX = Math.min(minX, child.position.x);
     minY = Math.min(minY, child.position.y);

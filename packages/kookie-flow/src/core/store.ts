@@ -930,7 +930,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       fitView: (options: FitViewOptions = {}, canvasWidth?: number, canvasHeight?: number) => {
-        const { entities: allEntities } = get();
+        const { entities: allEntities, socketLayout } = get();
 
         const {
           padding = 50,
@@ -965,10 +965,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           maxY = -Infinity;
 
         for (const entity of entitiesToFit) {
+          // 200x100 was neither the renderer's default width nor any entity's computed height, so
+          // fitView framed a box smaller than the content and cut entities off at the right and
+          // bottom edges.
+          const { width, height } = getEntityBounds(entity, socketLayout ?? undefined);
           minX = Math.min(minX, entity.position.x);
           minY = Math.min(minY, entity.position.y);
-          maxX = Math.max(maxX, entity.position.x + (entity.width ?? 200));
-          maxY = Math.max(maxY, entity.position.y + (entity.height ?? 100));
+          maxX = Math.max(maxX, entity.position.x + width);
+          maxY = Math.max(maxY, entity.position.y + height);
         }
 
         // Add padding
@@ -1477,7 +1481,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       getGroupBounds: (groupId: string): Bounds | null => {
         const { entities } = get();
-        return utilCalculateGroupBounds(entities, groupId);
+        return utilCalculateGroupBounds(entities, groupId, undefined, get().socketLayout ?? undefined);
       },
 
       setEntityParent: (entityId: string, parentId: string | null): boolean => {
@@ -1728,7 +1732,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           entityIds,
           groupId,
           state.entities,
-          state.adjacencyIndex
+          state.adjacencyIndex,
+          state.socketLayout ?? undefined
         );
 
         // Create the frame entity

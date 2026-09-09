@@ -11,6 +11,8 @@
  */
 
 import type { Edge, Entity } from '../types';
+import type { ResolvedSocketLayout } from '../utils/style-resolver';
+import { getEntityBounds } from './spatial';
 
 // ============================================================================
 // Types
@@ -966,12 +968,15 @@ export function getCompatiblePorts(
  * @param frameId - ID for the new frame entity
  * @param entities - All entities
  * @param index - Adjacency index
+ * @param layout - Resolved socket layout, so a height-less entity is measured at the height it is
+ *                 drawn at rather than a flat 100
  */
 export function computeCollapseToSubgraph(
   entityIds: string[],
   frameId: string,
   entities: Entity[],
-  index: AdjacencyIndex
+  index: AdjacencyIndex,
+  layout?: ResolvedSocketLayout
 ): {
   frameEntity: {
     id: string;
@@ -996,8 +1001,9 @@ export function computeCollapseToSubgraph(
   for (const id of entityIds) {
     const entity = entityMap.get(id);
     if (!entity) continue;
-    const w = entity.width ?? 200;
-    const h = entity.height ?? 100;
+    // Through getEntityBounds: 200x100 is neither the renderer's default width nor any entity's
+    // computed height, so a collapse frame built from it does not contain what it collapsed.
+    const { width: w, height: h } = getEntityBounds(entity, layout);
     minX = Math.min(minX, entity.position.x);
     minY = Math.min(minY, entity.position.y);
     maxX = Math.max(maxX, entity.position.x + w);
