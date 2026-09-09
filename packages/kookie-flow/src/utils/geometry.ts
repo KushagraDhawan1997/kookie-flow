@@ -9,7 +9,7 @@ import {
   SOCKET_HIT_TOLERANCE,
 } from '../core/constants';
 import type { ResolvedSocketLayout } from './style-resolver';
-import { getEntitySocketLayout } from './socket-layout-cache';
+import { getEntitySocketLayout, type EntitySocketLayoutCache } from './socket-layout-cache';
 import type { SocketQuadtree, SocketEntry } from '../core/spatial';
 
 /**
@@ -138,13 +138,21 @@ export function getSocketYOffset(
   entity: Entity,
   socketIndex: number,
   isInput: boolean,
-  layout?: ResolvedSocketLayout | null
+  layout?: ResolvedSocketLayout | null,
+  /**
+   * The entity's resolved layout, when the caller already has it. The socket renderer walks every
+   * socket of an entity in one pass and hoists this out of the loop; without the parameter, moving
+   * it onto the shared arithmetic would turn one cache lookup per ENTITY into one per SOCKET —
+   * six times the lookups on a rebuild, in the hottest loop the renderer has. Optional, so the
+   * cold callers stay a four-argument call.
+   */
+  resolved?: EntitySocketLayoutCache
 ): number {
   const sockets = (isInput ? entity.inputs : entity.outputs) ?? [];
   const socket = sockets[socketIndex];
 
   if (layout) {
-    const entityLayout = getEntitySocketLayout(entity, layout);
+    const entityLayout = resolved ?? getEntitySocketLayout(entity, layout);
     const height = entity.height ?? entityLayout.computedHeight;
     if (socket?.position !== undefined) return socket.position * height;
     const centerOffset = (height - entityLayout.computedHeight) / 2;
@@ -581,15 +589,13 @@ export function getEdgeAtPosition(
     const targetEntity = entityMap.get(edge.target);
     if (!sourceEntity || !targetEntity) continue;
 
-    const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
-
     // Calculate socket Y offsets using helper function
     const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
     const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-    const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
+    const x0 = getSocketWorldX(sourceEntity, false);
     const y0 = sourceEntity.position.y + sourceYOffset;
-    const x1 = targetEntity.position.x - SOCKET_OFFSET;
+    const x1 = getSocketWorldX(targetEntity, true);
     const y1 = targetEntity.position.y + targetYOffset;
 
     // Quick bounding box check
@@ -672,15 +678,13 @@ export function getEdgePointAtT(
   const targetEntity = entityMap.get(edge.target);
   if (!sourceEntity || !targetEntity) return null;
 
-  const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
-
   // Calculate socket Y offsets using helper function
   const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
   const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-  const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
+  const x0 = getSocketWorldX(sourceEntity, false);
   const y0 = sourceEntity.position.y + sourceYOffset;
-  const x1 = targetEntity.position.x - SOCKET_OFFSET;
+  const x1 = getSocketWorldX(targetEntity, true);
   const y1 = targetEntity.position.y + targetYOffset;
 
   const edgeType = edge.type ?? defaultEdgeType;

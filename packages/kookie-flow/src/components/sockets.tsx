@@ -6,10 +6,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
   DEFAULT_SOCKET_TYPES,
-  DEFAULT_ENTITY_WIDTH,
   SOCKET_RADIUS,
-  SOCKET_OFFSET,
 } from '../core/constants';
+import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
@@ -394,14 +393,10 @@ export function Sockets({
     connectedSockets: Set<string>,
   ): number => {
     let idx = startIdx;
-    const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
+    // Hoisted out of the socket loops and handed to getSocketYOffset: without it, moving these
+    // four sites onto the shared arithmetic would turn one layout-cache lookup per ENTITY into
+    // one per SOCKET, in the hottest loop the renderer has.
     const entityLayout = getEntitySocketLayout(entity, socketLayout);
-    const height = entity.height ?? entityLayout.computedHeight;
-
-    // Center sockets vertically within entity height.
-    // Positive when entity is taller than socket layout (tall text), negative when shorter
-    // (small text entity with explicit height). Both directions keep sockets centered.
-    const centerOffset = (height - entityLayout.computedHeight) / 2;
 
     // Render input sockets
     if (entity.inputs) {
@@ -409,15 +404,11 @@ export function Sockets({
         if (idx >= capacity) break;
 
         const socket = entity.inputs[i];
-        const cachedPos = entityLayout.inputs[i];
-        const yOffset =
-          socket.position !== undefined
-            ? socket.position * height
-            : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
+        const yOffset = getSocketYOffset(entity, i, true, socketLayout, entityLayout);
 
         tempMatrix.identity();
         tempMatrix.setPosition(
-          entity.position.x - SOCKET_OFFSET,
+          getSocketWorldX(entity, true),
           -(entity.position.y + yOffset),
           0.5
         );
@@ -465,15 +456,11 @@ export function Sockets({
         if (idx >= capacity) break;
 
         const socket = entity.outputs[i];
-        const cachedPos = entityLayout.outputs[i];
-        const yOffset =
-          socket.position !== undefined
-            ? socket.position * height
-            : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
+        const yOffset = getSocketYOffset(entity, i, false, socketLayout, entityLayout);
 
         tempMatrix.identity();
         tempMatrix.setPosition(
-          entity.position.x + width + SOCKET_OFFSET,
+          getSocketWorldX(entity, false),
           -(entity.position.y + yOffset),
           0.5
         );
@@ -549,24 +536,15 @@ export function Sockets({
 
           // Both meshes share bgMesh's instanceMatrix
           const mesh = bgMesh;
-          const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
-          const height = entity.height ?? entityLayout.computedHeight;
-
-          const moveCenterOffset = (height - entityLayout.computedHeight) / 2;
 
           let instanceIdx = range.start;
 
           if (entity.inputs) {
             for (let i = 0; i < entity.inputs.length; i++) {
-              const socket = entity.inputs[i];
-              const cachedPos = entityLayout.inputs[i];
-              const yOffset =
-                socket.position !== undefined
-                  ? socket.position * height
-                  : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + moveCenterOffset;
+              const yOffset = getSocketYOffset(entity, i, true, socketLayout, entityLayout);
               tempMatrix.setPosition(
-                entity.position.x - SOCKET_OFFSET,
+                getSocketWorldX(entity, true),
                 -(entity.position.y + yOffset),
                 0.5
               );
@@ -577,14 +555,9 @@ export function Sockets({
 
           if (entity.outputs) {
             for (let i = 0; i < entity.outputs.length; i++) {
-              const socket = entity.outputs[i];
-              const cachedPos = entityLayout.outputs[i];
-              const yOffset =
-                socket.position !== undefined
-                  ? socket.position * height
-                  : (cachedPos?.yOffset ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + moveCenterOffset;
+              const yOffset = getSocketYOffset(entity, i, false, socketLayout, entityLayout);
               tempMatrix.setPosition(
-                entity.position.x + width + SOCKET_OFFSET,
+                getSocketWorldX(entity, false),
                 -(entity.position.y + yOffset),
                 0.5
               );

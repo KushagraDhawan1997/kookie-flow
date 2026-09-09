@@ -50,6 +50,8 @@ export interface HarnessApi {
   readPixel(x: number, y: number): [number, number, number, number] | null;
   /** The <canvas> R3F is drawing into. */
   canvas(): HTMLCanvasElement | null;
+  /** Every non-instanced vertex in the scene, in world space (Y-down, like the store). */
+  drawnVertices(): { x: number; y: number }[];
   /** WebGL draw-call counters. */
   gl(): unknown;
   /** Zero the draw-call counters and the frame recorder. */
@@ -190,6 +192,58 @@ function installGlProbe() {
 installGlProbe();
 
 /**
+ * Scene capture, for reading the GEOMETRY that was actually drawn.
+ *
+ * Same problem as the draw-call probe and the same shape of answer: there is no supported route
+ * from outside <Canvas> to R3F's scene, so the hook is a prototype patch on the one method every
+ * scene graph must go through. `THREE.Object3D.prototype.add` is on the prototype (unlike
+ * WebGLRenderer.render), so this actually intercepts.
+ *
+ * Why it exists: the alternative for "did the edge land on the socket" is reading pixels, and that
+ * instrument turned out not to be trustworthy here. A scan column outside the socket's painted
+ * disc and close enough for the bezier to still be near-horizontal is about one pixel wide, and
+ * the readings were not reproducible run to run. Vertices are exact and have no such window.
+ */
+const scenes = new Set<THREE.Scene>();
+function installSceneProbe() {
+  const proto = THREE.Object3D.prototype as unknown as Record<string, unknown>;
+  const add = proto.add as (...a: unknown[]) => unknown;
+  proto.add = function patched(this: THREE.Object3D, ...args: unknown[]) {
+    if ((this as unknown as { isScene?: boolean }).isScene) scenes.add(this as THREE.Scene);
+    return add.apply(this, args);
+  };
+}
+
+installSceneProbe();
+
+/**
+ * Every vertex drawn in the scene, in WORLD space.
+ *
+ * GL is Y-up and this world is Y-down, so the renderer negates Y on the way in; this negates it
+ * back. Instanced meshes are skipped: their per-vertex positions are a unit quad and say nothing
+ * about where anything sits, which is what `instanceMatrix` carries.
+ */
+function drawnVertices(): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  const v = new THREE.Vector3();
+  for (const scene of scenes) {
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh & { isMesh?: boolean; isInstancedMesh?: boolean };
+      if (!mesh.isMesh || mesh.isInstancedMesh) return;
+      if (mesh.visible === false) return;
+      const pos = mesh.geometry?.attributes?.position as THREE.BufferAttribute | undefined;
+      if (!pos) return;
+      mesh.updateWorldMatrix(true, false);
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        out.push({ x: v.x, y: -v.y });
+      }
+    });
+  }
+  return out;
+}
+
+/**
  * Colour-management state, published for the record.
  *
  * KookieFlow mounts <Canvas flat legacy>. `legacy` is what sets THREE.ColorManagement.enabled =
@@ -312,6 +366,7 @@ function Probe() {
         return [buf[0], buf[1], buf[2], buf[3]];
       },
       canvas,
+      drawnVertices,
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,

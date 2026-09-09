@@ -4,8 +4,9 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
-import { DEFAULT_ENTITY_WIDTH, DEFAULT_SOCKET_TYPES, SOCKET_OFFSET } from '../core/constants';
-import { calculateMinEntityHeight } from '../utils/style-resolver';
+import { DEFAULT_SOCKET_TYPES } from '../core/constants';
+import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
+import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
 
@@ -630,72 +631,39 @@ export function Edges({
           continue;
         }
 
-        const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
-        const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
-        const sourceInputCount = sourceEntity.inputs?.length ?? 0;
+        // Socket geometry comes from utils/geometry, which is the same arithmetic the socket
+        // index and getSocketPosition use. This block used to re-derive it with
+        // `max(1, out + in) * rowHeight` — a UNIFORM row height — which is right only when every
+        // row is the same height, i.e. on every entity in a uniform fixture and on none of the
+        // awkward ones. Measured against the socket index before this change: an edge into a
+        // stacked socket landed 10px off, into a three-row widget 40px off, and into a socket
+        // with an explicit height 28px off. The bezier simply did not touch the dot it named.
         const sourceHeight =
-          sourceEntity.height ??
-          calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
-        const targetOutputCount = targetEntity.outputs?.length ?? 0;
-        const targetInputCount = targetEntity.inputs?.length ?? 0;
+          sourceEntity.height ?? getEntitySocketLayout(sourceEntity, socketLayout).computedHeight;
         const targetHeight =
-          targetEntity.height ??
-          calculateMinEntityHeight(targetOutputCount, targetInputCount, socketLayout);
+          targetEntity.height ?? getEntitySocketLayout(targetEntity, socketLayout).computedHeight;
 
-        // Calculate source socket position - O(1) lookup via socketIndexMap
-        // Source socket is always an output (rowIndex = outputIndex)
-        // Headerless entity types use padding-only marginTop
-        const HEADERLESS_TYPES = ['text', 'comment', 'reroute', 'image'];
-        const sourceMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
-          ? socketLayout.padding : socketLayout.marginTop;
-        const sourceComputedH = sourceMarginTop +
-          Math.max(1, sourceOutputCount + sourceInputCount) * socketLayout.rowHeight +
-          socketLayout.padding;
-        const sourceCenterOffset = (sourceHeight - sourceComputedH) / 2;
-
-        let sourceYOffset = sourceHeight / 2; // fallback to center
+        // Fallback to the entity's centre for an edge that names no socket.
+        let sourceYOffset = sourceHeight / 2;
         if (edge.sourceSocket) {
           const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
           if (socketInfo) {
-            sourceYOffset =
-              socketInfo.socket.position !== undefined
-                ? socketInfo.socket.position * sourceHeight
-                : sourceMarginTop +
-                  socketInfo.index * socketLayout.rowHeight +
-                  socketLayout.rowHeight / 2 +
-                  sourceCenterOffset;
+            sourceYOffset = getSocketYOffset(sourceEntity, socketInfo.index, false, socketLayout);
           }
         }
 
-        // Calculate target socket position - O(1) lookup via socketIndexMap
-        // Target socket is always an input (rowIndex = outputCount + inputIndex)
-        const targetMarginTop = HEADERLESS_TYPES.includes(targetEntity.type)
-          ? socketLayout.padding : socketLayout.marginTop;
-        const targetComputedH = targetMarginTop +
-          Math.max(1, targetOutputCount + targetInputCount) * socketLayout.rowHeight +
-          socketLayout.padding;
-        const targetCenterOffset = (targetHeight - targetComputedH) / 2;
-
-        let targetYOffset = targetHeight / 2; // fallback to center
+        let targetYOffset = targetHeight / 2;
         if (edge.targetSocket) {
           const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
           if (socketInfo) {
-            const targetOutputCount = targetEntity.outputs?.length ?? 0;
-            const rowIndex = targetOutputCount + socketInfo.index;
-            targetYOffset =
-              socketInfo.socket.position !== undefined
-                ? socketInfo.socket.position * targetHeight
-                : targetMarginTop +
-                  rowIndex * socketLayout.rowHeight +
-                  socketLayout.rowHeight / 2 +
-                  targetCenterOffset;
+            targetYOffset = getSocketYOffset(targetEntity, socketInfo.index, true, socketLayout);
           }
         }
 
         // Edge endpoints at actual socket positions (outside entity body)
-        const x0 = sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
+        const x0 = getSocketWorldX(sourceEntity, false);
         const y0 = sourceEntity.position.y + sourceYOffset;
-        const x1 = targetEntity.position.x - SOCKET_OFFSET;
+        const x1 = getSocketWorldX(targetEntity, true);
         const y1 = targetEntity.position.y + targetYOffset;
 
         // Partial update: check if this edge's endpoints changed

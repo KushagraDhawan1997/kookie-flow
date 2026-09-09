@@ -11,7 +11,6 @@ import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
 import type { EntityTypeDefinition, Entity, Edge, EdgeType, EdgeLabelConfig, CommentEntityData, EntityChange } from '../types';
 import { TextEditOverlay } from './text-edit-overlay';
 import { ToolbarProvider } from './toolbar';
-import { DEFAULT_ENTITY_WIDTH, SOCKET_OFFSET } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
 

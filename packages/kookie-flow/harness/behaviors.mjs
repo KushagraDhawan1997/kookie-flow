@@ -440,11 +440,17 @@ console.log('\nsockets');
  * explicit `position` was indexed at its row-layout Y instead of its fraction of the entity height
  * — 57.6px out on one of them. In each case pressing the visible dot did nothing at all.
  *
- * The unit laws in src/core/socket-index.test.ts cover the same ground far more cheaply, but they
- * cannot cover THIS: the arithmetic is now shared, so both sides of any in-process comparison move
- * together. The renderer is the independent third implementation, and the only way to read it is
- * to look at the pixels. So this finds the dots by COLOUR, with no help from the index, and then
- * presses each one.
+ * WHAT THIS PROVES, EXACTLY. All five copies of the arithmetic — the index, getSocketPosition,
+ * the edges, the connection line and the socket renderer — now call one function, so this is no
+ * longer a comparison between two independent implementations and it would NOT catch an error in
+ * that function. The value laws in src/core/socket-index.test.ts are what cover the arithmetic,
+ * stated against the constants. What only this can see is the whole path end to end: the value
+ * reaching the GPU, the dot appearing at that place on screen, and a real pointer press landing on
+ * it. The dots are found by COLOUR, with no help from the index, so nothing the index says can
+ * make this pass.
+ *
+ * Keeping a known-duplicated implementation around so a test can compare against it was
+ * considered and rejected: that is keeping the hazard as a fixture.
  */
 await withPage('scene=shapes&preserveBuffer=1', async (page) => {
   // The shapes sit in one row ~2.3k wide. A 1280 viewport culls most of them, and a socket that
@@ -555,6 +561,80 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
     'pressing a painted socket starts a connection',
     dead.length === 0,
     dead.length ? `${dead.length}/${dots.blobs.length} painted dots did nothing: ${dead.join(' ')}` : undefined
+  );
+});
+
+// ---------------------------------------------------------------- edges
+
+console.log('\nedges');
+
+/**
+ * A bezier must end on the socket it names.
+ *
+ * `edges.tsx` re-derived socket Y with `max(1, out + in) * rowHeight` — a UNIFORM row height —
+ * while `getEntitySocketLayout` handles stacked rows, multi-row widgets and explicit socket
+ * heights. The two agree on every entity whose rows happen to be the same height, which is every
+ * entity in a uniform fixture and none of the awkward ones.
+ *
+ * This reads the VERTICES THAT WERE DRAWN, not pixels. The pixel version of this measurement was
+ * built first and thrown away: the usable scan column is outside the socket's painted disc and
+ * close enough that the bezier is still near-horizontal, which is a window about one pixel wide,
+ * and its readings were not reproducible between runs. Vertices are exact and have no window.
+ *
+ * Falsified against the pre-fix code: 10px off a stacked socket, 40px off a three-row widget,
+ * 28px off a socket with an explicit height — every one of them landing on the row the uniform
+ * formula predicted instead.
+ */
+await withPage('scene=shapes', async (page) => {
+  await page.setViewportSize({ width: 2700, height: 800 });
+  await page.waitForTimeout(250);
+
+  const out = await page.evaluate(() => {
+    const h = window.__harness;
+    const verts = h.drawnVertices();
+    const s = h.store.getState();
+
+    const socketAt = (entityId, socketId, isInput) => {
+      const e = s.entityMap.get(entityId);
+      if (!e) return null;
+      for (const q of s.socketQuadtree.queryPoint(e.position.x + 100, e.position.y + 100, 1400, [])) {
+        if (q.entityId === entityId && q.socketId === socketId && q.isInput === isInput) return q;
+      }
+      return null;
+    };
+
+    const rows = [];
+    for (const edge of s.edges) {
+      for (const [entityId, socketId, isInput, side] of [
+        [edge.source, edge.sourceSocket, false, 'source'],
+        [edge.target, edge.targetSocket, true, 'target'],
+      ]) {
+        const sock = socketAt(entityId, socketId, isInput);
+        if (!sock) continue;
+        let best = Infinity;
+        for (const v of verts) {
+          const d = Math.hypot(v.x - sock.x, v.y - sock.y);
+          if (d < best) best = d;
+        }
+        rows.push({ what: `${edge.id} ${side} ${entityId}/${socketId}`, dist: best });
+      }
+    }
+    return { vertexCount: verts.length, edges: s.edges.length, rows };
+  });
+
+  // Vacuity guard. An empty scene graph would make every distance below vacuously fine, and the
+  // capture DOES depend on a prototype patch landing before React mounts.
+  check(
+    'INSTRUMENT: the scene capture sees drawn geometry',
+    out.vertexCount > 0 && out.rows.length === out.edges * 2,
+    `${out.vertexCount} vertices, ${out.rows.length} endpoints for ${out.edges} edges`
+  );
+
+  const off = out.rows.filter((r) => r.dist > 0.5);
+  check(
+    'every edge endpoint lands on its socket',
+    off.length === 0,
+    off.length ? off.map((r) => `${r.what} ${r.dist.toFixed(1)}px`).join('  ') : undefined
   );
 });
 

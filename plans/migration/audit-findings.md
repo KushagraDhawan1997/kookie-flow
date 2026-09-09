@@ -28,17 +28,23 @@ argument for building the harness first; it is a measurement.
 | 10 | **OKLCH, lab and every modern colour function resolved to mid-grey**, silently. Chrome returns them from `getComputedStyle` unchanged. | `utils/color.ts` | 10 formats verified against an independent canvas readback |
 | 11 | **The per-edge layer cache was a zero-length array**, never grown while its three siblings were, so every write was silently discarded and the change-detection comparison was always true — the selection fast path rewrote every vertex of every edge. | `edges.tsx` | Correctness covered by the selection behaviours; the perf benefit is **unmeasured** |
 | 12 | **A socket was not grabbable where it was painted, three ways.** The index defaulted a width-less entity to 200 while the renderer uses `DEFAULT_ENTITY_WIDTH` (240); the update path wrote `x + width` where the insert path wrote `x + width + SOCKET_OFFSET`; and the index ignored an explicit `socket.position` that all three renderer copies honour. | `core/store.ts` (4 paths), `utils/geometry.ts` | Falsified in Chromium: pressing the painted dot started **no** connection, and a press 40px left over empty canvas did |
+| 13 | **Edges did not touch the sockets they named.** `edges.tsx` and `connection-line.tsx` re-derived socket Y with `max(1, out + in) * rowHeight` — a uniform row height — which is right only where every row is the same height. | `edges.tsx`, `connection-line.tsx`, `sockets.tsx`, `geometry.ts` | Read off the DRAWN vertices: 10px off a stacked socket, 40px off a three-row widget, 28px off an explicit socket height; 0.00px after |
 
 Fixes 7–9 are one mistake in three files, and **fixing 5 is what made them reachable at all** —
 while theme changes never arrived, the meshes were never reconstructed.
 
-### What fix 12 says about the shape of this codebase
+### What fixes 12 and 13 say about the shape of this codebase
 
-Three renderer copies, one geometry helper and one store copy of the same arithmetic; the store's
-copy was wrong on every one of the three facts it had to get right, and each of the three had a
-different cause. The repair is not three patches — `getSocketWorldX` and `getSocketYOffset` in
-`utils/geometry.ts` are now the only place a socket's position is computed, and the store's four
-paths call them.
+FIVE copies of the same arithmetic — the socket index, `getSocketPosition`, the edge renderer, the
+connection line and the socket renderer — and three of the five were wrong, each for a different
+reason. The repair is not a set of patches: `getSocketWorldX` and `getSocketYOffset` in
+`utils/geometry.ts` are now the only place a socket's position is computed, and every caller goes
+through them. The socket renderer's version takes the entity layout it had already hoisted, so the
+consolidation costs it no extra cache lookups in its hottest loop.
+
+`src/utils/socket-geometry-home.test.ts` is what stops a sixth copy. It has to read the SOURCE, and
+that is the same trap again: now that everyone shares the arithmetic, no behavioural law can see a
+new private copy that happens to agree on the day it is written.
 
 **That unification broke the first law written for it, which is worth recording.** The obvious law
 is "the index agrees with `getSocketPosition`" — and once both sides call one function they agree by
@@ -106,11 +112,12 @@ agrees everywhere and proves nothing. Still missing: a counts-and-allocations sp
 perf findings get a valid measurement under software rasterisation, and the perf baseline itself,
 which needs a quiet machine.
 
-**T2 — one measurement, four implementations.** `getEntitySocketLayout` is the source of truth for
-entity height and socket Y, and `edges.tsx`, `connection-line.tsx`, `minimap.tsx` and `store.ts`
-each re-derive it independently with different fallbacks. Edges detach from their sockets. Fix 12
-closed the store's copy — the socket INDEX now shares the renderer's arithmetic — but the three
-rendering copies are untouched, and the edge endpoint path (C11) is the next one.
+**T2 — one measurement, four implementations. CLOSED for sockets, open for the minimap.** Fixes 12
+and 13 collapsed five copies of the socket arithmetic into one, held there by a source law. What
+remains is `minimap.tsx`, which still sizes its node rectangles with `calculateMinEntityHeight` —
+the uniform-row-height formula — so a minimap rectangle is the wrong height for any entity with a
+stacked socket, a multi-row widget or an explicit socket height. Different blast radius, so it is
+named in the source law's expectations rather than fixed under cover of this one.
 
 **T3 — the frame loop has no granularity.** Edges and sockets are never viewport-culled; every
 pointermove during a connection drag triggers a full rebuild of every socket in the graph.

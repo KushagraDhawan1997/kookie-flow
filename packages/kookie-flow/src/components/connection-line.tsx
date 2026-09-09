@@ -4,12 +4,8 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
-import {
-  DEFAULT_SOCKET_TYPES,
-  DEFAULT_ENTITY_WIDTH,
-  SOCKET_OFFSET,
-} from '../core/constants';
-import { calculateMinEntityHeight } from '../utils/style-resolver';
+import { DEFAULT_SOCKET_TYPES } from '../core/constants';
+import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
@@ -165,11 +161,6 @@ export function ConnectionLine({
       return;
     }
 
-    // Calculate source socket position
-    const sourceWidth = sourceEntity.width ?? DEFAULT_ENTITY_WIDTH;
-    const sourceOutputCount = sourceEntity.outputs?.length ?? 0;
-    const sourceInputCount = sourceEntity.inputs?.length ?? 0;
-    const sourceHeight = sourceEntity.height ?? calculateMinEntityHeight(sourceOutputCount, sourceInputCount, socketLayout);
     const sourceSockets = connectionDraft.source.isInput
       ? sourceEntity.inputs
       : sourceEntity.outputs;
@@ -200,30 +191,13 @@ export function ConnectionLine({
       socket = sourceSockets[socketIndex];
       socketCacheRef.current = { key: cacheKey, index: socketIndex, socket };
     }
-    // Calculate row index based on socket type
-    // Layout order: outputs first, then inputs
-    const outputCount = sourceEntity.outputs?.length ?? 0;
-    const rowIndex = connectionDraft.source.isInput
-      ? outputCount + socketIndex
-      : socketIndex;
-    // Headerless entity types use padding-only marginTop
-    const HEADERLESS_TYPES = ['text', 'comment', 'reroute', 'image'];
-    const connMarginTop = HEADERLESS_TYPES.includes(sourceEntity.type)
-      ? socketLayout.padding : socketLayout.marginTop;
-    const connComputedH = connMarginTop +
-      Math.max(1, sourceOutputCount + sourceInputCount) * socketLayout.rowHeight +
-      socketLayout.padding;
-    const connCenterOffset = (sourceHeight - connComputedH) / 2;
-
-    const yOffset =
-      socket.position !== undefined
-        ? socket.position * sourceHeight
-        : connMarginTop + rowIndex * socketLayout.rowHeight + socketLayout.rowHeight / 2 + connCenterOffset;
-
-    const sourceX = connectionDraft.source.isInput
-      ? sourceEntity.position.x - SOCKET_OFFSET
-      : sourceEntity.position.x + sourceWidth + SOCKET_OFFSET;
-    const sourceY = sourceEntity.position.y + yOffset;
+    // Socket geometry comes from utils/geometry — the same arithmetic the socket index, the edge
+    // endpoints and getSocketPosition use. The copy that stood here derived the row height
+    // uniformly, so the line a user drags started somewhere the socket they pressed is not.
+    const sourceX = getSocketWorldX(sourceEntity, connectionDraft.source.isInput);
+    const sourceY =
+      sourceEntity.position.y +
+      getSocketYOffset(sourceEntity, socketIndex, connectionDraft.source.isInput, socketLayout);
 
     // Target is current mouse position
     const targetX = connectionDraft.mouseWorld.x;
