@@ -125,28 +125,55 @@ function displayP3ToSRGB(r: number, g: number, b: number): RGBColor {
   ];
 }
 
+const HEX_RE = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})?$/i;
+
 /**
- * Parse a hex color string to RGB array [0-1].
- * Supports #fff, #ffffff formats.
+ * Parse a hex color string to RGBA array [0-1].
+ *
+ * Supports #rgb, #rgba, #rrggbb and #rrggbbaa, with or without the leading '#'.
+ *
+ * The 8-digit form is why this exists. Without it, an alpha hex fell through to the mid-grey
+ * fallback in one path and, in the other, was handed to the browser — which resolves it correctly
+ * and returns `color(display-p3 ...)` on a P3 display and `rgb(...)` on an sRGB one. The sRGB
+ * answer parsed; the P3 answer went through a different branch that DID understand alpha. So one
+ * token produced two different colours depending on the monitor, and neither the fallback nor the
+ * divergence raised anything.
+ */
+export function hexToRGBA(hex: string): RGBAColor {
+  // typeof rather than a bare startsWith: `hexToRGB` is a public export and an untyped consumer
+  // passing a number used to get the grey fallback rather than a TypeError.
+  if (typeof hex !== 'string') return [0.5, 0.5, 0.5, 1];
+
+  const body = hex.charCodeAt(0) === 35 /* # */ ? hex.slice(1) : hex;
+  // Expand shorthand AFTER dropping the '#': the old code tested `hex.length === 4` on the
+  // un-sliced string, so hashless 'abcd' had its first character dropped and parsed as '#bbccdd'
+  // while its own regex advertised the '#' as optional.
+  const full =
+    body.length === 3 || body.length === 4
+      ? body
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : body;
+
+  const m = HEX_RE.exec(full);
+  if (!m) return [0.5, 0.5, 0.5, 1];
+
+  return [
+    parseInt(m[1], 16) / 255,
+    parseInt(m[2], 16) / 255,
+    parseInt(m[3], 16) / 255,
+    m[4] === undefined ? 1 : parseInt(m[4], 16) / 255,
+  ];
+}
+
+/**
+ * Parse a hex color string to RGB array [0-1], discarding any alpha.
+ * Supports #rgb, #rgba, #rrggbb and #rrggbbaa.
  */
 export function hexToRGB(hex: string): RGBColor {
-  // Normalize short hex (#fff -> #ffffff)
-  let normalizedHex = hex;
-  if (hex.length === 4) {
-    normalizedHex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
-  }
-
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(normalizedHex);
-  if (result) {
-    return [
-      parseInt(result[1], 16) / 255,
-      parseInt(result[2], 16) / 255,
-      parseInt(result[3], 16) / 255,
-    ];
-  }
-
-  // Fallback gray
-  return [0.5, 0.5, 0.5];
+  const [r, g, b] = hexToRGBA(hex);
+  return [r, g, b];
 }
 
 /**
@@ -260,7 +287,7 @@ function parseRGBAString(color: string): RGBAColor {
 
 /**
  * Parse any CSS color string to RGB array [0-1].
- * Supports: hex (#fff, #ffffff), rgb(), rgba(), 'transparent',
+ * Supports: hex (#fff, #rgba, #ffffff, #rrggbbaa), rgb(), rgba(), 'transparent',
  * and any CSS color format the browser supports (oklch, hsl, hwb, etc.)
  */
 export function parseColorToRGB(color: string): RGBColor {
@@ -312,7 +339,7 @@ export function resolveColorToRGBA(colorValue: string): RGBAColor | null {
 
 /**
  * Parse any CSS color string to RGBA array [0-1].
- * Supports: hex (#fff, #ffffff), rgb(), rgba(), 'transparent',
+ * Supports: hex (#fff, #rgba, #ffffff, #rrggbbaa), rgb(), rgba(), 'transparent',
  * and any CSS color format the browser supports (oklch, hsl, hwb, etc.)
  */
 export function parseColorToRGBA(color: string): RGBAColor {
@@ -323,10 +350,9 @@ export function parseColorToRGBA(color: string): RGBAColor {
     return [0.5, 0.5, 0.5, 1];
   }
 
-  // Handle hex (no alpha support in hex for now)
+  // Handle hex, including the #rgba and #rrggbbaa forms
   if (trimmed.startsWith('#')) {
-    const rgb = hexToRGB(trimmed);
-    return [rgb[0], rgb[1], rgb[2], 1];
+    return hexToRGBA(trimmed);
   }
 
   // Handle rgba()

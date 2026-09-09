@@ -5,6 +5,8 @@
  * Output is used to populate instanced glyph buffers.
  */
 
+import { hexToRGB } from './color';
+
 /**
  * BMFont glyph metrics (from msdf-bmfont-xml JSON output).
  */
@@ -177,19 +179,20 @@ export interface GlyphInstance {
 
 /**
  * Parsed color from hex or rgb string.
+ *
+ * The hex half goes through `hexToRGB` rather than parsing here. This file used to carry its own
+ * shift-and-mask parser, which was a SECOND hex implementation that disagreed with the one in
+ * utils/color.ts — and disagreed differently: given `#1e1e1eaa` it read the green, blue and alpha
+ * bytes as red, green and blue and returned a confident wrong colour, where the other returned
+ * mid-grey. Above 0x7fffffff the `>>` coercion to int32 made it wronger again.
+ *
+ * Two parsers for one format is the shape that produced five copies of the socket arithmetic,
+ * three of them wrong. One is enough.
  */
 function parseColor(color: string): [number, number, number] {
   // Handle hex colors
   if (color.startsWith('#')) {
-    const hex = color.slice(1);
-    const bigint = parseInt(hex.length === 3
-      ? hex.split('').map(c => c + c).join('')
-      : hex, 16);
-    return [
-      ((bigint >> 16) & 255) / 255,
-      ((bigint >> 8) & 255) / 255,
-      (bigint & 255) / 255,
-    ];
+    return hexToRGB(color);
   }
 
   // Handle rgb/rgba
