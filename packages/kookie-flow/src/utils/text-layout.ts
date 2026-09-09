@@ -503,8 +503,35 @@ export function countGlyphs(entries: TextEntry[], glyphMap: GlyphMap): number {
  * @param letterSpacing - Extra spacing between characters (font units)
  * @returns Array of line strings
  */
-const wrapCache = new Map<string, string[]>();
+/**
+ * Wrapped lines, cached PER FONT.
+ *
+ * The key used to be `content|maxWidth|letterSpacing`, with the font left out and a
+ * `clearWrapCache()` export carrying the comment "Call when font changes" — which had ZERO callers
+ * anywhere in the package. So a font change returned lines wrapped for the previous font's metrics
+ * and kept returning them: text overflowing its node, or breaking early, for the rest of the
+ * session.
+ *
+ * Keying on the glyph map instead of clearing is what removes the failure rather than patching it.
+ * A cache whose correctness depends on someone remembering to call a clear function is the shape
+ * that just failed; here the font IS the key, so a new font simply misses, and the old font's
+ * entries are collected with it because the outer map is weak.
+ *
+ * `clearWrapCache` is DELETED with it. It was exported from this module, exported from neither
+ * barrel, and called by nothing — and its existence was the excuse for leaving the font out of
+ * the key in the first place. Four lines to write again if something ever needs it.
+ */
+const wrapCaches = new WeakMap<GlyphMap, Map<string, string[]>>();
 const WRAP_CACHE_MAX_SIZE = 500;
+
+function cacheFor(glyphMap: GlyphMap): Map<string, string[]> {
+  let cache = wrapCaches.get(glyphMap);
+  if (!cache) {
+    cache = new Map();
+    wrapCaches.set(glyphMap, cache);
+  }
+  return cache;
+}
 
 /** Mutable state bag for breakWordByChars — avoids allocations. */
 interface WrapState {
@@ -563,6 +590,7 @@ export function wrapTextMSDF(
 ): string[] {
   if (!content) return [''];
 
+  const wrapCache = cacheFor(glyphMap);
   const cacheKey = `${content}|${maxWidthFontUnits}|${letterSpacing}`;
   const cached = wrapCache.get(cacheKey);
   if (cached) return cached;
@@ -649,13 +677,6 @@ export function wrapTextMSDF(
   wrapCache.set(cacheKey, lines);
 
   return lines;
-}
-
-/**
- * Clear the wrap cache. Call when font changes.
- */
-export function clearWrapCache(): void {
-  wrapCache.clear();
 }
 
 /**
