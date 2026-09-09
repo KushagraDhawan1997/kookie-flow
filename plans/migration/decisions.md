@@ -358,6 +358,15 @@ Two other bounds were considered and rejected in the writing:
   focused element's rect, which here is 1px. Un-clipping it to the widget's real box would make it
   paint and composite, which is the cost the bound exists to avoid.
 - **Reading order is positional, not semantic.** Two nodes at the same point are ordered by id.
+- **`role="application"` covers the consumer's `children` too, and this is not hypothetical.**
+  NVDA and JAWS leave browse mode for the roled element's whole subtree, and `{children}` is
+  rendered inside the container — so a consumer's own panel nested in the canvas inherits
+  application mode and its controls stop answering the reader's own navigation keys. Observed on
+  `apps/docs/demo`, whose radio group sits inside the container for exactly this reason. The role
+  has to be on the FOCUSED element for the mode switch to happen at all, and the focused element
+  is the container, so the fix is structural — a `role="document"` wrapper restores browse mode
+  for a subtree — and it changes the DOM a consumer's CSS is written against. Worth doing
+  deliberately; not smuggled in here.
 
 #### Convergence, deliberately not done
 
