@@ -174,3 +174,81 @@ GL text editing was before D1. Material is a DOM-chrome concern only.
   Settle against real node screens, not in the abstract.
 - The long-prompt edit surface: anchored popover vs side panel vs modal.
 - Which GL controls need disabled/read-only states, and how those map to v2 role tokens.
+
+---
+
+## D6. Phases 2 and 3 are done. What the swap actually cost, and the three things it did not fix.
+
+**Status: shipped 2026-09-09.** Ten import sites moved to `@kookie-ui/react`; 233 unit laws and 99
+browser laws green ON v2, plus all four spikes. Zero v1 imports remain. v1 stays an OPTIONAL peer,
+because the token reader genuinely supports both: every renamed token is read through a NAME LIST,
+v2 first.
+
+### The three silent hazards, and why laws had to be written before the swap
+
+Of the 99 tokens the GL layer read, 59 do not exist in v2 and **40 survive by name with different
+values**. The second half is the dangerous one — no missing token, no compile error, no census
+failure. Three of them would have changed the graph:
+
+| token | v1 | v2 | what it does |
+|---|---|---|---|
+| `--space-N` | 4/8/12/16/24/32/40 | 2/4/8/12/16/24/32 | off by ONE INDEX — every node shrinks ~20% |
+| `--radius-1..5` | 6/8/10/12/16 (medium) | 9999 (default level is `full`) | every node body becomes a stadium |
+| `--gray-*` | the neutral family | absent (`--neutral-*`) | falls back to the DARK table |
+
+The reader identifies which system is mounted (`--neutral-1` exists in v2 and in no v1 build) and
+shifts the space index. Radius is NOT compensated for: the harness pins `radius="large"` so the
+swap stays a port, and moving the node body onto `--radius-surface-N` — capsule-proof at every
+level — is a design step of its own.
+
+### The palette: what a design system owes a graph, and what it does not
+
+42 Radix hue tokens are frozen into `src/core/palette.ts` at the values v1 resolved, measured by
+`harness/spikes/palette-freeze.mjs`. v2 ships six distinct pigments; a socket palette needs nine
+and the public `AccentColor` union needs 26. Widening v2's `tones` was rejected at ~1.15KB gzipped
+per family against its CSS budget gate.
+
+**Grey, red and green are NOT frozen.** A graph owns "purple means image"; nobody owns "grey means
+unspecified" or "red means wrong". The neutral family reads from the theme on both systems, and the
+two semantic colours took their v2 names — `--destructive-9` for an invalid connection,
+`--success-9` for a valid drop target.
+
+**The frozen table is consulted BEFORE the theme**, which is a correction made after the swap by a
+law rather than by reasoning. Theme-first looked safe (on v1 the freeze is inert) and produced a
+palette half one system's and half the other's: blue, amber, orange and green DO exist in v2, so
+`--blue-10` moved to `rgb(0,122,240)` and green to a near-fluorescent while twenty-one others kept
+v1's. The cost is stated: an app re-declaring `--purple-10` in its own CSS no longer moves the
+socket colour. The escape is `socketTypes`, which takes any CSS colour verbatim.
+
+### Behaviour that changed, and is not being chased back
+
+- **Icon segments are no longer square.** v1's `iconOnly` zeroed the label padding and set a
+  min-width; v2 refuses the prop in the type. The only call-site spellings reach into the private
+  `--kui-ct-*` stem from outside — the documented `--kui-h` trap. **Needs a system decision**, not
+  a call-site hack.
+- **The toolbar gap tightens 12px → 8px.** `gap="3"` is a different distance in v2, and chasing
+  the v1 pixel with a different semantic index is the numeric-coincidence thinking the
+  non-negotiables forbid.
+- **Toolbar icons paint at the size index's box** (16 fine / 20 coarse, not a fixed 14) and use
+  `iconStroke`. v2 exports it precisely because it ships no icon set.
+- **Fields lose `variant="soft"`** — v2 has one resting field dress.
+- **Controls are taller on a coarse pointer** (44 vs 32 at size 2). v2's control ladder is
+  pointer-indexed and v1's was not; the socket layout is not, so a touch device now has a
+  size mismatch inside the row. **Open.**
+- **`ThemeComponent` is retyped to `{ children }`.** v2 refuses `accentColor`, `hasBackground` and
+  `asChild`: it has ONE app-wide accent and its neutrals derive their hue from it, so a per-subtree
+  accent would mean a per-subtree palette. An entity's colour still drives its header and selection
+  in GL.
+
+### Still open, and out of Phase 2/3 scope
+
+- **apps/docs cannot stay on v1 and cannot leave it.** The two stylesheets cannot coexist on one
+  page — they share 188 token names and the same `[data-radius]` vocabulary, and v1's block writes
+  `calc(... * var(--scaling))` where `--scaling` is declared only on `.radix-themes`, so on a
+  `.kui-theme` host v2's derived bands resolve EMPTY. Meanwhile `@kushagradhawan/kookie-blocks`
+  peer-depends on v1 and the docs use five of its components. Port the docs off kookie-blocks, port
+  kookie-blocks to v2, or keep a v1-only docs build.
+- **The CJS question from D4 is untouched.** v2 is ESM-only by deliberate design; kookie-flow still
+  publishes a `require` condition. Owner sign-off.
+- **Releasability.** `@kookie-ui/react` is unpublished, vendored as a tarball at
+  `vendor/kookie-ui-react-0.0.0.tgz`. The peer range is a placeholder.
