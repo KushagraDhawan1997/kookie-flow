@@ -468,6 +468,20 @@ export function Edges({
     // Ensure capacity
     ensureCapacity(edges.length);
 
+    // The per-edge layer cache was allocated at length 0 and never grown, while its three
+    // siblings were. Writes past a typed array's end are SILENTLY discarded and reads return
+    // undefined, so `newLayer !== edgeLayers[i]` was always true and the selection-change fast
+    // path rewrote every vertex of every edge — exactly the work the cache exists to avoid.
+    //
+    // It has to grow HERE, before either path reads it: the fast path below and the full rebuild
+    // further down both take their reference from this ref, and ensureCapacity early-returns on
+    // vertex capacity so it cannot own this.
+    if (edgeLayersRef.current.length < edges.length) {
+      const grownLayers = new Uint8Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
+      grownLayers.set(edgeLayersRef.current);
+      edgeLayersRef.current = grownLayers;
+    }
+
     // Fast path: layer and/or color update only (no geometry or position changes)
     if (!geometryDirtyRef.current && !positionDirtyRef.current && (layerDirtyRef.current || colorDirtyRef.current)) {
       const evStarts = edgeVertexStartsRef.current;
