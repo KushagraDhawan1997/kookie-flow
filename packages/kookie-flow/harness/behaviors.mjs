@@ -529,12 +529,24 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
               gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
               const dpr = w / canvas.clientWidth;
 
-              // The socket palette, resolved through the library's own token reader rather than
-              // restated here — a second copy of the theme is a second thing to go stale.
+              // The socket palette, taken from the FROZEN table rather than from CSS.
+              //
+              // It used to resolve `var(--blue-10)` through the library's colour reader, on the
+              // reasoning that a second copy of the theme is a second thing to go stale. That was
+              // right until the palette left CSS: KookieUI v2 has none of these names, so
+              // `resolveColorToRGB` returns null for all five, the wanted set empties, the scan
+              // matches nothing, and this law goes red for a reason that has nothing to do with
+              // what was painted.
+              //
+              // `frozenHue` is the source of truth on both sides of the swap — measured off v1,
+              // and the only source after it. Its agreement with CSS is asserted separately,
+              // while CSS still has an opinion.
+              const appearance = window.__harness.themeTokens().appearance;
               const want = new Set(
                 ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10']
-                  .map((t) => window.__harness.lib.resolveColorToRGB(`var(${t})`))
+                  .map((t) => window.__harness.lib.frozenHue(t, appearance))
                   .filter(Boolean)
+                  .map((hex) => window.__harness.lib.parseColorToRGB(hex))
                   .map(([r, g, b]) =>
                     `${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`
                   )
@@ -583,6 +595,46 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
           )
         )
       )
+  );
+
+  /**
+   * The freeze is faithful: every frozen hue equals what the mounted theme resolves.
+   *
+   * This is the whole proof that moving the palette out of CSS paints identical pixels, and it is
+   * checkable only while a theme still defines these names. After the swap CSS returns null for
+   * all of them, and the instrument line below says so out loud rather than letting the law pass
+   * quietly on an empty comparison.
+   */
+  const fidelity = await page.evaluate(() => {
+    const appearance = window.__harness.themeTokens().appearance;
+    const names = ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10',
+                   '--teal-10', '--pink-10', '--violet-10', '--gray-10'];
+    return names.map((t) => {
+      const css = window.__harness.lib.resolveColorToRGB(`var(${t})`);
+      const frozen = window.__harness.lib.frozenHue(t, appearance);
+      if (!css || !frozen) return { t, checkable: false };
+      const f = window.__harness.lib.parseColorToRGB(frozen);
+      return {
+        t,
+        checkable: true,
+        near: css.every((c, i) => Math.abs(c - f[i]) < 0.004),
+        css: css.map((c) => Math.round(c * 255)).join(','),
+        frozen,
+      };
+    });
+  });
+  const checkable = fidelity.filter((f) => f.checkable);
+  check(
+    'INSTRUMENT: the theme still defines the frozen hues, so fidelity is checkable',
+    checkable.length === fidelity.length,
+    `${checkable.length}/${fidelity.length} checkable — after the v2 swap this drops to 0 and the ` +
+      `frozen table becomes the only source`
+  );
+  const drifted = checkable.filter((f) => !f.near);
+  check(
+    'every frozen hue equals what the theme resolves',
+    drifted.length === 0,
+    drifted.map((f) => `${f.t}: theme rgb(${f.css}) vs frozen ${f.frozen}`).join('; ')
   );
 
   // Vacuity guard. A scan that found nothing would let every press below pass by never running,

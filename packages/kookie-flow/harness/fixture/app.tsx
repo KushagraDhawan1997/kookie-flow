@@ -22,6 +22,7 @@ import { makeGraph, makeShapes, makeGroup, makeComments } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { frozenHue } from '../../src/core/palette';
 
 declare global {
   interface Window {
@@ -48,6 +49,7 @@ export interface HarnessApi {
     parseColorToRGBA(v: string): [number, number, number, number];
     resolveColorToRGB(v: string): [number, number, number] | null;
     parsePx(v: string): number;
+    frozenHue(name: string, appearance: 'light' | 'dark'): string | null;
   };
   /** Read one pixel from the WebGL canvas, in CSS pixel coordinates from the top-left. */
   readPixel(x: number, y: number): [number, number, number, number] | null;
@@ -731,7 +733,7 @@ function Probe() {
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
-      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx },
+      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, frozenHue },
       themeTokens: () => liveTokens as unknown as Readonly<Record<string, number | number[] | string>>,
       /**
        * What the PACKAGE resolves a length token to, through its own shipped path.

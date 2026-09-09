@@ -4,6 +4,8 @@
  */
 
 import type { ThemeTokens } from '../hooks/useThemeTokens';
+import { frozenHue } from '../core/palette';
+import { hexToRGB } from './color';
 import type { AccentColor } from '../types';
 import type { RGBColor } from './color';
 
@@ -83,6 +85,23 @@ export function resolveAccentColorRGB(
   // Check if it's a valid RGB array
   if (Array.isArray(value) && value.length >= 3) {
     return [value[0], value[1], value[2]];
+  }
+
+  /**
+   * Then the frozen palette, for the twenty-one families KookieUI v2 does not have.
+   *
+   * THIS BRANCH IS THE POINT, and its absence was a defect waiting to happen: `resolveAccentColorRGB`
+   * had NO route from a hex to an RGB triple — it looked the name up in `tokens` and gated on
+   * `Array.isArray`, so a hex string in the table would have failed that check silently and every
+   * one of those twenty-one accents would have fallen back to the global accent with one warning
+   * each. `resolveSocketColor` one file over already returns a verbatim colour, which is why the
+   * gap was easy to miss: the two palettes look symmetrical and were not.
+   *
+   * Ordered theme-then-frozen for the same reason as the socket palette: on v1 this is unreachable.
+   */
+  if (tokenKey) {
+    const frozen = frozenHue(tokenKey, tokens.appearance);
+    if (frozen) return hexToRGB(frozen);
   }
 
   // Fallback: return sentinel to use global accent.

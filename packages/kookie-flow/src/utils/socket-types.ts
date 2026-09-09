@@ -4,6 +4,7 @@
  */
 
 import type { ThemeTokens } from '../hooks/useThemeTokens';
+import { frozenHue } from '../core/palette';
 import type { SocketType } from '../types';
 import { rgbToHex, type RGBColor } from './color';
 
@@ -53,13 +54,26 @@ function resolveSocketColor(color: string, tokens: ThemeTokens): string {
     return color;
   }
 
-  // Look up token value
+  // The theme first, so an app that really does define the token still wins.
   const tokenValue = tokens[color as keyof ThemeTokens];
   if (tokenValue && Array.isArray(tokenValue) && tokenValue.length >= 3) {
     return rgbToHex(tokenValue as RGBColor);
   }
 
-  // Fallback if token not found
+  /**
+   * Then the palette this package froze out of CSS.
+   *
+   * The hue families a socket palette needs are not tokens any design system owes us — KookieUI v2
+   * ships six distinct pigments and a graph needs nine — so they live in `core/palette.ts` at the
+   * values v1 resolved. See that file for why they were frozen and what it gives up.
+   *
+   * Ordered theme-then-frozen rather than the reverse: on v1 every one of these names IS in the
+   * theme, so this branch is unreachable and the freeze is inert. It becomes the live path on the
+   * far side of the swap, which is what makes the swap paint identical pixels.
+   */
+  const frozen = frozenHue(color, tokens.appearance);
+  if (frozen) return frozen;
+
   console.warn(`[kookie-flow] Unknown color token: ${color}`);
   return '#808080';
 }
