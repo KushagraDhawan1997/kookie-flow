@@ -26,9 +26,16 @@ argument for building the harness first; it is a measurement.
 | 8 | **Same for the socket meshes**, which additionally lose the `fgMesh.instanceMatrix = bgMesh.instanceMatrix` aliasing the two-layer split depends on. | `sockets.tsx` | Socket band 1730 → 1176 pre-fix |
 | 9 | **Same for the selection outline** — found only by the round trip; it came back as a partial rectangle and never recovered. | `entity-selection.tsx` | Round trip drifted by 382px; now identical |
 | 10 | **OKLCH, lab and every modern colour function resolved to mid-grey**, silently. Chrome returns them from `getComputedStyle` unchanged. | `utils/color.ts` | 10 formats verified against an independent canvas readback |
+| 11 | **The per-edge layer cache was a zero-length array**, never grown while its three siblings were, so every write was silently discarded and the change-detection comparison was always true — the selection fast path rewrote every vertex of every edge. | `edges.tsx` | Correctness covered by the selection behaviours; the perf benefit is **unmeasured** |
 
 Fixes 7–9 are one mistake in three files, and **fixing 5 is what made them reachable at all** —
 while theme changes never arrived, the meshes were never reconstructed.
+
+Fix 11 is honest about its limits: it is plainly correct by inspection and the selection behaviours
+prove it did not break anything, but the work it saves cannot be measured here. Frame times on a
+software rasteriser would not show it, and the instrument that would — the audit's
+counts-and-allocations spike — does not exist yet. It is recorded as unmeasured rather than
+claimed.
 
 ### The instrument lesson from 7–9
 
