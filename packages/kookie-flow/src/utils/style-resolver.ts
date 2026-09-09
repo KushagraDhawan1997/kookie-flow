@@ -218,7 +218,7 @@ function resolveTokenPx(
 /**
  * Resolve a color token reference to RGB.
  */
-function resolveTokenColor(
+export function resolveTokenColor(
   token: keyof ThemeTokens | 'transparent',
   tokens: ThemeTokens
 ): RGBColor {

@@ -252,3 +252,69 @@ socket colour. The escape is `socketTypes`, which takes any CSS colour verbatim.
   publishes a `require` condition. Owner sign-off.
 - **Releasability.** `@kookie-ui/react` is unpublished, vendored as a tarball at
   `vendor/kookie-ui-react-0.0.0.tgz`. The peer range is a placeholder.
+
+---
+
+## D7. Phase 4 and Phase 5: the widgets are in GL, and one thing that went with them is not back.
+
+**Status: shipped 2026-09-09.** The seven built-in socket widgets — checkbox, slider, select,
+colour, text, number, textarea — draw in WebGL and take their interaction there. The DOM's entire
+remaining role on a node is one borrowed input, for one field, while it is being edited.
+
+### What is where
+
+| | |
+|---|---|
+| `widgets-gl.tsx` | every widget's chrome, ONE instanced draw call, kind and value as per-instance attributes |
+| `widget-geometry.ts` | the world box, read by the renderer, the hit test and the borrowed input alike |
+| `widget-hit.ts` | which widget a press landed on, and what a slider drag means at a given x |
+| `widget-edit-overlay.tsx` | the borrowed DOM input — mounts on edit, unmounts on close |
+| `widgets-layer.tsx` | now ONLY consumer-supplied widget components, the documented escape hatch |
+
+A checkbox and a slider never touch the DOM at any point in a gesture. The other four borrow a
+real input, because of what a text field OWES rather than what is possible: IME composition, the
+platform's own selection and clipboard behaviour, and — for colour — the operating system's
+picker, which cannot be reimplemented. The GL caret this repo already ships earns its place on a
+canvas TEXT ENTITY, where the text is the document and the metrics are ours; here it would be a
+reimplementation of the platform.
+
+### THE ACCESSIBILITY GAP, and it is not fixed
+
+**Before this phase a screen-reader user could reach a socket widget. Now there is nothing to
+reach.** A canvas has no roles, no names and no focusable children, so moving the widgets into GL
+took them out of the accessibility tree entirely. The naming law that used to cover them now covers
+only the DOM that remains — the toolbar, a consumer-supplied widget, and the borrowed input — and
+says so in its own docstring rather than quietly measuring something easier.
+
+Two routes, neither taken, because this is a product decision and not an implementation detail:
+
+1. **An off-screen DOM mirror.** A visually-hidden, focusable element per visible widget, kept in
+   step with the GL layer, with the real roles and names. It is what every serious canvas app does.
+   It also puts persistent DOM back on a node — which is what this phase existed to remove — so the
+   honest version of this is that the rule is about PAINT, not about the accessibility tree, and
+   the rule should be amended to say so.
+2. **ARIA on the canvas element.** Cheaper and much weaker: the graph announces as one thing with
+   a description. It does not give anyone a way to operate a slider.
+
+Recommendation: route 1, with the rule amended to "everything persistent PAINTS in GL", because a
+hidden mirror costs no compositing and route 2 does not actually make the graph operable.
+
+### Bugs this phase produced and fixed, both of them ordering
+
+- **The borrowed input could not take focus.** Its style was applied from a passive effect and the
+  focus from a layout effect — and layout effects run first, so focus was attempted while the
+  element was still at its initial `display: none`. The browser refuses that silently: the field
+  mounted, looked correct, and swallowed every keystroke. The style is computed during render now.
+- **Only the last character of anything typed survived.** The input was controlled on the value
+  captured when the widget was pressed, which never moves — so each keystroke wrote out correctly
+  and then the field re-rendered with the original string. Typing "hello" into a field reading
+  "name" left "nameo". The draft is local for the length of the edit, which is the conclusion the
+  DOM widgets had already reached by the same route.
+
+### Still open
+
+- The accessibility gap above.
+- `select` cycles to the next option on press rather than opening a list. It is honest and
+  operable, and a real dropdown is either a GL menu (rows, hit testing, scrolling — a component in
+  its own right) or a borrowed DOM `<select>`. Not judged.
+- A GL widget has no hover or focus state yet; the shader has the attributes for it.

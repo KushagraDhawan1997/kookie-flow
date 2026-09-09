@@ -90,6 +90,29 @@ export const THEME_COLORS = {
   // ============================================
   // Text
   // ============================================
+  /**
+   * On-node widget chrome, drawn in GL.
+   *
+   * A widget is a CONTROL on a surface, so it wears the field family's dress: a well one step off
+   * the node body, a hairline, and the accent where it is filled or ticked. These name v2 roles
+   * with the v1 name as the second entry wherever they differ, the way every other token this
+   * package reads does.
+   */
+  widget: {
+    /** The field well. One step off the node body so a control reads as recessed. */
+    fill: '--neutral-3',
+    /** The hairline. */
+    border: '--neutral-6',
+    /** A slider's unfilled channel, and a checkbox's box when it is off. */
+    track: '--neutral-4',
+    /** The filled portion, a ticked box, a grabbed thumb. */
+    active: '--accent-9',
+    /** What sits ON the active fill — a tick, a label over a solid. */
+    activeContrast: '--neutral-1',
+    /** A slider's grip. */
+    thumb: '--neutral-1',
+  },
+
   text: {
     primary: '--neutral-12',
     secondary: '--neutral-11',

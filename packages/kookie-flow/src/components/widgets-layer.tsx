@@ -26,10 +26,10 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useSocketLayout } from '../contexts/StyleContext';
-import { BUILT_IN_WIDGETS } from './widgets';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { getWidgetBox } from '../utils/widget-geometry';
 import type {
   Entity,
   Socket,
@@ -298,11 +298,20 @@ export function WidgetsLayer({
         const config = resolveWidgetConfig(socket, socketTypes);
         if (!config) continue;
 
-        // Pre-resolve widget component (avoids passing widgetTypes to child)
-        const WidgetComponent =
-          config.customComponent ??
-          currentWidgetTypes[config.type] ??
-          BUILT_IN_WIDGETS[config.type];
+        /**
+         * Only CONSUMER-SUPPLIED widgets render in the DOM now.
+         *
+         * The seven built-ins draw in WebGL (`widgets-gl.tsx`) and take their interaction there,
+         * because a real design-system control per socket per visible node is thousands of
+         * composited layers — the same measured reason the DOM label path was deleted before them.
+         *
+         * A component the consumer passed is a different thing: `plans/technical-decisions.md`
+         * names custom node content as the escape hatch that stays in the DOM, and a library
+         * cannot draw a component it has never seen. So a `widgetTypes` entry or an inline
+         * `socket.widget` component still mounts here, and a built-in does not.
+         */
+        const WidgetComponent = config.customComponent ?? currentWidgetTypes[config.type];
+        if (!WidgetComponent) continue;
 
         if (!WidgetComponent) continue;
 
@@ -388,17 +397,15 @@ export function WidgetsLayer({
         return;
       }
 
-      // Center sockets vertically within entity height (bidirectional)
-      const widgetCenterOffset = (height - entityLayout.computedHeight) / 2;
-
-      // Widget world position from cache
-      const widgetX = cachedPos.layout === 'stacked'
-        ? entity.position.x + socketLayout.padding // Full width for stacked
-        : entity.position.x + socketLayout.padding + labelWidth;
-      const widgetY = entity.position.y + cachedPos.widgetY + widgetCenterOffset;
-      const widgetWidth = cachedPos.layout === 'stacked'
-        ? width - socketLayout.padding * 2 // Full width for stacked
-        : width - socketLayout.padding * 2 - labelWidth;
+      // The world box, from the ONE home. The GL widget layer and the hit test read the same
+      // function, so a widget cannot be drawn in one place and pressed in another — the defect
+      // the socket geometry already produced once.
+      const box = getWidgetBox(entity, socketIndex, socketLayout, entityWidthDefault, labelWidth);
+      if (!box) {
+        el.style.visibility = 'hidden';
+        return;
+      }
+      const { x: widgetX, y: widgetY, width: widgetWidth } = box;
 
       // Convert to screen coordinates for transform (scale doesn't affect translate)
       const screenX = widgetX * zoom + vpX;

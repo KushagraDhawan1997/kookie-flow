@@ -19,11 +19,12 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { frozenHue } from '../../src/core/palette';
+import { getWidgetBox } from '../../src/utils/widget-geometry';
 
 declare global {
   interface Window {
@@ -94,6 +95,10 @@ export interface HarnessApi {
   themeTokens(): Readonly<Record<string, number | number[] | string>>;
   /** Flip the appearance on either design system (class for v1, data-appearance for v2). */
   setAppearance(mode: string): { ok: boolean; on: string };
+  /** The value a widget is showing, straight off the entity. */
+  widgetValue(entityId: string, socketId: string): unknown;
+  /** Where a widget's centre is on screen, so a law can press the thing it drew. */
+  widgetPoint(entityId: string, socketId: string): { x: number; y: number } | null;
 }
 
 function params() {
@@ -112,11 +117,12 @@ function params() {
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
     radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
     toolbar: q.get('toolbar') === '1',
+    customWidget: q.get('customWidget') === '1',
     entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -375,6 +381,30 @@ const TOOLBAR_TYPES = {
   image: { type: 'image', toolbar: true as const },
   comment: { type: 'comment', toolbar: true as const },
 };
+
+/**
+ * A consumer-supplied widget component — the DOM escape hatch, and the only widget that still
+ * mounts as DOM now that the seven built-ins draw in WebGL.
+ *
+ * Deliberately plain: the point is that the library renders whatever component it was handed and
+ * keeps its snapshot in step with the graph, not that this looks like anything.
+ */
+function CustomTextWidget({ value, onChange, label }: {
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+  label?: string;
+}) {
+  return (
+    <input
+      aria-label={label ?? 'custom'}
+      value={value === undefined || value === null ? '' : String(value)}
+      onChange={(e) => onChange?.(e.target.value)}
+      style={{ width: '100%' }}
+    />
+  );
+}
+
+const CUSTOM_WIDGET_TYPES = { text: CustomTextWidget, string: CustomTextWidget };
 
 function themeRoot(): Element {
   return (
@@ -693,6 +723,43 @@ function Probe() {
         };
       },
       setAppearance: setAppearanceOn,
+      widgetValue(entityId: string, socketId: string) {
+        const e = store.getState().entityMap.get(entityId);
+        const values = (e?.data as { values?: Record<string, unknown> } | undefined)?.values;
+        return values?.[socketId];
+      },
+      /**
+       * Screen coordinates of a widget's centre, computed from the SAME geometry the renderer
+       * draws from and the hit test presses. A law that computed its own box would be testing its
+       * own arithmetic against the renderer's — which is how the socket laws came to press 40px
+       * from anything.
+       *
+       * The checkbox is the one exception, and it is stated rather than hidden: its mark occupies
+       * a square at the LEFT of the row, not the whole row, so pressing the row's centre would
+       * miss it. The renderer draws it at `min(rowHeight, 18)` from the leading edge; this reads
+       * the same rule.
+       */
+      widgetPoint(entityId: string, socketId: string) {
+        const s = store.getState();
+        const e = s.entityMap.get(entityId);
+        if (!e) return null;
+        const inputs = e.inputs ?? [];
+        const i = inputs.findIndex((sock) => sock.id === socketId);
+        if (i < 0) return null;
+        if (!s.socketLayout) return null;
+        const box = getWidgetBox(e, i, s.socketLayout);
+        if (!box) return null;
+        const isCheckbox = inputs[i].type === 'boolean';
+        const side = Math.min(box.height, 18);
+        const wx = isCheckbox ? box.x + side / 2 : box.x + box.width / 2;
+        const wy = box.y + box.height / 2;
+        const canvas = document.querySelector('canvas');
+        const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0 };
+        return {
+          x: wx * s.viewport.zoom + s.viewport.x + rect.left,
+          y: wy * s.viewport.zoom + s.viewport.y + rect.top,
+        };
+      },
       /**
        * The census proves a token is DEFINED. This proves it means what it meant.
        *
@@ -817,6 +884,7 @@ function App() {
     if (p.scene === 'shapes') return makeShapes();
     if (p.scene === 'group') return makeGroup();
     if (p.scene === 'toolbar') return makeToolbarScene();
+    if (p.scene === 'widgets') return makeWidgets();
     if (p.scene === 'comments') return makeComments();
     return makeGraph({
       count: p.count,
@@ -853,6 +921,24 @@ function App() {
         onEntitiesChange={i === 0 ? onEntitiesChange : undefined}
         onEdgesChange={i === 0 ? onEdgesChange : undefined}
         showWidgets={p.widgets}
+        {...(p.customWidget ? { widgetTypes: CUSTOM_WIDGET_TYPES } : {})}
+        /**
+         * Apply a widget change the way a real consumer would.
+         *
+         * KookieFlow is CONTROLLED: the callback reports the new value and the app owns writing it
+         * back. Without this the whole widget layer looks broken — a press fires, the value never
+         * moves, and every law reads the old number. That is the same shape as the change applier
+         * reading `c.item`, and it is why this is wired in the fixture rather than assumed.
+         */
+        onWidgetChange={(entityId, socketId, value) => {
+          setEntities((prev) =>
+            prev.map((e) => {
+              if (e.id !== entityId) return e;
+              const data = (e.data ?? {}) as { values?: Record<string, unknown> };
+              return { ...e, data: { ...data, values: { ...(data.values ?? {}), [socketId]: value } } };
+            })
+          );
+        }}
         {...(p.toolbar ? { entityTypes: TOOLBAR_TYPES } : {})}
         showGrid={p.grid}
         showMinimap={false}

@@ -382,3 +382,43 @@ export function makeToolbarScene(): Fixture {
     edges: [],
   };
 }
+
+/**
+ * One entity carrying one of every widget kind, wired so a value change round-trips.
+ *
+ * The graph fixtures elsewhere set no socket values at all, which is why nothing in the suite ever
+ * exercised a widget: a widget with no value and no config renders nothing to press.
+ */
+export function makeWidgets(): Fixture {
+  return {
+    entities: [
+      {
+        id: 'w',
+        type: 'default',
+        position: { x: 120, y: 120 },
+        width: 320,
+        data: {
+          label: 'Widgets',
+          values: {
+            flag: false,
+            amount: 0.2,
+            label: 'name',
+            count: 3,
+            tint: '#8e4ec6',
+            mode: 'one',
+          },
+        },
+        inputs: [
+          { id: 'flag', name: 'Flag', type: 'boolean' },
+          { id: 'amount', name: 'Amount', type: 'float', min: 0, max: 1, step: 0.01 },
+          { id: 'label', name: 'Label', type: 'string' },
+          { id: 'count', name: 'Count', type: 'int', min: 0, max: 10, step: 1 },
+          { id: 'tint', name: 'Tint', type: 'color' },
+          { id: 'mode', name: 'Mode', type: 'enum', options: ['one', 'two', 'three'] },
+        ],
+        outputs: [{ id: 'out', name: 'Out', type: 'float' }],
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}

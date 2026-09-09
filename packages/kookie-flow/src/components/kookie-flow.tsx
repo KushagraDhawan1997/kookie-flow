@@ -28,6 +28,7 @@ import { EntitySelection } from './entity-selection';
 import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
 import { WidgetsLayer } from './widgets-layer';
+import { WidgetsGL } from './widgets-gl';
 import { ThemeProvider, StyleProvider, FontProvider, useTheme, useSocketLayout } from '../contexts';
 import { resolveSocketTypes } from '../utils/socket-types';
 import {
@@ -61,6 +62,8 @@ import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { TextEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
+import { getWidgetAt, sliderValueAt, nextSelectValue, type WidgetHit } from '../utils/widget-hit';
+import { WidgetEditOverlay } from './widget-edit-overlay';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
 import { CanvasErrorBoundary } from './error-boundary';
@@ -327,6 +330,10 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             maxZoom={maxZoom}
           />
           <InputHandler
+            showWidgets={showWidgets}
+            onWidgetChange={onWidgetChange}
+            defaultEntityWidth={defaultEntityWidth}
+            socketLabelWidth={socketLabelWidth}
             minZoom={minZoom}
             maxZoom={maxZoom}
             snapToGrid={snapToGrid}
@@ -350,6 +357,9 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             <FlowCanvas
               showGrid={showGrid}
               showStats={showStats}
+              showWidgets={showWidgets}
+              defaultEntityWidth={defaultEntityWidth}
+              socketLabelWidth={socketLabelWidth}
               defaultEdgeType={defaultEdgeType}
               socketTypes={resolvedSocketTypes}
               showSocketLabels={showSocketLabels}
@@ -506,6 +516,14 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
  * click-to-select, box selection, keyboard shortcuts.
  */
 interface InputHandlerProps {
+  /**
+   * Widget interaction lives in this component, because a press on a widget has to beat the
+   * entity drag that would otherwise start under it — and that ordering only exists here.
+   */
+  showWidgets: boolean;
+  onWidgetChange?: KookieFlowProps['onWidgetChange'];
+  defaultEntityWidth?: number;
+  socketLabelWidth?: number;
   children: React.ReactNode;
   minZoom: number;
   maxZoom: number;
@@ -561,6 +579,10 @@ function InputHandler({
   onEntitiesChange,
   onEdgesChange,
   onFileDrop,
+  showWidgets,
+  onWidgetChange,
+  defaultEntityWidth,
+  socketLabelWidth,
 }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
@@ -592,6 +614,19 @@ function InputHandler({
   useEffect(() => {
     store.getState().setSocketLayout(socketLayout);
   }, [store, socketLayout]);
+
+  /**
+   * The widget being dragged, and the widget being edited.
+   *
+   * The DRAG is a ref: a slider moves on every pointermove, and a React re-render per frame is the
+   * one thing this codebase's rules forbid outright. The EDIT is state, because a borrowed DOM
+   * input is a mounted element — that happens once per edit, not once per frame, which is exactly
+   * what React state is for.
+   */
+  const widgetDragRef = useRef<WidgetHit | null>(null);
+  const [widgetEdit, setWidgetEdit] = useState<WidgetHit | null>(null);
+  const onWidgetChangeRef = useRef(onWidgetChange);
+  onWidgetChangeRef.current = onWidgetChange;
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -1041,6 +1076,55 @@ function InputHandler({
         const clickedEntity =
           queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
 
+        /**
+         * A widget takes the press before the entity does.
+         *
+         * Checked here rather than earlier because a widget only exists ON an entity, so the
+         * quadtree has already narrowed the search to one — and checked before the drag branch
+         * below because otherwise every slider drag would move the node instead of the value.
+         *
+         * A checkbox and a slider are answered entirely in GL, with no DOM at any moment. The
+         * other four borrow a real input for the duration of one edit, which is the rule this
+         * whole layer exists to satisfy.
+         */
+        if (clickedEntity && showWidgets) {
+          const hit = getWidgetAt(
+            clickedEntity,
+            worldPos.x,
+            worldPos.y,
+            socketTypes,
+            socketLayout,
+            store.getState().connectedSockets,
+            defaultEntityWidth,
+            socketLabelWidth
+          );
+          if (hit) {
+            e.preventDefault();
+            if (hit.config.type === 'checkbox') {
+              onWidgetChangeRef.current?.(hit.entityId, hit.socketId, !hit.value);
+              return;
+            }
+            if (hit.config.type === 'slider') {
+              widgetDragRef.current = hit;
+              containerRef.current?.setPointerCapture(e.pointerId);
+              onWidgetChangeRef.current?.(
+                hit.entityId,
+                hit.socketId,
+                sliderValueAt(hit, worldPos.x)
+              );
+              return;
+            }
+            if (hit.config.type === 'select') {
+              const next = nextSelectValue(hit);
+              if (next !== null) onWidgetChangeRef.current?.(hit.entityId, hit.socketId, next);
+              return;
+            }
+            // text, number, textarea, color — a borrowed DOM input, for this edit only.
+            setWidgetEdit(hit);
+            return;
+          }
+        }
+
         if (clickedEntity) {
           const editingId = store.getState().editingEntityId;
 
@@ -1112,6 +1196,28 @@ function InputHandler({
   // (which is batched). This prevents issues when events fire before React processes state updates.
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent) => {
+      /**
+       * A slider drag, before anything else in this handler.
+       *
+       * First because it is the only branch that owns the pointer outright — a drag that started
+       * on a slider is a drag on that slider until the button comes up, and every branch below
+       * would otherwise get a chance to pan, marquee or move a node underneath it.
+       *
+       * No React state, by design: this runs on every pointermove for the length of the gesture,
+       * and the value goes straight out through the consumer's callback.
+       */
+      if (widgetDragRef.current) {
+        const hit = widgetDragRef.current;
+        const rect = cachedRectRef.current;
+        const { viewport } = store.getState();
+        const world = screenToWorld(
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          viewport
+        );
+        onWidgetChangeRef.current?.(hit.entityId, hit.socketId, sliderValueAt(hit, world.x));
+        return;
+      }
+
       const { connectionDraft, selectionBox } = store.getState();
       const primaryButtonDown = (e.buttons & 1) !== 0;
 
@@ -1587,6 +1693,14 @@ function InputHandler({
   // before React has processed the state updates from handlePointerMove.
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent) => {
+      // A slider drag ends here and nowhere else. Released first so a gesture that started on a
+      // widget cannot fall through into the selection logic below and clear the selection.
+      if (widgetDragRef.current) {
+        widgetDragRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
       const { connectionDraft, selectionBox } = store.getState();
 
       // End connection draft (check store state, not React state)
@@ -2328,11 +2442,22 @@ function InputHandler({
       tabIndex={0}
     >
       {children}
+      {/* The DOM's entire remaining role on a node: one input, for one field, while it is being
+          edited. It unmounts the moment the edit ends — see widget-edit-overlay.tsx. */}
+      <WidgetEditOverlay
+        hit={widgetEdit}
+        onChange={onWidgetChangeRef.current}
+        onClose={() => setWidgetEdit(null)}
+      />
     </div>
   );
 }
 
 interface FlowCanvasProps {
+  /** Widget chrome draws in GL, so the canvas needs the same three facts the DOM layer had. */
+  showWidgets: boolean;
+  defaultEntityWidth?: number;
+  socketLabelWidth?: number;
   showGrid: boolean;
   showStats: boolean;
   defaultEdgeType: import('../types').EdgeType;
@@ -2371,6 +2496,9 @@ function WebGLTextLayer({
 function FlowCanvas({
   showGrid,
   showStats,
+  showWidgets,
+  defaultEntityWidth,
+  socketLabelWidth,
   defaultEdgeType,
   socketTypes,
   showSocketLabels,
@@ -2442,6 +2570,13 @@ function FlowCanvas({
         <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />
+        {showWidgets && (
+          <WidgetsGL
+            socketTypes={socketTypes}
+            defaultEntityWidth={defaultEntityWidth}
+            socketLabelWidth={socketLabelWidth}
+          />
+        )}
         <Entities />
         <TextEditCursor />
         <RerouteNodes />

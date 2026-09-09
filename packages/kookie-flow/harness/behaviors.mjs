@@ -834,12 +834,22 @@ head('accessible names');
  * attribute check cannot see the difference — it is the same class of mistake as asserting a token
  * name instead of the colour it resolves to.
  *
+ * WHAT THIS SECTION NO LONGER COVERS, AND IT IS A REAL COST. The seven built-in socket widgets
+ * moved from DOM controls into WebGL, which took them out of the accessibility tree entirely — a
+ * canvas has no roles, no names and no keyboard focus for the things drawn inside it. Before that
+ * move a screen-reader user could at least reach a socket widget, even if the name was wrong; now
+ * there is nothing to reach. That is not a regression this law can paper over by looking at
+ * something else, so it says it out loud: the sweep now covers the DOM that remains — the
+ * toolbar, a consumer-supplied widget, and the input borrowed during an edit — and the GL widgets
+ * are recorded as an OPEN accessibility gap in plans/migration/decisions.md, with the options
+ * (an off-screen DOM mirror, or ARIA on the canvas element) and no decision taken.
+ *
  * ONE control is knowingly exempt and it is not fixable from this repository: kookie-ui hardcodes
  * the slider thumb's name (`Slider value: 0.5`) on the element that carries role="slider", so a
  * consumer aria-label lands on a wrapper carrying no role. A slider socket's only identity is its
  * group. The law states that rather than failing on correct code.
  */
-await withPage('count=3&widgets=1', async (page) => {
+await withPage('count=3&widgets=1&customWidget=1', async (page) => {
   const named = await page.evaluate(() => {
     // The accessible name, computed the way a screen reader computes it — aria-label, then
     // aria-labelledby, then the label element, then the content.
@@ -1219,7 +1229,16 @@ head('widgets');
  * The value itself had the same shape of bug one level down: `useState(initialValue)` seeds once,
  * so a value changed anywhere but in the widget never reached the control.
  */
-await withPage('count=4&seed=1&widgets=1', async (page) => {
+//
+// RE-KEYED ONTO THE SURVIVING DOM PATH. The seven built-in widgets draw in WebGL now and take
+// their interaction there — see the `GL widgets` section, which covers them end to end. What is
+// still DOM, and what these laws are now about, is a widget component the CONSUMER supplied: the
+// library cannot draw a component it has never seen, and `plans/technical-decisions.md` names
+// custom node content as the escape hatch that stays in the DOM.
+//
+// The bugs described above were about the SNAPSHOT behind the widget list, which the custom path
+// shares line for line — so this still guards them, on the only widgets that can still show them.
+await withPage('count=4&seed=1&widgets=1&customWidget=1', async (page) => {
   const countWidgets = () =>
     page.evaluate(() => document.querySelectorAll('[data-entity-id] input, [data-entity-id] textarea').length);
 
@@ -2052,6 +2071,117 @@ await withPage('scene=toolbar&toolbar=1', async (page) => {
         `(v1 baseline: ${expected} named)`
     );
   }
+});
+
+head('GL widgets');
+
+/**
+ * The seven built-in widgets draw in WebGL and take their interaction there.
+ *
+ * They were the last persistent DOM on a node — a real design-system control per socket per
+ * visible entity, which at a thousand nodes is thousands of composited layers. That is the same
+ * measured reason the DOM label path was deleted, and it is the governing rule of this migration:
+ * everything persistent renders in GL, the DOM appears only transiently for one field during an
+ * active edit, and then vanishes.
+ *
+ * What is checked here is the whole path, not the parts: instances reach the GPU, a press lands on
+ * the widget rather than on the node under it, and the value the consumer receives is the one the
+ * gesture asked for.
+ */
+await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(400);
+
+  // (a) DRAWN. The widget mesh is instanced, so `drawnVertices` cannot see it — `drawnInstances`
+  //     is the half of the instrument written for exactly this.
+  const drawn = await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => r(window.__harness.drawnInstances())))
+  );
+  const widgetInstances = drawn.filter((d) => d.kind === 'widgets');
+  check(
+    'widgets reach the GPU as instances',
+    widgetInstances.length >= 4,
+    `${widgetInstances.length} widget instances of ${drawn.length} total`
+  );
+
+  // (b) NOT IN THE DOM. The built-ins have no DOM at rest — that is the claim the whole layer
+  //     exists to make, and the one a screenshot cannot check.
+  const domControls = await page.evaluate(() => {
+    const root = document.querySelector('[data-kookie-flow-container]');
+    return root.querySelectorAll('input, select, textarea, [role="slider"], [role="checkbox"]').length;
+  });
+  check('no built-in widget is a DOM element at rest', domControls === 0, `${domControls} found`);
+
+  // (c) A CHECKBOX TOGGLES, with no DOM at any point in the gesture.
+  const before = await page.evaluate(() => window.__harness.widgetValue('w', 'flag'));
+  const at = await page.evaluate(() => window.__harness.widgetPoint('w', 'flag'));
+  check('INSTRUMENT: the checkbox has a place on screen', at !== null, JSON.stringify(at));
+  await page.mouse.click(at.x, at.y);
+  await page.waitForTimeout(200);
+  const after = await page.evaluate(() => window.__harness.widgetValue('w', 'flag'));
+  check('pressing a checkbox toggles it', before !== after, `${before} -> ${after}`);
+
+  const domDuring = await page.evaluate(() => {
+    const root = document.querySelector('[data-kookie-flow-container]');
+    return root.querySelectorAll('input, select, textarea').length;
+  });
+  check('toggling a checkbox borrows no DOM', domDuring === 0, `${domDuring} found`);
+
+  // (d) A SLIDER DRAGS, and the node underneath does NOT move — the ordering this depends on.
+  const nodeBefore = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('w');
+    return { x: e.position.x, y: e.position.y };
+  });
+  const sliderAt = await page.evaluate(() => window.__harness.widgetPoint('w', 'amount'));
+  check('INSTRUMENT: the slider has a place on screen', sliderAt !== null, JSON.stringify(sliderAt));
+  await page.mouse.move(sliderAt.x - 40, sliderAt.y);
+  await page.mouse.down();
+  await page.mouse.move(sliderAt.x + 50, sliderAt.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const sliderAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'amount'));
+  const nodeAfter = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('w');
+    return { x: e.position.x, y: e.position.y };
+  });
+  check(
+    'dragging a slider changes its value',
+    typeof sliderAfter === 'number' && sliderAfter > 0.5,
+    `value is ${sliderAfter}`
+  );
+  check(
+    'dragging a slider does not drag the node under it',
+    nodeAfter.x === nodeBefore.x && nodeAfter.y === nodeBefore.y,
+    `${JSON.stringify(nodeBefore)} -> ${JSON.stringify(nodeAfter)}`
+  );
+
+  // (e) A TEXT FIELD BORROWS a real input, and gives it back.
+  const textAt = await page.evaluate(() => window.__harness.widgetPoint('w', 'label'));
+  await page.mouse.click(textAt.x, textAt.y);
+  await page.waitForTimeout(200);
+  const borrowed = await page.evaluate(() => {
+    const el = document.activeElement;
+    // Scoped to the flow: an input elsewhere on a consumer's page is not this library's business.
+    const inputs = document.querySelectorAll('[data-kookie-flow-container] input');
+    return { tag: el ? el.tagName : null, count: inputs.length };
+  });
+  check(
+    'pressing a text widget borrows a real input and focuses it',
+    borrowed.tag === 'INPUT' && borrowed.count === 1,
+    JSON.stringify(borrowed)
+  );
+
+  await page.keyboard.type('hello');
+  await page.waitForTimeout(150);
+  const typed = await page.evaluate(() => window.__harness.widgetValue('w', 'label'));
+  check('typing reaches the value', String(typed).includes('hello'), String(typed));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  const afterEdit = await page.evaluate(
+    () => document.querySelectorAll('[data-kookie-flow-container] input').length
+  );
+  check('the borrowed input vanishes when the edit ends', afterEdit === 0, `${afterEdit} remain`);
 });
 
 // ---------------------------------------------------------------- summary
