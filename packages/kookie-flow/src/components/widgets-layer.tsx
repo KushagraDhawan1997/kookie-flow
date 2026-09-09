@@ -17,6 +17,7 @@
 import {
   useRef,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useState,
   useMemo,
@@ -118,11 +119,47 @@ const SocketWidget = memo(
     entityColor,
     ThemeComponent,
   }: SocketWidgetProps) {
-    // Local value state (widget controls its own value, notifies parent on change)
+    /**
+     * The widget's value: local, but it follows an external write unless you are mid-edit.
+     *
+     * `useState(initialValue)` seeds ONCE, so a value changed anywhere but in this widget — a
+     * consumer setting it, an undo, a preset being applied — never reached the control. It showed
+     * whatever it was given at mount.
+     *
+     * BOTH OBVIOUS REPAIRS ARE BROKEN, which is why this is worth a paragraph rather than a line:
+     *
+     *  - fully controlled (read `initialValue` every render) freezes the widget while you type, in
+     *    every consumer that does not immediately echo the change back — including the demo shipped
+     *    with this package.
+     *  - unconditionally syncing on `initialValue` resets the field on every keystroke for every
+     *    consumer that DOES echo it back, because the echo arrives one render later.
+     *
+     * So the value follows an external write only while this widget is not being edited. The
+     * assumption that carries — stated because it is a behaviour choice, not a derivation — is that
+     * a write arriving mid-edit loses to what the person is typing, and is picked up once the value
+     * they typed has round-tripped. That is what every text input on the platform does, and it is
+     * the only one of the three that is not broken for somebody.
+     */
     const [value, setValue] = useState(initialValue ?? config.defaultValue);
+    /** Set while this widget's own change is still in flight to the consumer and back. */
+    const editingRef = useRef(false);
+
+    useEffect(() => {
+      const incoming = initialValue ?? config.defaultValue;
+      if (editingRef.current) {
+        // Our own value came back: the round trip is complete and external writes win again.
+        if (Object.is(incoming, value)) editingRef.current = false;
+        return;
+      }
+      setValue(incoming);
+      // `value` is deliberately absent: this effect reacts to what arrives from outside, and
+      // listing our own state here would make it fight the line above.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialValue, config.defaultValue]);
 
     const handleChange = useCallback(
       (newValue: unknown) => {
+        editingRef.current = true;
         setValue(newValue);
         onWidgetChange?.(entityId, socketId, newValue);
       },
@@ -229,10 +266,6 @@ export function WidgetsLayer({
   const [entities, setEntities] = useState(() => store.getState().entities);
   const [connectedSockets, setConnectedSockets] = useState(() => store.getState().connectedSockets);
 
-  // Stable reference to widgetTypes to avoid re-resolving components unnecessarily
-  const widgetTypesRef = useRef(widgetTypes);
-  widgetTypesRef.current = widgetTypes;
-
   // Widget configs per entity socket (memoized to avoid recalculation)
   // Pre-resolves widget components to avoid passing unstable widgetTypes object to children
   const widgetConfigs = useMemo(() => {
@@ -247,7 +280,7 @@ export function WidgetsLayer({
       }
     >();
 
-    const currentWidgetTypes = widgetTypesRef.current;
+    const currentWidgetTypes = widgetTypes;
 
     for (const entity of entities) {
       if (!entity.inputs) continue;
@@ -276,7 +309,11 @@ export function WidgetsLayer({
     }
 
     return configs;
-  }, [entities, connectedSockets, socketTypes]);
+    // `widgetTypes` is named rather than read through a ref. The ref kept it out of this list, so
+    // a consumer swapping their widget map got the old components until something else happened to
+    // invalidate the memo. It costs nothing today — `socketTypes` beside it already churns per
+    // render — and stops costing nothing the day that is fixed.
+  }, [entities, connectedSockets, socketTypes, widgetTypes]);
 
   // Position update function (microtask-batched for same-frame updates)
   const updatePositions = useCallback(() => {
@@ -421,13 +458,33 @@ export function WidgetsLayer({
       { equalityFn: shallow }
     );
 
-    // React state updates: subscribe to entities and connectedSockets for widget creation/removal
+    /**
+     * Re-snapshot on the store's own structure signals rather than on lengths.
+     *
+     * Both gates compared a COUNT, so anything that changed a graph without changing how many
+     * things were in it was invisible: giving an entity a `color` left its widgets on the default
+     * theme forever, adding a socket to an entity that already had one added no widget, and
+     * connecting a socket did not disable the widget sitting on it — the connected-set is rebuilt
+     * as a fresh Set on every edge change, and its SIZE stays put when one connection replaces
+     * another.
+     *
+     * `topologyVersion` is bumped unconditionally by `setEntities` and is the established
+     * "structure changed, re-snapshot" signal here — `image-entities` and `reroute-nodes` both
+     * already subscribe to exactly it, so this is a promotion rather than an invention.
+     *
+     * KNOWN GAP, stated rather than smuggled: `applyEntityChanges` bumps `topologyVersion` only
+     * when the topology actually changed, so a `data`-only change made by calling that store action
+     * DIRECTLY is still invisible here. Inside KookieFlow every such change round-trips through the
+     * consumer's `entities` prop and `FlowSync`'s `setEntities`, which does bump — so the gap needs
+     * someone driving the store through the exported `useFlowStoreApi`. Closing it means bumping on
+     * `data` in the store, which also re-renders two other components; it is a separate change.
+     */
     const unsubscribeState = store.subscribe(
-      (state) => ({ entitiesLen: state.entities.length, socketsSize: state.connectedSockets.size }),
-      ({ entitiesLen, socketsSize }) => {
+      (state) => ({ topology: state.topologyVersion, connected: state.connectedSockets }),
+      () => {
         const state = store.getState();
-        setEntities((prev) => (prev.length !== entitiesLen ? state.entities : prev));
-        setConnectedSockets((prev) => (prev.size !== socketsSize ? state.connectedSockets : prev));
+        setEntities(state.entities);
+        setConnectedSockets(state.connectedSockets);
       },
       { equalityFn: shallow }
     );

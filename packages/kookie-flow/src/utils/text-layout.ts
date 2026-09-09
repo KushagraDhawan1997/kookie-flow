@@ -134,8 +134,16 @@ export type TextFontWeight = 'regular' | 'semibold';
  * Input for a single text entry to be rendered.
  */
 export interface TextEntry {
-  /** Unique ID for tracking */
-  id: string;
+  /**
+   * Identity, for the callers that have one to track.
+   *
+   * OPTIONAL because most entries have nothing to track with. `text-renderer` used to mint
+   * `entity-${id}`, `socket-${id}-${id}` and `edge-${id}` here — a fresh string per visible
+   * entity, per visible socket and per labelled edge, on every frame a pan makes dirty — and no
+   * code anywhere read one. `text-entities` DOES read it (to raise a selected text entity's
+   * render order) and passes the entity's own id, which allocates nothing.
+   */
+  id?: string;
   /** Text content */
   text: string;
   /** World position (x, y, z) */

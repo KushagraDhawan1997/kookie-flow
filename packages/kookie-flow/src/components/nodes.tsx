@@ -111,6 +111,20 @@ export function Entities() {
   const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
   const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
+  /**
+   * Free the GPU resources this component owns.
+   *
+   * three does not reclaim a GPU resource on garbage collection — the renderer holds it in its own
+   * caches — so a memo that is rebuilt, or a mesh that unmounts, leaves the old one uploaded for
+   * the life of the renderer. Every dispose effect in this package is keyed on the memoised value
+   * ITSELF and nothing else: the cleanup closes over the PREVIOUS render's object, which is
+   * exactly the one being replaced, while a dep that changes more often than the resource does
+   * would free something the scene is still drawing. That failure is invisible by eye — three
+   * re-acquires a disposed material on the next render — so it shows up only as a silent
+   * per-frame recompile.
+   */
+  useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
+
   // Create material with resolved style (shared between both meshes)
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -313,6 +327,9 @@ export function Entities() {
       depthTest: false,
     });
   }, [resolvedStyle]);
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { material.dispose(); }, [material]);
 
   // Buffers for background (non-selected) and foreground (selected) meshes
   const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);

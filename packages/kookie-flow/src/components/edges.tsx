@@ -371,6 +371,15 @@ export function Edges({
         positionDirtyRef.current = true;
       }
     );
+    // Hidden entities: changes only on collapse/expand, so no per-frame cost. Without it, an edge
+    // between two children of a collapsed group stays drawn inside the frame that is supposed to
+    // have swallowed them.
+    const unsubHidden = store.subscribe(
+      (state) => state.hiddenEntityIds,
+      () => {
+        geometryDirtyRef.current = true;
+      }
+    );
     const unsubEdges = store.subscribe(
       (state) => state.edges,
       () => {
@@ -407,19 +416,31 @@ export function Edges({
     return () => {
       unsubEntitiesLength();
       unsubPositions();
+      unsubHidden();
       unsubEdges();
       unsubSelection();
       unsubEntitySelection();
-      bgMaterial.dispose();
-      fgMaterial.dispose();
     };
-  }, [store, bgMaterial, fgMaterial]);
+  }, [store]);
+
+  /**
+   * Teardown, split out of the subscription effect above rather than left in it with narrower deps.
+   *
+   * The two concerns had one dep array and it could only be right for one of them: the
+   * subscriptions want `[store]`, the materials want themselves, and `[store, bgMaterial,
+   * fgMaterial]` meant every store swap tore down and rebuilt both — disposing a material the next
+   * render immediately re-acquires. Two effects make the dep array unable to lie.
+   *
+   * See nodes.tsx for why a dispose dep is the memoised value itself.
+   */
+  useEffect(() => () => { bgMaterial.dispose(); fgMaterial.dispose(); }, [bgMaterial, fgMaterial]);
 
   // RAF-synchronized updates
   useFrame(({ size }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
 
-    const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap } = store.getState();
+    const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap, hiddenEntityIds } =
+      store.getState();
     // Always read entityMap from store (not cached ref) because setEntities
     // creates a new Map without changing entities.length, which would leave
     // entityMapRef stale. The store's getState() is synchronous and cheap.
@@ -610,7 +631,16 @@ export function Edges({
         const sourceEntity = entityMap.get(edge.source);
         const targetEntity = entityMap.get(edge.target);
 
-        if (!sourceEntity || !targetEntity) {
+        // A missing endpoint, or a HIDDEN one. Both endpoints are tested: an edge crossing a
+        // collapse boundary has one visible end and belongs to neither side, so hiding it on
+        // either is right — the frame is what the user sees, and a bezier reaching out of a
+        // collapsed box to a node that is not drawn is a line to nowhere.
+        if (
+          !sourceEntity ||
+          !targetEntity ||
+          hiddenEntityIds.has(edge.source) ||
+          hiddenEntityIds.has(edge.target)
+        ) {
           // Record zero-vertex layout for this edge
           evStarts[i] = vertexIndex;
           evCounts[i] = 0;

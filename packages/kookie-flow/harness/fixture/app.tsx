@@ -51,8 +51,8 @@ export interface HarnessApi {
   readPixel(x: number, y: number): [number, number, number, number] | null;
   /** The <canvas> R3F is drawing into. */
   canvas(): HTMLCanvasElement | null;
-  /** Every non-instanced vertex in the scene, in world space (Y-down, like the store). */
-  drawnVertices(): { x: number; y: number }[];
+  /** Every non-instanced vertex in the scene, in world space (Y-down, like the store), labelled by mesh. */
+  drawnVertices(): { x: number; y: number; kind: string }[];
   /** WebGL draw-call counters. */
   gl(): unknown;
   /** Zero the draw-call counters and the frame recorder. */
@@ -69,6 +69,16 @@ export interface HarnessApi {
   reactCommits(): { commits: number; marks: Record<string, number> };
   /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
   tokenCensus(): { present: string[]; missing: string[] };
+  /** Every MSDF glyph mesh: how many glyphs it draws and where its first one sits, in world space. */
+  glyphs(): { count: number; x: number; y: number }[];
+  /** Every drawn instance's world-space translation, labelled by mesh. The instanced half of `drawnVertices`. */
+  drawnInstances(): { kind: string; x: number; y: number }[];
+  /** How many bulk Float32Array copies have happened since the last `mark`. */
+  bulkCopies(): number;
+  /** Cumulative GPU-object create/delete counts. Never reset — these are lifetimes, not work. */
+  glLifetimes(): GlLifetimes;
+  /** Cumulative three-side dispose calls, by resource kind. Also never reset. */
+  disposals(): { material: number; geometry: number; texture: number };
 }
 
 function params() {
@@ -130,6 +140,64 @@ interface GlSnapshot {
   viewportSize: [number, number] | null;
 }
 
+/**
+ * GPU objects created and destroyed, at the driver boundary.
+ *
+ * Deliberately NOT part of `GlSnapshot` and deliberately never reset by `mark`: these are
+ * cumulative lifetimes, not per-window work, and the question they answer is "did anything get
+ * left behind". three does not free a GPU resource on garbage collection — the renderer holds it
+ * in its own caches — so a material or geometry that is rebuilt and not disposed shows up here as
+ * a program or a set of buffers that was created and never deleted.
+ *
+ * Counted at `WebGL2RenderingContext` rather than read off `renderer.info`, which the fixture has
+ * no handle on, and which would be three's own account of its own bookkeeping rather than an
+ * independent one.
+ */
+interface GlLifetimes {
+  programsCreated: number;
+  programsDeleted: number;
+  buffersCreated: number;
+  buffersDeleted: number;
+  texturesCreated: number;
+  texturesDeleted: number;
+}
+
+/**
+ * three-side dispose calls, by resource kind.
+ *
+ * The driver counters above are the honest instrument for a LEAK, but they cannot see a material
+ * leak at all: every ShaderMaterial in this package has a byte-identical shader body per kind, so
+ * three's program cache hands out the same program and `createProgram` never fires again however
+ * many materials are built. That is measured, not assumed — deleting all 23 dispose effects moves
+ * the program count by exactly zero.
+ *
+ * So the material half is proven the only way left: by counting the calls. Weaker than a driver
+ * counter, and stated as such — it can only show that the teardown RAN, not that the GPU let go.
+ */
+const disposals = { material: 0, geometry: 0, texture: 0 };
+{
+  const patch = (proto: { dispose?: unknown }, key: 'material' | 'geometry' | 'texture') => {
+    const original = proto.dispose as (...a: unknown[]) => unknown;
+    if (typeof original !== 'function') return;
+    (proto as unknown as Record<string, unknown>).dispose = function patched(this: unknown, ...args: unknown[]) {
+      disposals[key]++;
+      return original.apply(this, args);
+    };
+  };
+  patch(THREE.Material.prototype, 'material');
+  patch(THREE.BufferGeometry.prototype, 'geometry');
+  patch(THREE.Texture.prototype, 'texture');
+}
+
+const live: GlLifetimes = {
+  programsCreated: 0,
+  programsDeleted: 0,
+  buffersCreated: 0,
+  buffersDeleted: 0,
+  texturesCreated: 0,
+  texturesDeleted: 0,
+};
+
 const gl: GlSnapshot = {
   contexts: 0,
   drawCalls: 0,
@@ -180,6 +248,13 @@ function installGlProbe() {
     frames.last = now;
   });
   wrap('viewport', (a) => { gl.viewportSize = [Number(a[2] ?? 0), Number(a[3] ?? 0)]; });
+
+  wrap('createProgram', () => { live.programsCreated++; });
+  wrap('deleteProgram', () => { live.programsDeleted++; });
+  wrap('createBuffer', () => { live.buffersCreated++; });
+  wrap('deleteBuffer', () => { live.buffersDeleted++; });
+  wrap('createTexture', () => { live.texturesCreated++; });
+  wrap('deleteTexture', () => { live.texturesDeleted++; });
 
   // KookieFlow creates its context with `preserveDrawingBuffer: false` (a deliberate Safari
   // performance choice). That is correct for the product and fatal for pixel assertions: the
@@ -254,8 +329,8 @@ installSceneProbe();
  * back. Instanced meshes are skipped: their per-vertex positions are a unit quad and say nothing
  * about where anything sits, which is what `instanceMatrix` carries.
  */
-function drawnVertices(): { x: number; y: number }[] {
-  const out: { x: number; y: number }[] = [];
+function drawnVertices(): { x: number; y: number; kind: string }[] {
+  const out: { x: number; y: number; kind: string }[] = [];
   const v = new THREE.Vector3();
   for (const scene of scenes) {
     scene.traverse((obj) => {
@@ -264,14 +339,131 @@ function drawnVertices(): { x: number; y: number }[] {
       if (mesh.visible === false) return;
       const pos = mesh.geometry?.attributes?.position as THREE.BufferAttribute | undefined;
       if (!pos) return;
+
+      /**
+       * Honour the DRAW RANGE, and the index if there is one.
+       *
+       * Reading `pos.count` reports the whole capacity-sized buffer, and the ribbon meshes
+       * (edges, the connection line) are exactly that: a fixed buffer with `setDrawRange(0, n)`
+       * deciding how much of it the driver ever sees. So a vertex left over from before the last
+       * rebuild read as a drawn vertex — invisible to an EXISTENTIAL law ("some vertex lands on
+       * this socket") and fatal to a UNIVERSAL one ("no vertex lands anywhere near here"), which
+       * is how a law about a collapsed group came to fail on stale positions from before the
+       * collapse.
+       */
+      const index = mesh.geometry.index;
+      const total = index ? index.count : pos.count;
+      const start = mesh.geometry.drawRange.start;
+      const declared = mesh.geometry.drawRange.count;
+      const count = Math.max(0, Math.min(declared === Infinity ? total : declared, total - start));
       mesh.updateWorldMatrix(true, false);
-      for (let i = 0; i < pos.count; i++) {
+      const kind =
+        mesh.name ||
+        (Array.isArray(mesh.material) ? 'multi' : (mesh.material?.type ?? 'no-material')) +
+          ':' +
+          (mesh.geometry?.type ?? 'no-geometry') +
+          ':r' +
+          String(mesh.renderOrder);
+      for (let k = start; k < start + count; k++) {
+        const i = index ? index.getX(k) : k;
         v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-        out.push({ x: v.x, y: -v.y });
+        // `kind` names which mesh drew it. Added because a law that finds an unexpected vertex
+        // otherwise has to guess which renderer put it there, and guessing is how a law comes to
+        // blame the wrong component.
+        out.push({ x: v.x, y: -v.y, kind });
       }
     });
   }
   return out;
+}
+
+/**
+ * Every INSTANCE drawn by an instanced mesh, as its world-space translation.
+ *
+ * `drawnVertices` deliberately skips instanced meshes — their vertex positions are a unit quad and
+ * say nothing about where anything sits — so sockets, nodes and marks were invisible to every law
+ * in the suite. This is the other half: one point per drawn instance, read from the translation
+ * column of its instance matrix (elements 12/13, column-major), negated on Y because GL is Y-up
+ * and this world is Y-down.
+ *
+ * Bounded by `mesh.count`, which is the instanced equivalent of a draw range: the buffers are
+ * capacity-sized and everything past `count` is stale.
+ *
+ * Kept SEPARATE from `drawnVertices` rather than folded into it. Folding would silently change
+ * what every existing law measures — "some drawn vertex lands on this socket" becomes trivially
+ * true the moment the socket's own instance centre is in the list.
+ */
+function drawnInstances(): { kind: string; x: number; y: number }[] {
+  const out: { kind: string; x: number; y: number }[] = [];
+  for (const scene of scenes) {
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh & { isInstancedMesh?: boolean };
+      if (!mesh.isInstancedMesh || mesh.visible === false) return;
+      const kind =
+        mesh.name ||
+        (mesh.geometry?.attributes?.aUvOffset ? 'glyphs' : mesh.geometry?.type ?? 'no-geometry') +
+          ':r' +
+          String(mesh.renderOrder);
+      const m = mesh.instanceMatrix.array as unknown as ArrayLike<number>;
+      for (let i = 0; i < mesh.count; i++) {
+        out.push({ kind, x: m[i * 16 + 12], y: -m[i * 16 + 13] });
+      }
+    });
+  }
+  return out;
+}
+
+/**
+ * Every MSDF glyph mesh in the scene.
+ *
+ * `drawnVertices` deliberately skips instanced meshes, because their vertex positions are a unit
+ * quad and say nothing about where anything sits — so today NOTHING sees GL text. The one text law
+ * in the suite asserts a label is ABSENT from the DOM, which passes just as happily when the GL
+ * text is frozen, ghosted or gone.
+ *
+ * The text meshes are told apart by `aUvOffset`: only the MSDF material carries it. A glyph's
+ * world position is the translation column of its instance matrix (elements 12/13, column-major),
+ * negated on Y because GL is Y-up and this world is Y-down.
+ */
+function glyphs(): { count: number; x: number; y: number }[] {
+  const out: { count: number; x: number; y: number }[] = [];
+  for (const scene of scenes) {
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh & { isInstancedMesh?: boolean };
+      if (!mesh.isInstancedMesh) return;
+      if (!mesh.geometry?.attributes?.aUvOffset) return;
+      if (mesh.count === 0) {
+        out.push({ count: 0, x: NaN, y: NaN });
+        return;
+      }
+      const m = mesh.instanceMatrix.array as unknown as ArrayLike<number>;
+      out.push({ count: mesh.count, x: m[12], y: -m[13] });
+    });
+  }
+  return out;
+}
+
+/**
+ * Bulk Float32Array copies since the last `mark`.
+ *
+ * The glyph matrices used to be written twice — once into an intermediate buffer, then copied
+ * whole into the mesh's own array with `.set(buf.subarray(0, n * 16))`, once per weight per dirty
+ * frame. A byte counter cannot see that: the memcpy allocates nothing and the `subarray` view is
+ * about a hundred bytes, which is noise in a heap sampler. Counting the copies sees it exactly.
+ *
+ * `subarray` is what is counted rather than `set`, because `set` has honest callers all over the
+ * package while the only `subarray` sites left in `src/` are the edge buffers' growth path — which
+ * does not run during a steady gesture on a fixed graph. So during a marked drag this is zero, and
+ * putting either copy back makes it a per-frame count.
+ */
+const bulk = { copies: 0 };
+{
+  const proto = Float32Array.prototype as unknown as Record<string, unknown>;
+  const subarray = proto.subarray as (...a: unknown[]) => unknown;
+  proto.subarray = function patched(this: Float32Array, ...args: unknown[]) {
+    bulk.copies++;
+    return subarray.apply(this, args);
+  };
 }
 
 /**
@@ -398,10 +590,16 @@ function Probe() {
       },
       canvas,
       drawnVertices,
+      glyphs,
+      drawnInstances,
+      bulkCopies: () => bulk.copies,
+      glLifetimes: () => ({ ...live }),
+      disposals: () => ({ ...disposals }),
       mark(name: string) {
         react.current = name;
         react.marks[name] ??= 0;
         resetGlCounters();
+        bulk.copies = 0;
       },
       reactCommits: () => ({ commits: react.commits, marks: { ...react.marks } }),
       /**

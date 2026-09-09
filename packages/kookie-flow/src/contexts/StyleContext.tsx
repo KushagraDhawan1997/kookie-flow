@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useTheme } from './ThemeContext';
 import {
   resolveEntityStyle,
@@ -94,6 +94,28 @@ interface StyleProviderProps {
  * Reads theme tokens from ThemeContext and resolves style props
  * to WebGL-ready values. Memoized to avoid re-computation.
  */
+/**
+ * Are two style-override objects the same style?
+ *
+ * `EntityStyleOverrides` is five flat, optional primitives, so this is O(1) and allocation-free.
+ * A deep compare would be wrong here as well as slower: the point is to survive an inline literal,
+ * and an inline literal never nests.
+ */
+function sameOverrides(
+  a: EntityStyleOverrides | undefined,
+  b: EntityStyleOverrides | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.background === b.background &&
+    a.borderColor === b.borderColor &&
+    a.borderWidth === b.borderWidth &&
+    a.borderRadius === b.borderRadius &&
+    a.shadow === b.shadow
+  );
+}
+
 export function StyleProvider({
   children,
   size = '2',
@@ -105,9 +127,25 @@ export function StyleProvider({
 }: StyleProviderProps) {
   const tokens = useTheme();
 
+  /**
+   * `entityStyle` stabilised by VALUE.
+   *
+   * It is a plain object prop, so a consumer writing `entityStyle={{ background: '#111' }}` inline
+   * hands this a new identity on every render — and it is in the dependency list of the memo below,
+   * so every render of the host component re-resolved every entity style, rebuilt the socket
+   * layout, and pushed a new context value to every consumer of it.
+   *
+   * React's documented render-phase adjustment rather than a ref written during render: a
+   * render-body ref write is precisely the defect the audit files separately, three files over, and
+   * copying it here to fix this one would be a poor trade. The compare is five flat primitives, so
+   * it allocates nothing — the same shape as `sameLayout` in the socket layout cache.
+   */
+  const [stableStyle, setStableStyle] = useState(entityStyle);
+  if (!sameOverrides(stableStyle, entityStyle)) setStableStyle(entityStyle);
+
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
-    const resolved = resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, entityStyle);
+    const resolved = resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, stableStyle);
     const hasHeaderInside = header === 'inside';
     const socketLayout = resolveSocketLayout(hasHeaderInside, size, tokens);
     const config: StyleConfig = {
@@ -116,10 +154,10 @@ export function StyleProvider({
       radius,
       header,
       accentHeader,
-      entityStyle,
+      entityStyle: stableStyle,
     };
     return { resolved, socketLayout, config };
-  }, [size, variant, radius, header, accentHeader, entityStyle, tokens]);
+  }, [size, variant, radius, header, accentHeader, stableStyle, tokens]);
 
   return <StyleContext.Provider value={value}>{children}</StyleContext.Provider>;
 }

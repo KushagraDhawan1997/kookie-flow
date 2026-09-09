@@ -152,6 +152,9 @@ export function Sockets({
   const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
   const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
+
   // Shared shader code for socket rendering
   const vertexShader = /* glsl */ `
     attribute vec3 aColor;
@@ -265,6 +268,9 @@ export function Sockets({
     [invalidColor, validTargetColor]
   );
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { bgMaterial.dispose(); fgMaterial.dispose(); }, [bgMaterial, fgMaterial]);
+
   // Shared buffers for all sockets (layer attribute controls bg/fg visibility)
   const sharedBuffers = useMemo(() => createSocketBuffers(capacity), [capacity]);
 
@@ -323,7 +329,19 @@ export function Sockets({
       }
     );
     // Note: viewport changes no longer trigger dirty - GPU handles clipping efficiently
-    // This allows zoom/pan without geometry rebuilds
+    // This allows zoom/pan without geometry rebuilds.
+    //
+    // `hiddenEntityIds` is different, and is subscribed: it changes only when a group is collapsed
+    // or expanded, so there is no per-frame cost, and without it a collapsed group's children keep
+    // their socket dots painted on top of the frame — dots that cannot be pressed, because the
+    // store deliberately keeps hidden entities out of the socket index. The paint and the hit test
+    // disagreed.
+    const unsubHidden = store.subscribe(
+      (state) => state.hiddenEntityIds,
+      () => {
+        dirtyRef.current = true;
+      }
+    );
     const unsubHoveredSocket = store.subscribe(
       (state) => state.hoveredSocketId,
       () => {
@@ -381,6 +399,7 @@ export function Sockets({
     return () => {
       unsubEntities();
       unsubHoveredSocket();
+      unsubHidden();
       unsubConnectionDraft();
       unsubEdges();
       unsubSelection();
@@ -536,6 +555,10 @@ export function Sockets({
         for (const entityId of movedIds) {
           const range = socketRanges.get(entityId);
           if (!range) continue;
+          // A hidden entity holds a zero-count range. Writing its matrices anyway would put them
+          // at `range.start`, which is where the NEXT visible entity's instances live — dragging a
+          // node inside a collapsed group would move a different node's sockets.
+          if (range.count === 0) continue;
 
           const entity = entityMap.get(entityId);
           if (!entity) continue;
@@ -603,7 +626,7 @@ export function Sockets({
 
     if (!dirtyRef.current) return;
 
-    const { entities, entityMap, hoveredSocketId, connectionDraft, selectedEntityIds } =
+    const { entities, entityMap, hoveredSocketId, connectionDraft, selectedEntityIds, hiddenEntityIds } =
       store.getState();
 
     // Use cached connected sockets Set (rebuilt only when edges change)
@@ -642,6 +665,15 @@ export function Sockets({
     for (const entity of entities) {
       const isSelected = selectedEntityIds.has(entity.id);
       const entitySocketStart = totalCount;
+
+      // A hidden entity records an EXPLICIT ZERO-COUNT range rather than being skipped outright.
+      // The position fast path indexes by these ranges and writes `inputs.length + outputs.length`
+      // matrices from `range.start`; without a range that says zero, a hidden entity being dragged
+      // would overwrite its neighbour's instances.
+      if (hiddenEntityIds.has(entity.id)) {
+        socketRanges.set(entity.id, { mesh: isSelected ? 'fg' : 'bg', start: entitySocketStart, count: 0 });
+        continue;
+      }
 
       totalCount = writeEntitySockets(
         entity, sharedBuffers, matrixArray, totalCount,

@@ -246,14 +246,12 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     () => createPlaceholderMaterial(surfaceColor),
     [surfaceColor]
   );
-  useEffect(() => () => { placeholderMat.dispose(); }, [placeholderMat]);
 
   // Error material (shared for failed image loads)
   const errorMat = useMemo(
     () => createPlaceholderMaterial(errorColor),
     [errorColor]
   );
-  useEffect(() => () => { errorMat.dispose(); }, [errorMat]);
 
   /**
    * The texture manager and the materials have different lifetimes, and conflating them was a bug.

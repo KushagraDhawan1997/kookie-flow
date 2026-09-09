@@ -102,10 +102,28 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
     });
   }, [atlasTexture]);
 
+  /**
+   * Material and geometry only — NEVER `atlasTexture`.
+   *
+   * The atlas belongs to FontContext, which hands the same texture to up to four mounted weight
+   * meshes at once and caches it by URL for every future mount. Disposing it here is a re-upload
+   * per mount at best, and permanently black text once the loader closes its bitmaps. The semibold
+   * mesh is what makes this effect matter: it mounts and unmounts as bold text appears and
+   * disappears during ordinary editing, so its pair leaks on every toggle.
+   *
+   * See nodes.tsx for why the dep array is the memoised value itself.
+   */
+  useEffect(() => () => { material.dispose(); }, [material]);
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
+
   // Pre-allocated buffers
   const buffers = useMemo(
     () => ({
-      matrices: new Float32Array(capacity * 16),
+      // There is no intermediate matrix buffer any more. `populateGlyphBuffers` used to fill one
+      // of these, and the next line copied all of it a second time into the mesh's own array — a
+      // full memcpy of 64 bytes per visible glyph, per weight, on every dirty frame, plus a
+      // `subarray` view object to do it with. The glyphs are written into the mesh's array
+      // directly instead.
       uvOffsets: new Float32Array(capacity * 4),
       colors: new Float32Array(capacity * 3),
       opacities: new Float32Array(capacity),
@@ -144,14 +162,37 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
     mesh.geometry.setAttribute('aOpacity', buffers.opacityAttr);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
+
+    // The glyph matrices go straight into the mesh's own instance array, so the `Float32Array`
+    // premise is verified once, here, instead of being asserted with a cast in the frame loop.
+    // `InstancedMesh` allocates `new Float32Array(count * 16)`; if that ever stops being true the
+    // text stops drawing and says so, rather than drawing garbage.
+    if (
+      !(mesh.instanceMatrix.array instanceof Float32Array) ||
+      mesh.instanceMatrix.array.length !== capacity * 16
+    ) {
+      console.warn(
+        '[kookie-flow] instanceMatrix is not a Float32Array of capacity*16 — text not drawn'
+      );
+      return;
+    }
+
     initializedRef.current = true;
-  }, [buffers]);
+  }, [buffers, capacity]);
 
   // Update on frame - read from ref for same-frame updates (no React batching delay).
   // Skip buffer population when entries ref hasn't changed (parent didn't re-collect).
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current) return;
+
+    // Read off the mesh every frame rather than cached once: `args` changing — a new atlas
+    // texture rebuilds both geometry and material — reconstructs the mesh without changing
+    // `buffers`, so a cached array would be the previous mesh's and the text would quietly stop
+    // moving. The assertion costs nothing at runtime and its premise is checked in the init
+    // effect above, which refuses to initialise (and says so) if three ever stops allocating
+    // `instanceMatrix` as a Float32Array of capacity * 16.
+    const matrices = mesh.instanceMatrix.array as Float32Array;
 
     const entries = entriesRef.current;
 
@@ -177,7 +218,7 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
       fontMetrics,
       glyphMap,
       kerningMap,
-      buffers.matrices,
+      matrices,
       buffers.uvOffsets,
       buffers.colors,
       buffers.opacities,
@@ -186,7 +227,6 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
 
     // Update instance matrices (cap to capacity to prevent buffer overflow)
     const safeGlyphCount = Math.min(glyphCount, capacity);
-    mesh.instanceMatrix.array.set(buffers.matrices.subarray(0, safeGlyphCount * 16));
     mesh.instanceMatrix.needsUpdate = true;
 
     // Update attributes
@@ -353,7 +393,6 @@ export function MultiWeightTextRenderer({
             ? entity.position.y - style.headerHeight + verticalOffset
             : entity.position.y + verticalOffset;
         const entry: TextEntry = {
-          id: `entity-${entity.id}`,
           text: label,
           position: [entity.position.x + 12, labelY, 0.1],
           fontSize: 12,
@@ -413,7 +452,6 @@ export function MultiWeightTextRenderer({
                     )
                   : socket.name;
               regular.push({
-                id: `socket-${entity.id}-${socket.id}`,
                 text: truncatedName,
                 position: [entity.position.x + width - 12, textY, 0.1],
                 fontSize: 12,
@@ -446,7 +484,6 @@ export function MultiWeightTextRenderer({
                     )
                   : socket.name;
               regular.push({
-                id: `socket-${entity.id}-${socket.id}`,
                 text: truncatedName,
                 position: [entity.position.x + 12, textY, 0.1],
                 fontSize: 12,
@@ -488,7 +525,6 @@ export function MultiWeightTextRenderer({
           }
 
           regular.push({
-            id: `edge-${edge.id}`,
             text: labelConfig.text,
             position: [position.x, position.y, 0.15],
             fontSize: labelConfig.fontSize ?? 11,

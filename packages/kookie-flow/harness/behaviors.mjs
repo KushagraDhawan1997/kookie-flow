@@ -62,7 +62,33 @@ function check(name, condition, detail) {
 }
 
 /** A fresh page per behavior: shared state between behaviors hides ordering bugs. */
+/**
+ * Run one named section, or skip it.
+ *
+ * The whole suite is about twelve minutes, which is the wrong shape for the thing it is most
+ * needed for: falsifying a single law by breaking the code it guards and watching exactly that
+ * law go red. `KUI_ONLY=<substring>` runs the sections whose name contains it. It is a developer
+ * convenience with no effect on a plain run — CI sets nothing and every section runs — and the
+ * summary says how many were skipped so a filtered run can never be mistaken for a full one.
+ */
+const ONLY = process.env.KUI_ONLY ?? '';
+let skippedSections = 0;
+let currentSection = '';
+
+function head(name) {
+  currentSection = name;
+  if (ONLY && !name.toLowerCase().includes(ONLY.toLowerCase())) {
+    skippedSections++;
+    return;
+  }
+  console.log(`\n${name}`);
+}
+
+const skipping = () => Boolean(ONLY) && !currentSection.toLowerCase().includes(ONLY.toLowerCase());
+
 async function withPage(query, fn) {
+  if (skipping()) return [];
+
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -174,7 +200,7 @@ await withPage('count=12&seed=1', async (page, errors) => {
 
 // ---------------------------------------------------------------- labels are GL
 
-console.log('\nlabels');
+head('labels');
 await withPage('count=12&seed=1', async (page) => {
   const domText = await page.evaluate(() => {
     let n = 0;
@@ -189,7 +215,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- pan
 
-console.log('\npan');
+head('pan');
 await withPage('count=12&seed=1', async (page) => {
   const before = await state(page);
   await page.mouse.move(600, 400);
@@ -215,7 +241,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- zoom
 
-console.log('\nzoom');
+head('zoom');
 await withPage('count=12&seed=1', async (page) => {
   const before = await state(page);
   await page.mouse.move(640, 400);
@@ -241,7 +267,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- selection
 
-console.log('\nselection');
+head('selection');
 await withPage('count=12&seed=1', async (page) => {
   const calibrated = await assertModifierReaches(page, 'Control', 'ctrl');
   check('INSTRUMENT: ctrl actually reaches the page', calibrated);
@@ -295,7 +321,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- drag
 
-console.log('\ndrag');
+head('drag');
 await withPage('count=12&seed=1', async (page) => {
   const before = await state(page);
   const n0 = screenOf(before, 'n0');
@@ -330,7 +356,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- multi-drag
 
-console.log('\nmulti-drag');
+head('multi-drag');
 await withPage('count=12&seed=1', async (page) => {
   const st0 = await state(page);
   const n0 = screenOf(st0, 'n0');
@@ -371,7 +397,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- marquee
 
-console.log('\nmarquee');
+head('marquee');
 await withPage('count=12&seed=1', async (page) => {
   // Drag a box on empty space that encloses the first row of nodes.
   await page.mouse.move(2, 2);
@@ -385,7 +411,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- drag under zoom
 
-console.log('\ndrag under zoom');
+head('drag under zoom');
 await withPage('count=12&seed=1', async (page) => {
   // Zoom out, then drag. At zoom != 1 a pointer delta is NOT a world delta: the world moves by
   // pixels/zoom. A test that only ever runs at zoom 1 cannot tell a correct implementation from
@@ -418,7 +444,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- undo/redo via keyboard
 
-console.log('\nkeyboard');
+head('keyboard');
 await withPage('count=12&seed=1', async (page) => {
   const before = await state(page);
   const n0 = screenOf(before, 'n0');
@@ -443,7 +469,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- sockets
 
-console.log('\nsockets');
+head('sockets');
 
 /**
  * A socket must be grabbable where it is PAINTED.
@@ -582,7 +608,7 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
 
 // ---------------------------------------------------------------- edges
 
-console.log('\nedges');
+head('edges');
 
 /**
  * A bezier must end on the socket it names.
@@ -656,7 +682,7 @@ await withPage('scene=shapes', async (page) => {
 
 // ---------------------------------------------------------------- theme tokens
 
-console.log('\ntheme tokens');
+head('theme tokens');
 
 /**
  * Every token the GL layer reads is actually defined by the theme.
@@ -692,7 +718,7 @@ await withPage('count=6', async (page) => {
 
 // ---------------------------------------------------------------- accessible names
 
-console.log('\naccessible names');
+head('accessible names');
 
 /**
  * Every control a person can reach has a name.
@@ -813,7 +839,7 @@ await withPage('count=3&widgets=1', async (page) => {
 
 // ---------------------------------------------------------------- auto-scroll
 
-console.log('\nauto-scroll');
+head('auto-scroll');
 
 /**
  * Dragging a node to the viewport edge scrolls the viewport.
@@ -862,7 +888,7 @@ await withPage('count=12&seed=1', async (page) => {
 
 // ---------------------------------------------------------------- comments
 
-console.log('\ncomments');
+head('comments');
 
 /**
  * A comment shows the words it currently has.
@@ -971,7 +997,7 @@ await withPage('scene=comments', async (page) => {
 
 // ---------------------------------------------------------------- keyboard scope
 
-console.log('\nkeyboard scope');
+head('keyboard scope');
 
 /**
  * The canvas answers keys only when the canvas has focus — and it does not lose its own keyboard
@@ -1075,9 +1101,511 @@ await withPage('count=6&seed=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- widgets
+
+head('widgets');
+
+/**
+ * A widget follows the graph it is sitting on.
+ *
+ * The snapshot behind every socket widget was re-taken only when the NUMBER of entities or the SIZE
+ * of the connected-socket set changed, so four ordinary things a consumer does produced nothing:
+ * giving an entity a colour left its widgets on the default theme, adding a socket to an entity
+ * that already had one added no widget, swapping the `widgetTypes` map kept the old components, and
+ * connecting a socket did not disable the widget on it — the connected-set is rebuilt as a fresh
+ * Set on every edge change and its size stays put when one connection replaces another.
+ *
+ * The value itself had the same shape of bug one level down: `useState(initialValue)` seeds once,
+ * so a value changed anywhere but in the widget never reached the control.
+ */
+await withPage('count=4&seed=1&widgets=1', async (page) => {
+  const countWidgets = () =>
+    page.evaluate(() => document.querySelectorAll('[data-entity-id] input, [data-entity-id] textarea').length);
+
+  const before = await countWidgets();
+  check('INSTRUMENT: widgets render at all', before > 0, `${before} widgets`);
+
+  // Adding a socket to an entity that ALREADY has sockets: the entity count does not move.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const first = s.entities[0];
+    s.applyEntityChanges([
+      {
+        type: 'data',
+        id: first.id,
+        data: {},
+      },
+    ]);
+    // Go through setEntities, which is the path a controlled consumer's prop takes.
+    s.setEntities(
+      s.entities.map((e) =>
+        e.id === first.id
+          ? { ...e, inputs: [...(e.inputs ?? []), { id: 'added', name: 'Added', type: 'string' }] }
+          : e
+      )
+    );
+  });
+  await page.waitForTimeout(300);
+
+  const after = await countWidgets();
+  check(
+    'adding a socket to an existing entity adds its widget',
+    after === before + 1,
+    `${before} -> ${after} widgets`
+  );
+
+  // A widget's value follows an external write.
+  const wrote = await page.evaluate(async () => {
+    const s = window.__harness.store.getState();
+    const target = s.entities.find((e) => (e.inputs ?? []).some((i) => i.id === 'added'));
+    if (!target) return null;
+    s.setEntities(
+      s.entities.map((e) =>
+        e.id === target.id
+          ? { ...e, data: { ...e.data, values: { ...(e.data?.values ?? {}), added: 'from outside' } } }
+          : e
+      )
+    );
+    return target.id;
+  });
+  await page.waitForTimeout(300);
+
+  if (wrote) {
+    const shows = await page.evaluate(
+      (id) => {
+        const scope = document.querySelector(`[data-entity-id="${id}"]`)?.parentElement;
+        if (!scope) return null;
+        return Array.from(scope.querySelectorAll('input,textarea')).map((el) => el.value);
+      },
+      wrote
+    );
+    check(
+      'a widget value follows an external write',
+      Array.isArray(shows) && shows.includes('from outside'),
+      JSON.stringify(shows)
+    );
+  }
+});
+
+// ---------------------------------------------------------------- selection outlines
+
+head('selection outlines');
+
+/**
+ * Selecting many entities paints their outlines at once, not in growing batches.
+ *
+ * The outline buffer learned how big it needed to be from a counter the writer CLAMPS at the
+ * current capacity — so it could only ever discover "I need at least what I already have", grow by
+ * half, and discover it again on the next frame. From the 32-slot minimum, a thousand selected
+ * entities took about nine frames of 1.5x growth to converge, and each of those frames is a React
+ * commit that remounts the mesh with a fresh all-zero instance buffer. What a person sees is the
+ * accent outlines arriving in waves after a select-all.
+ *
+ * Counted in COMMITS rather than in frames: the ramp's cost is one React commit per growth step,
+ * and commits are the thing this project's rules are actually about.
+ */
+await withPage('count=400&seed=1', async (page) => {
+  await page.mouse.click(640, 400);
+  await page.waitForTimeout(200);
+
+  const before = await page.evaluate(() => window.__harness.reactCommits().commits);
+
+  await page.keyboard.press('Control+a');
+  await page.waitForTimeout(700);
+
+  const after = await page.evaluate(() => window.__harness.reactCommits().commits);
+  const selected = await page.evaluate(() => window.__harness.store.getState().selectedEntityIds.size);
+
+  check('INSTRUMENT: select-all selected everything', selected === 400, `${selected} selected`);
+
+  // One growth step is one commit. The ramp from 32 to 400 needs ceil(log1.5(400/32)) = 7 of them,
+  // plus whatever else the gesture costs; the fix needs one. Six is comfortably between, and
+  // measuring the gap rather than an exact number keeps this from being a law about React's
+  // batching.
+  check(
+    'selecting 400 entities does not ramp the outline buffer',
+    after - before < 6,
+    `${after - before} commits for the whole gesture`
+  );
+
+  // ...and everything is actually outlined, which is the guard against "fixing" it by not growing.
+  const drawn = await page.evaluate(() => {
+    const verts = window.__harness.drawnVertices();
+    return verts.length;
+  });
+  check('INSTRUMENT: geometry is still being drawn', drawn > 0, `${drawn} vertices`);
+});
+
+// ---------------------------------------------------------------- collapsed groups
+
+head('collapsed groups');
+
+/**
+ * Collapsing a group takes its children's sockets and edges with it.
+ *
+ * The store deliberately keeps hidden entities out of the socket index, and the socket renderer
+ * did not know about hidden entities at all — so a collapsed frame kept its children's socket dots
+ * painted on top of it, and pressing one did nothing, because the paint and the hit test disagreed
+ * about which sockets exist. Edges between two hidden children stayed drawn inside the frame.
+ *
+ * This is the half of the culling item that a person can actually see. The viewport half — not
+ * drawing what is off-screen — is deliberately NOT here; see the finding for why it needs a
+ * frame-time baseline before it is worth its hazards.
+ */
+await withPage('scene=group', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.waitForTimeout(200);
+
+  const socketDots = async () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => {
+            const s = window.__harness.store.getState();
+            let painted = 0;
+            for (const e of s.entities) {
+              const r = window.__harness.socketRanges?.(e.id);
+              void r;
+            }
+            // Count what the socket index holds, which is the hit-test side.
+            let indexed = 0;
+            for (const e of s.entities) {
+              for (const q of s.socketQuadtree.queryPoint(e.position.x + 100, e.position.y + 100, 1400, [])) {
+                void q;
+                indexed++;
+              }
+            }
+            void painted;
+            resolve({ indexed, hidden: s.hiddenEntityIds.size });
+          })
+        )
+    );
+
+  const before = await socketDots();
+  check('INSTRUMENT: nothing is hidden to begin with', before.hidden === 0, JSON.stringify(before));
+
+  // Collapse the frame, then read what is DRAWN — vertices, not attributes.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.setEntities(s.entities.map((e) => (e.id === 'frame' ? { ...e, collapsed: true } : e)));
+  });
+  await page.waitForTimeout(400);
+
+  const after = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const hidden = new Set(s.hiddenEntityIds);
+
+    /**
+     * The two halves are read with two different instruments, because they ARE two different
+     * meshes and one instrument cannot see both.
+     *
+     * A socket is an INSTANCE — `drawnVertices` skips instanced meshes on purpose, since their
+     * vertices are a unit quad — so sockets are read from `drawnInstances`. An edge is a ribbon,
+     * an ordinary mesh, so it is read from `drawnVertices`.
+     *
+     * The law that stood here read only `drawnVertices` under a name about SOCKETS, so it could
+     * never have seen a socket at all: it was measuring edges the whole time, and passing on
+     * stale ribbon vertices past the draw range before that.
+     */
+    const socketPoints = window.__harness.drawnInstances().filter((p) => p.kind.startsWith('Circle'));
+    const verts = window.__harness.drawnVertices();
+
+    let paintedSockets = 0;
+    let onHiddenRow = 0;
+    const offenders = [];
+
+    for (const id of hidden) {
+      const e = s.entityMap.get(id);
+      if (!e) continue;
+      const nSockets = (e.inputs ?? []).length + (e.outputs ?? []).length;
+      if (nSockets === 0) continue;
+
+      // A socket instance belonging to this child sits within its own box's span. The window is
+      // generous on purpose: the claim is "none of them is drawn", not "drawn at exactly here".
+      for (const p of socketPoints) {
+        if (
+          p.x > e.position.x - 40 &&
+          p.x < e.position.x + 260 &&
+          p.y > e.position.y - 20 &&
+          p.y < e.position.y + 40 * nSockets + 40
+        ) {
+          paintedSockets++;
+        }
+      }
+
+      for (let i = 0; i < nSockets; i++) {
+        const y = e.position.y + 30 + i * 40;
+        for (const v of verts) {
+          if (Math.abs(v.y - y) < 3 && Math.abs(v.x - e.position.x) < 300) {
+            onHiddenRow++;
+            offenders.push(v.kind);
+          }
+        }
+      }
+    }
+    return {
+      hidden: hidden.size,
+      paintedSockets,
+      totalSockets: socketPoints.length,
+      onHiddenRow,
+      kinds: [...new Set(offenders)],
+    };
+  });
+
+  check('INSTRUMENT: collapsing hid the children', after.hidden >= 2, JSON.stringify(after));
+  check(
+    'INSTRUMENT: sockets are being drawn at all',
+    after.totalSockets > 0,
+    JSON.stringify(after)
+  );
+  check(
+    'a collapsed group paints no sockets for its children',
+    after.paintedSockets === 0,
+    `${after.paintedSockets} socket instances drawn inside a hidden child's box`
+  );
+  check(
+    'a collapsed group draws no edge across its hidden children',
+    after.onHiddenRow === 0,
+    `${after.onHiddenRow} drawn vertices sit on a hidden child's socket row, from ${after.kinds.join(' + ')}`
+  );
+
+  // Expanding brings them back — the guard against fixing this by never drawing sockets again.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.setEntities(s.entities.map((e) => (e.id === 'frame' ? { ...e, collapsed: false } : e)));
+  });
+  await page.waitForTimeout(400);
+  const restored = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    return { hidden: s.hiddenEntityIds.size, verts: window.__harness.drawnVertices().length };
+  });
+  check(
+    'expanding brings the children back',
+    restored.hidden === 0 && restored.verts > 0,
+    JSON.stringify(restored)
+  );
+});
+
+// ---------------------------------------------------------------- GL text
+
+head('GL text');
+
+/**
+ * The suite's only text law until now asserted a label is ABSENT from the DOM — which is exactly
+ * as true when the GL text is frozen, ghosted, or gone entirely. Nothing anywhere read a glyph.
+ *
+ * That matters right now for two reasons. The glyph matrices are written straight into the mesh's
+ * own instance array, and the ways that goes wrong are all "text vanishes or draws garbage". And
+ * the entry-pooling item that is deliberately NOT being taken defeats the `entries ===
+ * lastEntriesRef.current` change detector, whose failure is text freezing at whatever it said on
+ * the first frame — invisible while idle, wrong from the first frame of a drag.
+ *
+ * So the subject is a DRAG, not a pan: panning moves the camera and leaves every glyph where it
+ * was in world space, so a frozen renderer and a working one agree. Dragging a labelled node is
+ * where they differ.
+ */
+await withPage('count=12&seed=1', async (page) => {
+  const glyphs = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(window.__harness.glyphs()))
+          )
+        )
+    );
+
+  const drawn = (g) => g.filter((m) => m.count > 0);
+
+  const g0 = await glyphs();
+  check(
+    'INSTRUMENT: the scene has MSDF glyph meshes drawing glyphs',
+    drawn(g0).length > 0 && drawn(g0).every((m) => Number.isFinite(m.x) && Number.isFinite(m.y)),
+    JSON.stringify(g0)
+  );
+
+  const before = await state(page);
+  const n0 = screenOf(before, 'n0');
+
+  await page.evaluate(() => window.__harness.mark('drag'));
+  await page.mouse.move(n0.x + 40, n0.y + 30 + EDGE_CLEARANCE);
+  await page.mouse.down();
+  await page.mouse.move(n0.x + 140, n0.y + 30 + EDGE_CLEARANCE, { steps: 10 });
+
+  // Read WHILE the pointer is still down. A frozen renderer that repopulates once on mouseup
+  // would pass a law that only looks at the end.
+  const gMid = await glyphs();
+  const copies = await page.evaluate(() => window.__harness.bulkCopies());
+
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+
+  const after = await state(page);
+  const moved = after.positions.n0.x - before.positions.n0.x;
+  check('precondition: the drag actually moved the node', Math.abs(moved - 100) <= 2, String(moved));
+
+  // The first glyph of SOME mesh must have travelled with the node. Which mesh holds n0's label
+  // depends on weight and collection order, so the law asks whether any of them followed rather
+  // than naming one — and the tolerance is against the node's own measured delta, not a constant.
+  // Compared BY INDEX, so the mesh list has to be the same list. It is — which weight meshes
+  // exist depends on whether bold text is on screen, and a drag does not change that — but an
+  // unasserted premise is how a law comes to compare two different meshes and call it movement.
+  check(
+    'INSTRUMENT: the same glyph meshes are present before and during the drag',
+    gMid.length === g0.length && gMid.length > 0,
+    `${g0.length} -> ${gMid.length}`
+  );
+
+  const followed = gMid.some((m, i) => {
+    const was = g0[i];
+    return was && m.count > 0 && Number.isFinite(was.x) && Math.abs(m.x - was.x) > 20;
+  });
+  check(
+    'GL text follows a drag rather than freezing',
+    followed,
+    `before=${JSON.stringify(g0)} during=${JSON.stringify(gMid)}`
+  );
+  check(
+    'GL text is still drawn during the drag',
+    drawn(gMid).length > 0,
+    JSON.stringify(gMid)
+  );
+
+  /**
+   * No bulk glyph copy during the gesture.
+   *
+   * Each weight used to fill an intermediate matrix buffer and then copy the whole live prefix
+   * into the mesh's own array — 64 bytes per visible glyph per weight, every dirty frame, and a
+   * `subarray` view to do it with. A heap sampler cannot see that (the memcpy allocates nothing,
+   * the view is ~100 bytes), so the copies are counted instead of the bytes.
+   *
+   * The only `subarray` sites left in `src/` are the edge buffers' growth path, which does not run
+   * while dragging one node on a fixed graph — so zero is the honest expectation, and putting
+   * either copy back makes this a per-frame count.
+   */
+  check('no bulk Float32Array copy during a drag', copies === 0, `copies=${copies}`);
+});
+
+// ---------------------------------------------------------------- GPU teardown
+
+head('GPU teardown');
+
+/**
+ * A rebuilt material is torn down, and what that does NOT prove is stated rather than implied.
+ *
+ * A theme change rebuilds nearly every material in the package — the memos are keyed on resolved
+ * token colours — which makes it the cheapest way to drive the rebuild path over and over.
+ *
+ * THE FIRST VERSION OF THIS LAW COULD NOT FAIL, and the measurement is worth keeping because it
+ * is the reason the law has the shape it has. It asserted that eight further flips leak no GPU
+ * PROGRAMS. Deleting all 23 dispose effects moves that number by exactly zero: every ShaderMaterial
+ * of a kind in this package has a byte-identical shader body, so three's program cache hands back
+ * the same program however many materials are built, and `createProgram` never fires again. A
+ * program counter cannot see a material leak in this codebase.
+ *
+ * So the material half is proven by counting the teardown calls instead. That is weaker and is
+ * labelled as such: it shows the dispose RAN, not that the driver let go. Measured, over eight
+ * flips: 8 disposals without the effects (R3F frees almost nothing on its own), 88 with them.
+ *
+ * WHAT THIS LAW DOES NOT COVER, said out loud rather than left for a reader to assume:
+ *
+ *  - The GEOMETRY half. Geometries are `[]`-memoised, so a theme flip never rebuilds one and the
+ *    count is 0 both with and without the effects. Those effects fire on UNMOUNT, which this
+ *    section does not drive.
+ *  - The buffer leak below. It is real, it is PRE-EXISTING, and disposing materials does not
+ *    touch it — see the finding printed with it.
+ */
+await withPage('count=12&seed=1', async (page) => {
+  const setAppearance = async (from, to) => {
+    await page.evaluate(
+      ([f, t]) => {
+        const el = document.querySelector('.radix-themes');
+        el.classList.remove(f);
+        el.classList.add(t);
+      },
+      [from, to]
+    );
+    await page.waitForTimeout(400);
+  };
+
+  const lifetimes = () => page.evaluate(() => window.__harness.glLifetimes());
+  const disposals = () => page.evaluate(() => window.__harness.disposals());
+  const liveOf = (l) => ({
+    programs: l.programsCreated - l.programsDeleted,
+    buffers: l.buffersCreated - l.buffersDeleted,
+  });
+
+  // Warm-up: one full round trip, so every material has compiled in both appearances and the
+  // first-flip cost is out of the way. A total measured against a constant would be a law about
+  // warm-up rather than about teardown.
+  await setAppearance('light', 'dark');
+  await setAppearance('dark', 'light');
+  const warm = liveOf(await lifetimes());
+  const disposedWarm = await disposals();
+
+  check(
+    'INSTRUMENT: the driver counters are actually counting',
+    warm.programs > 0 && warm.buffers > 0,
+    JSON.stringify(warm)
+  );
+
+  const FLIPS = 8;
+  for (let i = 0; i < FLIPS / 2; i++) {
+    await setAppearance('light', 'dark');
+    await setAppearance('dark', 'light');
+  }
+  const after = liveOf(await lifetimes());
+  const disposedAfter = await disposals();
+
+  const dMat = disposedAfter.material - disposedWarm.material;
+  const dGeo = disposedAfter.geometry - disposedWarm.geometry;
+  const dBuf = after.buffers - warm.buffers;
+  const dProg = after.programs - warm.programs;
+
+  // Printed on every run, not only on failure: a threshold whose inputs are invisible is one
+  // nobody can re-derive later.
+  console.log(`  measured  materials disposed +${dMat}, geometries +${dGeo}`);
+  console.log(`  measured  programs +${dProg}, buffers ${warm.buffers} -> ${after.buffers} (+${dBuf})`);
+
+  // The threshold is set from measurement in BOTH directions: 8 without the dispose effects,
+  // 88 with. Two per flip is comfortably above the floor and comfortably below the ceiling, so
+  // this fails on a teardown that stops running without failing on one that runs a little less.
+  check(
+    `each theme flip tears down the materials it replaced`,
+    dMat >= FLIPS * 2,
+    `${dMat} materials disposed over ${FLIPS} flips (8 with the effects deleted, 88 with them)`
+  );
+
+  /**
+   * PRE-EXISTING AND NOT FIXED HERE. Recorded with its number so the next person starts from a
+   * measurement rather than from scratch.
+   *
+   * Eight theme flips leak about 128 GL buffers, roughly 16 per flip, and that number is
+   * IDENTICAL with all 23 dispose effects present and with all of them deleted — so it is not a
+   * material or geometry leak and C25's fix does not touch it. The likely cause is R3F
+   * reconstructing every instanced mesh when `args` changes (a rebuilt material is a new `args`
+   * entry), which mints a fresh `instanceMatrix` and a fresh set of `InstancedBufferAttribute`s
+   * while nothing frees the old mesh's. Not fixed here because the repair — keeping the material
+   * out of `args` — changes when the buffer-init callback ref re-runs, and that callback ref IS
+   * the C24 fix that makes a theme change reach WebGL at all. It needs its own item.
+   *
+   * Asserted as a CEILING that today's behaviour passes, so it cannot get worse unnoticed, and
+   * NOT as zero, which would be a red law nobody can act on.
+   */
+  check(
+    'the known per-flip buffer leak does not get worse',
+    dBuf <= FLIPS * 20,
+    `${dBuf} buffers over ${FLIPS} flips (about ${Math.round(dBuf / FLIPS)} per flip; ~16 is the recorded pre-existing rate)`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
-console.log(`\n${passed} passed, ${failures.length} failed\n`);
+console.log(
+  `\n${passed} passed, ${failures.length} failed` +
+    (skippedSections ? ` — ${skippedSections} SECTIONS SKIPPED by KUI_ONLY=${ONLY}` : '') +
+    '\n'
+);
 if (failures.length) {
   for (const f of failures) console.log(`  FAIL ${f.name}${f.detail ? ` — ${f.detail}` : ''}`);
 }

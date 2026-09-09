@@ -21,6 +21,9 @@ export function SelectionBox() {
   // Simple plane geometry
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
+
   // Shader material with dashed border
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -101,6 +104,9 @@ export function SelectionBox() {
       depthTest: false,
     });
   }, [accentColor]);
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { material.dispose(); }, [material]);
 
   // Subscribe to selection box and viewport changes
   useEffect(() => {

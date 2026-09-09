@@ -91,6 +91,9 @@ export function Grid({
     });
   }, [size, gridColor, gridColorAccent]);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { gridMaterial.dispose(); }, [gridMaterial]);
+
   // Subscribe to viewport changes
   useEffect(() => {
     return store.subscribe(
@@ -116,7 +119,11 @@ export function Grid({
     }
 
     dirtyRef.current = false;
-    lastViewportRef.current = { ...viewport };
+    // Mutated, not replaced: this ref is a private record of the last-seen values, never handed to
+    // anyone, so a fresh object per frame buys nothing and allocates in the frame loop.
+    lastViewportRef.current.x = viewport.x;
+    lastViewportRef.current.y = viewport.y;
+    lastViewportRef.current.zoom = viewport.zoom;
 
     // Position grid at the center of what the camera sees
     const centerX = (camera.left + camera.right) / 2;

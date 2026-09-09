@@ -26,6 +26,15 @@ Two items came back already closed (C24, C33), by commits on this branch.
 | [C15](C15.md) | low | counts-spike | — |
 | [C27](C27.md) | low | behaviour-browser | — |
 | [C30](C30.md) | low | unit | — |
+| [C34](C34.md) | medium | counts-spike | — |
+
+## Found while fixing, not by the audit
+
+- **C34** — a theme flip leaks about 16 GL buffers. Found by building C25's law: the same law
+  measures 8 material disposals without C25's fix and 88 with it, and the buffer number does not
+  move between those two runs, which is what says it is a different defect. Filed with its
+  measurement, not fixed — the repair touches the mechanism eaaed92 installed to make a theme
+  change reach WebGL at all.
 
 ## Already closed
 

@@ -57,6 +57,9 @@ export function EntitySelection() {
 
   const outlineGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { outlineGeometry.dispose(); }, [outlineGeometry]);
+
   // Resolve theme colors
   const selectedColor = tokens[THEME_COLORS.entitySelection.selected];
   const hoverColor = tokens[THEME_COLORS.entitySelection.hover];
@@ -159,6 +162,9 @@ export function EntitySelection() {
     });
   }, [selectedColor, hoverColor, resolvedStyle.borderRadius]);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { outlineMaterial.dispose(); }, [outlineMaterial]);
+
   // Outline buffers
   const outlineBuffers = useMemo(() => ({
     sizes: new Float32Array(outlineCapacity * 2),
@@ -215,6 +221,9 @@ export function EntitySelection() {
   // ============================================================================
 
   const handleGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { handleGeometry.dispose(); }, [handleGeometry]);
 
   const handleFillColor = tokens[THEME_COLORS.entitySelection.handleFill];
   const handleBorderColor = tokens[THEME_COLORS.entitySelection.handleBorder];
@@ -281,6 +290,9 @@ export function EntitySelection() {
       depthTest: false,
     });
   }, [handleFillColor, handleBorderColor]);
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { handleMaterial.dispose(); }, [handleMaterial]);
 
   // Handle buffer — no per-instance attributes, just instance matrices
   // (all handles same size/color, determined by uniform)
@@ -367,24 +379,35 @@ export function EntitySelection() {
       let outlineCount = 0;
       const maxOutline = outlineCapacity;
 
+      /**
+       * Does this entity contribute an outline instance?
+       *
+       * Split out of the writer so the capacity can be sized from the TRUE need in one step. The
+       * old code learned its need from `outlineCount`, which the writer clamps at capacity — so it
+       * could only ever discover "I need at least what I have", grow 1.5x, and discover it again
+       * next frame. Selecting a thousand entities with a 32-slot buffer took the ramp about nine
+       * frames to converge, and the outlines painted in growing batches while it did.
+       */
+      const contributes = (entity: import('../types').Entity): boolean => {
+        if (hiddenEntityIds.has(entity.id)) return false;
+        const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const h = entity.height ?? getEntitySocketLayout(entity, socketLayout).computedHeight;
+        return !(
+          entity.position.x + w < viewLeft - cullPadding ||
+          entity.position.x > viewRight + cullPadding ||
+          entity.position.y + h < viewTop - cullPadding ||
+          entity.position.y > viewBottom + cullPadding
+        );
+      };
+
       // Helper to write one outline instance — shared by selected + hovered paths
       const writeOutline = (entity: import('../types').Entity, isSelected: boolean) => {
         if (outlineCount >= maxOutline) return;
-        if (hiddenEntityIds.has(entity.id)) return;
+        if (!contributes(entity)) return;
 
         const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const entityLayout = getEntitySocketLayout(entity, socketLayout);
         const height = entity.height ?? entityLayout.computedHeight;
-
-        // Frustum culling
-        const entityRight = entity.position.x + width;
-        const entityBottom = entity.position.y + height;
-        if (
-          entityRight < viewLeft - cullPadding ||
-          entity.position.x > viewRight + cullPadding ||
-          entityBottom < viewTop - cullPadding ||
-          entity.position.y > viewBottom + cullPadding
-        ) return;
 
         tempMatrix.identity();
         tempMatrix.setPosition(
@@ -415,9 +438,23 @@ export function EntitySelection() {
         if (hovered) writeOutline(hovered, false);
       }
 
-      // Grow capacity if needed
+      // Size to what is actually needed, in ONE step. Counting is a second pass over the same
+      // small set (selected entities plus at most one hovered), and it only runs when the buffer
+      // is already full — so the common case pays nothing and the growing case converges at once
+      // instead of over nine frames.
       if (outlineCount >= outlineCapacity) {
-        setOutlineCapacity(Math.ceil(outlineCount * BUFFER_GROWTH_FACTOR));
+        let needed = 0;
+        for (const entityId of selectedEntityIds) {
+          const entity = entityMap.get(entityId);
+          if (entity && contributes(entity)) needed++;
+        }
+        if (hoveredEntityId && !selectedEntityIds.has(hoveredEntityId)) {
+          const hovered = entityMap.get(hoveredEntityId);
+          if (hovered && contributes(hovered)) needed++;
+        }
+        if (needed > outlineCapacity) {
+          setOutlineCapacity(Math.ceil(needed * BUFFER_GROWTH_FACTOR));
+        }
       }
 
       outlineMesh.instanceMatrix.needsUpdate = true;

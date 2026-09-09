@@ -2217,10 +2217,14 @@ function InputHandler({
         });
       }
 
-      const touches = Array.from(touchState.current.touches.values());
-
-      if (touches.length === 2 && touchState.current.initialDistance !== null) {
+      // The array is built INSIDE the guard, not before it. `touches.length` was only ever a
+      // longer spelling of `touchState.current.touches.size`, so a one-finger touchmove — the
+      // ordinary drag or pan on a touch device, once per frame for the whole gesture — allocated
+      // a Map iterator and an array and then threw both away.
+      if (touchState.current.touches.size === 2 && touchState.current.initialDistance !== null) {
         e.preventDefault();
+
+        const touches = Array.from(touchState.current.touches.values());
 
         const dx = touches[1].x - touches[0].x;
         const dy = touches[1].y - touches[0].y;

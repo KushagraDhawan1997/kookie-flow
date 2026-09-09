@@ -273,8 +273,14 @@ export function makeComments(): Fixture {
 export function makeGroup(): Fixture {
   const entities: Entity[] = [
     {
+      // `type: 'frame'`, and it is load-bearing rather than cosmetic. `buildCollapsedGroupIds`
+      // (core/store.ts) only ever collapses an entity whose type is exactly 'frame', so this
+      // container spent its whole life as a `'default'` that could not be collapsed — every law
+      // about collapsing read an empty `hiddenEntityIds` and passed on the strength of it. That is
+      // the harness blessing a premise the package does not hold, the same shape as the change
+      // applier reading `c.item` where the union says `entity`.
       id: 'frame',
-      type: 'default',
+      type: 'frame',
       position: { x: 60, y: 60 },
       data: { label: 'Frame' },
       width: 420,

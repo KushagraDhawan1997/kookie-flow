@@ -61,6 +61,9 @@ export function RerouteNodes() {
   // Circle geometry
   const geometry = useMemo(() => new THREE.CircleGeometry(REROUTE_RADIUS, REROUTE_SEGMENTS), []);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
+
   // Shader material for reroute rendering
   const material = useMemo(
     () =>
@@ -135,6 +138,9 @@ export function RerouteNodes() {
       }),
     [rerouteColor, selectedColor]
   );
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { material.dispose(); }, [material]);
 
   // Pre-allocated buffers
   const buffers = useMemo(

@@ -114,6 +114,9 @@ export function TextEditCursor() {
     });
   }, [primaryTextColor]);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { cursorMaterial.dispose(); }, [cursorMaterial]);
+
   // Selection material (instanced)
   const selectionMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -129,7 +132,13 @@ export function TextEditCursor() {
     });
   }, [accentColor]);
 
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { selectionMaterial.dispose(); }, [selectionMaterial]);
+
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+
+  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
 
   // Subscribe to editing state changes for dirty flagging
   useEffect(() => {
