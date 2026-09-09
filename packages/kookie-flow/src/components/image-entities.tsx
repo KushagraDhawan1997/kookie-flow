@@ -255,14 +255,43 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   );
   useEffect(() => () => { errorMat.dispose(); }, [errorMat]);
 
-  // Cleanup texture manager on unmount
+  /**
+   * The texture manager and the materials have different lifetimes, and conflating them was a bug.
+   *
+   * `texManager` is memoised on `maxImageTextureSize`, a public prop — so a consumer changing it at
+   * runtime re-runs this cleanup WITHOUT unmounting a single mesh. The old version disposed and
+   * cleared every material here, and materials are only created in the ref callback behind
+   * `if (!materialRefs.current.has(id))`, which does not re-run for a mounted mesh. So every image
+   * quad was left with no material, permanently.
+   *
+   * It was invisible: the ImageBitmaps stayed alive, so three re-uploaded them and the pictures
+   * kept rendering off the orphaned manager. Closing the bitmaps — which is the point of this
+   * commit — takes that cover away and turns it into empty quads plus a per-frame console warning
+   * that never stops.
+   *
+   * Split, so each thing is released when IT ends. The manager's cleanup also nulls the texture
+   * uniforms, because after `disposeTexture` a texture cannot be re-uploaded and a material still
+   * pointing at one is what produces the warning; the update loop re-points them from the new
+   * manager on its next pass.
+   */
   useEffect(() => {
     return () => {
       texManager.disposeAll();
-      materialRefs.current.forEach((m) => m.dispose());
-      materialRefs.current.clear();
+      for (const mat of materialRefs.current.values()) {
+        if (mat.uniforms.map) mat.uniforms.map.value = null;
+      }
     };
   }, [texManager]);
+
+  // Materials belong to the meshes, so they are released when this component goes away — never on
+  // a prop change.
+  useEffect(() => {
+    const materials = materialRefs.current;
+    return () => {
+      materials.forEach((m) => m.dispose());
+      materials.clear();
+    };
+  }, []);
 
   // Subscribe to store changes with fine-grained dirty flags.
   // - topologyVersion: entity add/remove → rebuild image ID list + full update

@@ -8,6 +8,7 @@ import { TextField } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
 export function NumberWidget({
+  label,
   value,
   onChange,
   disabled,
@@ -54,6 +55,7 @@ export function NumberWidget({
 
   return (
     <TextField.Root
+      aria-label={label}
       size="2"
       variant="soft"
       type="number"

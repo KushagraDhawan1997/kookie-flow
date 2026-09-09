@@ -8,6 +8,7 @@ import { Box, Slider } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
 export function SliderWidget({
+  label,
   value,
   onChange,
   disabled,
@@ -31,6 +32,7 @@ export function SliderWidget({
   return (
     <Box width="100%" style={{ flex: 1, alignSelf: 'center' }}>
       <Slider
+        aria-label={label}
         size="2"
         variant="soft"
         value={sliderValue}

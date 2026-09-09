@@ -95,6 +95,26 @@ function bitmapToTexture(bitmap: ImageBitmap, generateMipmaps: boolean): THREE.T
   return tex;
 }
 
+/**
+ * Dispose a texture AND close the ImageBitmap behind it.
+ *
+ * `texture.dispose()` frees the GPU handle and nothing else. The decoded pixel buffer sits in an
+ * ImageBitmap outside the JS heap — 16MB for a 2048x2048 tier — and is only reclaimed when the
+ * object becomes unreachable and a collector gets to it, which is non-deterministic and can be a
+ * long way from the moment the image left the screen. `close()` gives it back immediately.
+ *
+ * `image = null` is what makes the release final, and it is also the sharp edge: after this the
+ * texture cannot be re-uploaded, so anything still pointing a material at it must be re-pointed in
+ * the same breath. Every caller here does.
+ */
+function disposeTexture(tex: THREE.Texture | null | undefined): void {
+  if (!tex) return;
+  tex.dispose();
+  const img = tex.image as ImageBitmap | null;
+  if (img && typeof img.close === 'function') img.close();
+  tex.image = null;
+}
+
 // ── ImageTextureManager ──────────────────────────────────────────────
 
 /** Max number of full-res textures kept in GPU memory.
@@ -109,6 +129,8 @@ export class ImageTextureManager {
   private onLoad: (() => void) | undefined;
   private uploadQueue: PendingUpload[] = [];
   private decodeWorker: ImageDecodeWorker | null = null;
+  /** Set once a worker has failed to construct, so the main-thread path is used from then on. */
+  private workerUnavailable = false;
   private maxTextureSize: number;
 
   constructor(onLoad?: () => void, maxTextureSize?: number) {
@@ -119,9 +141,18 @@ export class ImageTextureManager {
   // ── Worker (lazy) ──────────────────────────────────────────────────
 
   private getDecodeWorker(): ImageDecodeWorker | null {
-    if (typeof Worker === 'undefined') return null; // SSR fallback
+    if (typeof Worker === 'undefined' || this.workerUnavailable) return null; // SSR / blocked
     if (!this.decodeWorker) {
-      this.decodeWorker = new ImageDecodeWorker();
+      // A CSP or sandbox that forbids workers makes `new Worker` throw a SecurityError, and the
+      // throw used to escape into the decode's catch — which reports a failed IMAGE. Every image
+      // in the document then failed, permanently, because nothing recorded that the worker itself
+      // was the problem and the main-thread path beside it was never tried.
+      const w = new ImageDecodeWorker();
+      if (!w.tryStart()) {
+        this.workerUnavailable = true;
+        return null;
+      }
+      this.decodeWorker = w;
     }
     return this.decodeWorker;
   }
@@ -154,10 +185,21 @@ export class ImageTextureManager {
 
       const tex = bitmapToTexture(item.bitmap, item.generateMipmaps);
       if (item.tier === 'thumbnail') {
+        // Overwriting without disposing leaked the previous texture and its bitmap.
+        disposeTexture(entry.thumbnail);
         entry.thumbnail = tex;
       } else {
+        // The count tracks entries HOLDING a full-res texture, so it only rises when the entry did
+        // not already have one — it used to rise on every upload, so a re-decode of the same image
+        // inflated it permanently and drove the LRU to evict textures that were still on screen.
+        if (!entry.full) this.fullResCount++;
+        disposeTexture(entry.full);
         entry.full = tex;
-        this.fullResCount++;
+        // Cleared HERE, at the drain, rather than when the decode was enqueued. Clearing it at
+        // enqueue meant the entry read as idle while its bitmap was still in the queue, so the
+        // next zoom past the LOD threshold started the whole fetch-and-decode again — once per
+        // round trip, for as long as the queue took to drain.
+        entry.fullLoadState = 'idle';
       }
     }
 
@@ -209,8 +251,11 @@ export class ImageTextureManager {
     if (entry.refCount <= 0) {
       entry.abort?.abort();
       if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
-      entry.thumbnail?.dispose();
-      if (entry.full) { entry.full.dispose(); this.fullResCount--; }
+      disposeTexture(entry.thumbnail);
+      if (entry.full) {
+        disposeTexture(entry.full);
+        this.fullResCount--;
+      }
       entry.blob = null;
       this.cache.delete(src);
     }
@@ -255,11 +300,12 @@ export class ImageTextureManager {
     for (const [, entry] of this.cache) {
       entry.abort?.abort();
       if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
-      entry.thumbnail?.dispose();
-      entry.full?.dispose();
+      disposeTexture(entry.thumbnail);
+      disposeTexture(entry.full);
       entry.blob = null;
     }
     this.cache.clear();
+    this.fullResCount = 0;
   }
 
   // ── LRU eviction ─────────────────────────────────────────────────
@@ -279,7 +325,7 @@ export class ImageTextureManager {
     for (let i = 0; i < candidates.length && toEvict > 0; i++) {
       const entry = candidates[i][1];
       if (!entry.full) continue;
-      entry.full.dispose();
+      disposeTexture(entry.full);
       entry.full = null;
       entry.fullLoadState = 'idle';
       this.fullResCount--;
@@ -374,7 +420,9 @@ export class ImageTextureManager {
       // Re-fetch if blob was evicted by timeout
       let blob = entry.blob;
       if (!blob) {
-        const response = await fetch(src);
+        // Abortable: releasing an image mid-decode used to leave the fetch running to completion
+        // and be discarded afterwards.
+        const response = await fetch(src, entry.abort ? { signal: entry.abort.signal } : undefined);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         blob = await response.blob();
         if (!this.cache.has(src)) return;
@@ -413,9 +461,10 @@ export class ImageTextureManager {
         });
       }
 
-      // Free blob memory — no longer needed
+      // Free blob memory — no longer needed. `fullLoadState` is NOT cleared here: the bitmap is
+      // still queued for upload at this point, and saying "idle" invites the next zoom to start
+      // the same fetch again. The drain clears it, once the texture actually exists.
       entry.blob = null;
-      entry.fullLoadState = 'idle';
       this.onLoad?.();
     } catch (err) {
       console.warn(`[KookieFlow] Full-res image decode failed for "${src}":`, err);

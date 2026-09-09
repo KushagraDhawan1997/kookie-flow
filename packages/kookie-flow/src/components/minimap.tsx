@@ -649,17 +649,47 @@ export function Minimap({
       };
     }
 
-    // Set up HiDPI canvas
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    /**
+     * HiDPI sizing, re-applied when the device pixel ratio CHANGES.
+     *
+     * `devicePixelRatio` was read exactly once, at mount. Dragging the window to a monitor with a
+     * different density, or changing the OS display scale, left the minimap rendering at the old
+     * ratio for the rest of the session — a soft, upscaled canvas beside a crisp WebGL one.
+     *
+     * Done imperatively, with no state and no re-render: this file's rules forbid a React render
+     * in the drawing path, and the repair needs neither. `canvas.width` is set BEFORE `ctx.scale`,
+     * because assigning the backing size resets the context's transform — reversing those two
+     * lines silently discards the scale.
+     */
+    const applyDpr = () => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      const c = canvas.getContext('2d');
+      if (!c) return null;
+      c.scale(dpr, dpr);
+      ctxRef.current = c;
+      return c;
+    };
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!applyDpr()) return;
 
-    // Scale context for HiDPI
-    ctx.scale(dpr, dpr);
-    ctxRef.current = ctx;
+    // `matchMedia` is how a DPR change is observed — there is no resize event for it, and a
+    // media-query list has to be re-created after each change because the value it tests has moved.
+    let dprQuery: MediaQueryList | null = null;
+    const watchDpr = () => {
+      if (typeof window.matchMedia !== 'function') return;
+      dprQuery?.removeEventListener('change', onDprChange);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprQuery.addEventListener('change', onDprChange);
+    };
+    function onDprChange() {
+      applyDpr();
+      dirtyRef.current.viewport = true;
+      scheduleRender();
+      watchDpr();
+    }
+    watchDpr();
 
     // Initial render (container size is now set)
     render();
@@ -669,6 +699,7 @@ export function Minimap({
 
     return () => {
       unsub();
+      dprQuery?.removeEventListener('change', onDprChange);
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
       }

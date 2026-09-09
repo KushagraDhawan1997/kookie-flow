@@ -101,6 +101,15 @@ const state = (page) =>
  * where most tests sit. Using the wrong one passes there and fails the moment anything is panned
  * or zoomed, which is why the zoomed drag case below exists.
  */
+/**
+ * How far a drag law must start from a viewport edge to be a law about dragging.
+ *
+ * AUTO_SCROLL_EDGE_THRESHOLD is 50 screen pixels (core/constants.ts); inside that band a drag also
+ * scrolls the viewport, which moves the entity further than the pointer travelled. A law measuring
+ * pointer-to-entity parity has to run outside it.
+ */
+const EDGE_CLEARANCE = 60;
+
 const screenOf = (st, id) => {
   const p = st.positions[id];
   const { x, y, zoom } = st.viewport;
@@ -291,9 +300,16 @@ await withPage('count=12&seed=1', async (page) => {
   const before = await state(page);
   const n0 = screenOf(before, 'n0');
 
-  await page.mouse.move(n0.x + 40, n0.y + 30);
+  // The press point is pushed clear of the viewport edges ON PURPOSE. `n0` sits near the top-left
+  // of the graph, and the original press landed 39px from the top — inside the 50px band where
+  // auto-scroll engages. So a law named "drag delta matches pointer travel" was measuring a
+  // CORNER drag, and only passed because auto-scroll was broken: repairing it adds 1.5 world units
+  // per engaged frame, which is inside the tolerance once and outside it twice. That is this
+  // project's own degenerate-fixture rule — a law about the general case has to run on an input
+  // where the general and special cases give different answers.
+  await page.mouse.move(n0.x + 40, n0.y + 30 + EDGE_CLEARANCE);
   await page.mouse.down();
-  await page.mouse.move(n0.x + 140, n0.y + 90, { steps: 10 });
+  await page.mouse.move(n0.x + 140, n0.y + 90 + EDGE_CLEARANCE, { steps: 10 });
   await page.mouse.up();
   await page.waitForTimeout(250);
 
@@ -671,6 +687,391 @@ await withPage('count=6', async (page) => {
     'every token the GL layer reads is defined by the theme',
     census.missing.length === 0,
     census.missing.length ? `${census.missing.length} fall back to a dark default: ${census.missing.join(' ')}` : undefined
+  );
+});
+
+// ---------------------------------------------------------------- accessible names
+
+console.log('\naccessible names');
+
+/**
+ * Every control a person can reach has a name.
+ *
+ * A screen-reader user could not operate this graph. Socket widgets announced as unnamed controls
+ * or, worse, as DUPLICATES — three text sockets on one node all reading "Enter text…, edit text",
+ * because the only thing distinguishing them was the placeholder. Six icon-only toolbar radios
+ * announced as nothing at all.
+ *
+ * This reads the COMPUTED accessible name from a mounted DOM, not the attributes. An `aria-label`
+ * that lands on a wrapper span instead of the control is exactly the failure mode here, and an
+ * attribute check cannot see the difference — it is the same class of mistake as asserting a token
+ * name instead of the colour it resolves to.
+ *
+ * ONE control is knowingly exempt and it is not fixable from this repository: kookie-ui hardcodes
+ * the slider thumb's name (`Slider value: 0.5`) on the element that carries role="slider", so a
+ * consumer aria-label lands on a wrapper carrying no role. A slider socket's only identity is its
+ * group. The law states that rather than failing on correct code.
+ */
+await withPage('count=3&widgets=1', async (page) => {
+  const named = await page.evaluate(() => {
+    // The accessible name, computed the way a screen reader computes it — aria-label, then
+    // aria-labelledby, then the label element, then the content.
+    const nameOf = (el) => {
+      const direct = el.getAttribute('aria-label');
+      if (direct && direct.trim()) return direct.trim();
+      const by = el.getAttribute('aria-labelledby');
+      if (by) {
+        const parts = by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '');
+        if (parts.join(' ').trim()) return parts.join(' ').trim();
+      }
+      if (el.id) {
+        const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+        if (lbl?.textContent?.trim()) return lbl.textContent.trim();
+      }
+      const wrapping = el.closest('label');
+      if (wrapping?.textContent?.trim()) return wrapping.textContent.trim();
+      if (el.getAttribute('role') === 'radio' || el.tagName === 'BUTTON') {
+        if (el.textContent?.trim()) return el.textContent.trim();
+      }
+      const title = el.getAttribute('title');
+      return title && title.trim() ? title.trim() : '';
+    };
+
+    const SELECTOR = [
+      'input:not([type="hidden"])',
+      'textarea',
+      'select',
+      'button',
+      '[role="radio"]',
+      '[role="checkbox"]',
+      '[role="combobox"]',
+      '[role="slider"]',
+      '[role="switch"]',
+    ].join(',');
+
+    const out = { total: 0, unnamed: [], sliders: 0 };
+    for (const el of document.querySelectorAll(SELECTOR)) {
+      // Skip anything hidden from assistive tech entirely — it is not a reachable control.
+      if (el.closest('[aria-hidden="true"]')) continue;
+      // The kookie-ui slider thumb names itself; counted, and excused, deliberately.
+      if (el.getAttribute('role') === 'slider') { out.sliders++; continue; }
+      out.total++;
+      if (!nameOf(el)) {
+        out.unnamed.push(`${el.tagName.toLowerCase()}${el.getAttribute('role') ? `[role=${el.getAttribute('role')}]` : ''}${el.type ? `[type=${el.type}]` : ''}`);
+      }
+    }
+    return out;
+  });
+
+  // Vacuity guard. With widgets off, or a fixture that renders no controls, "nothing is unnamed"
+  // is true and empty — and this fixture has to actually be rendering widgets for the socket half
+  // of the law to mean anything.
+  check(
+    'INSTRUMENT: the sweep finds controls to check',
+    named.total >= 3,
+    `${named.total} reachable controls (+${named.sliders} self-naming sliders)`
+  );
+
+  check(
+    'every reachable control has an accessible name',
+    named.unnamed.length === 0,
+    named.unnamed.length ? `${named.unnamed.length} unnamed: ${named.unnamed.join(' ')}` : undefined
+  );
+
+  // Duplicates are the half that made this unusable rather than merely unlabelled: three text
+  // sockets on ONE node all announcing "Enter text…, edit text", because the placeholder was the
+  // only thing distinguishing them.
+  //
+  // WITHIN A NODE, not across the screen. The first spelling of this compared every widget on the
+  // page and failed on correct code — the fixture names each node's sockets "In 0", "In 1", so the
+  // same name legitimately appears once per node. Two controls in different groups sharing a name
+  // is ordinary; two in the SAME group sharing one is the defect.
+  const dupes = await page.evaluate(() => {
+    const perEntity = new Map();
+    for (const el of document.querySelectorAll('input:not([type="hidden"]),textarea')) {
+      if (el.closest('[aria-hidden="true"]')) continue;
+      const name = el.getAttribute('aria-label');
+      if (!name) continue;
+      const entity = el.closest('[data-entity-id]')?.getAttribute('data-entity-id') ?? '(none)';
+      if (!perEntity.has(entity)) perEntity.set(entity, new Map());
+      const seen = perEntity.get(entity);
+      seen.set(name, (seen.get(name) ?? 0) + 1);
+    }
+    const out = [];
+    for (const [entity, seen] of perEntity) {
+      for (const [name, count] of seen) if (count > 1) out.push(`${entity}: "${name}" x${count}`);
+    }
+    return out;
+  });
+
+  check(
+    'no two widgets on one node announce the same name',
+    dupes.length === 0,
+    dupes.length ? dupes.join(', ') : undefined
+  );
+});
+
+// ---------------------------------------------------------------- auto-scroll
+
+console.log('\nauto-scroll');
+
+/**
+ * Dragging a node to the viewport edge scrolls the viewport.
+ *
+ * `runAutoScroll` opened with `if (!isDragging || ...)` where `isDragging` is React state captured
+ * when the callback was created — which is before the drag-start render commits. So the FIRST
+ * animation frame of every drag read false, set `active = false` and returned. Later frames worked,
+ * because a committed render hands the pointermove handler a fresh closure; that is why this read
+ * as intermittent rather than dead, and why it bites hardest on the gesture where the threshold
+ * crossing, the entry into the edge band and the pointer stopping all land on one event.
+ *
+ * The law holds the pointer still inside the band, which is exactly that gesture.
+ */
+await withPage('count=12&seed=1', async (page) => {
+  const before = await state(page);
+  const n0 = screenOf(before, 'n0');
+
+  // Press well clear of the edge, then drag INTO the top band and stop.
+  await page.mouse.move(n0.x + 40, n0.y + 30 + EDGE_CLEARANCE);
+  await page.mouse.down();
+  await page.mouse.move(n0.x + 40, n0.y + 30 + EDGE_CLEARANCE - 40, { steps: 4 });
+  await page.mouse.move(n0.x + 40, 20, { steps: 6 });
+  // ...and hold. No further pointer events: whatever happens now is the rAF loop's own doing.
+  await page.waitForTimeout(500);
+
+  const during = await state(page);
+  await page.mouse.up();
+
+  check(
+    'holding a drag at the viewport edge scrolls the viewport',
+    during.viewport.y > before.viewport.y + 1,
+    `viewport.y ${before.viewport.y} -> ${during.viewport.y}`
+  );
+
+  // The guard against over-fixing: auto-scroll must not run when nothing is being dragged.
+  const idleBefore = await state(page);
+  await page.mouse.move(n0.x + 40, 20);
+  await page.waitForTimeout(400);
+  const idleAfter = await state(page);
+  check(
+    'hovering the same edge with no drag scrolls nothing',
+    idleAfter.viewport.y === idleBefore.viewport.y,
+    `viewport.y ${idleBefore.viewport.y} -> ${idleAfter.viewport.y}`
+  );
+});
+
+// ---------------------------------------------------------------- comments
+
+console.log('\ncomments');
+
+/**
+ * A comment shows the words it currently has.
+ *
+ * Comments are the last persistent-DOM surface in the package, and their content, background,
+ * text colour and font size were all written by JSX that only re-ran when the NUMBER of comments
+ * changed. Editing a comment through `onEntitiesChange` — the only route a consumer has — left the
+ * div showing whatever it had at mount, for the life of the mount.
+ *
+ * The obvious repair is to re-render more often, and it is the wrong one: `entities.filter(...)`
+ * allocates a fresh array on every store change and a drag republishes `entities` on every
+ * pointermove, so a reference compare would re-render once per drag frame. The content moved into
+ * the imperative path instead — the one that already runs per frame and already owns the
+ * transform. So this law checks BOTH halves: the text follows, and the render count does not move.
+ */
+await withPage('scene=comments', async (page) => {
+  const read = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-entity-id]'))
+        .filter((el) => el.dataset.bg !== undefined || el.textContent)
+        .map((el) => ({
+          id: el.dataset.entityId,
+          text: el.textContent,
+          bg: el.style.backgroundColor,
+          fontSize: el.style.fontSize,
+        }))
+    );
+
+  const before = await read();
+  check(
+    'INSTRUMENT: the comments render at all',
+    before.length === 2 && before.some((c) => c.text === 'first note'),
+    JSON.stringify(before)
+  );
+
+  // Edit through the store, the way a consumer's applyEntityChanges would.
+  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    // `data`, not `update` — the change union has no `update` variant, and `applyEntityChanges`
+    // ignores an unknown type SILENTLY. The first version of this law used `update` and reported
+    // the comment as stale against a working fix, which is a law describing a code path that does
+    // not exist.
+    s.applyEntityChanges([
+      {
+        type: 'data',
+        id: 'note-a',
+        data: { content: 'edited', backgroundColor: '#B3E5FC', textColor: '#01579B', fontSize: 22 },
+      },
+    ]);
+  });
+  await page.waitForTimeout(250);
+
+  const after = await read();
+  const a = after.find((c) => c.id === 'note-a');
+
+  check('a comment follows its content', a?.text === 'edited', JSON.stringify(a));
+  check(
+    'a comment follows its colour and size',
+    a?.bg === 'rgb(179, 229, 252)' && a?.fontSize !== before.find((c) => c.id === 'note-a')?.fontSize,
+    JSON.stringify(a)
+  );
+
+  // The other comment must be untouched — a fix that repaints everything would also pass the two
+  // laws above.
+  const b = after.find((c) => c.id === 'note-b');
+  check('the other comment is unchanged', b?.text === 'second note', JSON.stringify(b));
+
+  // ...and none of it cost a re-render, which is the constraint that ruled out the obvious repair.
+  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+  check(
+    'editing a comment costs no React commit',
+    commitsAfter === commitsBefore,
+    `${commitsBefore} -> ${commitsAfter}`
+  );
+
+  // Identity: swap one comment for another WITHOUT changing the count. A length-based detector
+  // leaves the new one mounted blank, which is what the old code did.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.applyEntityChanges([{ type: 'remove', id: 'note-b' }]);
+    s.applyEntityChanges([
+      {
+        type: 'add',
+        entity: {
+          id: 'note-c',
+          type: 'comment',
+          position: { x: 340, y: 80 },
+          width: 200,
+          height: 120,
+          data: { content: 'replacement', backgroundColor: '#FFCCBC', textColor: '#BF360C', fontSize: 14 },
+        },
+      },
+    ]);
+  });
+  await page.waitForTimeout(400);
+
+  const swapped = await read();
+  const c = swapped.find((x) => x.id === 'note-c');
+  check(
+    'a comment swapped in at the same count paints',
+    c?.text === 'replacement',
+    JSON.stringify(swapped)
+  );
+});
+
+// ---------------------------------------------------------------- keyboard scope
+
+console.log('\nkeyboard scope');
+
+/**
+ * The canvas answers keys only when the canvas has focus — and it does not lose its own keyboard
+ * doing it.
+ *
+ * The keydown listener is on `window` and its only guard was a tagName test, so a host page
+ * embedding <KookieFlow> lost five keys everywhere on the page. Focus starts on <body> on every
+ * page load, so a bare `t` typed into nothing created a text entity and opened its editor;
+ * Backspace pressed on a host button deleted the graph's selection; Ctrl+A selected the graph
+ * rather than the page's text.
+ *
+ * The second half of this law is the half that makes the first safe. The editor UNMOUNTS its
+ * textarea on exit, and removing a focused element resets `activeElement` to <body> — so gating on
+ * focus without handing it back turns "press T, type, Escape" into a silently dead keyboard. That
+ * strand only happens on the Escape path (a click-away exit refocuses the canvas by landing on
+ * it), which is exactly why reading the pointer paths does not surface it.
+ */
+await withPage('count=6&seed=1', async (page) => {
+  // A host-page control OUTSIDE the flow, focused. This is the shape a consumer embeds.
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.id = 'host-button';
+    b.textContent = 'host';
+    document.body.appendChild(b);
+    b.focus();
+  });
+
+  const before = await state(page);
+  await page.evaluate(() => window.__harness.store.getState().selectEntity('n0'));
+
+  await page.keyboard.press('Delete');
+  await page.keyboard.press('Backspace');
+  await page.waitForTimeout(150);
+  const afterKeys = await state(page);
+
+  check(
+    'a host page keeps Delete',
+    afterKeys.entities === before.entities,
+    `${before.entities} -> ${afterKeys.entities} entities`
+  );
+
+  await page.keyboard.press('KeyT');
+  await page.waitForTimeout(200);
+  const afterT = await state(page);
+  check(
+    'a host page keeps a bare letter key',
+    afterT.entities === before.entities,
+    `${before.entities} -> ${afterT.entities} entities`
+  );
+
+  const focusHeld = await page.evaluate(() => document.activeElement?.id === 'host-button');
+  check('focus stayed on the host control', focusHeld);
+
+  // Now click into the canvas: the same keys must work.
+  await page.mouse.click(640, 400);
+  await page.waitForTimeout(150);
+  await page.evaluate(() => window.__harness.store.getState().selectEntity('n0'));
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(200);
+  const afterCanvas = await state(page);
+  check(
+    'the canvas still answers Delete when focused',
+    afterCanvas.entities === before.entities - 1,
+    `${before.entities} -> ${afterCanvas.entities} entities`
+  );
+});
+
+await withPage('count=6&seed=1', async (page) => {
+  // The strand: press T to create a text entity and enter its editor, type, then leave with
+  // Escape — which unmounts the focused textarea — and check the canvas keyboard still works.
+  await page.mouse.click(640, 400);
+  await page.waitForTimeout(100);
+
+  await page.keyboard.press('KeyT');
+  await page.waitForTimeout(300);
+  const editing = await page.evaluate(() => window.__harness.store.getState().editingEntityId);
+  check('INSTRUMENT: pressing T opened a text editor', editing !== null, String(editing));
+
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+
+  const afterEscape = await state(page);
+  const stillEditing = await page.evaluate(() => window.__harness.store.getState().editingEntityId);
+  check('Escape left the editor', stillEditing === null, String(stillEditing));
+
+  // The keyboard has to still be alive. Select the text entity that was just made and delete it.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const text = s.entities.find((e) => e.type === 'text');
+    if (text) s.selectEntity(text.id);
+  });
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(250);
+  const afterDelete = await state(page);
+
+  check(
+    'the canvas keyboard survives leaving a text edit with Escape',
+    afterDelete.entities === afterEscape.entities - 1,
+    `${afterEscape.entities} -> ${afterDelete.entities} entities`
   );
 });
 

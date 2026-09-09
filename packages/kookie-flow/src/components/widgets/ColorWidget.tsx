@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import { Flex } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
-export function ColorWidget({ value, onChange, disabled }: WidgetProps) {
+export function ColorWidget({ label, value, onChange, disabled }: WidgetProps) {
   const colorValue = typeof value === 'string' ? value : '#000000';
 
   const handleChange = useCallback(
@@ -20,6 +20,7 @@ export function ColorWidget({ value, onChange, disabled }: WidgetProps) {
   return (
     <Flex align="center" gap="2" style={{ flex: 1, alignSelf: 'center' }}>
       <input
+        aria-label={label}
         type="color"
         value={colorValue}
         onChange={handleChange}

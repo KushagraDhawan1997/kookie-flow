@@ -238,6 +238,37 @@ export function makeShapes(): Fixture {
   return { entities, edges };
 }
 
+/**
+ * Comments — the last persistent-DOM surface in the package.
+ *
+ * Two of them, because the interesting failures are about IDENTITY rather than count: a comment
+ * whose content changes, and a pair where one is swapped for another without the count moving.
+ * A single comment cannot distinguish those from "nothing happened".
+ */
+export function makeComments(): Fixture {
+  return {
+    entities: [
+      {
+        id: 'note-a',
+        type: 'comment',
+        position: { x: 80, y: 80 },
+        width: 200,
+        height: 120,
+        data: { content: 'first note', backgroundColor: '#FFF9C4', textColor: '#424242', fontSize: 14 },
+      },
+      {
+        id: 'note-b',
+        type: 'comment',
+        position: { x: 340, y: 80 },
+        width: 200,
+        height: 120,
+        data: { content: 'second note', backgroundColor: '#C8E6C9', textColor: '#1B5E20', fontSize: 16 },
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}
+
 /** A parent/child pair for the collapse and hidden-entity paths. */
 export function makeGroup(): Fixture {
   const entities: Entity[] = [

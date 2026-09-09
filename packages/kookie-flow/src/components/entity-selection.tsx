@@ -317,7 +317,10 @@ export function EntitySelection() {
     const unsubHovered = store.subscribe((state) => state.hoveredEntityId, markBothDirty);
     const unsubHidden = store.subscribe((state) => state.hiddenEntityIds, markBothDirty);
     // These only affect handle visibility (hide during connection/box-select)
-    const unsubConnection = store.subscribe((state) => state.connectionDraft, markHandleDirty);
+    // Presence, not the draft: the handles are hidden while a connection is in flight and shown
+    // when it is not, so the boolean is the whole question. Subscribing to the object fires on
+    // every pointermove for an answer that changes twice.
+    const unsubConnection = store.subscribe((state) => state.connectionDraft !== null, markHandleDirty);
     const unsubSelectionBox = store.subscribe((state) => state.selectionBox, markHandleDirty);
 
     return () => {

@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import { Checkbox, Text, Flex } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
-export function CheckboxWidget({ value, onChange, disabled }: WidgetProps) {
+export function CheckboxWidget({ label, value, onChange, disabled }: WidgetProps) {
   const checked = Boolean(value);
 
   const handleCheckedChange = useCallback(
@@ -20,6 +20,7 @@ export function CheckboxWidget({ value, onChange, disabled }: WidgetProps) {
   return (
     <Flex align="center" gap="2" style={{ flex: 1, alignSelf: 'center' }}>
       <Checkbox
+        aria-label={label}
         size="2"
         variant="soft"
         checked={checked}

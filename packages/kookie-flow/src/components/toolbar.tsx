@@ -478,6 +478,9 @@ function resolveToolbarContent(
 // ============================================================================
 
 const iconProps = {
+  // Decorative: every consumer of these sits inside a control that now carries its own aria-label,
+  // and an unnamed <svg> in the accessibility tree is noise at best. This one line retires all six.
+  'aria-hidden': true,
   width: 14,
   height: 14,
   viewBox: '0 0 24 24',
@@ -576,10 +579,13 @@ function FixedSizeIcon() {
 
 /** Number input with local state buffer — commits on blur or Enter */
 function ToolbarNumberInput({
+  label,
   value,
   onChange,
   width = 52,
 }: {
+  /** Accessible name — these inputs carry no visible <label>. */
+  label: string;
   value: number;
   onChange: (v: number) => void;
   width?: number;
@@ -603,6 +609,7 @@ function ToolbarNumberInput({
 
   return (
     <TextField.Root
+      aria-label={label}
       size="2"
       variant="soft"
       inputMode="decimal"
@@ -622,7 +629,16 @@ function ToolbarNumberInput({
 }
 
 /** Color input that throttles updates to avoid rapid-fire entity changes */
-function ToolbarColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ToolbarColorInput({
+  label,
+  value,
+  onChange,
+}: {
+  /** Accessible name — this input carries no visible <label>. */
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const pendingRef = useRef<string | null>(null);
   const rafRef = useRef(0);
 
@@ -653,6 +669,7 @@ function ToolbarColorInput({ value, onChange }: { value: string; onChange: (v: s
 
   return (
     <input
+      aria-label={label}
       type="color"
       value={value}
       onChange={handleChange}
@@ -696,6 +713,7 @@ function BuiltInWidget({
       content = (
         <SegmentedControl.Root
           size="2"
+          aria-label="Sizing mode"
           value={currentMode}
           onValueChange={(newMode: string) => {
             if (!onEntitiesChange) return;
@@ -752,13 +770,13 @@ function BuiltInWidget({
             if (changes.length > 0) onEntitiesChange(changes);
           }}
         >
-          <SegmentedControl.Item value="auto-width" iconOnly>
+          <SegmentedControl.Item value="auto-width" iconOnly aria-label="Auto width">
             <AutoWidthIcon />
           </SegmentedControl.Item>
-          <SegmentedControl.Item value="auto-height" iconOnly>
+          <SegmentedControl.Item value="auto-height" iconOnly aria-label="Auto height">
             <AutoHeightIcon />
           </SegmentedControl.Item>
-          <SegmentedControl.Item value="fixed" iconOnly>
+          <SegmentedControl.Item value="fixed" iconOnly aria-label="Fixed size">
             <FixedSizeIcon />
           </SegmentedControl.Item>
         </SegmentedControl.Root>
@@ -769,6 +787,7 @@ function BuiltInWidget({
     case 'fontSize':
       content = (
         <ToolbarNumberInput
+          label="Font size"
           value={(data.fontSize as number) ?? 16}
           onChange={(v) => batchUpdate({ fontSize: v })}
         />
@@ -778,6 +797,7 @@ function BuiltInWidget({
     case 'lineHeight':
       content = (
         <ToolbarNumberInput
+          label="Line height"
           value={(data.lineHeight as number) ?? 1.5}
           onChange={(v) => batchUpdate({ lineHeight: v })}
         />
@@ -787,6 +807,7 @@ function BuiltInWidget({
     case 'letterSpacing':
       content = (
         <ToolbarNumberInput
+          label="Letter spacing"
           value={(data.letterSpacing as number) ?? 0}
           onChange={(v) => batchUpdate({ letterSpacing: v })}
         />
@@ -800,7 +821,7 @@ function BuiltInWidget({
           value={String((data.fontWeight as number) ?? 400)}
           onValueChange={(v: string) => batchUpdate({ fontWeight: Number(v) })}
         >
-          <Select.Trigger variant="soft" />
+          <Select.Trigger aria-label="Font weight" variant="soft" />
           <Select.Content>
             <Select.Item value="400">Regular</Select.Item>
             <Select.Item value="600">Semibold</Select.Item>
@@ -814,16 +835,17 @@ function BuiltInWidget({
       content = (
         <SegmentedControl.Root
           size="2"
+          aria-label="Text alignment"
           value={(data.textAlign as string) ?? 'left'}
           onValueChange={(v: string) => batchUpdate({ textAlign: v })}
         >
-          <SegmentedControl.Item value="left" iconOnly>
+          <SegmentedControl.Item value="left" iconOnly aria-label="Align left">
             <AlignLeftIcon />
           </SegmentedControl.Item>
-          <SegmentedControl.Item value="center" iconOnly>
+          <SegmentedControl.Item value="center" iconOnly aria-label="Align centre">
             <AlignCenterIcon />
           </SegmentedControl.Item>
-          <SegmentedControl.Item value="right" iconOnly>
+          <SegmentedControl.Item value="right" iconOnly aria-label="Align right">
             <AlignRightIcon />
           </SegmentedControl.Item>
         </SegmentedControl.Root>
@@ -837,7 +859,7 @@ function BuiltInWidget({
           value={(data.fontFamily as string) ?? 'system-ui'}
           onValueChange={(v: string) => batchUpdate({ fontFamily: v })}
         >
-          <Select.Trigger variant="soft" />
+          <Select.Trigger aria-label="Font family" variant="soft" />
           <Select.Content>
             <Select.Item value="system-ui">System</Select.Item>
             <Select.Item value="serif">Serif</Select.Item>
@@ -850,6 +872,7 @@ function BuiltInWidget({
     case 'textColor':
       content = (
         <ToolbarColorInput
+          label="Text colour"
           value={(data.textColor as string) || '#ffffff'}
           onChange={(v) => batchUpdate({ textColor: v })}
         />
@@ -860,6 +883,7 @@ function BuiltInWidget({
       content = (
         <SegmentedControl.Root
           size="2"
+          aria-label="Object fit"
           value={(data.objectFit as string) ?? 'fill'}
           onValueChange={(v: string) => batchUpdate({ objectFit: v })}
         >

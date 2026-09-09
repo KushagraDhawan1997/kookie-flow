@@ -18,7 +18,7 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 import { KookieFlow } from '../../src/components/kookie-flow';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 
@@ -90,7 +90,7 @@ function params() {
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -460,6 +460,7 @@ function App() {
   const initial = useMemo(() => {
     if (p.scene === 'shapes') return makeShapes();
     if (p.scene === 'group') return makeGroup();
+    if (p.scene === 'comments') return makeComments();
     return makeGraph({
       count: p.count,
       seed: p.seed,
@@ -527,16 +528,38 @@ function App() {
   );
 }
 
+/**
+ * Apply changes the way a real consumer would.
+ *
+ * This is not a convenience: KookieFlow is a CONTROLLED component, so whatever this function fails
+ * to apply is pushed straight back into the store by FlowSync and undone. A change type missing
+ * here does not "not update the fixture" — it actively reverts the library.
+ *
+ * It read `c.item` for an add, and the change union has always said `entity`. So EVERY add was
+ * dropped: pressing T created a text entity in the store, this returned the unchanged array, and
+ * the controlled prop flowed back and deleted it. The entity appeared and vanished within a frame.
+ * Nothing noticed for as long as no law exercised an add — which is the degenerate-fixture problem
+ * in the harness rather than in the graph, and it cost a correct fix a false failure.
+ *
+ * `data`, `collapse` and `parent` were missing outright, with the same consequence.
+ */
 function applyEntityChanges(prev: Entity[], changes: EntityChange[]): Entity[] {
   let next = prev;
   for (const c of changes as Array<Record<string, unknown>>) {
     const type = c.type as string;
     if (type === 'position' || type === 'select' || type === 'dimensions') {
       next = next.map((e) => (e.id === c.id ? ({ ...e, ...stripType(c) } as Entity) : e));
+    } else if (type === 'collapse' || type === 'parent') {
+      next = next.map((e) => (e.id === c.id ? ({ ...e, ...stripType(c) } as Entity) : e));
+    } else if (type === 'data') {
+      // Merged, not replaced — `applyEntityChanges` in the store spreads over the existing data.
+      next = next.map((e) =>
+        e.id === c.id ? ({ ...e, data: { ...e.data, ...(c.data as object) } } as Entity) : e
+      );
     } else if (type === 'remove') {
       next = next.filter((e) => e.id !== c.id);
-    } else if (type === 'add' && c.item) {
-      next = [...next, c.item as Entity];
+    } else if (type === 'add' && c.entity) {
+      next = [...next, c.entity as Entity];
     }
   }
   return next;
@@ -550,8 +573,9 @@ function applyEdgeChanges(prev: Edge[], changes: EdgeChange[]): Edge[] {
       next = next.map((e) => (e.id === c.id ? ({ ...e, ...stripType(c) } as Edge) : e));
     } else if (type === 'remove') {
       next = next.filter((e) => e.id !== c.id);
-    } else if (type === 'add' && c.item) {
-      next = [...next, c.item as Edge];
+    } else if (type === 'add' && c.edge) {
+      // `edge`, not `item` — same mismatch as the entity applier above, same consequence.
+      next = [...next, c.edge as Edge];
     }
   }
   return next;

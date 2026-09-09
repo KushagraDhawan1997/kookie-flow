@@ -47,14 +47,36 @@ interface FontProviderProps {
 }
 
 /**
+ * Atlas textures, cached by URL for the lifetime of the page.
+ *
+ * A font atlas is a 512x512 RGBA texture — about 1MB of GPU memory per weight, two per font. This
+ * used to mint a fresh one on every run of the loading effect, and the effect is keyed on the
+ * `font` PROP: a consumer writing `<KookieFlow font={{ name: 'X', weights: {...} }} />` with an
+ * inline object hands it a new identity on every render, so every render of the host component
+ * uploaded two more atlases and dropped the previous pair on the floor.
+ *
+ * Caching by URL rather than disposing on change is deliberate, and it is the trade this codebase
+ * already made one file over — `text-renderer.tsx` holds the same map, keyed the same way, with the
+ * same texture configuration, for the same asset class. It makes the leak structurally impossible
+ * instead of guarded: two configs naming one atlas resolve to one texture, so there is nothing to
+ * dispose and no window in which a live `uAtlas` uniform can name a disposed one. The cost is that
+ * an atlas is retained for the page lifetime, bounded by the number of distinct atlas URLs.
+ */
+const atlasCache = new Map<string, THREE.Texture>();
+
+/**
  * Loads a THREE.Texture from a URL or base64 data URL.
  */
 function loadTexture(url: string): THREE.Texture {
+  const cached = atlasCache.get(url);
+  if (cached) return cached;
+
   const texture = new THREE.TextureLoader().load(url);
   texture.flipY = false;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
+  atlasCache.set(url, texture);
   return texture;
 }
 
@@ -96,6 +118,18 @@ const EMPTY_LOADED: FontState = { regular: null, semibold: null, isLoading: fals
 export function FontProvider({ children, font = 'google-sans' }: FontProviderProps) {
   const [fontState, setFontState] = useState<FontState>(INITIAL_FONT_STATE);
 
+  /**
+   * What the font prop MEANS, rather than which object it is.
+   *
+   * The loading effect below is keyed on `font`, and an inline `{ name, weights }` literal is a
+   * new object on every render — so the effect re-ran on every render of the host component,
+   * rebuilding the glyph and kerning maps and re-rendering every text consumer, forever. Two
+   * configs naming the same atlases are the same font.
+   */
+  const fontKey = isPreset(font)
+    ? font
+    : `${font.name}|${font.weights.regular.atlasUrl}|${font.weights.semibold?.atlasUrl ?? ''}`;
+
   // Load fonts when prop changes
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +168,10 @@ export function FontProvider({ children, font = 'google-sans' }: FontProviderPro
     return () => {
       cancelled = true;
     };
-  }, [font]);
+    // `fontKey`, not `font`: identity is not the question, and the atlases are cached by URL so
+    // re-running for the same font would be work with no output anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontKey]);
 
   const value = useMemo<FontContextValue>(
     () => ({
@@ -223,3 +260,13 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       return loadFontPreset('google-sans');
   }
 }
+
+/**
+ * Test seam. Exported under a dunder name so it is obviously not API: the atlas cache is
+ * module-level and lives for the page, which is correct in an app and useless in a test file that
+ * needs each case to start empty.
+ */
+export const __testing = {
+  loadTexture,
+  clearAtlasCache: () => atlasCache.clear(),
+};

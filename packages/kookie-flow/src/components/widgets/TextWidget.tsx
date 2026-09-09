@@ -8,6 +8,7 @@ import { TextField } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
 export function TextWidget({
+  label,
   value,
   onChange,
   disabled,
@@ -24,6 +25,7 @@ export function TextWidget({
 
   return (
     <TextField.Root
+      aria-label={label}
       size="2"
       variant="soft"
       value={strValue}

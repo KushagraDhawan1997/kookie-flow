@@ -10,6 +10,7 @@ import type { WidgetProps } from '../../types';
 const EMPTY_OPTIONS: string[] = [];
 
 export function SelectWidget({
+  label,
   value,
   onChange,
   disabled,
@@ -34,6 +35,7 @@ export function SelectWidget({
         disabled={disabled}
       >
         <Select.Trigger
+          aria-label={label}
           variant="soft"
           placeholder={placeholder ?? 'Select...'}
           style={{ flex: 1 }}

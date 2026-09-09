@@ -28,6 +28,22 @@ if (typeof Element !== 'undefined') {
   if (typeof proto.hasPointerCapture !== 'function') proto.hasPointerCapture = () => false;
 }
 
+// matchMedia: jsdom does not implement it, and the minimap uses it to notice a device-pixel-ratio
+// change. Without this the component cannot mount in this tier at all. The stub reports "no match"
+// and never fires, which is the honest answer for a fake with no display behind it.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 // jsdom ships MouseEvent but not PointerEvent. Extending MouseEvent keeps clientX/clientY,
 // button and the modifier flags real, which is what the input paths actually read.
 if (typeof globalThis.PointerEvent === 'undefined') {

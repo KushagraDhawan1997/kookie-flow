@@ -67,6 +67,24 @@ export class ImageDecodeWorker {
   private nextId = 0;
   private pending = new Map<number, PendingRequest>();
 
+  /**
+   * Construct the worker NOW, and report whether it worked.
+   *
+   * A Content-Security-Policy or a sandboxed iframe that forbids workers makes `new Worker` throw a
+   * SecurityError. Lazily, that throw surfaced inside a decode's catch several layers up, where it
+   * is indistinguishable from "this image is broken" — so every image in the document failed, and
+   * kept failing, because nothing recorded that the worker was the problem and the perfectly good
+   * main-thread path beside it was never reached.
+   */
+  tryStart(): boolean {
+    try {
+      this.getWorker();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private getWorker(): Worker {
     if (!this.worker) {
       const blob = new Blob([WORKER_SOURCE], { type: 'application/javascript' });

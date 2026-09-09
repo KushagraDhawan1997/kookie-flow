@@ -60,6 +60,14 @@ export type SocketLayoutMode = 'inline' | 'stacked';
 
 /** Props passed to widget components */
 export interface WidgetProps {
+  /**
+   * Accessible name for the control — normally the socket's own name.
+   *
+   * Optional so a consumer's existing `widgetTypes` component keeps compiling, but it is the ONLY
+   * route by which a third-party widget can be named: the wrapper renders the component and cannot
+   * reach inside it to label whatever control it happens to draw.
+   */
+  label?: string;
   /** Current value */
   value: unknown;
   /** Callback when value changes */

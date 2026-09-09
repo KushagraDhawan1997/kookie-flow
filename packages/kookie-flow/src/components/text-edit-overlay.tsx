@@ -150,6 +150,23 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
     }
 
     store.getState().stopEditing();
+
+    /**
+     * Hand focus back to the canvas.
+     *
+     * The editor's <textarea> is UNMOUNTED on exit rather than hidden, and removing a focused
+     * element resets `document.activeElement` to <body> in every engine. Since the canvas keyboard
+     * is gated on the container being focused, exiting a text edit with Escape — press T, type,
+     * Escape — would otherwise leave Delete, Ctrl+A, Space and Escape all silently dead, with
+     * nothing on screen to explain it, until the user happened to click the canvas.
+     *
+     * Only the Escape path strands: a click-away exit lands on the canvas and focuses it, and
+     * clicking another entity exits inside a pointerdown that does the same. So this is easy to
+     * miss by reading the pointer paths, and it re-arms after every edit rather than only at first
+     * paint.
+     */
+    const container = textareaRef.current?.closest<HTMLElement>('[data-kookie-flow-container]');
+    container?.focus({ preventScroll: true });
   }, [store, onEntitiesChange, calcAutoHeight, resolveEntityFont]);
 
   // Sync textarea → store on input.
@@ -383,6 +400,15 @@ export function TextEditOverlay({ onEntitiesChange }: TextEditOverlayProps) {
   return (
     <textarea
       ref={textareaRef}
+      // Named, NOT aria-hidden. The audit's wording asked for it to be hidden from assistive tech,
+      // and that would be the `aria-hidden-focus` violation: this element is focused (`ta.focus()`)
+      // and holds the live text being edited, so hiding it takes text editing away from a screen
+      // reader entirely rather than tidying anything.
+      aria-label="Text content"
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
       onInput={handleInput}
       onSelect={handleSelect}
       onKeyDown={handleKeyDown}

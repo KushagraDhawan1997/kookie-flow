@@ -93,6 +93,8 @@ const containerStyle: CSSProperties = {
 interface SocketWidgetProps {
   entityId: string;
   socketId: string;
+  /** The socket's name, forwarded to the widget as its accessible name. */
+  socketName: string;
   config: ResolvedWidgetConfig;
   /** Pre-resolved widget component (avoid passing widgetTypes object) */
   WidgetComponent: React.ComponentType<WidgetProps>;
@@ -108,6 +110,7 @@ const SocketWidget = memo(
   function SocketWidget({
     entityId,
     socketId,
+    socketName,
     config,
     WidgetComponent,
     onWidgetChange,
@@ -128,6 +131,7 @@ const SocketWidget = memo(
 
     const widget = (
       <WidgetComponent
+        label={socketName}
         value={value}
         onChange={handleChange}
         min={config.min}
@@ -156,6 +160,7 @@ const SocketWidget = memo(
   (prev, next) =>
     prev.entityId === next.entityId &&
     prev.socketId === next.socketId &&
+    prev.socketName === next.socketName &&
     prev.WidgetComponent === next.WidgetComponent &&
     prev.onWidgetChange === next.onWidgetChange &&
     prev.initialValue === next.initialValue &&
@@ -477,6 +482,12 @@ export function WidgetsLayer({
             data-entity-id={entity.id}
             data-socket-index={inputIndex}
             role="group"
+            // Redundant with the widget's own aria-label for six of the seven built-ins — a user
+            // hears "Prompt, group / Prompt, edit text". Kept because it is the ONLY name a SLIDER
+            // socket can have: kookie-ui hardcodes the thumb's label (`Slider value: 0.5`) on the
+            // element that carries role="slider", so a consumer aria-label lands on the Root span
+            // and names nothing. Fixing that properly is upstream work in kookie-ui.
+            aria-label={socket.name}
             style={widgetWrapperStyle}
             // Stop propagation to prevent InputHandler from capturing widget interactions
             onPointerDown={stopPropagation}
@@ -488,6 +499,7 @@ export function WidgetsLayer({
             <SocketWidget
               entityId={entity.id}
               socketId={socket.id}
+              socketName={socket.name}
               config={config}
               WidgetComponent={WidgetComponent}
               onWidgetChange={onWidgetChange}

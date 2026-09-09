@@ -8,6 +8,7 @@ import { TextArea } from '@kushagradhawan/kookie-ui';
 import type { WidgetProps } from '../../types';
 
 export function TextareaWidget({
+  label,
   value,
   onChange,
   disabled,
@@ -27,6 +28,7 @@ export function TextareaWidget({
   return (
     <div style={{ alignSelf: 'stretch', width: '100%', height: '100%' }}>
       <TextArea
+        aria-label={label}
         size="2"
         variant="soft"
         value={strValue}

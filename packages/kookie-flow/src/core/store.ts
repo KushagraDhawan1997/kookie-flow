@@ -608,7 +608,32 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
       setViewport: (viewport) => set({ viewport }),
       setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
-      setHoveredSocketId: (hoveredSocketId) => set({ hoveredSocketId }),
+      /**
+       * Deduped by VALUE. The hit test runs on every pointermove and mints a fresh handle object
+       * each time, so an unguarded `set` notifies every subscriber sixty times a second with a
+       * deep-equal value — and the sockets renderer answers each one by rebuilding every socket in
+       * the graph.
+       *
+       * The guard lives here rather than at the call site because there is one of these and two of
+       * those, and because the caller's own version of it was missing `isInput` — socket ids are
+       * scoped per direction (the connected-set keys are `entity:socket:input|output`), so an
+       * entity with an input and an output sharing an id could move the hover between them and
+       * have it swallowed.
+       *
+       * This is an API-visible change: `FlowStore` is exported and a consumer can subscribe. What
+       * they stop receiving is a notification carrying a value equal to the one they already have.
+       */
+      setHoveredSocketId: (hoveredSocketId) => {
+        const prev = get().hoveredSocketId;
+        if (
+          prev?.entityId === hoveredSocketId?.entityId &&
+          prev?.socketId === hoveredSocketId?.socketId &&
+          prev?.isInput === hoveredSocketId?.isInput
+        ) {
+          return;
+        }
+        set({ hoveredSocketId });
+      },
       startConnection: (entityId, socketId) =>
         set({ connectionStart: { entityId, socketId } }),
       endConnection: () => set({ connectionStart: null }),
@@ -762,6 +787,21 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 }
                 nextEntities[index] = merged;
               }
+              break;
+            }
+            default: {
+              // An unrecognised change type used to be dropped in silence. The union is public and
+              // a consumer building changes by hand gets no signal that a typo'd `type` did
+              // nothing at all — a behaviour test written against `{ type: 'update' }` reported a
+              // component as broken when the component was fine and the change had simply been
+              // thrown away. Unconditional, matching FontContext's existing warnings: the package
+              // has no dev-only mechanism, and this is a programming error worth surfacing wherever
+              // it happens.
+              console.warn(
+                `[kookie-flow] applyEntityChanges: ignoring unknown change type ${JSON.stringify(
+                  (change as { type?: unknown }).type
+                )}. Valid types: position, select, remove, add, dimensions, collapse, parent, data.`
+              );
               break;
             }
           }

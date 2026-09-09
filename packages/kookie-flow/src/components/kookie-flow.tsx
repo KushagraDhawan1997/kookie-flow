@@ -80,10 +80,6 @@ import type {
 } from '../types';
 import * as THREE from 'three';
 
-// Detect Safari for specific optimizations
-const isSafari =
-  typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
 /**
  * Main KookieFlow component.
  * Renders a WebGL canvas with an optional DOM overlay.
@@ -677,8 +673,14 @@ function InputHandler({
   const runAutoScroll = useCallback(() => {
     autoScrollRef.current.rafId = 0;
 
-    // Exit if not dragging or no position tracked
-    if (!isDragging || !dragState.current || !autoScrollRef.current.lastScreenPos) {
+    // `dragState.current` is the live signal and is already the condition; the React boolean that
+    // used to sit beside it was captured when this callback was created, which is BEFORE the
+    // drag-start render commits. So the first frame of every drag read `isDragging === false`,
+    // set `active = false` and returned. Frames after that worked, because the committed render
+    // hands the pointermove handler a fresh closure — which is why this reads as an intermittent
+    // failure rather than a dead feature: it bites when the threshold crossing, the entry into the
+    // edge band and the pointer stopping all land on one event.
+    if (!dragState.current || !autoScrollRef.current.lastScreenPos) {
       autoScrollRef.current.active = false;
       return;
     }
@@ -747,7 +749,7 @@ function InputHandler({
     // Schedule next frame
     autoScrollRef.current.active = true;
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
-  }, [isDragging, snapToGrid, snapGrid, store]);
+  }, [snapToGrid, snapGrid, store]);
 
   // Touch gesture state
   const touchState = useRef<{
@@ -931,6 +933,13 @@ function InputHandler({
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!containerRef.current) return;
+      // Focus the canvas on any press. The keydown gate above asks whether this element has focus,
+      // and clicking a tabindex=0 div only focuses it by browser convention — which `preventDefault`
+      // on a middle-click press already breaks. Stating it here makes the gate's precondition
+      // something this component guarantees rather than something it hopes for.
+      if (document.activeElement !== containerRef.current) {
+        containerRef.current.focus({ preventScroll: true });
+      }
       // Refresh cached position on interaction start (not a hot path)
       // This catches cases where layout shifted after mount (e.g. sidebar animation, Theme wrapper)
       const freshRect = containerRef.current.getBoundingClientRect();
@@ -1523,7 +1532,7 @@ function InputHandler({
 
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const { viewport, hoveredEntityId, hoveredSocketId, quadtree, socketQuadtree: hoverSocketQuadtree } = store.getState();
+        const { viewport, hoveredEntityId, quadtree, socketQuadtree: hoverSocketQuadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
         // Check resize handle hover first (for cursor feedback)
@@ -1541,13 +1550,11 @@ function InputHandler({
           socketLayout
         );
 
-        // Update socket hover if changed
-        if (
-          newHoveredSocket?.entityId !== hoveredSocketId?.entityId ||
-          newHoveredSocket?.socketId !== hoveredSocketId?.socketId
-        ) {
-          store.getState().setHoveredSocketId(newHoveredSocket);
-        }
+        // Unconditional: `setHoveredSocketId` dedupes by value, on all three fields. The guard
+        // that stood here compared entityId and socketId only, so it short-circuited before the
+        // store could see a move between an input and an output sharing a socket id — and being
+        // the earlier of the two guards, it would have kept doing so after the store gained one.
+        store.getState().setHoveredSocketId(newHoveredSocket);
 
         // Use quadtree for O(log n) hit testing for entities
         // Clear and reuse pre-allocated array to avoid GC
@@ -1946,6 +1953,24 @@ function InputHandler({
   const onFileDropRef = useRef(onFileDrop);
   onFileDropRef.current = onFileDrop;
 
+  /**
+   * Live mirrors of the two change callbacks, for the window keyboard listener.
+   *
+   * That listener used to name them in its dependency array, which meant the pair of window
+   * listeners was torn down and re-registered on every render that produced a new callback
+   * identity — and a consumer writing `onEntitiesChange={(c) => ...}` inline produces a new one
+   * every render. Refs let the deps hold only stable values, so the listeners register once.
+   *
+   * Written in an effect rather than in the render body: a ref written during render is the thing
+   * the audit files separately as #86, and copying that pattern here would re-commit it.
+   */
+  const onEntitiesChangeRef = useRef(onEntitiesChange);
+  const onEdgesChangeRef = useRef(onEdgesChange);
+  useEffect(() => {
+    onEntitiesChangeRef.current = onEntitiesChange;
+    onEdgesChangeRef.current = onEdgesChange;
+  }, [onEntitiesChange, onEdgesChange]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -1986,6 +2011,28 @@ function InputHandler({
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      /**
+       * The canvas only answers keys when the canvas is what has focus.
+       *
+       * This listener is on `window`, and its only guard was a tagName test for INPUT/TEXTAREA.
+       * So a host page embedding <KookieFlow> lost five keys EVERYWHERE on the page: a bare `t`
+       * with focus on <body> — the state on every page load — created a text entity and opened its
+       * editor; Backspace deleted the selection while the user was pressing it on a host button;
+       * Ctrl+A selected the graph instead of the page's text; Space scrolled nothing and panned the
+       * canvas. The library's own toolbar was affected too, being a descendant.
+       *
+       * `e.target` on a keydown IS `document.activeElement`, so target equality asks exactly the
+       * right question — is the canvas focused — in one place. Containment was the other candidate
+       * and is worse: consumer `children` render inside this container, so `contains()` would keep
+       * stealing keys from a host's own control panel nested in the canvas, and it would need
+       * re-verifying every time the toolbar's markup changed.
+       *
+       * The tagName test stays as well, because it is not redundant: a focused INPUT that IS the
+       * container cannot happen, but the container can hold focus while a composite widget routes
+       * typing elsewhere.
+       */
+      if (e.target !== containerRef.current) return;
+
       // Skip if typing in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -2006,16 +2053,20 @@ function InputHandler({
 
       // Escape: exit text editing, cancel connection, box selection, or deselect all
       if (e.code === 'Escape') {
-        if (store.getState().editingEntityId) {
-          store.getState().stopEditing();
-        } else if (isConnecting) {
-          store.getState().cancelConnectionDraft();
+        // One read of the store, and the branches test the store's own state rather than React
+        // booleans this listener captured when it was registered. `handlePointerUp` already does
+        // exactly this a few hundred lines up.
+        const s = store.getState();
+        if (s.editingEntityId) {
+          s.stopEditing();
+        } else if (s.connectionDraft) {
+          s.cancelConnectionDraft();
           setIsConnecting(false);
-        } else if (isBoxSelecting) {
-          store.getState().setSelectionBox(null);
+        } else if (s.selectionBox) {
+          s.setSelectionBox(null);
           setIsBoxSelecting(false);
         } else {
-          store.getState().deselectAll();
+          s.deselectAll();
         }
       }
 
@@ -2039,7 +2090,7 @@ function InputHandler({
             type: 'remove' as const,
             id,
           }));
-          onEdgesChange?.(edgeChanges);
+          onEdgesChangeRef.current?.(edgeChanges);
           store.getState().applyEdgeChanges(edgeChanges);
         }
 
@@ -2049,7 +2100,7 @@ function InputHandler({
             type: 'remove' as const,
             id,
           }));
-          onEntitiesChange?.(entityChanges);
+          onEntitiesChangeRef.current?.(entityChanges);
           store.getState().applyEntityChanges(entityChanges);
         }
 
@@ -2074,7 +2125,7 @@ function InputHandler({
           resizable: { width: true, height: false },
         };
 
-        onEntitiesChange?.([{ type: 'add', entity: newEntity }]);
+        onEntitiesChangeRef.current?.([{ type: 'add', entity: newEntity }]);
         store.getState().applyEntityChanges([{ type: 'add', entity: newEntity }]);
         store.getState().selectEntity(newEntity.id);
         store.getState().startEditing(newEntity.id);
@@ -2084,7 +2135,10 @@ function InputHandler({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         setIsSpaceDown(false);
-        if (isPanning) {
+        // `lastPointerPos.current` is the live mirror of "a pan is in flight"; the React boolean
+        // that stood here was captured at registration, so releasing Space could leave the canvas
+        // stuck in pan mode.
+        if (lastPointerPos.current) {
           setIsPanning(false);
           lastPointerPos.current = null;
         }
@@ -2098,14 +2152,26 @@ function InputHandler({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPanning, isBoxSelecting, isConnecting, store, onEntitiesChange, onEdgesChange]);
+    // `store` is the only value here that can change identity and matter. The three React
+    // booleans are gone because the handlers read the store instead, and the two callbacks are
+    // read through refs — so these listeners register once for the life of the component rather
+    // than on every render that produces a new inline callback.
+  }, [store]);
 
-  // Prevent context menu on middle click
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1) {
-      e.preventDefault();
-    }
-  }, []);
+  /*
+   * There is deliberately NO onContextMenu here.
+   *
+   * What stood here suppressed the native menu when `e.button === 1`, and a contextmenu event's
+   * `button` is always 2 — so the guard never held and the handler did nothing but describe
+   * behaviour the library does not have.
+   *
+   * Deleting it rather than making it unconditional is the decision: suppressing the browser's own
+   * menu over the whole canvas is the CONSUMER's call, and the package already exports the
+   * mechanism for it. `useContextMenu`'s documented pattern has the consumer wrap <KookieFlow> in
+   * a div carrying `onContextMenu`, and contextmenu bubbles out to it — so a consumer using the
+   * sanctioned plugin already gets suppression today, with an opt-out an unconditional
+   * preventDefault here would take away.
+   */
 
   // Touch handlers for pinch-to-zoom and two-finger pan
   const handleTouchStart = useCallback(
@@ -2236,11 +2302,15 @@ function InputHandler({
         store.getState().setHoveredEntityId(null);
         store.getState().setHoveredSocketId(null);
       }}
-      onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
+      // Marks the focus target for the text editor, which has to hand focus back here on exit —
+      // it unmounts its own textarea, and the canvas keyboard is gated on this element having
+      // focus. A data attribute rather than a shared ref because the overlay is rendered by the
+      // DOM layer, several components away.
+      data-kookie-flow-container=""
       tabIndex={0}
     >
       {children}
@@ -2294,11 +2364,29 @@ function FlowCanvas({
   maxImageTextureSize,
   onEntitiesChange,
 }: FlowCanvasProps) {
-  // WebGL context attributes optimized for Safari
   const glConfig = useMemo(
     () => ({
-      // Disable MSAA on Safari - it's expensive and often causes issues
-      antialias: !isSafari,
+      /**
+       * MSAA on, for everyone.
+       *
+       * This used to be `!isSafari`, decided by `/^((?!chrome|android).)*safari/i` against the
+       * user-agent string — which reads Firefox-on-iOS and every iOS in-app WebView without a
+       * `Safari/` token as not-Safari, so the browsers most in need of the saving were the ones
+       * that got a multisampled backbuffer allocated and resolved every frame.
+       *
+       * Turning it OFF for everyone was the tempting reading, on the argument that every
+       * silhouette here is antialiased in-shader. That is true of the SDF quads and FALSE of edge
+       * ARROWHEADS: the arrow vertices are written with a zero perpendicular and uv.y = 0, so the
+       * ribbon shader's smoothstep resolves to alpha 1 across the whole triangle and its two
+       * diagonal edges have no shader antialiasing at all. Image entities are the same — textured
+       * quads whose geometric boundary is exactly what MSAA samples. The default framebuffer's
+       * MSAA is the only thing smoothing either.
+       *
+       * So the defect closes by the decision stopping being made from a UA string, not by flipping
+       * the flag. Only real Safari changes behaviour, which is the population the dead branch was
+       * written for and — by its own regex — mostly the only one it reached.
+       */
+      antialias: true,
       alpha: true,
       // Request high-performance GPU
       powerPreference: 'high-performance' as const,

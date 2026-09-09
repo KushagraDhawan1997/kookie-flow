@@ -331,7 +331,13 @@ export function Sockets({
       }
     );
     const unsubConnectionDraft = store.subscribe(
-      (state) => state.connectionDraft,
+      // The SOURCE, not the whole draft. `connectionDraft` carries `mouseWorld`, so subscribing to
+      // the object fires on every pointermove of a connection gesture and rebuilds every socket in
+      // the graph — sixty rebuilds where two are needed. This renderer never reads `mouseWorld`
+      // (nor `isValid`); it computes its own validity from the source and the hovered socket. The
+      // source object is copied by reference through the store's spread, so its identity is stable
+      // for the life of a gesture and this fires exactly twice: once at open, once at close.
+      (state) => state.connectionDraft?.source ?? null,
       () => {
         dirtyRef.current = true;
       }
