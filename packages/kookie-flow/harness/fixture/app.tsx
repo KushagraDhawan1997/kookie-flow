@@ -18,12 +18,14 @@ import { Theme } from '@kushagradhawan/kookie-ui';
 import { KookieFlow } from '../../src/components/kookie-flow';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph } from './graph';
+import { makeGraph, makeShapes, makeGroup } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB } from '../../src/utils/color';
 
 declare global {
   interface Window {
     __harness?: HarnessApi;
+    /** Every mounted instance, in mount order. `__harness` is the first. */
+    __harnesses?: HarnessApi[];
   }
 }
 
@@ -72,6 +74,16 @@ function params() {
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
     radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
     entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
+    // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
+    // where the four independent height/socket-Y implementations disagree; 'group' covers
+    // collapse and hidden entities.
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group',
+    // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
+    // uniformly sized fixture hides two whole bug classes.
+    explicitSize: q.get('explicitSize') === '1',
+    // Mount N KookieFlow instances. Two is the reentrancy case: module-level state in the store
+    // used to make the second instance break dragging in the first.
+    instances: Math.max(1, Math.min(3, num('instances', 1))),
   };
 }
 
@@ -306,20 +318,40 @@ function Probe() {
       lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB },
     };
 
-    window.__harness = api;
-    // Two frames: one for React's commit, one for R3F to have actually drawn.
-    requestAnimationFrame(() => requestAnimationFrame(() => markReady()));
+    // With more than one KookieFlow mounted, each Probe registers its own store. `__harness`
+    // stays the FIRST so every existing test keeps working; `__harnesses` is the full list, which
+    // is what a reentrancy test needs.
+    const all = (window.__harnesses ??= []);
+    all.push(api);
+    if (!window.__harness) window.__harness = api;
+    return () => {
+      const i = all.indexOf(api);
+      if (i >= 0) all.splice(i, 1);
+      if (window.__harness === api) window.__harness = all[0];
+    };
   }, [store]);
+
+  // Two frames: one for React's commit, one for R3F to have actually drawn.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => markReady()));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   return null;
 }
 
 function App() {
   const p = useMemo(() => params(), []);
-  const initial = useMemo(
-    () => makeGraph({ count: p.count, seed: p.seed, edgeRatio: p.edgeRatio }),
-    [p.count, p.seed, p.edgeRatio]
-  );
+  const initial = useMemo(() => {
+    if (p.scene === 'shapes') return makeShapes();
+    if (p.scene === 'group') return makeGroup();
+    return makeGraph({
+      count: p.count,
+      seed: p.seed,
+      edgeRatio: p.edgeRatio,
+      explicitSize: p.explicitSize,
+    });
+  }, [p.scene, p.count, p.seed, p.edgeRatio, p.explicitSize]);
 
   const [entities, setEntities] = useState<Entity[]>(initial.entities);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);
@@ -333,21 +365,34 @@ function App() {
     setEdges((prev) => applyEdgeChanges(prev, changes));
   }, []);
 
+  // One KookieFlow per instance, stacked as rows. Two instances is the reentrancy case: the
+  // store used to keep its drag index and moved-id channel at MODULE scope, so constructing the
+  // second store cleared the first one's map and dragging in the first silently stopped working.
+  const flows = Array.from({ length: p.instances }, (_, i) => (
+    <div
+      key={i}
+      data-instance={i}
+      style={{ position: 'relative', flex: 1, minHeight: 0, borderTop: i > 0 ? '1px solid #ccc' : undefined }}
+    >
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={i === 0 ? onEntitiesChange : undefined}
+        onEdgesChange={i === 0 ? onEdgesChange : undefined}
+        showWidgets={p.widgets}
+        showGrid={p.grid}
+        showMinimap={false}
+        {...(p.entityRadius ? { radius: p.entityRadius } : {})}
+      >
+        <Probe />
+      </KookieFlow>
+    </div>
+  ));
+
   return (
     <Theme appearance={p.appearance} {...(p.radius ? { radius: p.radius } : {})}>
-      <div style={{ position: 'fixed', inset: 0 }}>
-        <KookieFlow
-          entities={entities}
-          edges={edges}
-          onEntitiesChange={onEntitiesChange}
-          onEdgesChange={onEdgesChange}
-          showWidgets={p.widgets}
-          showGrid={p.grid}
-          showMinimap={false}
-          {...(p.entityRadius ? { radius: p.entityRadius } : {})}
-        >
-          <Probe />
-        </KookieFlow>
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
+        {flows}
       </div>
       {/* DOM reference swatches. Spike #1 compares GL pixels against these, so they must wear
           the same tokens the GL layer reads — not a hardcoded hex. */}

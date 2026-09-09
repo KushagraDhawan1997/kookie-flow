@@ -4,6 +4,15 @@
  * Seeded, never Math.random: a perf number that moves because the fixture moved is not a
  * measurement, and a behavior test that fails one run in twenty teaches people to re-run it.
  * Same seed and same count always produce byte-identical entities and edges.
+ *
+ * THE FIXTURE MUST NOT BE DEGENERATE. The first version of this file set `width: 200,
+ * height: 120` on EVERY entity, which simultaneously hid two whole bug classes: the 240-vs-200
+ * default mismatch between the socket index and the renderer (an explicit width means neither
+ * default is ever taken) and the entire auto-height divergence (an explicit height means the
+ * layout is never computed). A baseline built on that fixture blesses both bugs — the tests pass,
+ * the code is wrong, and nothing can tell you. `makeGraph` therefore leaves most entities
+ * unsized, and `SHAPES` covers the cases where the four independent height/socket-Y
+ * implementations disagree.
  */
 
 import type { Entity, Edge, Socket } from '../../src/types';
@@ -31,6 +40,14 @@ export interface FixtureOptions {
   edgeRatio?: number;
   /** Sockets per side, per entity. */
   socketsPerSide?: number;
+  /**
+   * Give every entity an explicit width and height.
+   *
+   * Default FALSE, which is the honest default: real documents mostly do not set these, and an
+   * explicit size is exactly what hides the default-mismatch and auto-height bugs. Set true only
+   * when a measurement genuinely needs every box identical (some perf comparisons do).
+   */
+  explicitSize?: boolean;
 }
 
 export interface Fixture {
@@ -44,7 +61,7 @@ export interface Fixture {
  * culling looks far better than it is against uniform noise.
  */
 export function makeGraph(opts: FixtureOptions): Fixture {
-  const { count, seed = 1, edgeRatio = 0.8, socketsPerSide = 3 } = opts;
+  const { count, seed = 1, edgeRatio = 0.8, socketsPerSide = 3, explicitSize = false } = opts;
   const rand = rng(seed);
 
   const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
@@ -71,7 +88,7 @@ export function makeGraph(opts: FixtureOptions): Fixture {
       } as Socket);
     }
 
-    entities.push({
+    const entity: Entity = {
       id: `n${i}`,
       type: 'default',
       position: {
@@ -79,11 +96,14 @@ export function makeGraph(opts: FixtureOptions): Fixture {
         y: row * CELL_Y + Math.round(rand() * 40) - 20,
       },
       data: { label: `Node ${i}` },
-      width: 200,
-      height: 120,
       inputs,
       outputs,
-    });
+    };
+    if (explicitSize) {
+      entity.width = 200;
+      entity.height = 120;
+    }
+    entities.push(entity);
   }
 
   // Connect mostly to nearby nodes: long-range edges are rare in real graphs and they defeat
@@ -103,6 +123,166 @@ export function makeGraph(opts: FixtureOptions): Fixture {
       targetSocket: `in-${Math.floor(rand() * socketsPerSide)}`,
     });
   }
+
+  return { entities, edges };
+}
+
+/**
+ * The shapes where the four independent height/socket-Y implementations disagree.
+ *
+ * `getEntitySocketLayout` is the source of truth, and `edges.tsx`, `connection-line.tsx`,
+ * `minimap.tsx` and `store.ts` each re-derive it with different fallbacks. Every entity here
+ * exists because one of those paths gets it wrong — a uniform 200x120 grid agrees everywhere and
+ * proves nothing.
+ *
+ * Laid out in a single row so a screenshot shows them side by side.
+ */
+export function makeShapes(): Fixture {
+  const X = 380;
+  let col = 0;
+  const at = () => ({ x: col++ * X + 40, y: 60 });
+
+  const entities: Entity[] = [
+    {
+      // No width, no height. The renderer defaults to DEFAULT_ENTITY_WIDTH (240) while the socket
+      // quadtree defaults to 200, so the grabbable socket sits 40px left of the painted one.
+      id: 'unsized',
+      type: 'default',
+      position: at(),
+      data: { label: 'Unsized' },
+      inputs: [
+        { id: 'in-0', name: 'In 0', type: 'float' },
+        { id: 'in-1', name: 'In 1', type: 'string' },
+      ],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+    {
+      // Stacked sockets: label above widget, widget spans the entity. Rows are taller than
+      // inline, so any path that assumes a fixed row height puts the endpoint in the wrong place.
+      id: 'stacked',
+      type: 'default',
+      position: at(),
+      data: { label: 'Stacked' },
+      inputs: [
+        { id: 'in-0', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'text' },
+        { id: 'in-1', name: 'Scale', type: 'float', layout: 'stacked', widget: 'slider' },
+      ],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'image' }],
+    },
+    {
+      // Multi-row: `rows: 3` makes one socket three widget-heights tall.
+      id: 'multirow',
+      type: 'default',
+      position: at(),
+      data: { label: 'Multi-row' },
+      inputs: [
+        { id: 'in-0', name: 'Body', type: 'string', widget: 'textarea', rows: 3 },
+        { id: 'in-1', name: 'Seed', type: 'int' },
+      ],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'string' }],
+    },
+    {
+      // Explicit socket height, which takes precedence over `rows`.
+      id: 'sockheight',
+      type: 'default',
+      position: at(),
+      data: { label: 'Socket height' },
+      inputs: [
+        { id: 'in-0', name: 'Tall', type: 'string', height: 96 },
+        { id: 'in-1', name: 'Normal', type: 'float' },
+      ],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+    {
+      // Explicit socket position (0 = top, 1 = bottom) — bypasses row layout entirely.
+      id: 'sockpos',
+      type: 'default',
+      position: at(),
+      data: { label: 'Socket position' },
+      inputs: [
+        { id: 'in-0', name: 'Top', type: 'float', position: 0.1 },
+        { id: 'in-1', name: 'Bottom', type: 'float', position: 0.9 },
+      ],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float', position: 0.5 }],
+    },
+    {
+      // Wide and short: an explicit size that is NOT the default, so a path that hardcodes either
+      // default is wrong in a direction the uniform fixture cannot show.
+      id: 'wide',
+      type: 'default',
+      position: at(),
+      data: { label: 'Wide' },
+      width: 360,
+      height: 90,
+      inputs: [{ id: 'in-0', name: 'In 0', type: 'float' }],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+    {
+      // No sockets at all: every socket-driven height computation has to handle an empty list.
+      id: 'nosockets',
+      type: 'default',
+      position: at(),
+      data: { label: 'No sockets' },
+    },
+  ];
+
+  // Edges reaching each awkward shape, so endpoint agreement is visible rather than inferred.
+  const edges: Edge[] = [
+    { id: 'se0', source: 'unsized', target: 'stacked', sourceSocket: 'out-0', targetSocket: 'in-0' },
+    { id: 'se1', source: 'stacked', target: 'multirow', sourceSocket: 'out-0', targetSocket: 'in-0' },
+    { id: 'se2', source: 'multirow', target: 'sockheight', sourceSocket: 'out-0', targetSocket: 'in-0' },
+    { id: 'se3', source: 'sockheight', target: 'sockpos', sourceSocket: 'out-0', targetSocket: 'in-1' },
+    { id: 'se4', source: 'sockpos', target: 'wide', sourceSocket: 'out-0', targetSocket: 'in-0' },
+  ];
+
+  return { entities, edges };
+}
+
+/** A parent/child pair for the collapse and hidden-entity paths. */
+export function makeGroup(): Fixture {
+  const entities: Entity[] = [
+    {
+      id: 'frame',
+      type: 'default',
+      position: { x: 60, y: 60 },
+      data: { label: 'Frame' },
+      width: 420,
+      height: 300,
+      collapsed: false,
+    },
+    {
+      id: 'child-a',
+      type: 'default',
+      position: { x: 100, y: 130 },
+      data: { label: 'Child A' },
+      parentId: 'frame',
+      inputs: [{ id: 'in-0', name: 'In 0', type: 'float' }],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+    {
+      id: 'child-b',
+      type: 'default',
+      position: { x: 100, y: 250 },
+      data: { label: 'Child B' },
+      parentId: 'frame',
+      inputs: [{ id: 'in-0', name: 'In 0', type: 'float' }],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+    {
+      id: 'outside',
+      type: 'default',
+      position: { x: 620, y: 130 },
+      data: { label: 'Outside' },
+      inputs: [{ id: 'in-0', name: 'In 0', type: 'float' }],
+      outputs: [{ id: 'out-0', name: 'Out 0', type: 'float' }],
+    },
+  ];
+
+  const edges: Edge[] = [
+    { id: 'ge0', source: 'child-a', target: 'child-b', sourceSocket: 'out-0', targetSocket: 'in-0' },
+    // Crosses the collapse boundary — the case where a hidden endpoint has to be handled.
+    { id: 'ge1', source: 'child-b', target: 'outside', sourceSocket: 'out-0', targetSocket: 'in-0' },
+  ];
 
   return { entities, edges };
 }
