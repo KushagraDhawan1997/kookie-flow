@@ -368,13 +368,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
               />
             )}
             {showMinimap && <Minimap {...minimapProps} />}
-            <FlowSync
-              entities={entities}
-              edges={edges}
-              socketTypes={resolvedSocketTypes}
-              onEntitiesChange={onEntitiesChange}
-              onEdgesChange={onEdgesChange}
-            />
+            <FlowSync entities={entities} edges={edges} socketTypes={resolvedSocketTypes} />
           </InputHandler>
         </FlowProvider>
       </div>
@@ -2340,7 +2334,6 @@ function FlowCanvas({
         legacy
       >
         {showStats && <Stats />}
-        <Invalidator />
         <CameraController />
         {showGrid && <Grid />}
         <TextEntities onEntitiesChange={onEntitiesChange} />
@@ -2366,15 +2359,22 @@ function FlowCanvas({
 /**
  * Syncs external props with internal store.
  */
+/**
+ * Pushes the controlled `entities` and `edges` props into the store.
+ *
+ * It took `onEntitiesChange`/`onEdgesChange` and did nothing with them: the subscription that
+ * would have used them had an empty body under a comment reading "Generate change events
+ * (simplified)". Change events are raised by the input handler, not here, so the callbacks were
+ * a prop signature describing work this component does not do — and the subscription itself ran a
+ * selector over `state.entities` on every store change, forever, to call nothing.
+ */
 interface FlowSyncProps {
   entities: KookieFlowProps['entities'];
   edges: KookieFlowProps['edges'];
   socketTypes: Record<string, SocketType>;
-  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
-  onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
-function FlowSync({ entities, edges, socketTypes, onEntitiesChange, onEdgesChange }: FlowSyncProps) {
+function FlowSync({ entities, edges, socketTypes }: FlowSyncProps) {
   const store = useFlowStoreApi();
 
   useEffect(() => {
@@ -2419,47 +2419,6 @@ function FlowSync({ entities, edges, socketTypes, onEntitiesChange, onEdgesChang
       store.getState().setEdges(edges);
     }
   }, [edges, socketTypes, store]);
-
-  useEffect(() => {
-    if (!onEntitiesChange) return;
-
-    const unsubscribe = store.subscribe(
-      (state) => state.entities,
-      (newEntities, prevEntities) => {
-        // Generate change events (simplified)
-      }
-    );
-
-    return unsubscribe;
-  }, [store, onEntitiesChange]);
-
-  return null;
-}
-
-/**
- * Triggers R3F re-render when store state changes.
- * With frameloop="demand", we only render when invalidate() is called.
- * Throttled to avoid excessive invalidations.
- */
-function Invalidator() {
-  const { invalidate } = useThree();
-  const store = useFlowStoreApi();
-  const pendingRef = useRef(false);
-
-  useEffect(() => {
-    // Throttled invalidation - only one pending at a time
-    const scheduleInvalidate = () => {
-      if (!pendingRef.current) {
-        pendingRef.current = true;
-        requestAnimationFrame(() => {
-          pendingRef.current = false;
-          invalidate();
-        });
-      }
-    };
-
-    return store.subscribe(scheduleInvalidate);
-  }, [store, invalidate]);
 
   return null;
 }

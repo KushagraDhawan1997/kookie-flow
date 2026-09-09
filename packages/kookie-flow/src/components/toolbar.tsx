@@ -34,7 +34,7 @@ import {
 } from '@kushagradhawan/kookie-ui';
 import type { CardProps } from '@kushagradhawan/kookie-ui';
 import { useFlowStoreApi } from './context';
-import { getInteractionMode } from './interaction-state';
+import { getInteractionMode, observeInteractionMode } from './interaction-state';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
@@ -326,26 +326,18 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       resizeObserver.observe(parent);
     }
 
-    // Poll interaction mode since it's a side-channel (not in store)
-    let rafId = 0;
-    let lastMode = getInteractionMode();
-    const checkMode = () => {
-      const mode = getInteractionMode();
-      if (mode !== lastMode) {
-        lastMode = mode;
-        scheduleUpdate();
-      }
-      rafId = requestAnimationFrame(checkMode);
-    };
-    rafId = requestAnimationFrame(checkMode);
+    // Interaction mode is a side-channel rather than store state, deliberately: it changes on
+    // every pointermove of a drag, and a Zustand write would allocate a state object per frame.
+    // This used to be polled with an unconditional rAF loop running forever; it notifies now.
+    const unsubMode = observeInteractionMode(scheduleUpdate);
 
     return () => {
       unsubSelection();
       unsubViewport();
       unsubPositions();
       unsubEntities();
+      unsubMode();
       resizeObserver?.disconnect();
-      cancelAnimationFrame(rafId);
     };
   }, [store, updatePosition, scheduleUpdate]);
 

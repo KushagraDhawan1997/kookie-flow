@@ -32,9 +32,29 @@ argument for building the harness first; it is a measurement.
 | 14 | **The wrapped-text cache was blind to the font.** Its key was `content\|maxWidth\|letterSpacing`; a `clearWrapCache()` export carried the comment "Call when font changes" and had **zero callers**, so a paragraph kept the previous font's line breaks for the rest of the session. | `utils/text-layout.ts` | Falsified: three of four laws fail against a single font-blind cache, including the premise that two fonts wrap differently at all |
 | 15 | **The published hit box was 44px shorter than the drawn one.** `isPointInEntity`, `getEntityAtPosition` and `getEntitiesInBox` assumed `DEFAULT_ENTITY_HEIGHT` (100) for a height-less entity, which the renderer draws at its computed height (144 for a three-socket node). The app was never affected — its hit testing goes through the quadtree, which has taken the layout since it was written. | `utils/geometry.ts` | Falsified three ways, including an over-fix that answers "inside" everywhere |
 | 16 | **A computed box did not contain what it was computed from.** `fitView`, `calculateGroupBounds` and `computeCollapseToSubgraph` measured a size-less entity as 200x100 against a drawn 240x144: the camera framed less than the content, an auto-fitted group frame did not contain its children, and a collapse frame did not contain what it collapsed. | `core/store.ts`, `utils/grouping.ts`, `core/graph.ts` | Falsified at all three sites. **The existing test could not fail** — `graph.test.ts` asserts the frame size with a fixture that sets `width: 200, height: 100`, exactly the two wrong defaults |
+| 17 | **Three mechanisms that ran forever and did nothing.** `Invalidator` scheduled a rAF per store change to call `invalidate()`, which is a documented no-op under the `frameloop="always"` the Canvas sets; a `FlowSync` subscription ran a selector over `state.entities` on every store change to call an empty function; and the toolbar polled the interaction mode with an unconditional rAF loop for the life of the component. | `kookie-flow.tsx`, `toolbar.tsx`, `interaction-state.ts` | Dead by the framework's own contract, and **UNMEASURED** — see below |
 
 Fixes 7–9 are one mistake in three files, and **fixing 5 is what made them reachable at all** —
 while theme changes never arrived, the meshes were never reconstructed.
+
+### Fix 17 is unmeasured, and the instrument says so
+
+The counts spike was run before and after. Nothing moved: per-frame draws, instances and React
+commits are identical, and the allocation column drifts in both directions (drag-node 4,974 ->
+5,245 B/f, pan 9,364 -> 8,697) — variance in a 4096-byte heap sampler over a short window on a
+shared machine, not a result.
+
+Two reasons, both worth stating rather than hiding behind "cleanup":
+
+- a rAF callback that compares two strings, and a Zustand selector that calls an empty function,
+  cost CPU and closure work rather than bytes. The spike counts allocations and draw calls.
+- **the harness never mounts the component the toolbar loop lived in.** The fixture renders
+  `ToolbarProvider`; the loop is in `Toolbar`, which a consumer places. So that third of the fix
+  is not merely unmeasured here, it is unmeasurable here.
+
+The deletions stand on the framework's own contract — under `frameloop="always"`, `invalidate()`
+does nothing; a subscription with an empty body calls nothing — not on a number. Recorded as
+unmeasured, like fix 11, rather than claimed as a win.
 
 ### What fixes 12 and 13 say about the shape of this codebase
 
@@ -161,6 +181,14 @@ locals. Four of them were refs in `edges.tsx` carrying confident comments about 
 "Track last position version to detect actual position changes" — that were never read or written
 anywhere, so the file documented an optimisation it did not have. Reading it, you would believe
 position changes were gated. They are not, which is part of T3.
+
+`events={null}` on the Canvas was in the same audit item and is **declined, on a measurement**.
+With no `object3D` carrying a handler — verified: every pointer handler in the package is on a
+`<div>` or the minimap's own 2D `<canvas>` — R3F's `intersect()` still allocates a Set and an
+array per pointer event, but raycasts nothing. It does not appear anywhere in the allocation
+profile; what does appear under pan is React's own synthetic event machinery. So the change would
+buy something below the noise floor while silently disabling a whole subsystem for anyone who
+later attaches a handler to a mesh. Not worth the trade.
 
 ESLint is **not** added, deliberately. The audit recommends `react-hooks`, which independently
 catches C18's and C23's defect classes, and it is very likely the right call — but this repo has
