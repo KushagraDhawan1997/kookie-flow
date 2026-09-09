@@ -61,6 +61,8 @@ const entityLayoutCache = new WeakMap<Entity, EntitySocketLayoutCache>();
 
 // Stable cache key to detect config changes within same entity reference
 const entityCacheKeys = new WeakMap<Entity, string>();
+/** Generation each WeakMap entry was computed under; a mismatch means the layout moved. */
+const entityCacheGen = new WeakMap<Entity, number>();
 
 // ID-based cache for cross-reference reuse (e.g. entity spread during resize).
 // When updateEntityDimensions creates { ...existing, width, height }, the new
@@ -72,6 +74,45 @@ const entityIdCache = new Map<string, {
   outputs: Socket[] | undefined;
   layout: EntitySocketLayoutCache;
 }>();
+
+/**
+ * The layout the cached entries were computed WITH.
+ *
+ * `socketLayout` is a parameter of `getEntitySocketLayout` and was never part of any cache key, so
+ * a runtime `size` or density change returned the layout computed under the previous one — socket
+ * Y, entity heights, widget rows, outlines and hit boxes all stayed at the old size.
+ *
+ * Compared BY VALUE, not by reference. `StyleProvider`'s memo lists `entityStyle`, so a caller
+ * passing an inline object literal produces a fresh `socketLayout` on every render; a reference
+ * compare would clear all three caches every frame and recompute every entity's layout. The five
+ * fields are numbers, so this is O(1) and allocation-free.
+ */
+let activeLayout: ResolvedSocketLayout | null = null;
+
+function sameLayout(a: ResolvedSocketLayout, b: ResolvedSocketLayout): boolean {
+  return (
+    a.rowHeight === b.rowHeight &&
+    a.widgetHeight === b.widgetHeight &&
+    a.marginTop === b.marginTop &&
+    a.socketSize === b.socketSize &&
+    a.padding === b.padding
+  );
+}
+
+/**
+ * Drop every cached layout when the layout parameters actually change.
+ *
+ * The WeakMaps cannot be cleared, so their entries are invalidated by bumping a generation that
+ * the cached value carries. The id map is a real Map and is cleared outright.
+ */
+let layoutGeneration = 0;
+
+function noteLayout(socketLayout: ResolvedSocketLayout): void {
+  if (activeLayout !== null && sameLayout(activeLayout, socketLayout)) return;
+  activeLayout = socketLayout;
+  layoutGeneration++;
+  entityIdCache.clear();
+}
 
 /**
  * Build a stable cache key from socket configuration.
@@ -201,9 +242,13 @@ export function getEntitySocketLayout(
   entity: Entity,
   socketLayout: ResolvedSocketLayout
 ): EntitySocketLayoutCache {
+  // If the layout parameters moved (a runtime size or density change), every cached entry was
+  // computed under the old ones and must not be reused.
+  noteLayout(socketLayout);
+
   // Fast path 1: WeakMap hit (same entity reference, e.g. during pan/zoom)
   const existingKey = entityCacheKeys.get(entity);
-  if (existingKey) {
+  if (existingKey && entityCacheGen.get(entity) === layoutGeneration) {
     const cached = entityLayoutCache.get(entity);
     if (cached) return cached;
   }
@@ -220,6 +265,7 @@ export function getEntitySocketLayout(
     entityLayoutCache.set(entity, idCached.layout);
     // Use '_' sentinel (truthy) so WeakMap fast path 1 fires on subsequent same-ref lookups
     entityCacheKeys.set(entity, existingKey ?? '_');
+    entityCacheGen.set(entity, layoutGeneration);
     return idCached.layout;
   }
 
@@ -228,7 +274,7 @@ export function getEntitySocketLayout(
 
   // Check if key matches a previous computation for this entity ref
   // (handles the case where WeakMap entry existed but cache was cleared)
-  if (existingKey === currentKey) {
+  if (existingKey === currentKey && entityCacheGen.get(entity) === layoutGeneration) {
     const cached = entityLayoutCache.get(entity);
     if (cached) return cached;
   }
@@ -236,6 +282,7 @@ export function getEntitySocketLayout(
   const layout = computeEntitySocketLayout(entity, socketLayout);
   entityLayoutCache.set(entity, layout);
   entityCacheKeys.set(entity, currentKey);
+  entityCacheGen.set(entity, layoutGeneration);
 
   // Prevent unbounded growth from deleted entities (Map doesn't auto-GC like WeakMap).
   // Entries are tiny (~100 bytes each), but clear if unreasonably large. Entries for
@@ -258,5 +305,12 @@ export function getEntitySocketLayout(
 export function clearEntityLayoutCache(entity: Entity): void {
   entityLayoutCache.delete(entity);
   entityCacheKeys.delete(entity);
+  entityCacheGen.delete(entity);
   entityIdCache.delete(entity.id);
+}
+
+/** Test seam: forget which layout the caches were built with. */
+export function resetLayoutGeneration(): void {
+  activeLayout = null;
+  entityIdCache.clear();
 }
