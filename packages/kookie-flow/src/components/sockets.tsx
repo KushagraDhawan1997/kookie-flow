@@ -2,7 +2,6 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { getMovedEntityIds } from '../core/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
@@ -519,7 +518,7 @@ export function Sockets({
 
     // Position-only fast path: only update instance matrices for moved entities
     if (!dirtyRef.current && positionDirtyRef.current) {
-      const movedIds = getMovedEntityIds();
+      const movedIds = store.getState().getMovedEntityIds();
       const socketRanges = entitySocketRangesRef.current;
 
       if (movedIds.size > 0 && socketRanges.size > 0) {

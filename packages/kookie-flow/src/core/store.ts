@@ -40,28 +40,6 @@ import type { ResolvedSocketLayout } from '../utils/style-resolver';
 let idCounter = 0;
 const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
 
-/**
- * Side-channel for communicating moved entity IDs to renderers.
- * Avoids adding to Zustand state (no GC from new Set per frame).
- * Set by updateEntityPositions, read by Edges/Sockets useFrame.
- */
-const _movedEntityIds = new Set<string>();
-export function getMovedEntityIds(): ReadonlySet<string> {
-  return _movedEntityIds;
-}
-
-/**
- * Persistent id-to-index map — avoids O(n) rebuild on every drag frame.
- * Kept in sync via rebuildIdToIndex (on setEntities/applyEntityChanges)
- * and incremental updates in updateEntityPositions/updateEntityDimensions.
- */
-const _idToIndex = new Map<string, number>();
-function rebuildIdToIndex(entities: Entity[]): void {
-  _idToIndex.clear();
-  for (let i = 0; i < entities.length; i++) {
-    _idToIndex.set(entities[i].id, i);
-  }
-}
 
 export interface FlowState {
   /** Entities in the graph */
@@ -155,6 +133,8 @@ export interface FlowState {
   socketLayout: ResolvedSocketLayout | null;
 
   /** Internal actions */
+  /** Entity ids moved by the last updateEntityPositions call. Per store, not global. */
+  getMovedEntityIds: () => ReadonlySet<string>;
   setEntities: (entities: Entity[]) => void;
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
@@ -523,7 +503,50 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } = rebuildDerivedState(initialEntities);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
   const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
+  /**
+   * Side-channel for communicating moved entity IDs to renderers. Kept out of Zustand state so a
+   * drag frame allocates no Set.
+   *
+   * PER STORE, not module-level. These were module singletons, which made the library
+   * non-reentrant: `createFlowStore` cleared the shared id map on construction, so mounting a
+   * second <KookieFlow> stopped dragging from working in the first — measured, the first store's
+   * entity did not move at all.
+   */
+  const movedEntityIds = new Set<string>();
+
+  /**
+   * Persistent id-to-index map — avoids an O(n) rebuild on every drag frame.
+   *
+   * It must be rebuilt wherever the entities array changes length or order. When it goes stale and
+   * the stale index is past the end of the array, the drag path spreads `undefined` and appends an
+   * entity with `id === undefined` to state.entities. It self-heals on the next add/remove, which
+   * is exactly the profile of a bug that survives manual testing.
+   */
+  const idToIndex = new Map<string, number>();
+  const rebuildIdToIndex = (entities: Entity[]): void => {
+    idToIndex.clear();
+    for (let i = 0; i < entities.length; i++) {
+      idToIndex.set(entities[i].id, i);
+    }
+  };
   rebuildIdToIndex(initialEntities);
+
+  /**
+   * Resolve an id to its array slot, verifying the cached index still points AT that entity.
+   *
+   * `index !== undefined` is not a sufficient guard. A stale index that is still in bounds writes
+   * to the WRONG entity, and one past the end makes `{...nextEntities[index]}` spread `undefined`
+   * — which appends an entity with `id === undefined` to state.entities. Checking identity catches
+   * both, and falling back to a scan means a stale cache costs one O(n) walk instead of corrupting
+   * the document. With the rebuilds above in place this fallback should never run.
+   */
+  const resolveIndex = (entities: Entity[], id: string): number => {
+    const cached = idToIndex.get(id);
+    if (cached !== undefined && entities[cached]?.id === id) return cached;
+    const found = entities.findIndex((e) => e.id === id);
+    if (found >= 0) idToIndex.set(id, found);
+    return found;
+  };
 
   // Lazy cached analysis — closure-scoped, not in Zustand state (avoids re-render on compute)
   let cachedAnalysis: CachedAnalysis | null = null;
@@ -574,6 +597,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       socketLayout: null,
 
       // Setters - rebuild derived state when entities change
+      getMovedEntityIds: () => movedEntityIds,
+
       setEntities: (entities) => {
         const derived = rebuildDerivedState(entities, undefined, get().socketLayout);
         cachedAnalysis = null;
@@ -1007,15 +1032,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextEntities = [...entities];
 
         // Populate moved entity IDs side-channel for renderers
-        _movedEntityIds.clear();
+        movedEntityIds.clear();
         for (const { id } of updates) {
-          _movedEntityIds.add(id);
+          movedEntityIds.add(id);
         }
 
         // Update each entity: O(k) using persistent idToIndex map
         for (const { id, position } of updates) {
-          const index = _idToIndex.get(id);
-          if (index !== undefined) {
+          const index = resolveIndex(nextEntities, id);
+          if (index >= 0) {
             const entity = { ...nextEntities[index], position };
             nextEntities[index] = entity;
             entityMap.set(id, entity);
@@ -1051,10 +1076,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const existing = entityMap.get(id);
         if (!existing) return;
 
-        const index = _idToIndex.get(id);
-        if (index === undefined) return;
-
         const nextEntities = [...entities];
+        const index = resolveIndex(nextEntities, id);
+        if (index < 0) return;
 
         const entity = {
           ...existing,
@@ -1070,7 +1094,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // updateEntityDimensions calls in the same frame (e.g. TextEntities
         // auto-sizing two text nodes) all appear in the fast-path set.
         // The set is cleared by updateEntityPositions on the next drag.
-        _movedEntityIds.add(id);
+        movedEntityIds.add(id);
 
         // Always update socket quadtree — width changes move output sockets,
         // position changes move all sockets
@@ -1100,10 +1124,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const existing = entityMap.get(id);
         if (!existing) return;
 
-        const index = _idToIndex.get(id);
-        if (index === undefined) return;
-
         const nextEntities = [...entities];
+        const index = resolveIndex(nextEntities, id);
+        if (index < 0) return;
+
         // Clear explicit dimensions to revert to computed minimum
         const { width: _w, height: _h, ...rest } = existing;
         const entity = rest as Entity;
@@ -1249,6 +1273,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         cachedAnalysis = null;
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
@@ -1310,6 +1336,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         cachedAnalysis = null;
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
@@ -1622,6 +1650,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
@@ -1651,6 +1681,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
         for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
 
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
@@ -1753,6 +1785,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
         const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
         cachedAnalysis = null;
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,
@@ -1794,6 +1828,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
         for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
 
+        // Length/order changed: the drag fast path's index is stale until this runs.
+        rebuildIdToIndex(nextEntities);
         set({
           entities: nextEntities,
           edges: nextEdges,

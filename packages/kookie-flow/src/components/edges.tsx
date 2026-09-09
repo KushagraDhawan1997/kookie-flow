@@ -2,7 +2,6 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
-import { getMovedEntityIds } from '../core/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { DEFAULT_ENTITY_WIDTH, DEFAULT_SOCKET_TYPES, SOCKET_OFFSET } from '../core/constants';
@@ -580,7 +579,7 @@ export function Edges({
     // Pre-compute affected edge indices for O(K) partial update
     let affectedEdgeIndices: Set<number> | null = null;
     if (isPartialUpdate) {
-      const movedIds = getMovedEntityIds();
+      const movedIds = store.getState().getMovedEntityIds();
       const entityEdgeMap = entityToEdgeIndicesRef.current;
       if (movedIds.size > 0 && entityEdgeMap.size > 0) {
         affectedEdgeIndices = new Set<number>();

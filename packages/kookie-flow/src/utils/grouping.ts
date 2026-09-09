@@ -67,18 +67,42 @@ export function getGroupDescendants(entities: Entity[], groupId: string): Entity
  * Check if an entity is inside a collapsed group (and should be hidden).
  * Walks up the parent chain - if any ancestor is collapsed, entity is hidden.
  */
+/**
+ * Walk an entity's parent chain, stopping if it revisits an id.
+ *
+ * Every chain walk in this file was previously unbounded, and a cycle in `parentId` hangs the tab
+ * rather than throwing. `setEntityParent` guards against CREATING one, but `setEntities` and
+ * `applyEntityChanges({type:'parent'})` are public and do not — and `isEntityHidden` is called for
+ * every entity inside `rebuildDerivedState`, which runs on every entity change, so one bad
+ * document freezes the page on the next render.
+ *
+ * `wouldCreateCycle` needed this too: it detects a cycle it would create, and hangs on one that
+ * already exists.
+ *
+ * Yields each ancestor id in order. A repeated id ends the walk.
+ */
+function* walkParents(
+  startId: string | undefined,
+  entityMap: Map<string, Entity>
+): Generator<string> {
+  const seen = new Set<string>();
+  let currentId = startId;
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    yield currentId;
+    currentId = entityMap.get(currentId)?.parentId;
+  }
+}
+
 export function isEntityHidden(
   entity: Entity,
   entityMap: Map<string, Entity>,
   collapsedGroupIds: Set<string>
 ): boolean {
-  let currentId = entity.parentId;
-  while (currentId) {
-    if (collapsedGroupIds.has(currentId)) {
+  for (const ancestorId of walkParents(entity.parentId, entityMap)) {
+    if (collapsedGroupIds.has(ancestorId)) {
       return true;
     }
-    const parent = entityMap.get(currentId);
-    currentId = parent?.parentId;
   }
   return false;
 }
@@ -142,13 +166,11 @@ export function calculateGroupBounds(
  */
 export function getParentChain(entity: Entity, entityMap: Map<string, Entity>): Entity[] {
   const chain: Entity[] = [];
-  let currentId = entity.parentId;
 
-  while (currentId) {
-    const parent = entityMap.get(currentId);
+  for (const ancestorId of walkParents(entity.parentId, entityMap)) {
+    const parent = entityMap.get(ancestorId);
     if (!parent) break;
     chain.push(parent);
-    currentId = parent.parentId;
   }
 
   return chain;
@@ -162,13 +184,10 @@ export function isDescendantOf(
   entityB: Entity,
   entityMap: Map<string, Entity>
 ): boolean {
-  let currentId = entityA.parentId;
-  while (currentId) {
-    if (currentId === entityB.id) {
+  for (const ancestorId of walkParents(entityA.parentId, entityMap)) {
+    if (ancestorId === entityB.id) {
       return true;
     }
-    const parent = entityMap.get(currentId);
-    currentId = parent?.parentId;
   }
   return false;
 }
@@ -206,11 +225,8 @@ export function getAncestorGroups(
   const ancestors = new Set<string>();
 
   for (const entity of entities) {
-    let currentId = entity.parentId;
-    while (currentId) {
-      ancestors.add(currentId);
-      const parent = entityMap.get(currentId);
-      currentId = parent?.parentId;
+    for (const ancestorId of walkParents(entity.parentId, entityMap)) {
+      ancestors.add(ancestorId);
     }
   }
 
@@ -229,14 +245,12 @@ export function wouldCreateCycle(
   const entity = entityMap.get(entityId);
   if (!entity) return false;
 
-  // Walk up from proposedParent to see if we reach entityId
-  let currentId: string | undefined = proposedParentId;
-  while (currentId) {
-    if (currentId === entityId) {
+  // Walk up from proposedParent to see if we reach entityId.
+  // walkParents also terminates on a PRE-EXISTING cycle, which the old unbounded loop did not.
+  for (const ancestorId of walkParents(proposedParentId, entityMap)) {
+    if (ancestorId === entityId) {
       return true; // Cycle detected
     }
-    const parent = entityMap.get(currentId);
-    currentId = parent?.parentId;
   }
 
   return false;
@@ -262,6 +276,10 @@ export function sortByDepth(entities: Entity[], entityMap: Map<string, Entity>):
   function getDepth(entity: Entity): number {
     const cached = depths.get(entity.id);
     if (cached !== undefined) return cached;
+
+    // Written BEFORE the recursive call: a cycle would otherwise recurse until the stack blows,
+    // because the memo was only filled on the way back out.
+    depths.set(entity.id, 0);
 
     if (!entity.parentId) {
       depths.set(entity.id, 0);
