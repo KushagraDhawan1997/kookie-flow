@@ -11,34 +11,92 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Find a usable Chromium without assuming a build number. */
+/**
+ * Where a Playwright browser cache lives when nobody has said. The Linux image path was the only
+ * one here, hardcoded, and the layout under it was assumed to be `chrome-linux/chrome` — so on a
+ * macOS checkout every spike in this directory failed at launch with "No Chromium found", which
+ * reads as a broken harness rather than as a path this file never learned. The maintainer's own
+ * machine could not run the instrument that measures the maintainer's own rules.
+ */
+function defaultRoots() {
+  const home = process.env.HOME ?? '';
+  return [
+    '/opt/pw-browsers',
+    home && join(home, 'Library', 'Caches', 'ms-playwright'),
+    home && join(home, '.cache', 'ms-playwright'),
+  ].filter(Boolean);
+}
+
+/**
+ * The binary inside one `chromium-<build>` directory, whichever platform packed it.
+ *
+ * Playwright names the inner directory per platform and the macOS one buries the executable in an
+ * .app bundle. Sorted by build number descending by the caller, so the newest install wins.
+ */
+function binaryIn(dir) {
+  for (const parts of [['chrome-linux', 'chrome'], ['chrome-win', 'chrome.exe']]) {
+    const p = join(dir, ...parts);
+    if (existsSync(p)) return p;
+  }
+  // macOS: `chrome-mac` or `chrome-mac-arm64`, holding an .app whose name has changed across
+  // releases ("Chromium.app", then "Google Chrome for Testing.app"). Match the bundle by suffix
+  // rather than by name, or the harness breaks again on the next rename.
+  for (const macDir of ['chrome-mac-arm64', 'chrome-mac']) {
+    const outer = join(dir, macDir);
+    if (!existsSync(outer)) continue;
+    for (const entry of readdirSync(outer)) {
+      if (!entry.endsWith('.app')) continue;
+      const p = join(outer, entry, 'Contents', 'MacOS', entry.slice(0, -'.app'.length));
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+/** Find a usable Chromium without assuming a build number, a platform, or a cache location. */
 export function findChromium() {
   if (process.env.KOOKIE_CHROMIUM && existsSync(process.env.KOOKIE_CHROMIUM)) {
     return process.env.KOOKIE_CHROMIUM;
   }
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
-  if (!existsSync(root)) return null;
+  const roots = process.env.PLAYWRIGHT_BROWSERS_PATH
+    ? [process.env.PLAYWRIGHT_BROWSERS_PATH]
+    : defaultRoots();
 
-  // A bare `chromium` entry is sometimes the binary itself, sometimes a directory.
-  const direct = join(root, 'chromium');
-  if (existsSync(direct) && !existsSync(join(direct, 'chrome-linux'))) return direct;
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
 
-  const candidates = readdirSync(root)
-    .filter((d) => d.startsWith('chromium-'))
-    .sort()
-    .reverse()
-    .map((d) => join(root, d, 'chrome-linux', 'chrome'))
-    .filter((p) => existsSync(p));
+    // A bare `chromium` entry is sometimes the binary itself, sometimes a directory.
+    const direct = join(root, 'chromium');
+    if (existsSync(direct) && !binaryIn(direct)) return direct;
 
-  return candidates[0] ?? null;
+    // Build numbers are not zero-padded, so a lexical sort puts 999 above 1234. Compare the
+    // numeric suffix instead — the alternative silently launches an older browser than the one
+    // that was just installed, which is exactly the version skew this file exists to prevent.
+    const builds = readdirSync(root)
+      .filter((d) => d.startsWith('chromium-'))
+      .map((d) => ({ d, n: Number(d.slice('chromium-'.length)) }))
+      .filter((x) => Number.isFinite(x.n))
+      .sort((a, b) => b.n - a.n);
+
+    for (const { d } of builds) {
+      const bin = binaryIn(join(root, d));
+      if (bin) return bin;
+    }
+  }
+
+  return null;
 }
 
 export async function launch(chromium, opts = {}) {
   const executablePath = findChromium();
   if (!executablePath) {
+    const looked = process.env.PLAYWRIGHT_BROWSERS_PATH
+      ? [process.env.PLAYWRIGHT_BROWSERS_PATH]
+      : defaultRoots();
     throw new Error(
-      `No Chromium found under ${process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers'}. ` +
-        `Set KOOKIE_CHROMIUM to a Chromium binary.`
+      `No Chromium found under ${looked.join(', ')}. ` +
+        `Install one with \`npx playwright install chromium\`, ` +
+        `or set KOOKIE_CHROMIUM to a Chromium binary.`
     );
   }
   return chromium.launch({ executablePath, ...opts });
