@@ -40,6 +40,7 @@ import {
 } from '../utils/text-layout';
 
 
+import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 // Buffer capacity management
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 512;
@@ -86,7 +87,7 @@ function TextEntityWeightMesh({ fontData, entriesRef, storeRef }: TextEntityWeig
       fragmentShader: msdfFragmentShader,
       transparent: true,
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
       side: THREE.DoubleSide,
     });
   }, [texture]);
@@ -295,6 +296,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
     const unsubEditing = store.subscribe((s) => s.editingEntityId, markDirty);
     const unsubEditContent = store.subscribe((s) => s.editingContent, markDirty);
+    const unsubStack = store.subscribe((s) => s.stackVersion, markDirty);
 
     return () => {
       unsubPositions();
@@ -304,6 +306,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       unsubHidden();
       unsubEditing();
       unsubEditContent();
+      unsubStack();
     };
   }, [store]);
 
@@ -321,6 +324,8 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       hiddenEntityIds,
       editingEntityId,
       editingContent,
+      selectedEntityIds: selectedForDepth,
+      stackOrder,
     } = store.getState();
 
     // Viewport frustum bounds for culling
@@ -441,7 +446,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
         targetEntries.push({
           id: entity.id,
           lines: placeholderLines,
-          position: [entity.position.x + padding, entity.position.y + padding, 0.1],
+          position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth) + DEPTH_LAYER.label],
           fontSize,
           lineHeight,
           textAlign: 'left',
@@ -461,7 +466,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       targetEntries.push({
         id: entity.id,
         lines: measurement.lines,
-        position: [entity.position.x + padding, entity.position.y + padding, 0.1],
+        position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth) + DEPTH_LAYER.label],
         fontSize,
         lineHeight,
         textAlign,

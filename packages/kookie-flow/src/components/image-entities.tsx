@@ -24,6 +24,7 @@ import { rgbToHex } from '../utils/color';
 import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../core/constants';
 import { ImageTextureManager } from '../utils/image-loader';
 import type { ImageEntityData, EntityChange } from '../types';
+import { entityDepth } from '../utils/entity-depth';
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -95,7 +96,7 @@ function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
     transparent: true,
     opacity: 0.15,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true,
     side: THREE.DoubleSide,
   });
 }
@@ -328,9 +329,10 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       markFullDirty();
     });
     const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
-    const unsubSelection = store.subscribe((s) => s.selectedEntityIds, () => {
-      selectionDirtyRef.current = true;
-    });
+    // Selection moves the mesh in DEPTH (see utils/entity-depth.ts), so it is a full pass now,
+    // not the renderOrder-only flip it used to be.
+    const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markFullDirty);
+    const unsubStack = store.subscribe((s) => s.stackVersion, markFullDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, () => {
       hiddenDirtyRef.current = true;
     });
@@ -341,6 +343,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       unsubEntities();
       unsubViewport();
       unsubSelection();
+      unsubStack();
       unsubHidden();
     };
   }, [store]);
@@ -365,8 +368,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
               vertexShader: IMAGE_VERTEX_SHADER,
               fragmentShader: IMAGE_FRAGMENT_SHADER,
               transparent: true,
-              depthWrite: false,
-              depthTest: false,
+              depthWrite: true,
+              depthTest: true,
               side: THREE.DoubleSide,
             }));
           }
@@ -403,6 +406,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       viewport,
       selectedEntityIds,
       hiddenEntityIds,
+      stackOrder,
     } = store.getState();
 
     // O(k) iteration over image entity IDs only, with O(1) entityMap lookups
@@ -468,7 +472,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       // Position mesh center (world space, Y-down)
       const cx = entity.position.x + w / 2;
       const cy = -(entity.position.y + h / 2); // Negate Y for GL
-      mesh.position.set(cx, cy, 0.05); // Slightly above base plane
+      mesh.position.set(cx, cy, entityDepth(entity.id, stackOrder, selectedEntityIds));
       mesh.scale.set(w, h, 1);
 
       // Texture management — acquire/swap on src change

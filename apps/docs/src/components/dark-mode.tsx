@@ -1,102 +1,45 @@
 'use client';
 
-import React from 'react';
-import { IconButton, useThemeContext } from '@kushagradhawan/kookie-ui';
+import { Button } from '@kookie-ui/react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Moon02Icon, Sun03Icon } from '@hugeicons/core-free-icons';
 
+import { setAppearance, useAppearance } from './appearance';
+
 /**
- * Dark mode toggle that works both inside and outside Theme context.
- * When rendered in a portal (e.g., Sheet overlay), context may not be available,
- * so we also directly manipulate the DOM and use localStorage as source of truth.
+ * The appearance toggle.
+ *
+ * v2's `useTheme()` is READ-ONLY — it reports what the nearest Theme resolved and has no
+ * `onAppearanceChange` — because the mode lives on <html>, written by the pre-paint script
+ * and the store in `appearance.tsx`. So this button writes through the store rather than
+ * through context, and the old DOM-walking fallback (`document.querySelectorAll('.radix-themes')`)
+ * is gone with it: there is one element to write and the store owns it.
+ *
+ * That single source of truth is what kookie-flow's WebGL layer depends on. It reads the
+ * resolved `--neutral-*` tokens off the theme root, so a toggle that wrote appearance to some
+ * elements and not others would leave the canvas painting the previous mode.
  */
 export function DarkModeToggle() {
-  const { appearance, onAppearanceChange } = useThemeContext();
-  const [mounted, setMounted] = React.useState(false);
-  const [localAppearance, setLocalAppearance] = React.useState<'light' | 'dark'>('light');
+  const choice = useAppearance();
 
-  // Only render after mounting to avoid hydration issues
-  React.useEffect(() => {
-    setMounted(true);
-    // Initialize from localStorage or system preference
-    const savedTheme = localStorage.getItem('kookie-theme') as 'light' | 'dark' | null;
-    if (savedTheme) {
-      setLocalAppearance(savedTheme);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setLocalAppearance(prefersDark ? 'dark' : 'light');
-    }
-  }, []);
-
-  // Sync local state when context changes (when inside Theme provider)
-  React.useEffect(() => {
-    if (mounted && (appearance === 'light' || appearance === 'dark')) {
-      setLocalAppearance(appearance);
-    }
-  }, [mounted, appearance]);
-
-  const toggleTheme = () => {
-    const newAppearance = localAppearance === 'dark' ? 'light' : 'dark';
-
-    // Update localStorage (source of truth)
-    localStorage.setItem('kookie-theme', newAppearance);
-
-    // Update local state for immediate UI feedback
-    setLocalAppearance(newAppearance);
-
-    // Try to update via context (works when inside Theme provider)
-    onAppearanceChange(newAppearance);
-
-    // Also directly update ALL theme elements (including portaled ones like Sheet overlays)
-    // This ensures the theme changes even when context is unavailable
-    const themeElements = document.querySelectorAll('.radix-themes');
-    themeElements.forEach((el) => {
-      el.classList.remove('light', 'dark');
-      el.classList.add(newAppearance);
-    });
-  };
-
-  // Initialize theme from localStorage or system preference
-  React.useEffect(() => {
-    if (!mounted) return;
-
-    const savedTheme = localStorage.getItem('kookie-theme') as 'light' | 'dark' | null;
-    if (savedTheme && savedTheme !== appearance) {
-      onAppearanceChange(savedTheme);
-    } else if (!savedTheme && appearance === 'inherit') {
-      // Set initial theme based on system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const initialTheme = prefersDark ? 'dark' : 'light';
-      onAppearanceChange(initialTheme);
-      localStorage.setItem('kookie-theme', initialTheme);
-    }
-  }, [mounted, appearance, onAppearanceChange]);
-
-  // Don't render until mounted to avoid hydration mismatch
-  if (!mounted) {
-    return (
-      <IconButton variant="ghost" size="2" aria-label="Loading theme toggle">
-        <div style={{ width: 16, height: 16 }} />
-      </IconButton>
-    );
-  }
-
-  const isDark = localAppearance === 'dark';
+  // The server snapshot is "system", so the first paint shows the moon and the client
+  // corrects it. There is no `mounted` gate: `useSyncExternalStore` makes that safe, and the
+  // old gate rendered an empty 16x16 box on every server render.
+  const isDark =
+    choice === 'system'
+      ? typeof window !== 'undefined' &&
+        document.documentElement.getAttribute('data-appearance') === 'dark'
+      : choice === 'dark';
 
   return (
-    <IconButton
-      variant="ghost"
-      size="2"
-      highContrast
-      color="gray"
-      onClick={toggleTheme}
+    <Button
+      iconOnly
+      emphasis="quiet"
+      tone="neutral"
+      onClick={() => setAppearance(isDark ? 'light' : 'dark')}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
     >
-      {isDark ? (
-        <HugeiconsIcon icon={Sun03Icon} strokeWidth={1.75} />
-      ) : (
-        <HugeiconsIcon icon={Moon02Icon} strokeWidth={1.75} />
-      )}
-    </IconButton>
+      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} strokeWidth={1.75} />
+    </Button>
   );
 }

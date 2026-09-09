@@ -1,0 +1,124 @@
+/* ── The table of contents' own half ────────────────────────────────────────────────────────
+   A rail, two ranks of ink, and one segment of the rail that is a different colour. Nothing
+   below decides a value the package has not already decided: every length resolves through a
+   `--` token, which is the condition that makes a copied file safe (THESIS §6 — the center
+   stays in the dependency). */
+
+/* The UA's own list dress is removed rather than overridden later: a marker beside a heading
+   name is the browser drawing a second, wrong rail. `Breadcrumb`'s list does the same, and for
+   the same reason it is a `<ul>` at all — a screen reader says "list of nine items" before
+   reading them, which is most of what makes this scannable without sight. */
+.kb-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* THE RAIL IS DRAWN BY THE ENTRIES, NOT UNDER THEM, and that is the whole mechanism. One line
+   on the list would need a second, measured element to mark a segment of it — the tab
+   indicator's arithmetic, which §26 pays for because a tab bar's items are different widths and
+   a JS measurement is the only thing that knows them. Here every entry is the same width and
+   already knows its own height, so a border on each one composes into a continuous rail whose
+   segments are exactly the entries. No measurement, no second element, and nothing to keep in
+   sync.
+
+   WHICH IS WHY THERE IS NO GAP between the entries: a gap would break the rail into dashes. The
+   air is the link's own padding, inside its segment, so the lit segment is exactly as tall as
+   the row it marks. */
+.kb-toc-item {
+  border-inline-start: var(--border-width) solid var(--color-border);
+}
+
+/* WHERE YOU ARE. `Tabs`' indicator reads `--tone-glyph` and so does this: the family's own
+   glyph role, arriving through the tone indirection that `table-of-contents.tsx` stamps on this
+   element alone. The colour is the sidebar's answer to the same question one pane over — a
+   reader who has learnt that blue means "you are here" for a chapter should not have to learn a
+   second vocabulary for a section of it.
+
+   It CHANGES colour rather than appearing, so the rail's metrics never move and §8's paint clock
+   has something to carry — Link's underline mechanism, rotated ninety degrees. */
+.kb-toc-item[data-current] {
+  border-inline-start-color: var(--tone-glyph);
+}
+
+/* A place inside this page. The TONE-LESS foreground roles, which is why this is not a `Link`:
+   stamping a family re-scopes all three of them onto that family's ink trio (`type.css`), so an
+   entry built out of `Link` could read a family's greys and never the system's. `Breadcrumb`
+   states the same pair for the same reason. */
+.kb-toc-link {
+  /* A block, so the whole segment beside the rail is the target and a wrapped entry's second
+     line is part of the same one. It is still a run of text and grows no target past that: WCAG
+     2.2 SC 2.5.8 exempts a target in text, which is Link's own citation. */
+  display: block;
+  color: var(--color-text-muted);
+  cursor: pointer;
+
+  /* The air inside the segment, and the step off the rail. Layout space, so this tightens with
+     density like every other distance in the system (§12). */
+  padding-block: var(--layout-space-2);
+  padding-inline-start: var(--layout-space-4);
+
+  /* The underline rests TRANSPARENT rather than absent, so the line's metrics never move and the
+     paint clock has a colour to carry — a `text-decoration-line` appearing is a discrete change
+     and would arrive in one frame. Resting invisible is `Breadcrumb`'s carve-out from Link's
+     unconditional underline rather than a drift from it: WCAG 1.4.1's technique F73 is about a
+     link INSIDE A BLOCK OF TEXT, where hue is the only thing separating it from the words. This
+     is a list of whole items in their own column, and the rail says what they are. */
+  text-decoration-line: underline;
+  text-decoration-thickness: var(--border-width);
+  text-decoration-color: transparent;
+  /* Relative to the entry's own type, for the reason link.css and blockquote.css both state: the
+     distance between a rule and the glyphs above it is a property of the glyphs. */
+  text-underline-offset: 0.2em;
+
+  transition:
+    color var(--motion-duration) var(--motion-easing),
+    text-decoration-color var(--motion-duration) var(--motion-easing);
+}
+
+/* A SUB-HEADING IS TOLD BY WHERE IT STARTS, not by a third ink. `Tree`'s indent argument: one
+   geometric step, so every entry at one level shares a left edge and the alignment is by
+   construction rather than by per-node judgement. Standing the ink down again would put a rung
+   below muted on a line that is still a destination — the objection §11 makes to a faded link. */
+.kb-toc-item[data-level="3"] .kb-toc-link {
+  padding-inline-start: var(--layout-space-6);
+}
+
+/* WHERE YOU ARE, in ink. The full role and nothing else — no heavier weight, because §15 puts
+   hierarchy in size and the ink roles, and a semibold entry is wider than a medium one, so the
+   column would reflow every time the mark moved. That is `Tabs`' measured argument and
+   `Breadcrumb`'s stated one, and this is the component that would show it most: the mark moves
+   on every scroll. */
+.kb-toc-item[data-current] .kb-toc-link {
+  color: var(--color-text);
+}
+
+@media (hover: hover) {
+  /* Guarded like every hover rule in the system (§8): a touch device synthesises hover on tap and
+     holds it until the next tap, so an unguarded rule would leave a tapped entry lit and reading
+     as the current one it is not. */
+  .kb-toc-link:hover {
+    color: var(--color-text);
+    text-decoration-color: currentcolor;
+  }
+}
+
+/* One ring, and it is the system's — the tokens rather than a second designed value. Drawn here
+   for Link's reason: nothing in this file is a `.kui-control`, so it never meets `recipes.css`'s
+   rule. No `kui-ring-land` arrival, for Link's measured reason: §8 bounds ring travel below at
+   about four pixels because Chrome resolves `outline-offset` to whole pixels, and a ring this
+   close to its glyphs does not have that travel. */
+.kb-toc-link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The stand-down, on the DECLARING selector (§8): the shared block in recipes.css covers
+   `.kui-control` and `.kui-mark`, and none of this is either — so a clock declared here is a
+   clock nothing else can stop, and a reader who asked their system for stillness keeps getting
+   motion. Same selector, later in the file, so the tie goes to source order by construction. */
+@media (prefers-reduced-motion: reduce) {
+  .kb-toc-link {
+    transition: none;
+  }
+}

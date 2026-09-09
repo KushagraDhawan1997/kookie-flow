@@ -1,6 +1,6 @@
 'use client';
 
-import { TableOfContents } from '@kushagradhawan/kookie-blocks';
+import { DocsToc } from '@/components/blocks/docs-toc';
 import { SiteDocsPage } from '@/components/site-docs-page';
 import type { DocMetadata } from '@/lib/docs-metadata';
 import ContentMDX from './content.mdx';
@@ -16,7 +16,7 @@ export default function UseGraphPageClient({
     <SiteDocsPage
       meta={metadata}
       tableOfContents={
-        <TableOfContents renderContainer={(content) => content || null} />
+        <DocsToc />
       }
     >
       <ContentMDX />

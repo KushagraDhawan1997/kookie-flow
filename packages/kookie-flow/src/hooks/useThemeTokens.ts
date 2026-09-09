@@ -169,7 +169,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
 /**
  * Read a CSS variable from computed styles, trying each name in turn.
  *
- * The list is what carries this package across the v1 -> v2 rename: `['--neutral-2', '--neutral-2']`
+ * The list is what carries this package across the v1 -> v2 rename: `'--neutral-2'`
  * reads the v2 name where it exists and the v1 name where it does not, so one build is correct on
  * both design systems and the swap is bisectable.
  *
@@ -252,32 +252,17 @@ function readTokensFromDOM(root: Element): ThemeTokens {
   const appearance = detectAppearance(root);
 
   /**
-   * Which KookieUI is mounted.
+   * The space scale is OFF BY ONE INDEX from what this reader's names say, and the shift is
+   * kept rather than flattened.
    *
-   * `--neutral-1` is emitted by v2 and by nothing in v1; the greys were `--gray-*` there. One
-   * probe, once per read, and the answer is needed because ONE family cannot be handled by the
-   * name-list every other token uses.
+   * v1 emitted 4/8/12/16/24/32/40/48/64 for `--space-1..9`; v2 emits 2/4/8/12/16/24/32/40/48,
+   * so v1's N is v2's N+1. The names on the left of this table are v1's, and the values they
+   * resolve to are the ones every node metric was judged against — a socket row at 40px, a
+   * widget at 32. Reading `--space-N` directly would shrink both by a fifth, which is a design
+   * change wearing a migration's clothes. Re-judging them against v2's own ladder is a real
+   * piece of work and belongs to something visible, not to a rename.
    */
-  const isV2 = getCSSVar(styles, '--neutral-1') !== '';
-
-  /**
-   * The space scale is OFF BY ONE INDEX between the two systems, and this is the single most
-   * dangerous item in the migration because it is silent in every direction.
-   *
-   * v1 emits 4/8/12/16/24/32/40/48/64 for `--space-1..9`; v2 emits 2/4/8/12/16/24/32/40/48 — so
-   * v1's N is v2's N+1. Every name this reader asks for EXISTS on both systems, which means no
-   * missing token, no compile error, and no census failure; what changes is that a socket row
-   * goes 40px to 32px and a widget 32px to 24px, a 20-25% shrink across every node.
-   *
-   * The name-list trick (`['--space-2', '--space-1']`) cannot express it: both names exist on both
-   * systems at different values, so on v1 the v2-shaped first entry would win and be WRONG. The
-   * system has to be identified and the index shifted.
-   *
-   * The alternative was to take v2's palette as-is and re-judge every node metric. That is a
-   * design change wearing a migration's clothes; it can be made later, deliberately, against
-   * something visible.
-   */
-  const space = (n: number) => `--space-${isV2 ? n + 1 : n}` as const;
+  const space = (n: number) => `--space-${n + 1}` as const;
 
   return {
     // Spacing — see `space()` above for why the index moves.
@@ -306,30 +291,26 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Typography - Line heights
 
     // Gray scale
-    '--neutral-1': getCSSVarRGB(styles, ['--neutral-1', '--neutral-1'], FALLBACK_TOKENS['--neutral-1']),
-    '--neutral-2': getCSSVarRGB(styles, ['--neutral-2', '--neutral-2'], FALLBACK_TOKENS['--neutral-2']),
-    '--neutral-3': getCSSVarRGB(styles, ['--neutral-3', '--neutral-3'], FALLBACK_TOKENS['--neutral-3']),
-    '--neutral-4': getCSSVarRGB(styles, ['--neutral-4', '--neutral-4'], FALLBACK_TOKENS['--neutral-4']),
-    '--neutral-5': getCSSVarRGB(styles, ['--neutral-5', '--neutral-5'], FALLBACK_TOKENS['--neutral-5']),
-    '--neutral-6': getCSSVarRGB(styles, ['--neutral-6', '--neutral-6'], FALLBACK_TOKENS['--neutral-6']),
-    '--neutral-7': getCSSVarRGB(styles, ['--neutral-7', '--neutral-7'], FALLBACK_TOKENS['--neutral-7']),
-    '--neutral-8': getCSSVarRGB(styles, ['--neutral-8', '--neutral-8'], FALLBACK_TOKENS['--neutral-8']),
-    '--neutral-9': getCSSVarRGB(styles, ['--neutral-9', '--gray-9'], FALLBACK_TOKENS['--neutral-9']),
-    '--neutral-10': getCSSVarRGB(styles, ['--neutral-10', '--gray-10'], FALLBACK_TOKENS['--neutral-10']),
-    '--neutral-11': getCSSVarRGB(styles, ['--neutral-11', '--neutral-11'], FALLBACK_TOKENS['--neutral-11']),
-    '--neutral-12': getCSSVarRGB(styles, ['--neutral-12', '--neutral-12'], FALLBACK_TOKENS['--neutral-12']),
+    '--neutral-1': getCSSVarRGB(styles, '--neutral-1', FALLBACK_TOKENS['--neutral-1']),
+    '--neutral-2': getCSSVarRGB(styles, '--neutral-2', FALLBACK_TOKENS['--neutral-2']),
+    '--neutral-3': getCSSVarRGB(styles, '--neutral-3', FALLBACK_TOKENS['--neutral-3']),
+    '--neutral-4': getCSSVarRGB(styles, '--neutral-4', FALLBACK_TOKENS['--neutral-4']),
+    '--neutral-5': getCSSVarRGB(styles, '--neutral-5', FALLBACK_TOKENS['--neutral-5']),
+    '--neutral-6': getCSSVarRGB(styles, '--neutral-6', FALLBACK_TOKENS['--neutral-6']),
+    '--neutral-7': getCSSVarRGB(styles, '--neutral-7', FALLBACK_TOKENS['--neutral-7']),
+    '--neutral-8': getCSSVarRGB(styles, '--neutral-8', FALLBACK_TOKENS['--neutral-8']),
+    '--neutral-9': getCSSVarRGB(styles, '--neutral-9', FALLBACK_TOKENS['--neutral-9']),
+    '--neutral-10': getCSSVarRGB(styles, '--neutral-10', FALLBACK_TOKENS['--neutral-10']),
+    '--neutral-11': getCSSVarRGB(styles, '--neutral-11', FALLBACK_TOKENS['--neutral-11']),
+    '--neutral-12': getCSSVarRGB(styles, '--neutral-12', FALLBACK_TOKENS['--neutral-12']),
 
     // Gray alpha
 
     // Accent
     '--accent-3': getCSSVarRGB(styles, '--accent-3', FALLBACK_TOKENS['--accent-3']),
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
-    '--destructive-9': getCSSVarRGB(
-      styles,
-      ['--destructive-9', '--red-9'],
-      FALLBACK_TOKENS['--destructive-9']
-    ),
-    '--success-9': getCSSVarRGB(styles, ['--success-9', '--green-9'], FALLBACK_TOKENS['--success-9']),
+    '--destructive-9': getCSSVarRGB(styles, '--destructive-9', FALLBACK_TOKENS['--destructive-9']),
+    '--success-9': getCSSVarRGB(styles, '--success-9', FALLBACK_TOKENS['--success-9']),
 
     // Radix colors (all 26 AccentColor values)
 
@@ -351,7 +332,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--shadow-5': FALLBACK_TOKENS['--shadow-5'],
 
     // Meta
-    '--scale': getCSSVarPx(styles, ['--scale', '--scale'], FALLBACK_TOKENS['--scale']),
+    '--scale': getCSSVarPx(styles, '--scale', FALLBACK_TOKENS['--scale']),
     appearance,
   };
 }
@@ -380,7 +361,7 @@ function areTokensValid(tokens: ThemeTokens): boolean {
 /**
  * Hook to read Kookie UI theme tokens from CSS variables.
  *
- * - Reads from `.radix-themes` element if present, otherwise from `:root`
+ * - Reads from the `.kui-theme` element if present, otherwise from `:root`
  * - Watches for theme changes via MutationObserver
  * - Falls back to sensible defaults if Kookie UI is not present
  * - Skips invalid reads during hydration to prevent flickering

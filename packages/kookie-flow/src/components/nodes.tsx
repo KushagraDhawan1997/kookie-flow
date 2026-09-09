@@ -8,6 +8,7 @@ import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveAccentColorRGB } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { EntityStatus } from '../types';
+import { entityDepth } from '../utils/entity-depth';
 
 // Status enum encoding for GPU (matches aStatus attribute)
 const STATUS_NONE = 0;
@@ -112,6 +113,24 @@ export function Entities() {
   const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   /**
+   * THE SHADOW IS A SECOND PASS, and the depth buffer is why.
+   *
+   * Bodies now WRITE depth so that a node in front covers everything of a node behind (see
+   * utils/entity-depth.ts). The shadow used to be composited in the same fragment, outside the
+   * shape — and a fragment that writes depth writes it for the whole quad it lands on. With the
+   * shadow in the body pass, the soft halo around every node would have stamped the node's
+   * depth into the buffer, and anything behind it in that band would have been clipped by an
+   * invisible rectangle.
+   *
+   * So the body pass discards outside the shape and writes depth; the shadow pass draws only
+   * the halo, tests depth (a node in front hides the shadow of a node behind — the shadow falls
+   * ONTO whatever is behind, which is what a shadow does) and writes none. It shares the body
+   * mesh's geometry and instance matrices, so it costs a draw call and no buffers.
+   */
+  const bgShadowRef = useRef<THREE.InstancedMesh>(null);
+  const fgShadowRef = useRef<THREE.InstancedMesh>(null);
+
+  /**
    * Free the GPU resources this component owns.
    *
    * three does not reclaim a GPU resource on garbage collection — the renderer holds it in its own
@@ -129,6 +148,8 @@ export function Entities() {
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
+        // 1 = the body (writes depth, discards outside the shape); 0 = the shadow halo only.
+        uPass: { value: 1 },
         uBackgroundColor: { value: new THREE.Color(...resolvedStyle.background) },
         uBorderColor: { value: new THREE.Color(...resolvedStyle.borderColor) },
         uCornerRadius: { value: resolvedStyle.borderRadius },
@@ -193,6 +214,7 @@ export function Entities() {
         uniform vec3 uHeaderColor;
         uniform float uHeaderHeight;
         uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
+        uniform float uPass;
         // Shadow uniforms
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
@@ -315,21 +337,39 @@ export function Entities() {
             alpha = borderMask * fillMask;
           }
 
-          // Blend shadow underneath (premultiplied alpha compositing)
-          color = mix(shadowColor, color, clamp(alpha / max(alpha + shadowMask, 0.001), 0.0, 1.0));
-          alpha = alpha + shadowMask * (1.0 - alpha);
+          if (uPass < 0.5) {
+            // Shadow pass: the halo alone. It never writes depth (see the material), so the
+            // discard here is only about not blending nothing.
+            if (shadowMask < 0.01) discard;
+            gl_FragColor = vec4(shadowColor, shadowMask);
+            return;
+          }
 
+          // Body pass. The discard is what keeps the depth write INSIDE the shape: a quad is a
+          // rectangle, the node is not, and a fragment that is not drawn writes no depth.
+          if (alpha < 0.01) discard;
           gl_FragColor = vec4(color, alpha);
         }
       `,
       transparent: true,
-      depthWrite: false,
-      depthTest: false,
+      // The body is what everything else tests against: it writes depth, inside the shape only.
+      depthWrite: true,
+      depthTest: true,
     });
   }, [resolvedStyle]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { material.dispose(); }, [material]);
+
+  // Same shader, second pass: the halo, depth-tested against the bodies, writing none.
+  const shadowMaterial = useMemo(() => {
+    const m = material.clone();
+    m.uniforms.uPass.value = 0;
+    m.depthWrite = false;
+    m.depthTest = true;
+    return m;
+  }, [material]);
+  useEffect(() => () => { shadowMaterial.dispose(); }, [shadowMaterial]);
 
   // Buffers for background (non-selected) and foreground (selected) meshes
   const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
@@ -391,12 +431,18 @@ export function Entities() {
       (state) => state.selectedEntityIds,
       () => { dirtyRef.current = true; }
     );
+    // A press moved something to the front: every body's depth may have changed.
+    const unsubStack = store.subscribe(
+      (state) => state.stackVersion,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubEntities();
       unsubViewport();
       unsubHidden();
       unsubSelection();
+      unsubStack();
     };
   }, [store, capacity]);
 
@@ -417,7 +463,7 @@ export function Entities() {
 
     if (!dirtyRef.current) return;
 
-    const { entities, viewport, hiddenEntityIds, selectedEntityIds } = store.getState();
+    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder } = store.getState();
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
@@ -476,7 +522,7 @@ export function Entities() {
       tempMatrix.setPosition(
         entity.position.x + width / 2,
         -(entity.position.y + height / 2),
-        0
+        entityDepth(entity.id, stackOrder, selectedEntityIds)
       );
       mesh.setMatrixAt(idx, tempMatrix);
 
@@ -508,6 +554,13 @@ export function Entities() {
     // Safety: never exceed buffer capacity to prevent WebGL errors
     bgMesh.count = Math.min(bgCount, capacity);
     fgMesh.count = Math.min(fgCount, capacity);
+
+    // The shadow passes alias the body passes' instance matrices — the same trick sockets.tsx
+    // uses for its two layers — so they are positioned by the write above and never by a copy.
+    const bgShadow = bgShadowRef.current;
+    const fgShadow = fgShadowRef.current;
+    if (bgShadow) { bgShadow.instanceMatrix = bgMesh.instanceMatrix; bgShadow.count = bgMesh.count; }
+    if (fgShadow) { fgShadow.instanceMatrix = fgMesh.instanceMatrix; fgShadow.count = fgMesh.count; }
     dirtyRef.current = false;
   });
 
@@ -526,6 +579,25 @@ export function Entities() {
         ref={attachFg}
         args={[fgGeometry, material, capacity]}
         renderOrder={RENDER_ORDER_FG}
+        frustumCulled={false}
+      />
+      {/* Shadows draw AFTER the labels (6) and before the selection chrome (7): a node's halo has
+          to fall onto everything behind it, and depth — not this number — keeps it off anything
+          in front. */}
+      <instancedMesh
+        key={`bg-shadow-${capacity}`}
+        ref={bgShadowRef}
+        name="node-shadows"
+        args={[bgGeometry, shadowMaterial, capacity]}
+        renderOrder={6.5}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        key={`fg-shadow-${capacity}`}
+        ref={fgShadowRef}
+        name="node-shadows-selected"
+        args={[fgGeometry, shadowMaterial, capacity]}
+        renderOrder={6.5}
         frustumCulled={false}
       />
     </>

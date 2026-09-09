@@ -398,12 +398,36 @@ let dimensionProbe: HTMLDivElement | null = null;
  * Get or create a hidden element used to resolve CSS dimensions.
  * The browser will compute calc() expressions to actual pixel values.
  */
+let warnedDetachedProbe = false;
+
 function getDimensionProbe(): HTMLDivElement | null {
-  if (!dimensionProbe && typeof document !== 'undefined' && document.body) {
+  if (typeof document === 'undefined' || !document.body) return null;
+
+  if (!dimensionProbe) {
     dimensionProbe = document.createElement('div');
     dimensionProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+  }
+
+  /**
+   * RE-ATTACH EVERY TIME, and this is the whole bug rather than a defensive habit.
+   *
+   * The probe is appended to `<body>` while React is still hydrating, so React finds a node
+   * the server did not send, reports a hydration mismatch and REGENERATES that subtree —
+   * which detaches this element. `getComputedStyle` on a detached element resolves nothing,
+   * so `width` came back empty, `parsePx` returned 0 for EVERY length, `areTokensValid` read
+   * that as a failed token read, and the hook kept FALLBACK_TOKENS — a table that is dark by
+   * construction. The result was a black canvas under a perfectly working light theme, and
+   * it only appeared once something forced a remount, because the first reads happen before
+   * hydration finishes.
+   *
+   * Colours never showed the fault because `getColorProbe` below has always re-parented on
+   * every call. This function created once and trusted the node to stay. Same mechanism, one
+   * of them checked.
+   */
+  if (!dimensionProbe.isConnected) {
     document.body.appendChild(dimensionProbe);
   }
+
   return dimensionProbe;
 }
 
@@ -430,5 +454,21 @@ export function parsePx(value: string): number {
   const computed = getComputedStyle(probe).width;
   probe.style.width = '';
 
-  return parseFloat(computed) || 0;
+  const px = parseFloat(computed);
+  if (Number.isNaN(px)) {
+    // The probe resolved nothing, which means it is not in the document — see getDimensionProbe.
+    // Returning a bare 0 here is what kept that failure silent: a zero length is
+    // indistinguishable from a token that is legitimately zero, so the whole token read was
+    // reported as failed and the canvas painted from the dark fallback table under a light
+    // theme. Warned ONCE, because the caller is a render path.
+    if (!warnedDetachedProbe) {
+      warnedDetachedProbe = true;
+      console.warn(
+        `[kookie-flow] Could not resolve the length ${JSON.stringify(trimmed)}: ` +
+          'the measuring probe is detached from the document.'
+      );
+    }
+    return 0;
+  }
+  return px;
 }

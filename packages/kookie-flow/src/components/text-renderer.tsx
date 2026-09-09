@@ -39,6 +39,7 @@ import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import type { EdgeType, EdgeLabelConfig } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
+import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
 // Stable empty maps to avoid re-creating on every render when font isn't loaded
 const emptyGlyphMap: GlyphMap = new Map();
@@ -96,8 +97,10 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
       vertexShader: msdfVertexShader,
       fragmentShader: msdfFragmentShader,
       transparent: true,
+      // A label tests against the bodies so a node in front hides the text of a node behind;
+      // it writes nothing, or every glyph quad's empty corners would punch holes in the scene.
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
       side: THREE.DoubleSide,
     });
   }, [atlasTexture]);
@@ -357,7 +360,7 @@ export function MultiWeightTextRenderer({
 
       if (!regularFont) return { regular, semibold };
 
-      const { entities, edges, entityMap } = store.getState();
+      const { entities, edges, entityMap, selectedEntityIds, stackOrder } = store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
@@ -394,7 +397,7 @@ export function MultiWeightTextRenderer({
             : entity.position.y + verticalOffset;
         const entry: TextEntry = {
           text: label,
-          position: [entity.position.x + 12, labelY, 0.1],
+          position: [entity.position.x + 12, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
           fontSize: 12,
           color: primaryTextColor,
           anchor: 'left',
@@ -453,7 +456,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + width - 12, textY, 0.1],
+                position: [entity.position.x + width - 12, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'right',
@@ -485,7 +488,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + 12, textY, 0.1],
+                position: [entity.position.x + 12, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'left',
@@ -574,12 +577,17 @@ export function MultiWeightTextRenderer({
     const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
     // Edge labels
     const unsubEdges = store.subscribe((s) => s.edges, markDirty);
+    // Depth is per entity and selection boosts it, so both of these move the labels in z.
+    const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
+    const unsubStack = store.subscribe((s) => s.stackVersion, markDirty);
 
     return () => {
       unsubEntityCount();
       unsubPositions();
       unsubViewport();
       unsubEdges();
+      unsubSelection();
+      unsubStack();
     };
   }, [store, rebuildSocketIndexMap]);
 

@@ -82,6 +82,7 @@ import type {
   EdgeType,
 } from '../types';
 import * as THREE from 'three';
+import { topmostEntityId } from '../utils/entity-depth';
 
 /**
  * Main KookieFlow component.
@@ -627,6 +628,19 @@ function InputHandler({
   const [widgetEdit, setWidgetEdit] = useState<WidgetHit | null>(null);
   const onWidgetChangeRef = useRef(onWidgetChange);
   onWidgetChangeRef.current = onWidgetChange;
+  /**
+   * Every widget change leaves through here, and the order of the two lines is the point: the
+   * store records what the person set FIRST, so the GL layer paints it on the next frame whether
+   * or not the consumer echoes it back — the DOM widgets kept the same promise with a `useState`
+   * per widget. Stable, so the drag branch below can hold it in a ref.
+   */
+  const emitWidgetChange = useCallback(
+    (entityId: string, socketId: string, value: unknown) => {
+      store.getState().setWidgetValue(entityId, socketId, value);
+      onWidgetChangeRef.current?.(entityId, socketId, value);
+    },
+    [store]
+  );
 
   // Track interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -1074,7 +1088,7 @@ function InputHandler({
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
         const clickedEntity =
-          queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
+          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
 
         /**
          * A widget takes the press before the entity does.
@@ -1100,23 +1114,25 @@ function InputHandler({
           );
           if (hit) {
             e.preventDefault();
+            // A press on a widget is not a click on the entity. Pointerup's click-to-select reads
+            // `pointerDownPos`, which was set above — left set, pressing a field selected the
+            // node, and the selected node's foreground body then painted over its own widgets.
+            pointerDownPos.current = null;
+            // Last interacted on top — a press on a widget is a press on its node.
+            store.getState().bringToFront(clickedEntity.id);
             if (hit.config.type === 'checkbox') {
-              onWidgetChangeRef.current?.(hit.entityId, hit.socketId, !hit.value);
+              emitWidgetChange(hit.entityId, hit.socketId, !hit.value);
               return;
             }
             if (hit.config.type === 'slider') {
               widgetDragRef.current = hit;
               containerRef.current?.setPointerCapture(e.pointerId);
-              onWidgetChangeRef.current?.(
-                hit.entityId,
-                hit.socketId,
-                sliderValueAt(hit, worldPos.x)
-              );
+              emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, worldPos.x));
               return;
             }
             if (hit.config.type === 'select') {
               const next = nextSelectValue(hit);
-              if (next !== null) onWidgetChangeRef.current?.(hit.entityId, hit.socketId, next);
+              if (next !== null) emitWidgetChange(hit.entityId, hit.socketId, next);
               return;
             }
             // text, number, textarea, color — a borrowed DOM input, for this edit only.
@@ -1169,6 +1185,10 @@ function InputHandler({
             textSelectTableRef.current = null;
             textSelectEntityRef.current = null;
 
+            // Last interacted on top. Done on press rather than on selection, because the
+            // stacking order is what survives a deselect — see utils/entity-depth.ts.
+            store.getState().bringToFront(clickedEntity.id);
+
             // Store cursor offset from entity position (React Flow style)
             pendingDragRef.current = {
               clickedEntityId: clickedEntity.id,
@@ -1214,7 +1234,7 @@ function InputHandler({
           { x: e.clientX - rect.left, y: e.clientY - rect.top },
           viewport
         );
-        onWidgetChangeRef.current?.(hit.entityId, hit.socketId, sliderValueAt(hit, world.x));
+        emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, world.x));
         return;
       }
 
@@ -1514,7 +1534,7 @@ function InputHandler({
             queryResultsRef.current
           );
           const clickedEntity =
-            queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
+            entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
 
           if (clickedEntity) {
             // Start entity dragging
@@ -1676,7 +1696,7 @@ function InputHandler({
         // Clear and reuse pre-allocated array to avoid GC
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
-        const newHoveredId = queryResultsRef.current.length > 0 ? queryResultsRef.current[0] : null;
+        const newHoveredId = topmostEntityId(queryResultsRef.current, store.getState().stackOrder);
 
         // Only update if changed to avoid unnecessary re-renders
         if (newHoveredId !== hoveredEntityId) {
@@ -1909,7 +1929,7 @@ function InputHandler({
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(clickPos.x, clickPos.y, queryResultsRef.current);
         const clickedEntity =
-          queryResultsRef.current.length > 0 ? entityMap.get(queryResultsRef.current[0]) : null;
+          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
 
         if (clickedEntity) {
           // Track multi-click count (for double/triple/quad click detection)
@@ -2446,7 +2466,7 @@ function InputHandler({
           edited. It unmounts the moment the edit ends — see widget-edit-overlay.tsx. */}
       <WidgetEditOverlay
         hit={widgetEdit}
-        onChange={onWidgetChangeRef.current}
+        onChange={emitWidgetChange}
         onClose={() => setWidgetEdit(null)}
       />
     </div>
@@ -2534,7 +2554,19 @@ function FlowCanvas({
       powerPreference: 'high-performance' as const,
       // These help Safari performance
       stencil: false,
-      depth: false,
+      /**
+       * A DEPTH BUFFER, since the stacking order moved into it (utils/entity-depth.ts).
+       *
+       * This was `depth: false`, and it was the whole reason the GL widgets inherited the DOM's
+       * z-index problem: with no depth buffer, every `depthTest` in the package is a no-op and
+       * the only ordering left is `renderOrder` — which is per LAYER, not per NODE, so a back
+       * node's sliders painted over a front node's body. Measured: `getContextAttributes().depth`
+       * false, `DEPTH_BITS` 0, and per-entity depth on every layer changing nothing at all.
+       *
+       * Bodies write depth inside their shape; everything on a body tests it and writes none.
+       * The cost is one 24-bit attachment, cleared once a frame — cheaper than the DOM ever was.
+       */
+      depth: true,
       // Preserve drawing buffer can help with some Safari rendering issues
       preserveDrawingBuffer: false,
       // Fail if performance is poor

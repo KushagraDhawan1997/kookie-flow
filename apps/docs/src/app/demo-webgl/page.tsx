@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Theme } from '@kushagradhawan/kookie-ui';
+import { Theme } from '@kookie-ui/react';
 import {
   KookieFlow,
   Toolbar,
@@ -401,7 +401,7 @@ export default function DemoWebGLPage() {
   const [nodeCount, setNodeCount] = useState<number>(100);
 
   return (
-    <Theme accentColor="blue">
+    <Theme>
       <main style={{ width: '100%', height: '100vh', position: 'relative' }}>
         <div
           style={{

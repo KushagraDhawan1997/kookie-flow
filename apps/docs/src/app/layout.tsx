@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { DocsLayout } from '@/components/docs-layout';
+import { appearanceScript } from './appearance-script';
 
 const siteConfig = {
   name: 'Kookie Flow',
@@ -91,6 +92,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Stamps data-appearance on <html> before first paint. The root Theme is
+            appearance="inherit", so this attribute is the scope every token resolves
+            against — the DOM's and the WebGL canvas's alike. */}
+        <script dangerouslySetInnerHTML={{ __html: appearanceScript }} />
+      </head>
       <body>
         <Providers>
           <DocsLayout>{children}</DocsLayout>

@@ -34,6 +34,9 @@ import {
 import * as graphEngine from './graph';
 import type { AdjacencyIndex, CachedAnalysis } from './graph';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
+import { widgetKey } from '../utils/widget-values';
+import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
+import { STACK_COMPACT_AT } from '../utils/entity-depth';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -62,6 +65,25 @@ export interface FlowState {
   } | null;
   /** Box selection in progress */
   selectionBox: { start: XYPosition; end: XYPosition } | null;
+
+  /**
+   * What each widget's person has set that the consumer has not echoed back yet, keyed by
+   * `widgetKey(entityId, socketId)`. See utils/widget-values.ts for the rule it serves.
+   *
+   * MUTATED IN PLACE, never replaced: it is written on every pointermove of a slider drag and a
+   * fresh Map per move is exactly the allocation that rule forbids. Subscribers watch
+   * `widgetValuesVersion` instead, which is the dirty flag beside it.
+   */
+  widgetValues: Map<string, unknown>;
+  widgetValuesVersion: number;
+
+  /**
+   * Stacking order: entity id -> a monotonically increasing index; higher is nearer the camera.
+   * See utils/entity-depth.ts for how the renderers turn it into depth. Mutated in place, with
+   * `stackVersion` as the dirty flag beside it — the same shape as `widgetValues`.
+   */
+  stackOrder: Map<string, number>;
+  stackVersion: number;
 
   /** Selection state - O(1) lookup */
   selectedEntityIds: Set<string>;
@@ -153,6 +175,16 @@ export interface FlowState {
   startConnectionDraft: (source: SocketHandle, mouseWorld: XYPosition) => void;
   updateConnectionDraft: (mouseWorld: XYPosition, isValid?: boolean) => void;
   cancelConnectionDraft: () => void;
+
+  /** Record what a person set on a widget, until the consumer echoes it into the entity. */
+  setWidgetValue: (entityId: string, socketId: string, value: unknown) => void;
+
+  /**
+   * Last interacted on top. Brings the entity to the front of the stacking order, with its
+   * ancestors beneath it and — for a frame — its descendants above it, so a group never sits
+   * over its own children.
+   */
+  bringToFront: (entityId: string) => void;
 
   /** Apply changes */
   applyEntityChanges: (changes: EntityChange[]) => void;
@@ -478,6 +510,25 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   const initialEdges = initialState?.edges ?? [];
   const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } = rebuildDerivedState(initialEntities);
   const connectedSockets = rebuildConnectedSockets(initialEdges);
+
+  /**
+   * The stacking counter. PER STORE, not module-level: a shared counter is the reentrancy
+   * defect the drag index had (see store.test.ts), and two graphs on one page would otherwise
+   * hand each other's presses ever-larger indices.
+   */
+  let stackCounter = 0;
+  /** Give every entity that has no index the next one, in array order — the order they painted in. */
+  const assignStackOrder = (order: Map<string, number>, entities: Entity[]) => {
+    for (const e of entities) if (!order.has(e.id)) order.set(e.id, ++stackCounter);
+  };
+  /** Drop ids that are gone, then assign the rest. Used when the whole array is replaced. */
+  const reconcileStackOrder = (order: Map<string, number>, entities: Entity[]) => {
+    const keep = new Set(entities.map((e) => e.id));
+    for (const id of order.keys()) if (!keep.has(id)) order.delete(id);
+    assignStackOrder(order, entities);
+  };
+  const initialStackOrder = new Map<string, number>();
+  assignStackOrder(initialStackOrder, initialEntities);
   const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
   /**
    * Side-channel for communicating moved entity IDs to renderers. Kept out of Zustand state so a
@@ -538,6 +589,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       hoveredSocketId: null,
       connectionDraft: null,
       selectionBox: null,
+      widgetValues: new Map<string, unknown>(),
+      widgetValuesVersion: 0,
+      stackOrder: initialStackOrder,
+      stackVersion: 0,
 
       // Selection state
       selectedEntityIds: new Set<string>(),
@@ -582,7 +637,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
         const state = get();
-        set({ entities, ...derived, topologyVersion: state.topologyVersion + 1, positionVersion: state.positionVersion + 1 });
+        reconcileStackOrder(state.stackOrder, entities);
+        set({
+          entities,
+          ...derived,
+          topologyVersion: state.topologyVersion + 1,
+          positionVersion: state.positionVersion + 1,
+          stackVersion: state.stackVersion + 1,
+        });
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
@@ -682,6 +744,41 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({ connectionDraft: null, hoveredSocketId: null });
       },
 
+      setWidgetValue: (entityId, socketId, value) => {
+        const { widgetValues, widgetValuesVersion } = get();
+        widgetValues.set(widgetKey(entityId, socketId), value);
+        set({ widgetValuesVersion: widgetValuesVersion + 1 });
+      },
+
+      bringToFront: (entityId) => {
+        const { entityMap, entities, stackOrder, stackVersion } = get();
+        const entity = entityMap.get(entityId);
+        if (!entity) return;
+
+        // Already on top, and nothing under it to lift: a re-press must not repaint the scene.
+        if (stackOrder.get(entityId) === stackCounter && entity.type !== 'frame') return;
+
+        // Ancestors first (root outermost), then the entity, then — only for a frame, because
+        // the descendant walk is O(n) — its children in depth order, so they land above it.
+        const chain = getParentChain(entity, entityMap).reverse();
+        for (const a of chain) stackOrder.set(a.id, ++stackCounter);
+        stackOrder.set(entityId, ++stackCounter);
+        if (entity.type === 'frame') {
+          for (const d of sortByDepth(getGroupDescendants(entities, entityId), entityMap)) {
+            stackOrder.set(d.id, ++stackCounter);
+          }
+        }
+
+        // Keep the depth range inside the camera: renumber 1..n by current order, rarely.
+        if (stackCounter > STACK_COMPACT_AT) {
+          const sorted = [...stackOrder.entries()].sort((a, b) => a[1] - b[1]);
+          stackCounter = 0;
+          for (const [id] of sorted) stackOrder.set(id, ++stackCounter);
+        }
+
+        set({ stackVersion: stackVersion + 1 });
+      },
+
       // Apply changes
       applyEntityChanges: (changes) => {
         const { entities, collapsedGroupIds: currentCollapsed } = get();
@@ -717,6 +814,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               if (index !== undefined) {
                 nextEntities.splice(index, 1);
                 topologyChanged = true;
+                get().stackOrder.delete(change.id);
                 // Update indices for subsequent removals (shift down)
                 idToIndex.delete(change.id);
                 for (let i = index; i < nextEntities.length; i++) {
@@ -734,6 +832,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               idToIndex.set(change.entity.id, nextEntities.length);
               nextEntities.push(change.entity);
               topologyChanged = true;
+              // A new entity arrives on top: it is the thing the person just made.
+              get().stackOrder.set(change.entity.id, ++stackCounter);
               // If adding a collapsed group, add to collapsed set
               if (change.entity.type === 'frame' && change.entity.collapsed) {
                 nextCollapsed.add(change.entity.id);
@@ -817,7 +917,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({
           entities: nextEntities,
           ...derived,
-          ...(topologyChanged ? { topologyVersion: get().topologyVersion + 1 } : {}),
+          ...(topologyChanged
+            ? { topologyVersion: get().topologyVersion + 1, stackVersion: get().stackVersion + 1 }
+            : {}),
         });
       },
 

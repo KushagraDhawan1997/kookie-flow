@@ -26,6 +26,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout, useResolvedStyle } from '../contexts/StyleContext';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
+import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { THEME_COLORS } from '../core/theme-colors';
 import { resolveTokenColor } from '../utils/style-resolver';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
@@ -37,6 +39,22 @@ const MAX_CAPACITY = 20000;
 
 /** Widgets stop drawing below this zoom — at that size they are noise, not controls. */
 const MIN_WIDGET_ZOOM = 0.4;
+
+/**
+ * TWO MESHES, ROUTED BY SELECTION, exactly as nodes.tsx and sockets.tsx do — and for the reason
+ * that made a whole node's widgets vanish the moment it was selected.
+ *
+ * Every layer here paints with `depthTest: false`, so `renderOrder` alone decides what covers
+ * what. A selected node's body moves to its foreground mesh at 4. Widgets sat at 3, once, for
+ * every node — so selecting a node drew its body OVER its own sliders and fields, and clicking
+ * a field (which selected the node) made the rest of the row disappear.
+ *
+ * Background sits above the non-selected body (1) and sockets (2); foreground sits above the
+ * selected body (4), level with selected sockets (5, no overlap), and below the labels (6) that
+ * have to stay readable on top of a field.
+ */
+const RENDER_ORDER_BG = 3;
+const RENDER_ORDER_FG = 5;
 
 /**
  * What the shader draws. Ordered by nothing in particular; the numbers are private to this file
@@ -111,6 +129,7 @@ const vertexShader = /* glsl */ `
   varying float vKind;
   varying float vValue;
   varying vec3 vTint;
+  varying float vRadius;
 
   void main() {
     vUv = uv;
@@ -118,6 +137,7 @@ const vertexShader = /* glsl */ `
     vKind = aKind;
     vValue = aValue;
     vTint = aTint;
+    vRadius = aRadius;
     vec3 pos = vec3(position.xy * aSize, position.z);
     gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
   }
@@ -139,6 +159,7 @@ const fragmentShader = /* glsl */ `
   varying float vKind;
   varying float vValue;
   varying vec3 vTint;
+  varying float vRadius;
 
   // Clamped exactly as nodes.tsx clamps it, and for the same reason: past r = min(b.x, b.y)
   // every fragment lands outside the shape and the box erases itself.
@@ -150,7 +171,7 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec2 p = (vUv - 0.5) * vSize;
-    vec2 half = vSize * 0.5;
+    vec2 halfSize = vSize * 0.5;
 
     vec3 color = uFill;
     float alpha = 0.0;
@@ -161,7 +182,7 @@ const fragmentShader = /* glsl */ `
       // ---- checkbox: a square mark at the left of the row, not the whole row ----
       float side = min(vSize.y, 18.0);
       vec2 b = vec2(side * 0.5);
-      vec2 cp = p - vec2(-half.x + side * 0.5, 0.0);
+      vec2 cp = p - vec2(-halfSize.x + side * 0.5, 0.0);
       float d = roundedBoxSDF(cp, b, min(4.0, side * 0.25));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float on = step(1.5, vKind);
@@ -185,15 +206,15 @@ const fragmentShader = /* glsl */ `
     } else if (vKind > 2.5 && vKind < 3.5) {
       // ---- slider: a channel, a filled portion, and a grip ----
       float trackH = min(4.0, vSize.y * 0.25);
-      float d = roundedBoxSDF(p, vec2(half.x, trackH * 0.5), trackH * 0.5);
+      float d = roundedBoxSDF(p, vec2(halfSize.x, trackH * 0.5), trackH * 0.5);
       alpha = 1.0 - smoothstep(-aa, aa, d);
-      float fillEdge = -half.x + vSize.x * vValue;
+      float fillEdge = -halfSize.x + vSize.x * vValue;
       color = mix(uActive, uTrack, step(fillEdge, p.x));
 
       // The grip rides the fill edge, inset by its own radius so it never leaves the channel —
       // the same wall rule a segmented control's thumb obeys.
       float gr = min(vSize.y * 0.5, 8.0);
-      float gx = clamp(fillEdge, -half.x + gr, half.x - gr);
+      float gx = clamp(fillEdge, -halfSize.x + gr, halfSize.x - gr);
       float gd = length(p - vec2(gx, 0.0)) - gr;
       float grip = 1.0 - smoothstep(-aa, aa, gd);
       float gripRing = 1.0 - smoothstep(-aa, aa, gd + uBorderWidth);
@@ -201,7 +222,7 @@ const fragmentShader = /* glsl */ `
       alpha = max(alpha, grip);
     } else {
       // ---- field, select, colour: a well with a hairline ----
-      float d = roundedBoxSDF(p, half, min(aaRadius(), min(half.x, half.y)));
+      float d = roundedBoxSDF(p, halfSize, min(aaRadius(), min(halfSize.x, halfSize.y)));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float ring = 1.0 - smoothstep(-aa, aa, d + uBorderWidth);
       // A colour widget's fill IS its value; everything else takes the field well.
@@ -211,7 +232,7 @@ const fragmentShader = /* glsl */ `
 
       if (vKind > 3.5 && vKind < 4.5) {
         // The select's chevron, at the trailing edge. Two segments, same construction as the tick.
-        vec2 c = p - vec2(half.x - 10.0, 0.0);
+        vec2 c = p - vec2(halfSize.x - 10.0, 0.0);
         float a1 = abs(dot(c - vec2(-2.0, -1.0), normalize(vec2(1.0, 1.0))));
         float s1 = step(-4.0, c.x) * step(c.x, 0.0);
         float a2 = abs(dot(c - vec2(2.0, -1.0), normalize(vec2(1.0, -1.0))));
@@ -228,7 +249,13 @@ const fragmentShader = /* glsl */ `
 `
   // `aaRadius` is written as a call so the radius stays one expression; GLSL has no default
   // arguments, so it is substituted here rather than passed as a seventh attribute.
-  .replace(/aaRadius\(\)/g, 'aRadiusV');
+  //
+  // IT SUBSTITUTES TO A VARYING, NOT TO THE ATTRIBUTE. This used to write `aRadiusV`, which
+  // was the instanced attribute's name — and an attribute does not exist in a fragment shader
+  // at all, so the program failed to link with "'aRadiusV' : undeclared identifier" and every
+  // field, select and colour widget drew nothing. The radius has to be carried across the
+  // stage boundary by the vertex shader, which is what `vRadius` is.
+  .replace(/aaRadius\(\)/g, 'vRadius');
 
 function createBuffers(capacity: number) {
   return {
@@ -256,14 +283,11 @@ export function WidgetsGL({
   const socketLayout = useSocketLayout();
   const resolved = useResolvedStyle();
 
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const bgMeshRef = useRef<THREE.InstancedMesh>(null);
+  const fgMeshRef = useRef<THREE.InstancedMesh>(null);
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
-
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
-  useEffect(() => () => { geometry.dispose(); }, [geometry]);
 
   const c = THEME_COLORS.widget;
   const material = useMemo(() => {
@@ -284,36 +308,50 @@ export function WidgetsGL({
       vertexShader,
       fragmentShader,
       transparent: true,
+      // Tests against the bodies (which write depth) so a node in front covers a widget behind;
+      // writes nothing, so a track's soft edge cannot punch a hole in what is under it.
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
     });
   }, [tokens, c]);
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { material.dispose(); }, [material]);
 
-  const buffers = useMemo(() => createBuffers(capacity), [capacity]);
-  useEffect(() => { initializedRef.current = false; }, [buffers]);
+  // One buffer set per mesh. A widget is in exactly one of them on any frame, so the capacity
+  // is a ceiling on each rather than on their sum — which is what nodes.tsx does too.
+  const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
+  const fgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
+  useEffect(() => { initializedRef.current = false; }, [bgBuffers, fgBuffers]);
+
+  // Each mesh needs its OWN geometry: instanced attributes live on the geometry, and two meshes
+  // sharing one would fight over which buffer set it carries.
+  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
 
   useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.size, 2);
-    buffers.radiusAttr = new THREE.InstancedBufferAttribute(buffers.radius, 1);
-    buffers.kindAttr = new THREE.InstancedBufferAttribute(buffers.kind, 1);
-    buffers.valueAttr = new THREE.InstancedBufferAttribute(buffers.value, 1);
-    buffers.tintAttr = new THREE.InstancedBufferAttribute(buffers.tint, 3);
-    for (const a of [buffers.sizeAttr, buffers.radiusAttr, buffers.kindAttr, buffers.valueAttr, buffers.tintAttr]) {
-      a.setUsage(THREE.DynamicDrawUsage);
+    const bgMesh = bgMeshRef.current;
+    const fgMesh = fgMeshRef.current;
+    if (!bgMesh || !fgMesh) return;
+    for (const [mesh, buffers] of [[bgMesh, bgBuffers], [fgMesh, fgBuffers]] as const) {
+      buffers.sizeAttr = new THREE.InstancedBufferAttribute(buffers.size, 2);
+      buffers.radiusAttr = new THREE.InstancedBufferAttribute(buffers.radius, 1);
+      buffers.kindAttr = new THREE.InstancedBufferAttribute(buffers.kind, 1);
+      buffers.valueAttr = new THREE.InstancedBufferAttribute(buffers.value, 1);
+      buffers.tintAttr = new THREE.InstancedBufferAttribute(buffers.tint, 3);
+      for (const a of [buffers.sizeAttr, buffers.radiusAttr, buffers.kindAttr, buffers.valueAttr, buffers.tintAttr]) {
+        a.setUsage(THREE.DynamicDrawUsage);
+      }
+      mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
+      mesh.geometry.setAttribute('aRadius', buffers.radiusAttr);
+      mesh.geometry.setAttribute('aKind', buffers.kindAttr);
+      mesh.geometry.setAttribute('aValue', buffers.valueAttr);
+      mesh.geometry.setAttribute('aTint', buffers.tintAttr);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     }
-    mesh.geometry.setAttribute('aSize', buffers.sizeAttr);
-    mesh.geometry.setAttribute('aRadiusV', buffers.radiusAttr);
-    mesh.geometry.setAttribute('aKind', buffers.kindAttr);
-    mesh.geometry.setAttribute('aValue', buffers.valueAttr);
-    mesh.geometry.setAttribute('aTint', buffers.tintAttr);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     initializedRef.current = true;
     dirtyRef.current = true;
-  }, [buffers]);
+  }, [bgBuffers, fgBuffers]);
 
   // Everything that can change what is drawn marks the layer dirty. Deliberately NOT a React
   // re-render: the whole point of this layer is that a pan costs no React work at all.
@@ -325,18 +363,32 @@ export function WidgetsGL({
       store.subscribe((s) => s.topologyVersion, markDirty),
       store.subscribe((s) => s.connectedSockets, markDirty),
       store.subscribe((s) => s.hiddenEntityIds, markDirty),
+      // A value is entity DATA, and a data change bumps neither version above. Before this line
+      // the layer repainted a changed value only by the accident of `hiddenEntityIds` being a
+      // fresh Set on every applyEntityChanges.
+      store.subscribe((s) => s.entities, markDirty),
+      // Selection moves a widget between the two meshes.
+      store.subscribe((s) => s.selectedEntityIds, markDirty),
+      // What the person just set, ahead of the consumer echoing it.
+      store.subscribe((s) => s.widgetValuesVersion, markDirty),
+      // A press moved something to the front.
+      store.subscribe((s) => s.stackVersion, markDirty),
     ];
     return () => { for (const u of unsubs) u(); };
   }, [store]);
 
   useFrame(({ size }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !initializedRef.current || !dirtyRef.current) return;
+    const bgMesh = bgMeshRef.current;
+    const fgMesh = fgMeshRef.current;
+    if (!bgMesh || !fgMesh || !initializedRef.current || !dirtyRef.current) return;
     dirtyRef.current = false;
 
-    const { entities, viewport, connectedSockets, hiddenEntityIds } = store.getState();
+    const {
+      entities, viewport, connectedSockets, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder,
+    } = store.getState();
     if (viewport.zoom < minWidgetZoom) {
-      mesh.count = 0;
+      bgMesh.count = 0;
+      fgMesh.count = 0;
       return;
     }
 
@@ -348,7 +400,8 @@ export function WidgetsGL({
     const bottom = top + size.height / viewport.zoom + pad * 2;
 
     const m = new THREE.Matrix4();
-    let n = 0;
+    let bgCount = 0;
+    let fgCount = 0;
     let needed = 0;
 
     for (const entity of entities) {
@@ -361,6 +414,12 @@ export function WidgetsGL({
         entity.position.x + (entity.width ?? defaultEntityWidth) < left
       ) continue;
 
+      // Route to the foreground mesh when selected, so the widgets ride above the selected body.
+      const isSelected = selectedEntityIds.has(entity.id);
+      const mesh = isSelected ? fgMesh : bgMesh;
+      const buffers = isSelected ? fgBuffers : bgBuffers;
+      const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.widget;
+
       for (let i = 0; i < inputs.length; i++) {
         const socket = inputs[i];
         if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
@@ -368,6 +427,7 @@ export function WidgetsGL({
         if (!config) continue;
 
         needed++;
+        const n = isSelected ? fgCount : bgCount;
         if (n >= capacity) continue;
 
         const box = getWidgetBox(entity, i, socketLayout, defaultEntityWidth, socketLabelWidth);
@@ -376,9 +436,14 @@ export function WidgetsGL({
 
         // A widget's value lives on the ENTITY, keyed by socket id — `entity.data.values[id]` —
         // which is the same place the DOM widgets read it from. A socket carries its shape, not
-        // its state.
+        // its state. What the person has set and the consumer has not yet echoed back overrides
+        // it, by the DOM widgets' own rule (utils/widget-values.ts).
         const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
-        const value = values?.[socket.id] ?? config.defaultValue;
+        const value = readWidgetValue(
+          widgetValues,
+          widgetKey(entity.id, socket.id),
+          values?.[socket.id] ?? config.defaultValue
+        );
         buffers.size[n * 2] = box.width;
         buffers.size[n * 2 + 1] = box.height;
         buffers.radius[n] = Math.min(resolved.borderRadius, box.height * 0.5);
@@ -390,9 +455,10 @@ export function WidgetsGL({
         buffers.tint[n * 3 + 2] = tint[2];
 
         m.identity();
-        m.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), 0.05);
+        m.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), z);
         m.toArray(mesh.instanceMatrix.array as unknown as number[], n * 16);
-        n++;
+        if (isSelected) fgCount++;
+        else bgCount++;
       }
     }
 
@@ -400,27 +466,43 @@ export function WidgetsGL({
       setCapacity(Math.min(MAX_CAPACITY, Math.ceil(needed * BUFFER_GROWTH_FACTOR)));
     }
 
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (buffers.sizeAttr) buffers.sizeAttr.needsUpdate = true;
-    if (buffers.radiusAttr) buffers.radiusAttr.needsUpdate = true;
-    if (buffers.kindAttr) buffers.kindAttr.needsUpdate = true;
-    if (buffers.valueAttr) buffers.valueAttr.needsUpdate = true;
-    if (buffers.tintAttr) buffers.tintAttr.needsUpdate = true;
+    for (const [mesh, buffers, count] of [
+      [bgMesh, bgBuffers, bgCount],
+      [fgMesh, fgBuffers, fgCount],
+    ] as const) {
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (buffers.sizeAttr) buffers.sizeAttr.needsUpdate = true;
+      if (buffers.radiusAttr) buffers.radiusAttr.needsUpdate = true;
+      if (buffers.kindAttr) buffers.kindAttr.needsUpdate = true;
+      if (buffers.valueAttr) buffers.valueAttr.needsUpdate = true;
+      if (buffers.tintAttr) buffers.tintAttr.needsUpdate = true;
+    }
   });
 
+  // Keyed on capacity so a growth remounts both with fresh InstancedMeshes, as nodes.tsx does.
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      // Named so a law can identify this mesh rather than infer it from geometry type and render
-      // order — `PlaneGeometry:r3` is shared with the edges' foreground pass, and a probe that
-      // matched on it would be reporting whichever mesh it happened to find.
-      name="widgets"
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-      renderOrder={3}
-    />
+    <>
+      <instancedMesh
+        key={`bg-${capacity}`}
+        ref={bgMeshRef}
+        // Named so a law can identify this mesh rather than infer it from geometry type and
+        // render order — `PlaneGeometry:r3` is shared with the edges' foreground pass, and a
+        // probe that matched on it would be reporting whichever mesh it happened to find.
+        name="widgets"
+        args={[bgGeometry, material, capacity]}
+        frustumCulled={false}
+        renderOrder={RENDER_ORDER_BG}
+      />
+      <instancedMesh
+        key={`fg-${capacity}`}
+        ref={fgMeshRef}
+        name="widgets-selected"
+        args={[fgGeometry, material, capacity]}
+        frustumCulled={false}
+        renderOrder={RENDER_ORDER_FG}
+      />
+    </>
   );
 }
 

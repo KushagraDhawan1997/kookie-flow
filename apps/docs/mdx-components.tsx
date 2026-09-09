@@ -1,59 +1,15 @@
 import type { MDXComponents } from 'mdx/types';
-import { Code } from '@kushagradhawan/kookie-ui';
-import {
-  CodeBlock,
-  useCodeBlockContext,
-  createMarkdownComponents,
-} from '@kushagradhawan/kookie-blocks';
+import { CodeBlock } from '@kookie-ui/react';
 
-const PreWrapper = ({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<'pre'>) => {
-  const isInsideCodeBlock = useCodeBlockContext();
-  if (isInsideCodeBlock) {
-    return (
-      <pre className={className} {...props}>
-        {children}
-      </pre>
-    );
-  }
-  return (
-    <CodeBlock>
-      <pre className={className} {...props}>
-        {children}
-      </pre>
-    </CodeBlock>
-  );
-};
+import { markdownComponents } from '@/components/blocks/markdown-components';
 
+/**
+ * v2 ships `CodeBlock` itself, so the block package's wrapper and its
+ * `useCodeBlockContext` nesting guard are gone: there is no second CodeBlock to nest inside.
+ */
 export function useMDXComponents(components: MDXComponents): MDXComponents {
-  const baseComponents = createMarkdownComponents({
-    inlineCodeHighContrast: true,
-    codeBlockCollapsible: false,
-    spacing: 'spacious',
-  });
-
   return {
-    ...baseComponents,
-    code: ({ children, className, ...props }: any) => {
-      // Code blocks with language are handled by rehype-pretty-code
-      if (className?.includes('language-')) {
-        return (
-          <code className={className} {...props}>
-            {children}
-          </code>
-        );
-      }
-      // Inline code
-      return (
-        <Code size="3" color="gray" variant="soft" highContrast>
-          {children}
-        </Code>
-      );
-    },
-    pre: (props) => <PreWrapper {...props} />,
+    ...markdownComponents,
     CodeBlock,
     ...components,
   };

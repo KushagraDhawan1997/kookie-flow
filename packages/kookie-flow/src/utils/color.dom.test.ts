@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveColorToRGB, parseColorToRGB } from './color';
+import { resolveColorToRGB, parseColorToRGB, parsePx } from './color';
 
 /**
  * What jsdom can and cannot answer about colour.
@@ -23,12 +23,15 @@ afterEach(() => {
 });
 
 describe('the colour probe attaches inside the theme scope', () => {
-  it('lives inside .radix-themes when one exists', () => {
-    // Tokens are scoped to the theme element, so a probe on <body> cannot see them. Measured in
-    // a real browser: var(--accent-9) resolves to rgb(0,0,0) from body and rgb(0,144,255) from
-    // inside the theme.
+  it('lives inside .kui-theme when one exists', () => {
+    // The probe has to sit inside the theme scope, because that element is what carries the
+    // appearance. v2 declares its tokens at `:root` and re-declares them under
+    // `[data-appearance]`, so a probe on <body> still resolves a COMPLETE palette — just the
+    // root appearance's rather than this Theme's, which is silent rather than loud. (Under v1
+    // the same mistake was loud: tokens were scoped to `.radix-themes`, and var(--accent-9)
+    // measured rgb(0,0,0) from body against rgb(0,144,255) from inside.)
     const theme = document.createElement('div');
-    theme.className = 'radix-themes';
+    theme.className = 'kui-theme';
     document.body.appendChild(theme);
 
     resolveColorToRGB('rgb(10, 20, 30)');
@@ -36,19 +39,24 @@ describe('the colour probe attaches inside the theme scope', () => {
     expect(probeIn(theme)).not.toBeNull();
   });
 
-  it('falls back to body when there is no theme element', () => {
+  it('falls back to <html> when there is no theme element', () => {
+    // `themeRoot()` falls back to `document.documentElement`, NOT to <body>, and the two are not
+    // interchangeable for this purpose: v2 declares its tokens at `:root`, which IS
+    // documentElement, so the fallback probe resolves the root palette rather than nothing. This
+    // asserted <body> until the v1 removal moved the fallback, and then measured a fallback the
+    // code no longer had.
     resolveColorToRGB('rgb(10, 20, 30)');
-    expect(probeIn(document.body)).not.toBeNull();
+    expect(probeIn(document.documentElement)).not.toBeNull();
   });
 
   it('re-parents when the theme element mounts after first use', () => {
     // The probe is created once and cached, but the theme element mounts after this module first
     // runs — so the host has to be re-checked on every call rather than resolved once.
     resolveColorToRGB('rgb(1, 2, 3)');
-    expect(probeIn(document.body)).not.toBeNull();
+    expect(probeIn(document.documentElement)).not.toBeNull();
 
     const theme = document.createElement('div');
-    theme.className = 'radix-themes';
+    theme.className = 'kui-theme';
     document.body.appendChild(theme);
 
     resolveColorToRGB('rgb(1, 2, 3)');
@@ -59,7 +67,7 @@ describe('the colour probe attaches inside the theme scope', () => {
     // A probe that keeps its last value would make the sentinel check read a stale colour and
     // silently return the previous answer for a rejected declaration.
     const theme = document.createElement('div');
-    theme.className = 'radix-themes';
+    theme.className = 'kui-theme';
     document.body.appendChild(theme);
 
     resolveColorToRGB('rgb(10, 20, 30)');
@@ -87,5 +95,55 @@ describe('the DOM-free parser paths are unaffected', () => {
     expect(parseColorToRGB('color(srgb 0.2 0.4 0.6)').map((v) => Math.round(v * 255))).toEqual([
       51, 102, 153,
     ]);
+  });
+});
+
+describe('the measuring probe survives the document being rebuilt', () => {
+  /**
+   * THE BUG THIS PINS. `parsePx` measures a `calc()` by writing it onto a probe `<div>` and
+   * reading the computed width back. The probe was appended to `<body>` exactly once and then
+   * trusted to stay there — but it is appended DURING RENDER, while React is still hydrating,
+   * so React finds a node the server never sent, reports a hydration mismatch and regenerates
+   * that subtree. The probe comes out of the document with it.
+   *
+   * A detached element computes no width, so every length token read 0. `areTokensValid` reads
+   * a zero length as a FAILED READ rather than a real value, so the hook kept FALLBACK_TOKENS —
+   * which is dark by construction — and the WebGL canvas painted black under a working light
+   * theme. Nothing threw, no token was missing, and the CSS was correct throughout.
+   *
+   * The colour probe never had this fault because it re-parents on every call. This is the
+   * length probe being held to the same rule.
+   *
+   * ASSERTED STRUCTURALLY, for this file's own stated reason: jsdom does not lay anything out,
+   * so `calc(12px * 1)` resolves to nothing here no matter how correctly the probe is attached.
+   * Whether the measurement is RIGHT belongs to the browser tier; whether the probe is in the
+   * document is a DOM fact, and it is the half that broke.
+   */
+  const dimensionProbe = () => document.body.querySelector('div[style*="visibility"]');
+
+  it('re-attaches after the document is rebuilt under it', () => {
+    parsePx('calc(12px * 1)');
+    expect(dimensionProbe()).not.toBeNull();
+
+    // What React's hydration repair does to a node it did not expect.
+    document.body.innerHTML = '';
+    expect(dimensionProbe()).toBeNull();
+
+    parsePx('calc(12px * 1)');
+    expect(dimensionProbe()).not.toBeNull();
+  });
+
+  it('does not stack up probes when it is called repeatedly', () => {
+    parsePx('calc(1px * 1)');
+    parsePx('calc(2px * 1)');
+    parsePx('calc(3px * 1)');
+
+    expect(document.body.querySelectorAll('div[style*="visibility"]')).toHaveLength(1);
+  });
+
+  it('parses a plain length without needing the probe at all', () => {
+    document.body.innerHTML = '';
+    expect(parsePx('16px')).toBe(16);
+    expect(dimensionProbe()).toBeNull();
   });
 });

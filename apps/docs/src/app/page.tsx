@@ -7,19 +7,18 @@ import {
   ArrowRight01Icon,
   FavouriteIcon,
 } from '@hugeicons/core-free-icons';
-import { Hero, Footer } from '@kushagradhawan/kookie-blocks';
+import { Footer } from '@/components/blocks/footer';
 import {
   Avatar,
   Button,
   Heading,
-  Section,
-  Container,
   Link,
   Separator,
+  Stack,
   Text,
   Box,
   Flex,
-} from '@kushagradhawan/kookie-ui';
+} from '@kookie-ui/react';
 import NextLink from 'next/link';
 
 const docs = [
@@ -42,8 +41,8 @@ export default function Page() {
 
   return (
     <>
-      <Section position="relative" size="4">
-        <Container size="4">
+      <Box py={{ initial: "6", sm: "9" }}>
+        <Box mx="auto" style={{ maxWidth: "72rem", width: "100%" }}>
           <Flex
             direction="column"
             align="start"
@@ -55,63 +54,46 @@ export default function Page() {
               <Heading size="3" weight="medium">
                 Kookie Flow
               </Heading>
-              <Separator size="4" />
+              <Separator />
             </Flex>
 
-            <Hero.Root align="start" gap={{ initial: '6', sm: '8' }}>
-              <Hero.Title
-                size={{ initial: '8', sm: '9', lg: '10' }}
-                weight="medium"
-                align="left"
-              >
+            <Stack align="start" gap={{ initial: '6', sm: '8' }}>
+              <Heading size="9" weight="medium">
                 WebGL-native node graphs for React.
-              </Hero.Title>
+              </Heading>
 
-              <Hero.Description
-                size={{ initial: '3', sm: '4' }}
-                color="gray"
-                align="left"
-              >
+              <Text render={<p />} size="4" tone="neutral">
                 An open-source node graph library with{' '}
                 <Link
                   target="_blank"
                   href="https://reactflow.dev/"
                   rel="noopener noreferrer"
-                  underline="always"
-                  color="blue"
+                  tone="blue"
                 >
                   React Flow
                 </Link>
                 {"'s "}
                 ergonomics, GPU-rendered for performance at scale. 50,000+ nodes
                 at 60fps.
-              </Hero.Description>
+              </Text>
 
-              <Hero.Actions gap="3">
-                <Button asChild variant="solid" size="2" highContrast>
-                  <NextLink href="/docs/installation">
+              <Flex gap="3" align="center" wrap="wrap">
+                <Button emphasis="loud" size="2" render={<NextLink href="/docs/installation" />}>
                     Get Started
                     <HugeiconsIcon icon={ArrowUpRight01Icon} />
-                  </NextLink>
-                </Button>
-                <Button asChild variant="soft" highContrast size="2">
-                  <a
-                    href="https://github.com/KushagraDhawan1997/kookie-flow"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  </Button>
+                <Button emphasis="medium" size="2" render={<a href="https://github.com/KushagraDhawan1997/kookie-flow" target="_blank" rel="noopener noreferrer" />}>
                     GitHub
                     <HugeiconsIcon icon={ArrowRight01Icon} />
-                  </a>
-                </Button>
-              </Hero.Actions>
-            </Hero.Root>
+                  </Button>
+              </Flex>
+            </Stack>
           </Flex>
-        </Container>
-      </Section>
+        </Box>
+      </Box>
 
-      <Section size="4">
-        <Container size="4">
+      <Box py={{ initial: "6", sm: "9" }}>
+        <Box mx="auto" style={{ maxWidth: "72rem", width: "100%" }}>
           <Flex
             direction="column"
             align="start"
@@ -123,7 +105,7 @@ export default function Page() {
               <Heading size="3" weight="medium">
                 Documentation
               </Heading>
-              <Separator size="4" />
+              <Separator />
             </Flex>
             <Flex
               direction={{ initial: 'column', lg: 'row' }}
@@ -141,30 +123,21 @@ export default function Page() {
                 style={{ alignSelf: 'flex-start' }}
               >
                 <Heading
-                  align="left"
-                  size={{ initial: '6', sm: '8', lg: '9' }}
+                  size="8"
                   weight="medium"
                   style={{ textWrap: 'balance' }}
                 >
                   GPU-rendered graphs with React ergonomics. Zero re-renders during interaction.
                 </Heading>
                 <Flex gap="3" justify="start">
-                  <Button asChild variant="solid" size="2" highContrast>
-                    <NextLink href="/docs/installation">
+                  <Button emphasis="loud" size="2" render={<NextLink href="/docs/installation" />}>
                       Get Started
                       <HugeiconsIcon icon={ArrowUpRight01Icon} />
-                    </NextLink>
-                  </Button>
-                  <Button asChild variant="soft" highContrast size="2">
-                    <a
-                      href="https://github.com/KushagraDhawan1997/kookie-flow"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                    </Button>
+                  <Button emphasis="medium" size="2" render={<a href="https://github.com/KushagraDhawan1997/kookie-flow" target="_blank" rel="noopener noreferrer" />}>
                       GitHub
                       <HugeiconsIcon icon={ArrowRight01Icon} />
-                    </a>
-                  </Button>
+                    </Button>
                 </Flex>
               </Flex>
               <Flex
@@ -184,8 +157,7 @@ export default function Page() {
                         align={{ initial: 'start', md: 'center' }}
                         direction={{ initial: 'column', md: 'row' }}
                       >
-                        <Link asChild highContrast underline="always">
-                          <NextLink href={doc.href}>
+                        <Link render={<NextLink href={doc.href} />}>
                             <Flex gap="1" align="center">
                               <Text size="3" weight="medium">
                                 {doc.name}
@@ -198,30 +170,29 @@ export default function Page() {
                                 />
                               </Flex>
                             </Flex>
-                          </NextLink>
-                        </Link>
-                        <Text size="2" weight="regular" color="gray">
+                          </Link>
+                        <Text size="2" weight="regular" tone="neutral">
                           {doc.category}
                         </Text>
                       </Flex>
-                      <Separator size="4" />
+                      <Separator />
                     </React.Fragment>
                   ))}
                 </Flex>
               </Flex>
             </Flex>
           </Flex>
-        </Container>
-      </Section>
+        </Box>
+      </Box>
 
-      <Section size="4">
-        <Container size="4">
+      <Box py={{ initial: "6", sm: "9" }}>
+        <Box mx="auto" style={{ maxWidth: "72rem", width: "100%" }}>
           <Flex direction="column" align="start" gap={{ initial: '6', sm: '10' }} py={{ initial: '4', sm: '6' }} px={{ initial: '4', sm: '6' }}>
             <Flex direction="column" gap="2" width="100%">
               <Heading size="3" weight="medium">
                 Support
               </Heading>
-              <Separator size="4" />
+              <Separator />
             </Flex>
             <Flex
               direction={{ initial: 'column', lg: 'row' }}
@@ -239,8 +210,7 @@ export default function Page() {
                 style={{ alignSelf: 'flex-start' }}
               >
                 <Heading
-                  align="left"
-                  size={{ initial: '8', sm: '9' }}
+                  size="9"
                   weight="medium"
                   style={{ textWrap: 'balance' }}
                 >
@@ -267,7 +237,7 @@ export default function Page() {
                         align="start"
                         direction="column"
                       >
-                        <Link href={project.url} target="_blank" highContrast underline="always">
+                        <Link href={project.url} target="_blank">
                           <Flex gap="1" align="center">
                             <Text size="3" weight="medium">{project.name}</Text>
                             <Flex flexShrink="0">
@@ -275,96 +245,59 @@ export default function Page() {
                             </Flex>
                           </Flex>
                         </Link>
-                        <Text size="2" color="gray">{project.description}</Text>
+                        <Text size="2" tone="neutral">{project.description}</Text>
                       </Flex>
-                      <Separator size="4" />
+                      <Separator />
                     </React.Fragment>
                   ))}
                 </Flex>
                 <Flex justify="end">
-                  <Button asChild variant="solid" size="2" highContrast>
-                    <a href="https://github.com/sponsors/KushagraDhawan1997" target="_blank" rel="noopener noreferrer">
+                  <Button emphasis="loud" size="2" render={<a href="https://github.com/sponsors/KushagraDhawan1997" target="_blank" rel="noopener noreferrer" />}>
                       <HugeiconsIcon icon={FavouriteIcon} strokeWidth={1.75} />
                       Sponsor my work
-                    </a>
-                  </Button>
+                    </Button>
                 </Flex>
               </Flex>
             </Flex>
           </Flex>
-        </Container>
-      </Section>
+        </Box>
+      </Box>
 
       <Box mb={{ initial: '6', sm: '9' }}>
-        <Separator size="4" light />
-        <Container size="4">
-          <Footer.Root p={{ initial: '4', sm: '8' }} gap={{ initial: '6', sm: '8' }} px={{ initial: '4', sm: '6' }}>
-            <Footer.Brand gap="6">
-              <Avatar
-                fallback="K"
-                size="4"
-                color="gray"
-                src="/logos/kookie-flow/kookie-flow.png"
-              />
-              <Flex direction="column" gap="4">
-                <Footer.Tagline>
-                  Built with{' '}
-                  <Footer.Link
-                    href="https://www.hellokookie.com/"
-                    target="_blank"
-                    underline="always"
-                  >
-                    Kookie UI
-                  </Footer.Link>
-                  {' + '}
-                  <Footer.Link
-                    href="https://kookieblocks.com/"
-                    target="_blank"
-                    underline="always"
-                  >
-                    Kookie Blocks
-                  </Footer.Link>
-                  .
-                </Footer.Tagline>
-                <Footer.Legal>
-                  <Text size="2" color="gray">
-                    © {currentYear} Kushagra Dhawan.
-                  </Text>
-                  <Footer.Link
-                    href="https://github.com/KushagraDhawan1997/kookie-flow"
-                    target="_blank"
-                  >
-                    GitHub
-                  </Footer.Link>
-                </Footer.Legal>
-              </Flex>
-            </Footer.Brand>
-            <Footer.Links>
-              <Footer.LinkGroup title="Projects">
-                <Footer.Link
-                  href="https://www.hellokookie.com/"
-                  target="_blank"
-                >
-                  Kookie UI
-                </Footer.Link>
-                <Footer.Link
-                  href="https://kookieblocks.com/"
-                  target="_blank"
-                >
-                  Kookie Blocks
-                </Footer.Link>
-                <Footer.Link href="https://womp.com" target="_blank">
-                  Womp 3D
-                </Footer.Link>
-              </Footer.LinkGroup>
-              <Footer.LinkGroup title="Support">
-                <Footer.Link href="https://github.com/sponsors/KushagraDhawan1997" target="_blank">
-                  GitHub Sponsors
-                </Footer.Link>
-              </Footer.LinkGroup>
-            </Footer.Links>
-          </Footer.Root>
-        </Container>
+        <Separator />
+        <Box mx="auto" px={{ initial: '4', sm: '6' }} py={{ initial: '6', sm: '8' }} style={{ maxWidth: '72rem', width: '100%' }}>
+          <Footer
+            brand={
+              <Avatar fallback="K" size="4" src="/logos/kookie-flow/kookie-flow.png" />
+            }
+            groups={[
+              {
+                title: 'Projects',
+                links: [
+                  { label: 'Kookie UI', href: 'https://www.hellokookie.com/' },
+                  { label: 'Kookie Blocks', href: 'https://kookieblocks.com/' },
+                  { label: 'Womp 3D', href: 'https://womp.com' },
+                ],
+              },
+              {
+                title: 'Support',
+                links: [
+                  {
+                    label: 'GitHub Sponsors',
+                    href: 'https://github.com/sponsors/KushagraDhawan1997',
+                  },
+                ],
+              },
+            ]}
+            note={`© ${currentYear} Kushagra Dhawan. Built with Kookie UI.`}
+            legal={[
+              {
+                label: 'GitHub',
+                href: 'https://github.com/KushagraDhawan1997/kookie-flow',
+              },
+            ]}
+          />
+        </Box>
       </Box>
     </>
   );

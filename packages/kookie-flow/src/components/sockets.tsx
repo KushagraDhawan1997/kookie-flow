@@ -14,6 +14,7 @@ import { areTypesCompatible } from '../utils/connections';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { Entity, SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
+import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
@@ -247,7 +248,7 @@ export function Sockets({
         fragmentShader,
         transparent: true,
         depthWrite: false,
-        depthTest: false,
+        depthTest: true,
       }),
     [invalidColor, validTargetColor]
   );
@@ -263,7 +264,7 @@ export function Sockets({
         fragmentShader,
         transparent: true,
         depthWrite: false,
-        depthTest: false,
+        depthTest: true,
       }),
     [invalidColor, validTargetColor]
   );
@@ -381,6 +382,8 @@ export function Sockets({
     const unsubSelection = store.subscribe(
       (state) => state.selectedEntityIds,
       () => {
+        // Selection changes depth (see entity-depth.ts), which the aLayer fast path cannot write.
+        dirtyRef.current = true;
         selectionDirtyRef.current = true;
       }
     );
@@ -396,7 +399,14 @@ export function Sockets({
       }
     }
 
+    // A press moved something to the front: every socket's depth may have changed.
+    const unsubStack = store.subscribe(
+      (state) => state.stackVersion,
+      () => { dirtyRef.current = true; }
+    );
+
     return () => {
+      unsubStack();
       unsubEntities();
       unsubHoveredSocket();
       unsubHidden();
@@ -422,6 +432,9 @@ export function Sockets({
     // four sites onto the shared arithmetic would turn one layout-cache lookup per ENTITY into
     // one per SOCKET, in the hottest loop the renderer has.
     const entityLayout = getEntitySocketLayout(entity, socketLayout);
+    // A socket sits in its entity's depth slice, above the body — see utils/entity-depth.ts.
+    const { stackOrder, selectedEntityIds } = store.getState();
+    const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.socket;
 
     // Render input sockets
     if (entity.inputs) {
@@ -435,7 +448,7 @@ export function Sockets({
         tempMatrix.setPosition(
           getSocketWorldX(entity, true),
           -(entity.position.y + yOffset),
-          0.5
+          z
         );
         tempMatrix.toArray(matrixArray, idx * 16);
 
@@ -487,7 +500,7 @@ export function Sockets({
         tempMatrix.setPosition(
           getSocketWorldX(entity, false),
           -(entity.position.y + yOffset),
-          0.5
+          z
         );
         tempMatrix.toArray(matrixArray, idx * 16);
 
@@ -549,7 +562,7 @@ export function Sockets({
       const socketRanges = entitySocketRangesRef.current;
 
       if (movedIds.size > 0 && socketRanges.size > 0) {
-        const { entityMap } = store.getState();
+        const { entityMap, stackOrder, selectedEntityIds } = store.getState();
         tempMatrix.identity();
 
         for (const entityId of movedIds) {
@@ -566,6 +579,7 @@ export function Sockets({
           // Both meshes share bgMesh's instanceMatrix
           const mesh = bgMesh;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
+          const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.socket;
 
           let instanceIdx = range.start;
 
@@ -575,7 +589,7 @@ export function Sockets({
               tempMatrix.setPosition(
                 getSocketWorldX(entity, true),
                 -(entity.position.y + yOffset),
-                0.5
+                z
               );
               mesh.setMatrixAt(instanceIdx, tempMatrix);
               instanceIdx++;
@@ -588,7 +602,7 @@ export function Sockets({
               tempMatrix.setPosition(
                 getSocketWorldX(entity, false),
                 -(entity.position.y + yOffset),
-                0.5
+                z
               );
               mesh.setMatrixAt(instanceIdx, tempMatrix);
               instanceIdx++;

@@ -1,4 +1,4 @@
-import type { DocsNavigationConfig } from '@kushagradhawan/kookie-blocks';
+import type { DocsNavigationConfig } from './src/components/blocks/types';
 import {
   Download01Icon,
   FlowIcon,

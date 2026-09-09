@@ -13,7 +13,7 @@ import {
   type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
-import { Theme } from '@kushagradhawan/kookie-ui';
+import { Theme } from '@kookie-ui/react';
 
 // Socket type patterns designed to chain together
 // Each pattern's first output matches the next pattern's first input
@@ -760,10 +760,9 @@ function ThemeTokensTest() {
         '--radius-4': tokens['--radius-4'],
       },
       colors: {
-        '--gray-1': tokens['--gray-1'],
-        '--gray-6': tokens['--gray-6'],
+        '--neutral-1': tokens['--neutral-1'],
+        '--neutral-6': tokens['--neutral-6'],
         '--accent-9': tokens['--accent-9'],
-        '--blue-9': tokens['--blue-9'],
       },
       appearance: tokens.appearance,
     });
@@ -791,11 +790,11 @@ function ThemeTokensTest() {
         <span>{tokens['--space-3']}px</span>
         <span style={{ color: '#888' }}>--radius-4:</span>
         <span>{tokens['--radius-4']}px</span>
-        <span style={{ color: '#888' }}>--gray-6:</span>
+        <span style={{ color: '#888' }}>--neutral-6:</span>
         <span
-          style={{ color: `rgb(${tokens['--gray-6'].map((v) => Math.round(v * 255)).join(',')})` }}
+          style={{ color: `rgb(${tokens['--neutral-6'].map((v) => Math.round(v * 255)).join(',')})` }}
         >
-          ■ [{tokens['--gray-6'].map((v) => v.toFixed(2)).join(', ')}]
+          ■ [{tokens['--neutral-6'].map((v) => v.toFixed(2)).join(', ')}]
         </span>
         <span style={{ color: '#888' }}>--accent-9:</span>
         <span
@@ -1135,29 +1134,64 @@ export default function DemoPage() {
   const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleWidgetChange = useCallback((nodeId: string, socketId: string, value: unknown) => {
-    // Accumulate in ref (no re-render)
-    pendingValuesRef.current = {
-      ...pendingValuesRef.current,
-      [nodeId]: {
-        ...pendingValuesRef.current[nodeId],
-        [socketId]: value,
-      },
-    };
-
-    // Debounce the state update (only updates display panel, not the widget itself)
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-    debounceTimeoutRef.current = setTimeout(() => {
-      setWidgetValues({ ...pendingValuesRef.current });
-    }, 150);
-  }, []);
-
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect, addEntity, addEdge } = useGraph({
     initialEntities,
     initialEdges,
   });
+
+  // The latest graph, readable from inside a timeout without re-creating the handler.
+  const entitiesRef = useRef(entities);
+  entitiesRef.current = entities;
+
+  /**
+   * A widget change is ECHOED INTO THE GRAPH, not only into the display panel.
+   *
+   * The value a widget shows lives on the entity (`data.values[socketId]`), and the library
+   * paints what the person set only until this echo arrives — after that the entity is the
+   * truth. This handler used to update the panel alone, with a comment saying so, and that was
+   * survivable only because the old DOM widgets each kept a `useState` of their own. The GL
+   * widgets do not, and a real consumer writes the value back; this is a real consumer.
+   *
+   * Debounced, because `applyEntityChanges` rebuilds the derived indexes and a slider emits on
+   * every pointermove. The library bridges the gap by showing the in-flight value meanwhile.
+   */
+  const handleWidgetChange = useCallback(
+    (nodeId: string, socketId: string, value: unknown) => {
+      // Accumulate in ref (no re-render)
+      pendingValuesRef.current = {
+        ...pendingValuesRef.current,
+        [nodeId]: {
+          ...pendingValuesRef.current[nodeId],
+          [socketId]: value,
+        },
+      };
+
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(() => {
+        const pending = pendingValuesRef.current;
+        setWidgetValues({ ...pending });
+
+        // The store merges `data` one level deep, so each entity's whole `values` object goes
+        // back — the untouched sockets included — or they would be dropped.
+        const changes = entitiesRef.current.flatMap((entity) => {
+          const touched = pending[entity.id];
+          if (!touched) return [];
+          const current = (entity.data as { values?: Record<string, unknown> }).values ?? {};
+          return [
+            {
+              type: 'data' as const,
+              id: entity.id,
+              data: { values: { ...current, ...touched } },
+            },
+          ];
+        });
+        if (changes.length > 0) onEntitiesChange(changes);
+      }, 150);
+    },
+    [onEntitiesChange]
+  );
 
   // Phase 7E: Add node on edge drop — when a connection drag ends on empty canvas,
   // create a new node at the drop position and connect it to the source socket.
