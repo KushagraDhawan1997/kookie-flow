@@ -16,9 +16,10 @@ import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import { Theme } from '@kushagradhawan/kookie-ui';
 import { KookieFlow } from '../../src/components/kookie-flow';
+import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup, makeComments } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -110,11 +111,12 @@ function params() {
     grid: q.get('grid') !== '0',
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
     radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
+    toolbar: q.get('toolbar') === '1',
     entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -359,6 +361,21 @@ installSceneProbe();
  * the WRONG MODE — measured, the present/missing split over all 99 tokens is identical at `<html>`
  * and inside the Theme, so the census literally cannot tell them apart.
  */
+/**
+ * Entity types that opt into the built-in toolbar.
+ *
+ * `toolbar: true` is required per type and is NOT implied by `BUILTIN_DEFAULTS`: the visibility
+ * gate reads `entityTypes[entity.type]?.toolbar` and the built-in widget list is only consulted
+ * after that gate passes. So a consumer who never declares this sees no toolbar at all, whatever
+ * the entity's type is — which is why the first attempt at this fixture mounted the component and
+ * measured an empty, invisible box.
+ */
+const TOOLBAR_TYPES = {
+  text: { type: 'text', toolbar: true as const },
+  image: { type: 'image', toolbar: true as const },
+  comment: { type: 'comment', toolbar: true as const },
+};
+
 function themeRoot(): Element {
   return (
     document.querySelector('.radix-themes') ??
@@ -778,6 +795,7 @@ function App() {
   const initial = useMemo(() => {
     if (p.scene === 'shapes') return makeShapes();
     if (p.scene === 'group') return makeGroup();
+    if (p.scene === 'toolbar') return makeToolbarScene();
     if (p.scene === 'comments') return makeComments();
     return makeGraph({
       count: p.count,
@@ -814,11 +832,16 @@ function App() {
         onEntitiesChange={i === 0 ? onEntitiesChange : undefined}
         onEdgesChange={i === 0 ? onEdgesChange : undefined}
         showWidgets={p.widgets}
+        {...(p.toolbar ? { entityTypes: TOOLBAR_TYPES } : {})}
         showGrid={p.grid}
         showMinimap={false}
         {...(p.entityRadius ? { radius: p.entityRadius } : {})}
       >
         <Probe />
+        {/* The toolbar is DOM chrome and mounts inside the flow, which is how a real consumer
+            composes it (apps/docs demo-webgl does exactly this). It is off by default because it
+            puts real design-system controls in the document, and several laws sweep the DOM. */}
+        {p.toolbar ? <Toolbar /> : null}
       </KookieFlow>
     </div>
   ));

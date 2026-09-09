@@ -212,7 +212,7 @@ await withPage('count=12&seed=1', async (page) => {
     // label path came back. It would be wrong.
   const domText = await page.evaluate(() => {
     let n = 0;
-    for (const el of document.querySelectorAll('[data-kookie-flow-container] div')) {
+    for (const el of document.querySelectorAll('[data-kookie-flow-container] div:not([data-kookie-flow-toolbar] *):not([data-kookie-flow-toolbar])')) {
       if (el.children.length === 0 && (el.textContent ?? '').trim().length > 0) n++;
     }
     return n;
@@ -1810,6 +1810,123 @@ await withPage('count=6&seed=1&appearance=light&radius=none&preserveBuffer=1', a
     `light ${light.mean} -> dark ${dark.mean} (the graph freezes at its first read when the ` +
       `validity sentinel rides a token the designer is allowed to zero)`
   );
+});
+
+head('toolbar');
+
+/**
+ * The toolbar had ZERO coverage from every law in this suite, and it is the file with the largest
+ * v1 -> v2 API break in the package.
+ *
+ * `harness/fixture/app.tsx` mounted only `<KookieFlow>`, which renders no toolbar, and no unit
+ * test imports `toolbar.tsx` — so 923 lines holding a Card, two Selects, three SegmentedControls,
+ * six icon segments, a TextField and a component that does not exist in v2 (`ToggleIconButton`)
+ * were checked by nothing at all. This baseline is taken ON v1, deliberately and before the swap:
+ * a baseline taken afterwards cannot tell a correct port from a plausible one.
+ */
+await withPage('scene=toolbar&toolbar=1', async (page) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.waitForTimeout(300);
+
+  const show = async (id) => {
+    await page.evaluate((i) => window.__harness.store.getState().selectEntity(i, false), id);
+    await page.waitForTimeout(400);
+  };
+
+  await show('txt');
+
+  const shown = await page.evaluate(() => {
+    const el = document.querySelector('[data-kookie-flow-toolbar]');
+    if (!el) return { mounted: false };
+    return {
+      mounted: true,
+      visible: getComputedStyle(el).visibility === 'visible',
+      controls: el.querySelectorAll('button, input, [role="combobox"], [role="radio"], [role="slider"]').length,
+    };
+  });
+  check('INSTRUMENT: the toolbar mounts', shown.mounted, JSON.stringify(shown));
+  check('selecting a text entity shows the toolbar', shown.visible, JSON.stringify(shown));
+  check('the text toolbar renders its controls', shown.controls >= 8, JSON.stringify(shown));
+
+  /**
+   * Every reachable control announces a name.
+   *
+   * The same claim the widgets sweep makes, on a surface built almost entirely from icon-only
+   * buttons and icon segments — where a missing label is invisible by eye and total to a screen
+   * reader. It is also the assertion most likely to break in the swap: v2 refuses `iconOnly` on a
+   * segment, so every one of those six call sites is being rewritten.
+   */
+  const names = await page.evaluate(() => {
+    const root = document.querySelector('[data-kookie-flow-toolbar]');
+    const out = [];
+    for (const el of root.querySelectorAll('button, input, [role="combobox"], [role="radio"], [role="slider"], [role="switch"]')) {
+      if (el.closest('[aria-hidden="true"]')) continue;
+      const label =
+        el.getAttribute('aria-label') ||
+        (el.getAttribute('aria-labelledby')
+          ? [...document.querySelectorAll(`#${CSS.escape(el.getAttribute('aria-labelledby'))}`)]
+              .map((n) => n.textContent)
+              .join(' ')
+          : '') ||
+        (el.labels && el.labels.length ? [...el.labels].map((l) => l.textContent).join(' ') : '') ||
+        (el.textContent ?? '').trim() ||
+        el.getAttribute('title') ||
+        '';
+      out.push({ tag: el.tagName, role: el.getAttribute('role'), name: label.trim() });
+    }
+    return out;
+  });
+  const unnamed = names.filter((n) => !n.name);
+  check('INSTRUMENT: the toolbar sweep finds controls', names.length >= 8, `${names.length} controls`);
+  check(
+    'every toolbar control has an accessible name',
+    unnamed.length === 0,
+    unnamed.map((n) => `${n.tag}${n.role ? `[${n.role}]` : ''}`).join(', ')
+  );
+
+  /**
+   * A Select's closed trigger shows its LABEL, not its value.
+   *
+   * The font-weight select carries value "400" with the label "Regular" and the font-family select
+   * "system-ui" with "System". v2 resolves a closed trigger's text from an `items` map on the root
+   * and NEVER from the chosen row — its own prop doc says "without it the trigger paints the raw
+   * value string forever" — so both of these regress silently unless the swap adds `items`. There
+   * is no compile error for it, which is why it needs a law rather than a note.
+   */
+  const triggers = await page.evaluate(() => {
+    const root = document.querySelector('[data-kookie-flow-toolbar]');
+    return [...root.querySelectorAll('[role="combobox"], select, button[aria-haspopup="listbox"]')].map(
+      (el) => (el.textContent ?? '').trim()
+    );
+  });
+  check('INSTRUMENT: the toolbar has select triggers', triggers.length >= 1, JSON.stringify(triggers));
+  check(
+    'a select trigger shows a label, not a raw value',
+    triggers.every((t) => t !== '400' && t !== 'system-ui' && t !== ''),
+    JSON.stringify(triggers)
+  );
+
+  // The other two entity types reach the rest of the built-in registry.
+  //
+  // Counts are MEASURED on v1, not guessed. The first spelling asserted `>= 3` for the comment
+  // toolbar from its three-entry widget list and measured 2 — a colour widget renders as one
+  // control, not one per swatch — so the number was a claim about the registry rather than about
+  // the DOM. Pinned per type, so the swap fails if a control disappears.
+  for (const [id, expected] of [['img', 4], ['note', 2]]) {
+    await show(id);
+    const n = await page.evaluate(() => {
+      const el = document.querySelector('[data-kookie-flow-toolbar]');
+      return {
+        visible: getComputedStyle(el).visibility === 'visible',
+        controls: el.querySelectorAll('button, input, [role="combobox"], [role="radio"]').length,
+      };
+    });
+    check(
+      `the ${id} toolbar shows, with the controls v1 rendered`,
+      n.visible && n.controls === expected,
+      `${JSON.stringify(n)} (v1 baseline: ${expected})`
+    );
+  }
 });
 
 // ---------------------------------------------------------------- summary

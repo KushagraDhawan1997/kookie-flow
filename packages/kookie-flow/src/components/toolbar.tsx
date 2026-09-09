@@ -353,13 +353,18 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
   );
 
   if (!visible || !toolbarContent) {
-    return <div ref={containerRef} style={toolbarContainerStyle} />;
+    return <div ref={containerRef} style={toolbarContainerStyle} data-kookie-flow-toolbar="" />;
   }
 
   return (
     <div
       ref={containerRef}
       style={toolbarContainerStyle}
+      // Marks the toolbar so the harness can tell library CHROME from library LABELS. The law
+      // "no label is a DOM element" sweeps for text-bearing leaf divs inside the flow container,
+      // and the toolbar is full of them by design — it is real DOM chrome, which is the one thing
+      // the GL-only rule explicitly keeps in the DOM.
+      data-kookie-flow-toolbar=""
       onPointerDown={(e) => e.stopPropagation()}
     >
       <Card size="1" variant="classic" {...cardProps}>

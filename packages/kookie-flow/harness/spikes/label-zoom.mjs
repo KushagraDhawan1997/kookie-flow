@@ -78,7 +78,7 @@ const rows = [];
       // Scoped to the flow's container — see the same change in behaviors.mjs. An unscoped sweep
       // answers "is there a text-bearing leaf div on the page", which stops being the same
       // question the moment anything else is mounted beside the canvas.
-      for (const el of document.querySelectorAll('[data-kookie-flow-container] div')) {
+      for (const el of document.querySelectorAll('[data-kookie-flow-container] div:not([data-kookie-flow-toolbar] *):not([data-kookie-flow-toolbar])')) {
         if (el.children.length === 0 && (el.textContent ?? '').trim().length > 0) domTextish++;
       }
       window.__harness.resetGl();

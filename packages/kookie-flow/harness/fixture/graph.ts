@@ -332,3 +332,53 @@ export const SCALES = {
   k10: 10_000,
   k50: 50_000,
 } as const;
+
+/**
+ * One entity of each type the built-in toolbar has a configuration for.
+ *
+ * `toolbar.tsx` keys its content off entity TYPE — text gets eight widgets, image two, comment
+ * three — so a single-type scene reaches a third of the file. This is what makes the toolbar
+ * measurable at all: before it, the whole component had zero coverage from every browser law in
+ * the suite, and it is the file with the largest v1 -> v2 API break.
+ */
+export function makeToolbarScene(): Fixture {
+  return {
+    entities: [
+      {
+        id: 'txt',
+        type: 'text',
+        position: { x: 80, y: 200 },
+        width: 240,
+        height: 80,
+        data: {
+          content: 'toolbar text',
+          fontSize: 16,
+          fontWeight: 400,
+          fontFamily: 'system-ui',
+          textAlign: 'left',
+          textColor: '#111111',
+          lineHeight: 1.4,
+          letterSpacing: 0,
+          sizingMode: 'auto-height',
+        },
+      },
+      {
+        id: 'img',
+        type: 'image',
+        position: { x: 400, y: 200 },
+        width: 200,
+        height: 150,
+        data: { src: '', objectFit: 'cover', aspectLock: true },
+      },
+      {
+        id: 'note',
+        type: 'comment',
+        position: { x: 680, y: 200 },
+        width: 200,
+        height: 120,
+        data: { content: 'a note', backgroundColor: '#FFF9C4', textColor: '#424242', fontSize: 14 },
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}
