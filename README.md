@@ -290,6 +290,13 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Tidy and export.** `flowRef.current.autoLayout()` puts every node in a column behind whatever
+feeds it — left to right, or `{ direction: 'vertical' }` — and returns the positions it chose, so
+a controlled consumer can report them onwards. `toImage()` gives a PNG data URL of what is on
+screen, at twice its pixel size by default and transparent behind; `fitView()` first for the whole
+graph. `collapseToSubgraph()` folds a set of nodes into one with ports for every wire that crossed
+the boundary, and `expandSubgraph()` puts them back.
+
 **Guides and auto-pan.** Dragging a node past another lines it up: when an edge or a centre comes
 within a few screen pixels of another's, the drag lands on it and a line says why. `helperLines={false}`
 turns it off, and `snapToGrid` supersedes it. Dragging a node — or a wire — to the edge of the

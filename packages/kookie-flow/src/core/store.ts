@@ -22,7 +22,7 @@ import type {
   FitViewOptions,
 } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
-import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
+import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, DEFAULT_ENTITY_WIDTH } from './constants';
 import {
   Evaluator,
   type EvaluationHost,
@@ -45,6 +45,7 @@ import {
 import * as graphEngine from './graph';
 import { toFlowObject } from './serialize';
 import { sameGuides } from '../utils/alignment';
+import { layoutGraph, type LayoutOptions } from './layout';
 import {
   createEntityTypeCache,
   resolveEntities,
@@ -538,6 +539,13 @@ export interface FlowState {
   ) => Array<{ entityId: string; socketId: string; socketName: string; socketType: string }>;
   /** Collapse a set of entities into a compound group entity. */
   collapseToSubgraph: (entityIds: string[], groupId: string) => void;
+  /**
+   * Tidy the graph: put every entity in a column behind whatever feeds it.
+   *
+   * Returns the positions it decided on, so a controlled consumer can report them onwards; the
+   * store is already moved by the time it returns.
+   */
+  autoLayout: (options?: LayoutOptions) => Array<{ id: string; position: XYPosition }>;
   /** Expand a compound group entity back to its children. */
   expandSubgraph: (
     groupId: string,
@@ -2461,6 +2469,30 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         );
       },
 
+      autoLayout: (options) => {
+        const state = get();
+        const nodes = state.entities
+          // A child of a frame is placed by its frame, and a collapsed group's children are not
+          // on the board at all. Laying either out moves something nobody can see.
+          .filter((e) => e.parentId === undefined && !state.hiddenEntityIds.has(e.id))
+          .map((e) => ({
+            id: e.id,
+            width: e.width ?? DEFAULT_ENTITY_WIDTH,
+            // Bounds knows the no-layout case: before the style context syncs, a height comes
+            // from the same defaults the quadtree is built on.
+            height: e.height ?? getEntityBounds(e, state.socketLayout ?? undefined).height,
+          }));
+        if (nodes.length === 0) return [];
+        const { positions } = layoutGraph(nodes, state.edges, options);
+        const updates: Array<{ id: string; position: XYPosition }> = [];
+        for (const node of nodes) {
+          const position = positions.get(node.id);
+          if (position) updates.push({ id: node.id, position });
+        }
+        // The same door a drag commits through, so every index and quadtree follows.
+        get().updateEntityPositions(updates);
+        return updates;
+      },
       collapseToSubgraph: (entityIds: string[], groupId: string): void => {
         const state = get();
         const result = graphEngine.computeCollapseToSubgraph(

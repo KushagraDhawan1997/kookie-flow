@@ -783,6 +783,8 @@ export type {
   OnStatusChange,
 } from '../core/evaluation';
 import type { EvaluationMode, EvaluationStatus, OnEvaluate, OnStatusChange } from '../core/evaluation';
+import type { LayoutOptions } from '../core/layout';
+import type { CaptureOptions } from '../utils/canvas-runtime';
 
 /** Built-in font presets with pre-generated MSDF atlases */
 export type FontPreset = 'inter' | 'roboto' | 'source-serif' | 'system';
@@ -1114,6 +1116,32 @@ export interface KookieFlowInstance {
   getSelectedEdges: () => Edge[];
   /** Center the viewport on a specific position */
   setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
+  /**
+   * Tidy the graph: every entity into a column behind whatever feeds it, left to right by
+   * default. Returns the positions it chose, so a controlled consumer can report them onwards.
+   */
+  autoLayout: (options?: LayoutOptions) => Array<{ id: string; position: XYPosition }>;
+  /**
+   * What is on screen, as an image data URL. `null` if the canvas is not mounted.
+   *
+   * The current viewport, at twice its pixel size by default and transparent behind. Call
+   * `fitView()` first to capture the whole graph.
+   */
+  toImage: (options?: CaptureOptions) => string | null;
+  /**
+   * Fold a set of entities into one group entity, with ports for every wire that crossed the
+   * boundary. `expandSubgraph` puts them back.
+   */
+  collapseToSubgraph: (entityIds: string[], groupId: string) => void;
+  expandSubgraph: (
+    groupId: string,
+    childEntities: Entity[],
+    internalEdges: Edge[],
+    portMapping: {
+      inputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+      outputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+    }
+  ) => void;
   /**
    * The whole graph as data you can save: entities, edges and the viewport.
    *

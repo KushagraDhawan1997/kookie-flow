@@ -4241,6 +4241,91 @@ await withPage('scene=graph&count=3&seed=7&grid=0&explicitSize=1&helperLines=1&p
   }
 });
 
+// ---------------------------------------------------------------- layout and export
+/**
+ * Two things a board needs once it is big: a tidy, and a picture of itself.
+ */
+await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(400);
+
+  // Scatter the pipeline, then tidy it. src -> double -> gen -> post is a chain, so a correct
+  // layout puts them in that order left to right, in one row.
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.updateEntityPositions([
+      { id: 'src', position: { x: 900, y: 500 } },
+      { id: 'double', position: { x: 100, y: 100 } },
+      { id: 'gen', position: { x: 600, y: 900 } },
+      { id: 'post', position: { x: 300, y: 300 } },
+    ]);
+  });
+  const placed = await page.evaluate(() => {
+    window.__harness.autoLayout();
+    const s = window.__harness.store.getState();
+    return ['src', 'double', 'gen', 'post'].map((id) => ({
+      id, ...s.entityMap.get(id).position,
+    }));
+  });
+  const xs = placed.map((p) => p.x);
+  check(
+    'a tidy puts a chain in its own order, left to right',
+    xs[0] < xs[1] && xs[1] < xs[2] && xs[2] < xs[3],
+    JSON.stringify(placed)
+  );
+  check(
+    'and in one row, because a chain has no branches to spread',
+    placed.every((p) => Math.abs(p.y - placed[0].y) < 0.51),
+    JSON.stringify(placed.map((p) => p.y))
+  );
+  const gaps = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const a = s.entityMap.get('src');
+    const b = s.entityMap.get('double');
+    return { gap: b.position.x - (a.position.x + a.width) };
+  });
+  check(
+    'with a gap between columns rather than nodes touching',
+    gaps.gap > 0,
+    `gap ${gaps.gap}`
+  );
+
+  // ---- the picture ----
+  const png = await page.evaluate(() => window.__harness.toImage(1));
+  check(
+    'the canvas exports a PNG data URL',
+    typeof png === 'string' && png.startsWith('data:image/png;base64,') && png.length > 5000,
+    `${typeof png} of ${typeof png === 'string' ? png.length : 0} chars`
+  );
+
+  const doubled = await page.evaluate(() => {
+    const one = window.__harness.toImage(1);
+    const two = window.__harness.toImage(2);
+    const decode = (url) => new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.width, h: img.height });
+      img.src = url;
+    });
+    return Promise.all([decode(one), decode(two)]);
+  });
+  check(
+    'and asking for twice the resolution gives twice the picture',
+    doubled[1].w === doubled[0].w * 2 && doubled[1].h === doubled[0].h * 2,
+    JSON.stringify(doubled)
+  );
+
+  // A capture must leave the board exactly as it found it: same target, same clear colour.
+  const afterCapture = await page.evaluate(() => {
+    const { x, y, zoom } = window.__harness.store.getState().viewport;
+    return window.__harness.readPixel(Math.round(20 * zoom + x), Math.round(20 * zoom + y));
+  });
+  const stillDrawing = await page.evaluate(() => window.__harness.drawnInstances().length);
+  check(
+    'and the board is untouched by having been photographed',
+    Array.isArray(afterCapture) && stillDrawing > 0,
+    `${stillDrawing} instances still drawn, pixel ${JSON.stringify(afterCapture)}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

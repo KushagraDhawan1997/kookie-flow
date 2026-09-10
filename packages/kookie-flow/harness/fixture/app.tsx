@@ -20,6 +20,7 @@ import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
 import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
+import { capture } from '../../src/utils/canvas-runtime';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -43,6 +44,10 @@ export interface HarnessApi {
   store: unknown;
   /** Current entity/edge counts, as the store sees them. */
   counts(): { entities: number; edges: number };
+  /** Lay the graph out, and report where everything went. */
+  autoLayout(): { id: string; position: { x: number; y: number } }[];
+  /** The canvas as a PNG data URL, or null. */
+  toImage(pixelRatio?: number): string | null;
   /** The entities the FIXTURE holds — the consumer's own array, after applying every change. */
   consumerEntities(): { id: string; position: { x: number; y: number } }[];
   /** Read the store's viewport (pan/zoom). */
@@ -908,6 +913,13 @@ function Probe() {
       setSocketValue(entityId: string, socketId: string, value: unknown) {
         (store as { getState(): { setSocketValue(a: string, b: string, v: unknown): void } })
           .getState().setSocketValue(entityId, socketId, value);
+      },
+      autoLayout() {
+        return (store as { getState(): { autoLayout(): { id: string; position: { x: number; y: number } }[] } })
+          .getState().autoLayout();
+      },
+      toImage(pixelRatio?: number) {
+        return capture(store as object, { pixelRatio });
       },
       consumerEntities() {
         return consumerEntities.current.map((e) => ({ id: e.id, position: { ...e.position } }));

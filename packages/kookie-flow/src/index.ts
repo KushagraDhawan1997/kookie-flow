@@ -93,6 +93,14 @@ export type {
   OnStatusChange,
 } from './core/evaluation';
 export { SUCCESS_HOLD_MS, socketValueKey } from './core/evaluation';
+
+// Layout
+export type { LayoutOptions, LayoutNode, LayoutEdge, LayoutResult } from './core/layout';
+export { layoutGraph, rankNodes } from './core/layout';
+export type { CaptureOptions } from './utils/canvas-runtime';
+
+// History
+export type { HistoryState, HistoryEntry } from './core/history';
 export {
   buildAdjacencyIndex,
   getIncomers,

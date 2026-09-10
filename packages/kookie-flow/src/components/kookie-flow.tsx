@@ -25,6 +25,7 @@ import { VideoEntities } from './video-entities';
 import { MeshEntities } from './mesh-entities';
 import { PreviewEntities } from './preview-entities';
 import { HelperLines } from './helper-lines';
+import { CanvasCapture } from './canvas-capture';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -82,6 +83,7 @@ import {
   type OrbitAngles,
 } from '../utils/media-chrome';
 import { getOrbit, setOrbit, videoOps } from '../utils/media-runtime';
+import { capture } from '../utils/canvas-runtime';
 import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { isPointInWidget } from '../utils/widget-geometry';
 import {
@@ -593,6 +595,14 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
 
         /** The graph as data, ready to save. See `FlowObject`. */
         toObject: () => store.getState().toObject(),
+
+        autoLayout: (options) => store.getState().autoLayout(options),
+        /** A PNG of what is on screen. Fit the view first for the whole graph. */
+        toImage: (options) => capture(store, options),
+        collapseToSubgraph: (entityIds, groupId) =>
+          store.getState().collapseToSubgraph(entityIds, groupId),
+        expandSubgraph: (groupId, childEntities, internalEdges, portMapping) =>
+          store.getState().expandSubgraph(groupId, childEntities, internalEdges, portMapping),
 
         getSelectedEntities: () => {
           const state = store.getState();
@@ -3583,6 +3593,7 @@ function FlowCanvas({
         <MeshEntities onEntitiesChange={onEntitiesChange} />
         <PreviewEntities />
         <HelperLines />
+        <CanvasCapture />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />
         {showWidgets && (
