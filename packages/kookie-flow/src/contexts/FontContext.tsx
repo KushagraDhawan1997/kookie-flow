@@ -207,8 +207,10 @@ export function resolveFontForWeight(
 }
 
 /**
- * Lazily loads a font preset's MSDF data.
- * Returns null for 'system' preset (no WebGL fonts).
+ * Lazily loads a font preset's atlas.
+ *
+ * Every preset but one is a pre-baked MSDF that arrives as a dynamic import. `system` is built
+ * from the platform's own font when it is asked for — see utils/runtime-atlas.ts.
  */
 async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
   switch (preset) {
@@ -249,9 +251,34 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       return loadFontPreset('inter');
     }
 
-    case 'system':
-      // System fonts - no WebGL rendering, use DOM mode
-      return null;
+    case 'system': {
+      /**
+       * The platform's own UI font, baked into an atlas here and now.
+       *
+       * It cannot be pre-baked like the others: nobody knows what it is until the page is open,
+       * and it differs by machine. This used to return null, which meant `font="system"` drew no
+       * text at all — an option that silently produced an empty board.
+       */
+      const { buildRuntimeAtlas } = await import('../utils/runtime-atlas');
+      const regular = buildRuntimeAtlas({ weight: 400 });
+      if (!regular) {
+        console.warn(
+          '[KookieFlow] font="system" needs a 2D canvas to build its atlas and there is none. ' +
+          'Falling back to Inter.'
+        );
+        return loadFontPreset('inter');
+      }
+      const semibold = buildRuntimeAtlas({ weight: 600 });
+      return {
+        name: 'System',
+        weights: {
+          regular: { metrics: regular.metrics, atlasUrl: regular.atlasUrl },
+          ...(semibold
+            ? { semibold: { metrics: semibold.metrics, atlasUrl: semibold.atlasUrl } }
+            : {}),
+        },
+      };
+    }
 
     default:
       console.warn(

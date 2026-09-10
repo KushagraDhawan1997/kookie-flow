@@ -187,6 +187,8 @@ function params() {
     // Alignment guides snap a drag to its neighbours, which is right for a person and wrong
     // for a law measuring drag arithmetic. Off unless a law asks.
     helperLines: q.get('helperLines') === '1',
+    /** Which font atlas to mount. `system` builds one at runtime from the platform's own font. */
+    font: q.get('font'),
     scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types' | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
@@ -1305,6 +1307,7 @@ function App() {
           : {})}
         {...(p.scene === 'types' ? { entityTypes: TYPE_TABLE } : {})}
         helperLines={p.helperLines}
+        {...(p.font ? { font: p.font as 'inter' | 'system' } : {})}
         showMinimap={false}
         {...(p.entityRadius ? { radius: p.entityRadius } : {})}
       >

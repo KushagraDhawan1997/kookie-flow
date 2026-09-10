@@ -560,13 +560,20 @@ const text = {
 
 ### Font Configuration
 
-Labels are drawn with instanced MSDF, so `font` picks an MSDF atlas rather than a CSS family.
+Labels are drawn with instanced MSDF, so `font` picks an atlas rather than a CSS family.
 
 ```tsx
 <KookieFlow
-  font="inter"  // 'inter' | 'roboto' | 'source-serif' | 'system'
+  font="inter"  // 'inter' | 'system'
 />
 ```
+
+`inter` is bundled — the atlas lands in its own chunk, so a board that never asks for it never
+downloads it. `system` has no atlas to bundle, because nobody knows what the platform's font is
+until the page is open, so one is built at mount: each glyph is rasterised with the 2D canvas and
+turned into a signed distance field. It is a single-channel field rather than a multi-channel one,
+which costs slightly softer corners and nothing else — the shader takes the median of the three
+channels, and the median of three equal numbers is that number.
 
 Custom MSDF fonts with your own atlas:
 

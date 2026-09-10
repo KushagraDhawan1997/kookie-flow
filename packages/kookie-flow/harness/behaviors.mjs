@@ -4532,6 +4532,56 @@ await withPage('scene=graph&count=2&seed=5&grid=0&preserveBuffer=1', async (page
   check('a stroke deletes like anything else on the board', gone === 0, String(gone));
 });
 
+// ---------------------------------------------------------------- the system font
+/**
+ * `font="system"` used to draw NOTHING: it returned no atlas, and every label on the board
+ * silently disappeared. It builds one now, from the platform's own font, at mount.
+ *
+ * The law is deliberately about ink rather than about metrics: what went wrong before was that
+ * there were no glyphs at all, so what has to be proved is that there are, and that they are on
+ * screen where the labels belong.
+ */
+await withPage('scene=widgets&widgets=1&grid=0&font=system&preserveBuffer=1', async (page) => {
+  // A runtime atlas is built and uploaded at mount; it is a few hundred glyph cells of distance
+  // transform, so it is fast but not instant.
+  await page.waitForTimeout(1500);
+
+  const glyphs = await page.evaluate(() =>
+    window.__harness.glyphs().reduce((n, g) => n + g.count, 0)
+  );
+  check(
+    'font="system" draws text rather than nothing at all',
+    glyphs > 10,
+    `${glyphs} glyphs`
+  );
+
+  // And the ink is really on the canvas, not merely in a buffer: a pixel inside the node's title
+  // differs from the node's own background a few pixels above it.
+  const contrast = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('w');
+    const { x, y, zoom } = s.viewport;
+    const at = (dx, dy) => window.__harness.readPixel(
+      Math.round((e.position.x + dx) * zoom + x),
+      Math.round((e.position.y + dy) * zoom + y)
+    );
+    // Sweep the title's row and keep the darkest pixel: where exactly a glyph lands depends on
+    // the platform's font, so the claim is "there is ink along this line", not "at this point".
+    let darkest = [255, 255, 255, 255];
+    for (let dx = 12; dx < 120; dx++) {
+      const px = at(dx, 20);
+      if (px[0] + px[1] + px[2] < darkest[0] + darkest[1] + darkest[2]) darkest = px;
+    }
+    return { darkest, background: at(200, 20) };
+  });
+  const spread = Math.abs(contrast.darkest[0] - contrast.background[0]);
+  check(
+    'and the glyphs are painted, not merely counted',
+    spread > 30,
+    `darkest=${JSON.stringify(contrast.darkest)} background=${JSON.stringify(contrast.background)}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(
