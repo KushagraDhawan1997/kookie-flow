@@ -14,14 +14,14 @@ import { Theme, TooltipProvider } from '@kookie-ui/react';
  * or `grayColor` here — a per-subtree accent would mean a per-subtree palette. `fontFamily`
  * is likewise gone: the type face is the app's to supply, and globals.css supplies it.
  *
- * `radius="none"` and `material="regular"` are the app's identity, stated once here rather
+ * `radius="full"` and `material="regular"` are the app's identity, stated once here rather
  * than on any control. Material is SELECTIVE, so `regular` costs nothing at rest: popups take
  * the glass by construction, a `backdrop`-marked region takes it, and every unmarked in-flow
  * control still resolves solid.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <Theme appearance="inherit" material="regular" radius="medium" size="2">
+    <Theme appearance="inherit" material="regular" radius="full" size="2">
       <TooltipProvider>{children}</TooltipProvider>
     </Theme>
   );

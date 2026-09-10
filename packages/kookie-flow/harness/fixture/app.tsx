@@ -1003,6 +1003,7 @@ function Probe() {
           '--space-6',
           '--space-7',
           '--radius-4',
+          '--radius-surface-2',
           '--font-size-2',
           '--line-height-3',
         ]) {
@@ -1200,16 +1201,17 @@ function App() {
 
   return (
     /*
-       `radius` defaults to `large`, not to the design system's own default.
+       `radius` defaults to `full`, which is both the design system's own default and what the
+       docs app states.
 
-       The node body IS on `--radius-surface-N` now, so the stadium this note used to warn about
-       cannot happen at any level: v2 holds the surface family at 24/32/40/48 even at `full`, and
-       only the control family goes to 9999 there. What is still pinned is the CONTROL half — at
-       v2's default level every widget on every node is a pill, which is correct and is also a
-       different picture in every pixel law in the suite. `large` keeps the widget corners where
-       the recorded baselines expect them; a consumer on the default gets pills and should.
+       It used to be pinned to `large` to keep the widget corners where the recorded pixel
+       baselines expected them. That pin is gone because the fixture should test what ships: at
+       `full` the surface family does not move at all — v2 holds it at 24/32/40/48, the same as
+       `large` — and only the CONTROL family goes to 9999, so wells become pills and take
+       `--control-px-pill-N` for their text inset. Both are the intended look, and the laws
+       re-derive from live geometry rather than from a recorded corner.
     */
-    <Theme appearance={p.appearance} radius={p.radius ?? 'large'}>
+    <Theme appearance={p.appearance} radius={p.radius ?? 'full'}>
       <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
         {flows}
       </div>

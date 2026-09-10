@@ -1976,18 +1976,29 @@ await withPage('count=12&seed=1', async (page) => {
   check('the line box is 24px', v['--line-height-3'] === 24, `--line-height-3=${v['--line-height-3']}`);
 
   /**
-   * A node body's corner is a corner.
+   * A node body's corner is a corner, and the two halves of the scale are not interchangeable.
    *
-   * v2's DEFAULT radius level is `full`, where `--radius-1..5` are all `calc(9999px * var(--scale))`
-   * — and every SDF site clamps `r = min(r, min(halfW, halfH))`, so a node body becomes a stadium
-   * with no error, no missing token and nothing in the suite to notice. The fixture pins `large`
-   * so the swap stays a PORT; moving the node body onto `--radius-surface-N`, which is capsule-proof
-   * by construction at every level, is a design step of its own and is not being smuggled in here.
+   * This law used to assert that `--radius-4` was bounded, because the body READ `--radius-4` and
+   * every SDF site clamps `r = min(r, min(halfW, halfH))` — so at v2's `full` level, where the
+   * control family is `calc(9999px * var(--scale))`, a node body became a stadium with no error and
+   * no missing token. The fixture pinned `large` to keep that out of the suite.
+   *
+   * Both halves of that are gone. The body is on `--radius-surface-N`, which v2 holds at
+   * 24/32/40/48 even at `full`, and the fixture now runs at `full` because that is the level the
+   * design system defaults to and the docs app states. So the assertion inverts: the CONTROL token
+   * being a capsule here is CORRECT and expected — a widget well is a pill at this level — and what
+   * must stay bounded is the SURFACE token the body reads. Asserting the old way would now be
+   * asserting that the fixture is not testing what ships.
    */
   check(
-    'the node body radius token is a corner, not a capsule',
-    v['--radius-4'] > 0 && v['--radius-4'] < 100,
-    `--radius-4=${v['--radius-4']} — v2's default level is \`full\`, where this is 9999`
+    'the node body reads a bounded SURFACE radius',
+    v['--radius-surface-2'] > 0 && v['--radius-surface-2'] < 100,
+    `--radius-surface-2=${v['--radius-surface-2']}`
+  );
+  check(
+    'and the control family is a capsule at this level, which is the point of it',
+    v['--radius-4'] > 1000,
+    `--radius-4=${v['--radius-4']} — expected 9999 at radius="full"`
   );
 });
 
