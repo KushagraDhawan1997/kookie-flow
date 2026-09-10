@@ -411,12 +411,30 @@ export function resolveEntityStyle(
   // The control half of the same level. Deliberately NOT taking `overrides.borderRadius`: that
   // override is the body's shape, and a node with square corners does not thereby have square
   // fields — v2 keeps the two families independent for the same reason.
-  // The prop still names the level (that is what a per-entity `radius` is for); with no prop the
-  // widget takes the control corner at the node's own index, which is what v2 indexes by.
-  const widgetRadius = resolveTokenPx(
-    radius !== undefined ? WIDGET_RADIUS_MAP[radius] : atIndex('--radius-control', size),
-    tokens
-  );
+  /*
+   * The prop still names the level (that is what a per-entity `radius` is for); with no prop the
+   * widget takes the control corner at the node's own index, which is what v2 indexes by.
+   *
+   * EXCEPT AT THE PILL LEVEL, and the exception is the whole reason this is not one line. v2
+   * defines `--radius-control-N` at `radius="full"` as `calc(var(--control-height-N) / 2)` — half
+   * the control's OWN height. Our widget is not `--control-height-N` tall: it is
+   * `rowHeight - 2 * rowInset`, and the row has a wiring floor, so at the node index it comes out
+   * 32 where `--control-height-1` is 28. Inheriting that token gives 14 on a 32px box — a pill
+   * level with visibly flat ends.
+   *
+   * So when the token IS a pill for its own box, hand the shader the pill sentinel and let it
+   * clamp to half of OUR box, which is the same arithmetic v2 is doing on its own. Below that
+   * level the token is a small concrete radius and means exactly what it says.
+   */
+  const controlHeightForRadius = resolveTokenPx(atIndex('--control-height', size), tokens);
+  const controlRadius = resolveTokenPx(atIndex('--radius-control', size), tokens);
+  const controlIsPill = controlRadius >= controlHeightForRadius / 2;
+  const widgetRadius =
+    radius !== undefined
+      ? resolveTokenPx(WIDGET_RADIUS_MAP[radius], tokens)
+      : controlIsPill
+        ? resolveTokenPx('--radius-full', tokens)
+        : controlRadius;
   const widgetPad = resolveTokenPx(atIndex('--control-px-pill', size), tokens);
 
   // Resolve background colors
