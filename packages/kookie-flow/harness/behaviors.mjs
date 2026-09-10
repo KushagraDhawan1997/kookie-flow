@@ -3564,6 +3564,47 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
     `gen right=${JSON.stringify(afterRight)} idle=${JSON.stringify(idleRight)}; left=${JSON.stringify(afterLeft)} idle=${JSON.stringify(idleLeft)}`
   );
 
+  // ---- the ring moves between reports ----
+  // A handler reports when it has something to say — `slowGen` says 0.5 once and then works for
+  // 600ms — and a ring that only moved on a report sat still for most of a run. The drawn sweep
+  // eases toward the reported number instead, so it keeps travelling while the number holds.
+  //
+  // The probe sits a quarter of the way along the BOTTOM edge, which the sweep reaches late:
+  // shortly after the report it is still plain, and later in the same held report it is lit —
+  // with `evaluationRecord` proving the reported number never changed between the two.
+  const bottomQuarter = () =>
+    page.evaluate(() => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get('gen');
+      const { x, y, zoom } = s.viewport;
+      return window.__harness.readPixel(
+        Math.round((e.position.x + e.width * 0.75) * zoom + x),
+        Math.round((e.position.y + e.height - 1) * zoom + y)
+      );
+    });
+  await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', true));
+  const restBottom = await bottomQuarter();
+  const easeRun = page.evaluate(() => window.__harness.evaluate('gen'));
+  await page.waitForTimeout(60);
+  const earlyBottom = await bottomQuarter();
+  const earlyRecord = await page.evaluate(() => window.__harness.evaluationRecord('gen'));
+  await page.waitForTimeout(280);
+  const lateBottom = await bottomQuarter();
+  const lateRecord = await page.evaluate(() => window.__harness.evaluationRecord('gen'));
+  await easeRun;
+  await page.waitForTimeout(1800); // through the hold, back to idle
+  await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', false));
+  check(
+    'the reported number holds still across both samples',
+    earlyRecord?.progress === 0.5 && lateRecord?.progress === 0.5,
+    `early=${JSON.stringify(earlyRecord)} late=${JSON.stringify(lateRecord)}`
+  );
+  check(
+    'and the ring travels anyway: plain just after the report, swept later in the same one',
+    !far(restBottom, earlyBottom) && far(restBottom, lateBottom),
+    `rest=${JSON.stringify(restBottom)} early=${JSON.stringify(earlyBottom)} late=${JSON.stringify(lateBottom)}`
+  );
+
   // ---- an error, and its message ----
   // `glyphs()` is one batch per glyph MESH, not per label, so the message is observed as the
   // number of glyphs the regular mesh draws: exactly the message's length appears with the

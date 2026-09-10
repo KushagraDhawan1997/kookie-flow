@@ -990,3 +990,15 @@ step and tints the hairline. One hue for all of it, the theme's accent; error ke
 invalid red; warning stays the consumer's amber. The laws read the ring at both edge midpoints,
 so the clockwise direction is pinned, not just the fact; and the dissolve is pinned by two samples
 in the hold. 522 unit tests, 211 laws.
+
+**Addendum (2026-09-11) — the sweep eases toward the report.** A handler reports when it has
+something to say — every tenth, once a chunk, once a second — and the ring drew that number raw,
+so it jumped between reports and read as a stutter next to the smooth travelling arc of a run that
+reports nothing. The drawn sweep now chases the reported one: each frame closes a share of the gap
+(`progressEaseAlpha`, a rate per second, so the same wall-clock arrival at 60Hz or 120Hz), and a
+target behind the ring means a new run, which sweeps out of zero rather than winding back. That
+also means a run owns the render pass the way a hold does — nothing else would move `aProgress`
+between reports. The law that pins it reads a point a quarter along the BOTTOM edge, which the
+sweep reaches late: just after a single 0.5 report it is plain, and later in that same unchanged
+report it is lit. Both halves were checked by sabotage — snapping to the report, and dropping the
+per-frame pass — and each fails only that law. 533 unit tests, 213 laws.

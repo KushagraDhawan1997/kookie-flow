@@ -14,6 +14,7 @@ import { isSelfDrawn } from '../utils/entity-kind';
 import { THEME_COLORS } from '../core/theme-colors';
 import { SUCCESS_HOLD_MS } from '../core/evaluation';
 import { entityDepth } from '../utils/entity-depth';
+import { easeProgress, progressEaseAlpha } from '../utils/progress-ease';
 
 // Status enum encoding for GPU (matches aStatus attribute)
 const STATUS_NONE = 0;
@@ -595,14 +596,22 @@ export function Entities() {
   // Track whether any entity has an animated status (running/success)
   const hasAnimatedStatusRef = useRef(false);
   /**
-   * Whether any card is in its success hold. The dissolve is driven by `aProgress`, which only
-   * the rebuild writes — uTime alone cannot move it — so while a hold is running the rebuild is
-   * forced every frame. Bounded: a hold is SUCCESS_HOLD_MS long, and the engine ends it.
+   * Whether any card is drawing a moving ring — a sweep in progress or a hold dissolving. Both
+   * are carried by `aProgress`, which only the rebuild writes (uTime alone cannot move it), so
+   * while either is true the rebuild is forced every frame. Bounded: the engine ends both.
    */
-  const hasDissolvingRef = useRef(false);
+  const hasMovingRingRef = useRef(false);
+  /**
+   * The drawn sweep, per entity, eased toward what the handler reported.
+   *
+   * Handlers report progress at whatever rate suits the work — tenths, once a second, per chunk —
+   * and drawing that number raw made the ring jump in steps between reports. This holds the value
+   * actually painted; entries live only while a run does.
+   */
+  const progressDisplayRef = useRef(new Map<string, number>());
 
   // Use R3F's useFrame for RAF-synchronized updates
-  useFrame(({ size, clock }) => {
+  useFrame(({ size, clock }, delta) => {
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
 
@@ -612,13 +621,17 @@ export function Entities() {
     if (hasAnimatedStatusRef.current) {
       (material.uniforms.uTime as { value: number }).value = clock.elapsedTime;
     }
-    if (hasDissolvingRef.current) dirtyRef.current = true;
+    if (hasMovingRingRef.current) dirtyRef.current = true;
 
     if (!dirtyRef.current) return;
 
     const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus, getEvaluationRecord } = store.getState();
     // One clock read per pass, for the dissolve; the engine stamps in the same clock.
     const passNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    // Frame-rate independent: the same fraction of the remaining gap is closed per second
+    // whether the display runs at 60Hz or 120Hz.
+    const easeAlpha = progressEaseAlpha(delta);
+    const progressDisplay = progressDisplayRef.current;
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
@@ -653,7 +666,7 @@ export function Entities() {
     let bgCount = 0;
     let fgCount = 0;
     let hasAnimated = false;
-    let dissolving = false;
+    let movingRing = false;
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -727,19 +740,31 @@ export function Entities() {
       bufs.status[idx] = status;
       // Running animates its arc and done dissolves its ring, so both keep the pass alive.
       if (status > 2.5 && status < 4.5) hasAnimated = true;
-      if (status > 3.5 && status < 4.5 && entity.data?.status === undefined) dissolving = true;
+      if (status > 3.5 && status < 4.5 && entity.data?.status === undefined) movingRing = true;
       // What the ring does is the engine's alone: a consumer overriding status has said the run
       // is not what is happening. `aProgress` carries the sweep while running and the fraction of
       // the hold elapsed while done; -1 asks the shader for the indeterminate arc.
       const consumerSilent = entity.data?.status === undefined;
       let progress = -1;
+      let eased = false;
       if (consumerSilent && engineStatus === 'running') {
         const record = getEvaluationRecord(entity.id);
-        if (record?.progress !== undefined) progress = record.progress;
+        if (record?.progress !== undefined) {
+          // Chase the reported number rather than snapping to it: a run that reports in tenths
+          // then reads as one continuous sweep, and one that reports per frame is unchanged.
+          const next = easeProgress(progressDisplay.get(entity.id), record.progress, easeAlpha);
+          progressDisplay.set(entity.id, next);
+          progress = next;
+          eased = true;
+          // The ease has to keep painting between reports, so the sweep owns the pass the way
+          // the dissolve does.
+          movingRing = true;
+        }
       } else if (consumerSilent && engineStatus === 'success') {
         const record = getEvaluationRecord(entity.id);
         if (record) progress = Math.min(1, Math.max(0, (passNow - record.since) / SUCCESS_HOLD_MS));
       }
+      if (!eased) progressDisplay.delete(entity.id);
       bufs.progress[idx] = progress;
 
       if (isSelected) fgCount++;
@@ -747,7 +772,10 @@ export function Entities() {
     }
 
     hasAnimatedStatusRef.current = hasAnimated;
-    hasDissolvingRef.current = dissolving;
+    hasMovingRingRef.current = movingRing;
+    // Culled and deleted entities are never visited, so their entries are dropped here rather
+    // than one by one. Nothing is sweeping, so nothing is left to remember.
+    if (!movingRing && progressDisplay.size > 0) progressDisplay.clear();
 
     // Safety: never exceed buffer capacity to prevent WebGL errors
     bgMesh.count = Math.min(bgCount, capacity);
