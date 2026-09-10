@@ -14,7 +14,7 @@
  * - LOD: hide text below zoom thresholds
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback, use } from 'react';
+import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, use } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -248,14 +248,26 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
   // SENTINEL forces a re-populate after buffer resize (different from any real array).
   const lastEntriesRef = useRef<TextEntry[]>(SENTINEL_ENTRIES);
 
-  // Reset initialized flag when buffers change
-  useEffect(() => {
+  // Reset initialized flag when buffers change. A LAYOUT effect like the init below, and declared
+  // before it so it runs first: as a passive effect it ran AFTER the layout init had set the flag,
+  // cleared it again, and no text drew at all.
+  useLayoutEffect(() => {
     initializedRef.current = false;
     lastEntriesRef.current = SENTINEL_ENTRIES; // Force re-populate after resize
   }, [buffers]);
 
-  // Initialize attributes when mesh is ready
-  useEffect(() => {
+  // Initialize attributes when mesh is ready.
+  //
+  // A LAYOUT effect, and the difference was a GL error on every capacity growth. The mesh is
+  // keyed on `capacity`, so growing it mounts a fresh InstancedMesh whose `instanceMatrix` holds
+  // the new capacity — but the geometry is shared and still carries the previous mesh's glyph
+  // attributes at the OLD capacity until this effect swaps them. A passive effect runs after the
+  // browser has had a chance to paint, and R3F's frame runs on rAF, so one frame drew the new
+  // mesh (count = capacity, 1424) against 512-slot aUvOffset/aColor/aOpacity buffers:
+  // `glDrawElementsInstanced: Vertex buffer is not big enough for the draw call`, once per
+  // growth, in every graph big enough to grow. Layout effects run inside the commit, before any
+  // rAF can fire, so the new attributes are on the geometry before the mesh is ever drawn.
+  useLayoutEffect(() => {
     if (!meshRef.current) return;
 
     const mesh = meshRef.current;

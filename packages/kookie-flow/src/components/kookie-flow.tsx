@@ -367,14 +367,27 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       // name this painted a dark canvas into a light app, silently. It is the light value now,
       // because an un-themed page is a light page; a consumer wanting dark states a theme.
       //
-      // The pair is THEME_COLORS.canvas.background: in dark the canvas is the floor (`--neutral-1`)
-      // and a card floats a step above it; in light the canvas sits a step below the white card.
-      // Every GL reader resolves the same pair, so the DOM ground and the GL ground agree.
-      backgroundColor:
+      //
+      // This is the LIGHT half of THEME_COLORS.canvas.background and it is deliberately the only
+      // half rendered here: the token reader detects the appearance from the DOM in a state
+      // initialiser, so the server (which has no DOM) says one thing and the client another, and
+      // an appearance-dependent style attribute is a hydration mismatch on every dark page. The
+      // dark half is written by the layout effect below, after hydration and before paint.
+      backgroundColor: 'var(--neutral-2, var(--gray-2, #f9f9f9))',
+    };
+
+    // The dark half of the canvas pair. In dark the canvas is the floor (`--neutral-1`) and a card
+    // floats a step above it; in light it sits a step below the white card. Every GL reader
+    // resolves the same pair (resolveColor), so the DOM ground and the GL ground agree — and the
+    // socket punch ring, which paints the canvas colour, is invisible against it.
+    useLayoutEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      el.style.backgroundColor =
         tokens.appearance === 'dark'
           ? 'var(--neutral-1, var(--gray-1, #111111))'
-          : 'var(--neutral-2, var(--gray-2, #f9f9f9))',
-    };
+          : 'var(--neutral-2, var(--gray-2, #f9f9f9))';
+    }, [tokens.appearance]);
 
     return (
       <div ref={containerRef} className={className} style={containerStyle}>
