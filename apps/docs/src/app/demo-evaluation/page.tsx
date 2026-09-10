@@ -112,7 +112,7 @@ export default function DemoEvaluationPage() {
   }, []);
 
   const onStatusChange = useCallback((id: string, status: EvaluationStatus, message?: string) => {
-    setLog((prev) => [{ id, status, message, at: Date.now() }, ...prev].slice(0, 12));
+    setLog((prev) => [{ id, status, message, at: Date.now() }, ...prev].slice(0, 6));
     if (status === 'success' || status === 'idle') {
       const flow = flowRef.current;
       if (!flow) return;
@@ -166,21 +166,23 @@ export default function DemoEvaluationPage() {
         />
 
         <div style={panelStyle}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>Evaluation</div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button style={buttonStyle} onClick={() => flowRef.current?.evaluate('generate')}>Run Generate</button>
-            <button style={buttonStyle} onClick={() => flowRef.current?.evaluateDirty()}>Run all stale</button>
+          <div style={{ minWidth: 180 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Evaluation</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <button style={buttonStyle} onClick={() => flowRef.current?.evaluate('generate')}>Run Generate</button>
+              <button style={buttonStyle} onClick={() => flowRef.current?.evaluateDirty()}>Run all stale</button>
+            </div>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={failGenerate} onChange={(e) => setFailGenerate(e.target.checked)} />
+              Generate fails
+            </label>
           </div>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12 }}>
-            <input type="checkbox" checked={failGenerate} onChange={(e) => setFailGenerate(e.target.checked)} />
-            Generate fails
-          </label>
-          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.5, minWidth: 260 }}>
             {Object.entries(values).map(([k, v]) => (
               <div key={k}><span style={{ opacity: 0.6 }}>{k}</span> = {v === undefined ? '—' : String(v)}</div>
             ))}
           </div>
-          <div style={{ marginTop: 12, opacity: 0.75, fontSize: 12 }}>
+          <div style={{ opacity: 0.75, fontSize: 12, lineHeight: 1.5, flex: 1 }}>
             {log.map((r) => (
               <div key={r.at + r.id + r.status}>
                 {r.id} → <b>{r.status}</b>{r.message ? `: ${r.message}` : ''}
@@ -195,12 +197,15 @@ export default function DemoEvaluationPage() {
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
-  // Bottom right: the pipeline is one row across the top after fitView, and a panel at either
-  // top corner sat on an end of it.
-  bottom: 16,
+  // A strip along the bottom: the pipeline is one row across the middle after fitView, and a
+  // panel in any corner tall enough to hold the log sat on an end of it.
+  left: 16,
   right: 16,
+  bottom: 16,
   zIndex: 10,
-  width: 320,
+  display: 'flex',
+  gap: 24,
+  alignItems: 'flex-start',
   background: 'rgba(0,0,0,0.85)',
   color: '#fff',
   padding: '12px 16px',
