@@ -418,6 +418,210 @@ describe('muted entities', () => {
   });
 });
 
+describe('the shapes that break naive engines', () => {
+  it('a diamond: the join runs once, after both branches, with both values', async () => {
+    //     a
+    //    / \
+    //   b   c
+    //    \ /
+    //     d
+    // A per-edge scheduler runs d twice — once when b lands, once when c does — and the first
+    // run sees c's stale value. Readiness gating must hold d until both are in.
+    const w = world(
+      [
+        ent('a', [sock('in', 1)], [sock('o')]),
+        ent('b', [sock('i')], [sock('o')]),
+        ent('c', [sock('i')], [sock('o')]),
+        ent('d', [sock('fromB'), sock('fromC')], [sock('o')]),
+      ],
+      [edge('a', 'o', 'b', 'i'), edge('a', 'o', 'c', 'i'), edge('b', 'o', 'd', 'fromB'), edge('c', 'o', 'd', 'fromC')]
+    );
+    const ran: string[] = [];
+    let dSaw: Values = {};
+    const ev = new Evaluator(hostFor(w), async (id, _t, inputs) => {
+      ran.push(id);
+      // b is slow, c is fast: the join must still wait for b.
+      if (id === 'b') await tick();
+      if (id === 'd') dSaw = inputs;
+      return { o: `${id}(${Object.values(inputs).join(',')})` };
+    });
+    ev.markDirty('a');
+    await ev.settled();
+    expect(ran.filter((x) => x === 'd')).toHaveLength(1);
+    expect(ran.indexOf('d')).toBeGreaterThan(ran.indexOf('b'));
+    expect(ran.indexOf('d')).toBeGreaterThan(ran.indexOf('c'));
+    expect(dSaw).toEqual({ fromB: 'b(a(1))', fromC: 'c(a(1))' });
+    ev.dispose();
+  });
+
+  it('a cycle does not hang: settled resolves and the cycle stays honestly dirty', async () => {
+    // a -> b -> a. Neither can ever be ready. The engine must not spin, must not throw, and a
+    // caller awaiting evaluateDirty must not wait forever.
+    const w = world(
+      [ent('a', [sock('i')], [sock('o')]), ent('b', [sock('i')], [sock('o')])],
+      [edge('a', 'o', 'b', 'i'), edge('b', 'o', 'a', 'i')]
+    );
+    const ran: string[] = [];
+    const ev = new Evaluator(hostFor(w), (id) => { ran.push(id); return { o: 1 }; });
+    ev.markDirty('a');
+    await Promise.race([ev.evaluateDirty(), tick().then(() => { throw new Error('hung'); })]);
+    expect(ran).toEqual([]);
+    expect(ev.status('a')).toBe('dirty');
+    expect(ev.status('b')).toBe('dirty');
+    ev.dispose();
+  });
+
+  it('a cycle upstream does not block an acyclic branch beside it', async () => {
+    // a <-> b is a cycle; a -> c is a plain edge. c waits on a, which never settles, so c stays
+    // dirty — but a node unrelated to the cycle runs as normal.
+    const w = world(
+      [
+        ent('a', [sock('i')], [sock('o')]), ent('b', [sock('i')], [sock('o')]),
+        ent('c', [sock('i')]), ent('x', [sock('i', 1)]),
+      ],
+      [edge('a', 'o', 'b', 'i'), edge('b', 'o', 'a', 'i'), edge('a', 'o', 'c', 'i')]
+    );
+    const ran: string[] = [];
+    const ev = new Evaluator(hostFor(w), (id) => { ran.push(id); return { o: 1 }; });
+    ev.markDirty(['a', 'x']);
+    await ev.settled();
+    expect(ran).toEqual(['x']);
+    expect(ev.status('c')).toBe('dirty');
+    ev.dispose();
+  });
+
+  it('an entity removed mid-run lands nothing and does not throw', async () => {
+    const w = world([ent('a', [sock('i', 1)], [sock('o')]), ent('b', [sock('i')])], [edge('a', 'o', 'b', 'i')]);
+    let release: (() => void) | null = null;
+    const ran: string[] = [];
+    const ev = new Evaluator(hostFor(w), (id) => {
+      ran.push(id);
+      if (id === 'a') return new Promise<Values>((r) => { release = () => r({ o: 1 }); });
+      return {};
+    });
+    ev.markDirty('a');
+    await tick();
+    w.entities.delete('a');
+    w.edges = [];
+    (release as unknown as () => void)();
+    await ev.settled();
+    // b was marked when a was, and a's removal is a wire removal the host would report; here
+    // the point is only that the late result did not crash the engine or run b on it.
+    expect(ran.filter((x) => x === 'a')).toHaveLength(1);
+    ev.dispose();
+  });
+
+  it('a synchronous onEvaluate works the same as an async one', async () => {
+    const w = world([ent('a', [sock('i', 3)], [sock('o')]), ent('b', [sock('i')])], [edge('a', 'o', 'b', 'i')]);
+    let bSaw: Values = {};
+    const ev = new Evaluator(hostFor(w), (id, _t, inputs) => {
+      if (id === 'b') { bSaw = inputs; return; }
+      return { o: (inputs.i as number) + 1 };
+    });
+    ev.markDirty('a');
+    await ev.settled();
+    expect(bSaw).toEqual({ i: 4 });
+    ev.dispose();
+  });
+
+  it('two wires into one input: the first wins, deterministically', async () => {
+    const w = world(
+      [ent('a', [], [sock('o')]), ent('b', [], [sock('o')]), ent('c', [sock('i')])],
+      [edge('a', 'o', 'c', 'i'), edge('b', 'o', 'c', 'i')]
+    );
+    let cSaw: Values = {};
+    const ev = new Evaluator(hostFor(w), (id, _t, inputs) => {
+      if (id === 'c') { cSaw = inputs; return; }
+      return { o: id };
+    });
+    ev.markDirty(['a', 'b']);
+    await ev.settled();
+    expect(cSaw).toEqual({ i: 'a' });
+    ev.dispose();
+  });
+
+  it('handlers arriving late wake a graph that was waiting for them', async () => {
+    // Mounted with no onEvaluate: everything marks dirty and sits. Then the consumer's function
+    // arrives (a later render). Without a pass on setHandlers the graph stays stale until the
+    // next unrelated edit — which is the first thing a consumer would file a bug about.
+    const w = world([ent('a', [sock('i', 1)])]);
+    const ev = new Evaluator(hostFor(w));
+    ev.markDirty('a');
+    await ev.settled();
+    expect(ev.status('a')).toBe('dirty');
+    const ran: string[] = [];
+    ev.setHandlers((id) => { ran.push(id); return {}; });
+    await ev.settled();
+    expect(ran).toEqual(['a']);
+    ev.dispose();
+  });
+
+  it('a gate that becomes reactive through a type-table change is released', async () => {
+    const w = world([ent('g', [sock('i', 1)], [], 'gate')]);
+    w.modes.set('gate', 'manual');
+    const ran: string[] = [];
+    const ev = new Evaluator(hostFor(w), (id) => { ran.push(id); return {}; });
+    ev.markDirty('g');
+    await ev.settled();
+    expect(ran).toEqual([]);
+    w.modes.set('gate', 'reactive');
+    ev.setHandlers((id) => { ran.push(id); return {}; });
+    await ev.settled();
+    expect(ran).toEqual(['g']);
+    ev.dispose();
+  });
+
+  it('hands the entity itself to onEvaluate, so a consumer need not look it up', async () => {
+    const w = world([ent('a', [sock('i', 1)], [], 'thing')]);
+    let seen: Entity | null = null;
+    const ev = new Evaluator(hostFor(w), (_id, _t, _in, ctx) => { seen = ctx.entity; return {}; });
+    ev.markDirty('a');
+    await ev.settled();
+    expect((seen as unknown as Entity).type).toBe('thing');
+    ev.dispose();
+  });
+
+  it('onEvaluate may inject values into another entity without breaking the pass', async () => {
+    // Re-entrancy: a consumer's function calling setSocketValue while the engine is mid-flush.
+    const w = world([ent('a', [sock('i', 1)]), ent('x', [], [sock('o')]), ent('y', [sock('i')])], [edge('x', 'o', 'y', 'i')]);
+    const ran: string[] = [];
+    let ySaw: Values = {};
+    const ev = new Evaluator(hostFor(w), (id, _t, inputs) => {
+      ran.push(id);
+      if (id === 'a') ev.setSocketValue('x', 'o', 'injected');
+      if (id === 'y') ySaw = inputs;
+      return {};
+    });
+    ev.markDirty('a');
+    await ev.settled();
+    expect(ran).toEqual(['a', 'y']);
+    expect(ySaw).toEqual({ i: 'injected' });
+    ev.dispose();
+  });
+
+  it('progress is clamped to 0..1 and ignored from a superseded run', async () => {
+    const w = world([ent('a', [sock('i', 1)])]);
+    let firstCtx: { progress: (n: number) => void } | null = null;
+    let n = 0;
+    const ev = new Evaluator(hostFor(w), async (id, _t, _in, ctx) => {
+      n++;
+      if (n === 1) { firstCtx = ctx; ctx.progress(7); expect(ev.record(id)?.progress).toBe(1); return new Promise(() => {}); }
+      ctx.progress(0.25);
+      expect(ev.record(id)?.progress).toBe(0.25);
+      return {};
+    });
+    ev.markDirty('a');
+    await tick();
+    w.widget.set('a:i', 2);
+    ev.markDirty('a');
+    await ev.settled();
+    // The superseded run reporting progress must not scribble on the record.
+    (firstCtx as unknown as { progress: (n: number) => void }).progress(0.9);
+    expect(ev.record('a')?.progress).toBeUndefined();
+    ev.dispose();
+  });
+});
+
 describe('injected values and the whole graph', () => {
   it('setSocketValue feeds downstream without re-running the entity it was set on', async () => {
     const w = world([ent('a', [], [sock('o')]), ent('b', [sock('i')])], [edge('a', 'o', 'b', 'i')]);

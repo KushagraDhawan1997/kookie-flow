@@ -523,6 +523,8 @@ export function makeEvaluation(): Fixture {
     type,
     position: { x, y: 120 },
     width: 220,
+    // Explicit, so a law can find the bottom edge without re-deriving the socket layout.
+    height: 150,
     data: { label },
     inputs: [{ id: 'in', name: 'In', type: 'float', min: 0, max: 1, step: 0.01 }],
     outputs: [{ id: 'out', name: 'Out', type: 'float' }],

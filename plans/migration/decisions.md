@@ -958,3 +958,21 @@ Measured: a full cascade through two nodes — dirty, running, success, idle, tw
 React commits (law: "a full evaluation cascade costs no React commits"). The slider drag's own
 commits are the fixture's controlled-component echo, which is the consumer's contract, not the
 library's cost. 498 unit tests, 201 laws.
+
+**Addendum (2026-09-11) — what the node shows, and what the tests had to be.** Reported progress
+is a bar along the bottom edge inside the border, over a faint track, in the running hue; it is
+drawn only while the engine's own status is `running`, because a consumer overriding status has
+said the run is not what is happening. A thrown message is drawn under the node in the invalid
+hue, truncated to the node's width; `data.statusMessage` wins over it, and a consumer status
+override withdraws the engine's message with the engine's status. `ctx.entity` hands the entity to
+`onEvaluate`. `setHandlers` schedules a pass, because handlers arriving late — or a type table
+turning a gate reactive — can change the answer for something already dirty.
+
+The engine tests grew to the shapes that break naive schedulers: a diamond's join runs once, after
+both branches, with both values; a cycle neither hangs nor throws and stays honestly dirty while an
+acyclic branch beside it runs; an entity removed mid-run lands nothing; two wires into one input
+resolve deterministically; `onEvaluate` may inject values re-entrantly; a superseded run's
+progress cannot scribble on the record. Two law mistakes are recorded because they are the kind
+that pass silently: `glyphs()` is one batch per mesh, not per label, so a message is observed as a
+glyph-count delta — and that delta is the message's non-space length, since a space is advance and
+not a quad. 521 unit tests, 209 laws.

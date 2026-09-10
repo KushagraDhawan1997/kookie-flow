@@ -477,6 +477,8 @@ export function MultiWeightTextRenderer({
   // Derive text colors from theme tokens
   const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
   const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
+  // The same red an invalid edge draws in: one hue for "this is wrong" across the graph.
+  const errorTextColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
 
   // Glyph/kerning maps from FontContext (shared, built once)
   const regularGlyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
@@ -553,6 +555,7 @@ export function MultiWeightTextRenderer({
         connectedSockets,
         widgetValues,
         editingWidgetKey,
+        getEvaluationRecord,
       } = store.getState();
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
@@ -637,6 +640,35 @@ export function MultiWeightTextRenderer({
             entity.position.y > viewBottom + cullPadding
           ) {
             continue;
+          }
+
+          // A failed entity says why, under its bottom edge, in the invalid hue. The consumer's
+          // own `statusMessage` wins; the engine's message shows only when the engine's status is
+          // the one being drawn — a consumer overriding status has overridden its explanation too.
+          {
+            const data = entity.data;
+            const record = data?.status === undefined ? getEvaluationRecord(entity.id) : undefined;
+            const message =
+              data?.statusMessage ?? (record?.status === 'error' ? record.message : undefined);
+            if (message) {
+              const maxWidth = width - 2 * contentInset;
+              const shown =
+                regularGlyphMap.size > 0
+                  ? truncateText(message, maxWidth, 11, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap)
+                  : message;
+              regular.push({
+                text: shown,
+                position: [
+                  entity.position.x + contentInset,
+                  entity.position.y + height + 4,
+                  entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label,
+                ],
+                fontSize: 11,
+                color: errorTextColor,
+                anchor: 'left',
+                fontWeight: 'regular',
+              });
+            }
           }
 
           // Center sockets vertically within entity height (bidirectional)
@@ -956,6 +988,8 @@ export function MultiWeightTextRenderer({
     const unsubConnected = store.subscribe((s) => s.connectedSockets, markDirty);
     // Suppression under a borrowed input, on and off.
     const unsubEditingWidget = store.subscribe((s) => s.editingWidgetKey, markDirty);
+    // An error message appears or clears with the engine's records, which are entity-external.
+    const unsubEvaluation = store.subscribe((s) => s.evaluationVersion, markDirty);
 
     return () => {
       unsubEntityCount();
@@ -969,6 +1003,7 @@ export function MultiWeightTextRenderer({
       unsubWidgetValues();
       unsubConnected();
       unsubEditingWidget();
+      unsubEvaluation();
     };
   }, [store, rebuildSocketIndexMap]);
 

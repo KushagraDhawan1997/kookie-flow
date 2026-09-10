@@ -85,6 +85,10 @@ export interface HarnessApi {
   socketValue(entityId: string, socketId: string): unknown;
   /** Open a manual gate. Resolves when the entity's own run settles. */
   evaluate(id: string): Promise<void>;
+  /** The engine's whole record for one entity: status, message, progress. */
+  evaluationRecord(id: string): { status: string; message?: string; progress?: number } | undefined;
+  /** Flip a fixture-side behaviour of `onEvaluate`. */
+  setEvaluationHook(name: 'failPost' | 'slowGen', on: boolean): void;
   /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
   tokenCensus(): { present: string[]; missing: string[]; declared: number };
   /** Every MSDF glyph mesh: how many glyphs it draws and where its first one sits, in world space. */
@@ -819,12 +823,25 @@ function resetGlCounters() {
 const evaluationLog: Array<{ id: string; status: string; message?: string }> = [];
 const evaluationCalls: Array<{ id: string; inputs: Record<string, unknown> }> = [];
 const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const } };
+/**
+ * Test hooks the laws flip: make `post` throw, and make `gen` slow while reporting progress. Both
+ * are what a real consumer function does — fail, and take time — and neither can be driven from
+ * the canvas, so the laws set them directly.
+ */
+const evaluationHooks = { failPost: false, slowGen: false };
 async function fixtureEvaluate(
   id: string,
   _type: string,
-  inputs: Record<string, unknown>
+  inputs: Record<string, unknown>,
+  ctx: { progress: (n: number) => void; signal: AbortSignal }
 ): Promise<Record<string, unknown>> {
   evaluationCalls.push({ id, inputs: { ...inputs } });
+  if (id === 'post' && evaluationHooks.failPost) throw new Error('post refused the input');
+  if (id === 'gen' && evaluationHooks.slowGen) {
+    // Half way, held there: the progress law reads the bar mid-run.
+    ctx.progress(0.5);
+    await new Promise((r) => setTimeout(r, 600));
+  }
   const v = typeof inputs.in === 'number' ? inputs.in : Number(inputs.in) || 0;
   // Latency FALLS as the input rises. A slider drag starts runs on small values first and large
   // ones last, so with constant latency the newest run always resolved last and a stale result
@@ -874,6 +891,12 @@ function Probe() {
       },
       evaluate(id: string) {
         return (store as { getState(): { evaluate(id: string): Promise<void> } }).getState().evaluate(id);
+      },
+      evaluationRecord(id: string) {
+        return (store as { getState(): { getEvaluationRecord(id: string): { status: string; message?: string; progress?: number } | undefined } }).getState().getEvaluationRecord(id);
+      },
+      setEvaluationHook(name, on) {
+        evaluationHooks[name] = on;
       },
       viewport() {
         return (store as { getState(): { viewport?: unknown } }).getState().viewport ?? null;

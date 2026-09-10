@@ -50,9 +50,12 @@ interface InstanceBuffers {
   sizes: Float32Array;
   accentColor: Float32Array;
   status: Float32Array;
+  /** 0..1 while running with reported progress; -1 for no bar. */
+  progress: Float32Array;
   sizeAttr: THREE.InstancedBufferAttribute | null;
   accentColorAttr: THREE.InstancedBufferAttribute | null;
   statusAttr: THREE.InstancedBufferAttribute | null;
+  progressAttr: THREE.InstancedBufferAttribute | null;
 }
 
 function createBuffers(capacity: number): InstanceBuffers {
@@ -60,9 +63,11 @@ function createBuffers(capacity: number): InstanceBuffers {
     sizes: new Float32Array(capacity * 2),
     accentColor: new Float32Array(capacity * 3),
     status: new Float32Array(capacity),
+    progress: new Float32Array(capacity).fill(-1),
     sizeAttr: null,
     accentColorAttr: null,
     statusAttr: null,
+    progressAttr: null,
   };
 }
 
@@ -73,10 +78,13 @@ function initMeshBuffers(mesh: THREE.InstancedMesh, bufs: InstanceBuffers) {
   bufs.accentColorAttr.setUsage(THREE.DynamicDrawUsage);
   bufs.statusAttr = new THREE.InstancedBufferAttribute(bufs.status, 1);
   bufs.statusAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.progressAttr = new THREE.InstancedBufferAttribute(bufs.progress, 1);
+  bufs.progressAttr.setUsage(THREE.DynamicDrawUsage);
 
   mesh.geometry.setAttribute('aSize', bufs.sizeAttr);
   mesh.geometry.setAttribute('aAccentColor', bufs.accentColorAttr);
   mesh.geometry.setAttribute('aStatus', bufs.statusAttr);
+  mesh.geometry.setAttribute('aProgress', bufs.progressAttr);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 }
 
@@ -110,6 +118,10 @@ function markBuffersForUpload(bufs: InstanceBuffers, count: number) {
   if (bufs.statusAttr) {
     bufs.statusAttr.addUpdateRange(0, count);
     bufs.statusAttr.needsUpdate = true;
+  }
+  if (bufs.progressAttr) {
+    bufs.progressAttr.addUpdateRange(0, count);
+    bufs.progressAttr.needsUpdate = true;
   }
 }
 
@@ -210,7 +222,8 @@ export function Entities() {
       vertexShader: /* glsl */ `
         attribute vec2 aSize;
         attribute vec3 aAccentColor; // Per-entity accent color override (-1 = use global)
-        attribute float aStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
+        attribute float aStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success, 5=dirty
+        attribute float aProgress; // 0..1 while running with reported progress; -1 = no bar
 
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
@@ -220,12 +233,14 @@ export function Entities() {
         varying vec2 vExpandedSize;
         varying vec3 vAccentColor;
         varying float vStatus;
+        varying float vProgress;
 
         void main() {
           vUv = uv;
           vSize = aSize;
           vAccentColor = aAccentColor;
           vStatus = aStatus;
+          vProgress = aProgress;
 
           // Expand geometry to include shadow padding
           float shadowPadding = uShadowBlur + abs(uShadowOffsetY);
@@ -268,7 +283,8 @@ export function Entities() {
         varying vec2 vSize;
         varying vec2 vExpandedSize;
         varying vec3 vAccentColor; // Per-entity accent color override (-1 = use global)
-        varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
+        varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success, 5=dirty
+        varying float vProgress;
 
         ${squircleBoxSDF}
 
@@ -359,6 +375,26 @@ export function Entities() {
 
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
+
+          // Progress: a bar along the bottom edge, inside the border, in the running hue, over a
+          // faint full-width track so a short bar reads as "a fraction of this" rather than as a
+          // stray line. The corner clamp keeps it out of the squircle. Drawn only while the
+          // consumer reports progress; a run that reports nothing keeps the pulsing ring alone.
+          if (vProgress >= 0.0) {
+            float cr = min(uCornerRadius, min(b.x, b.y));
+            float barH = 3.0;
+            float inset = uBorderWidth + 4.0;
+            float x0 = -b.x + cr;
+            float span = vSize.x - 2.0 * cr;
+            float yTop = -b.y + inset + barH;
+            float yBot = -b.y + inset;
+            float inBand = step(yBot, p.y) * step(p.y, yTop);
+            float track = inBand * step(x0, p.x) * step(p.x, x0 + span);
+            float fill = inBand * step(x0, p.x) * step(p.x, x0 + span * clamp(vProgress, 0.0, 1.0));
+            color = mix(color, uStatusRunningColor, track * 0.25);
+            color = mix(color, uStatusRunningColor, fill);
+            alpha = max(alpha, fillMask * max(track * 0.25, fill));
+          }
 
           // Separator under an inside header: the header is typographic, the line is all that
           // is left of the block. Inset 12 world px from each side so it reads as a rule, not a
@@ -541,7 +577,7 @@ export function Entities() {
 
     if (!dirtyRef.current) return;
 
-    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus } = store.getState();
+    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus, getEvaluationRecord } = store.getState();
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
@@ -648,6 +684,12 @@ export function Entities() {
       );
       bufs.status[idx] = status;
       if (status > 2.5 && status < 4.5) hasAnimated = true;
+      // The bar is the engine's alone: a consumer overriding status to something other than
+      // running has said the run is not what is happening, and a bar under it would lie.
+      const record = engineStatus === 'running' ? getEvaluationRecord(entity.id) : undefined;
+      const showBar = record !== undefined && record.progress !== undefined &&
+        (entity.data?.status === undefined || entity.data.status === 'running');
+      bufs.progress[idx] = showBar ? (record.progress as number) : -1;
 
       if (isSelected) fgCount++;
       else bgCount++;

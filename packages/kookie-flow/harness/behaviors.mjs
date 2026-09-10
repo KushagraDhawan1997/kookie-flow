@@ -3494,6 +3494,112 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
       `src.in=${JSON.stringify(srcCall?.inputs.in)} post.out=${JSON.stringify(postOut)}`
     );
   }
+
+  // ---- the progress bar ----
+  // gen runs slow and reports 0.5 half way. Mid-run, a bar covers the left half of the bottom
+  // band in the running hue; after, it is gone. Both are read at the same pixel, so the claim is
+  // the DIFFERENCE, not a colour that depends on the theme.
+  await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', true));
+  const barPx = () =>
+    page.evaluate(() => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get('gen');
+      const { x, y, zoom } = s.viewport;
+      // Inside the bar: past the corner clamp on the left, in the 3px band above the border.
+      return window.__harness.readPixel(
+        Math.round((e.position.x + 80) * zoom + x),
+        Math.round((e.position.y + e.height - 6) * zoom + y)
+      );
+    });
+  const restPx = await barPx();
+  const genRun = page.evaluate(() => window.__harness.evaluate('gen'));
+  await page.waitForTimeout(200);
+  const midProgress = await page.evaluate(() => window.__harness.evaluationRecord('gen'));
+  const runningPx = await barPx();
+  await genRun;
+  await settle();
+  await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', false));
+  check(
+    'INSTRUMENT: the record carries the reported progress while running',
+    midProgress?.status === 'running' && midProgress?.progress === 0.5,
+    JSON.stringify(midProgress)
+  );
+  const far = (a, c) => a && c && (Math.abs(a[0] - c[0]) > 20 || Math.abs(a[1] - c[1]) > 20 || Math.abs(a[2] - c[2]) > 20);
+  check(
+    'reported progress is drawn as a bar on the node while it runs',
+    far(restPx, runningPx),
+    `rest=${JSON.stringify(restPx)} running=${JSON.stringify(runningPx)}`
+  );
+  const afterPx = await barPx();
+  check(
+    'and the bar is gone once the run has landed',
+    !far(afterPx, restPx),
+    `rest=${JSON.stringify(restPx)} after=${JSON.stringify(afterPx)}`
+  );
+
+  // ---- an error, and its message ----
+  // `glyphs()` is one batch per glyph MESH, not per label, so the message is observed as the
+  // number of glyphs the regular mesh draws: exactly the message's length appears with the
+  // error and goes with it. The first draft filtered batches by position and could never match.
+  const glyphCount = () => page.evaluate(() => window.__harness.glyphs().reduce((n, g) => n + g.count, 0));
+  const MESSAGE = 'post refused the input';
+  // A space is advance, not a glyph: the layout emits no quad for it. Measured 19 for 22.
+  const DRAWN = MESSAGE.replace(/\s/g, '').length;
+  const glyphsBefore = await glyphCount();
+  await page.evaluate(() => window.__harness.setEvaluationHook('failPost', true));
+  await page.evaluate(() => window.__harness.evaluate('gen'));
+  await settle();
+  const postRecord = await page.evaluate(() => window.__harness.evaluationRecord('post'));
+  check(
+    'a throw becomes error, with the thrown message, on the engine record',
+    postRecord?.status === 'error' && postRecord?.message === 'post refused the input',
+    JSON.stringify(postRecord)
+  );
+  const glyphsWithError = await glyphCount();
+  check(
+    'the message is drawn: exactly its glyphs are added to the text layer',
+    glyphsWithError - glyphsBefore === DRAWN,
+    `glyphs ${glyphsBefore} -> ${glyphsWithError} (message draws ${DRAWN})`
+  );
+  check(
+    'and the consumer heard it too',
+    (await log()).some((r) => r.id === 'post' && r.status === 'error' && r.message === 'post refused the input'),
+    JSON.stringify((await log()).filter((r) => r.id === 'post'))
+  );
+
+  // ---- the consumer's word wins ----
+  // `entity.data.status` overrides the engine: a consumer marking the failed node `success`
+  // gets a green ring, not a red one, and the engine's message is withdrawn with it.
+  const ring = () =>
+    page.evaluate(() => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get('post');
+      const { x, y, zoom } = s.viewport;
+      return window.__harness.readPixel(
+        Math.round((e.position.x + e.width / 2) * zoom + x),
+        Math.round(e.position.y * zoom + y)
+      );
+    });
+  const errorRing = await ring();
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('post');
+    s.applyEntityChanges([{ type: 'data', id: 'post', data: { ...e.data, status: 'success' } }]);
+  });
+  await settle();
+  const overriddenRing = await ring();
+  check(
+    'a consumer status on entity data overrides the engine\'s: the ring changes hue',
+    errorRing !== null && overriddenRing !== null && errorRing[0] > errorRing[1] && overriddenRing[1] > overriddenRing[0],
+    `engine=${JSON.stringify(errorRing)} consumer=${JSON.stringify(overriddenRing)}`
+  );
+  check(
+    'and takes the engine\'s message with it',
+    (await glyphCount()) === glyphsBefore,
+    `glyphs ${glyphsBefore} -> ${await glyphCount()}`
+  );
+  await page.evaluate(() => window.__harness.setEvaluationHook('failPost', false));
+
 });
 
 // ---------------------------------------------------------------- summary

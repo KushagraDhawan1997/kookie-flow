@@ -56,6 +56,9 @@ export interface EvaluationRecord {
 
 /** What `onEvaluate` receives beside the inputs. */
 export interface EvaluationContext {
+  /** The entity being evaluated — its sockets, its data, its type — so a consumer switching on
+   *  `entityType` alone is not forced to look the entity up again. */
+  entity: Entity;
   /**
    * Aborted when the entity's inputs change mid-run. Pass it to a fetch; check it in a loop. A
    * result returned after abort is discarded, so honouring it is an optimisation, not a duty.
@@ -145,6 +148,10 @@ export class Evaluator {
   setHandlers(onEvaluate?: OnEvaluate, onStatusChange?: OnStatusChange): void {
     this.onEvaluate = onEvaluate ?? null;
     this.onStatusChange = onStatusChange ?? null;
+    // Handlers arriving can change the answer for something already dirty: a graph mounted
+    // before onEvaluate existed sat honestly stale, and a type table that just turned a gate
+    // reactive has released it. A pass is due either way; it is a no-op if nothing is ready.
+    this.schedule();
   }
 
   status(id: string): EvaluationStatus {
@@ -388,6 +395,7 @@ export class Evaluator {
 
     const inputs = this.resolveInputs(entity);
     const ctx: EvaluationContext = {
+      entity,
       signal: run.controller.signal,
       progress: (fraction) => {
         if (this.runs.get(id) !== run) return;
