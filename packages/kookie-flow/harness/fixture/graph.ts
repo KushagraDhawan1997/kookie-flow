@@ -59,6 +59,20 @@ export interface FixtureOptions {
    * they cost has to ask for them.
    */
   values?: boolean;
+  /**
+   * Set `animated: true` on every generated edge, so the moving light has something to move on.
+   * Default FALSE: a still graph is the fixture every existing law was written against.
+   */
+  animated?: boolean;
+  /**
+   * Give socket i the same type on both sides, and connect out-i to in-i.
+   *
+   * Default FALSE. With random types every generated edge fails the compatibility check and is
+   * painted invalid — a fine fixture for counting vertices, a useless one for looking at edges,
+   * because the whole graph is red dashes. This makes every edge valid and hued by its type.
+   * Positions do not move: the same random draws are consumed either way.
+   */
+  typed?: boolean;
 }
 
 export interface Fixture {
@@ -72,7 +86,16 @@ export interface Fixture {
  * culling looks far better than it is against uniform noise.
  */
 export function makeGraph(opts: FixtureOptions): Fixture {
-  const { count, seed = 1, edgeRatio = 0.8, socketsPerSide = 3, explicitSize = false, values = false } = opts;
+  const {
+    count,
+    seed = 1,
+    edgeRatio = 0.8,
+    socketsPerSide = 3,
+    explicitSize = false,
+    values = false,
+    animated = false,
+    typed = false,
+  } = opts;
   const rand = rng(seed);
 
   const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
@@ -87,15 +110,19 @@ export function makeGraph(opts: FixtureOptions): Fixture {
     const inputs: Socket[] = [];
     const outputs: Socket[] = [];
     for (let s = 0; s < socketsPerSide; s++) {
+      // Both draws happen regardless of `typed` so the position jitter below is unchanged.
+      const inType = SOCKET_TYPES[Math.floor(rand() * SOCKET_TYPES.length)];
+      const outType = SOCKET_TYPES[Math.floor(rand() * SOCKET_TYPES.length)];
+      const pairedType = SOCKET_TYPES[s % SOCKET_TYPES.length];
       inputs.push({
         id: `in-${s}`,
         name: `In ${s}`,
-        type: SOCKET_TYPES[Math.floor(rand() * SOCKET_TYPES.length)],
+        type: typed ? pairedType : inType,
       } as Socket);
       outputs.push({
         id: `out-${s}`,
         name: `Out ${s}`,
-        type: SOCKET_TYPES[Math.floor(rand() * SOCKET_TYPES.length)],
+        type: typed ? pairedType : outType,
       } as Socket);
     }
 
@@ -140,13 +167,17 @@ export function makeGraph(opts: FixtureOptions): Fixture {
     const hop = 1 + Math.floor(rand() * Math.min(6, Math.max(1, cols)));
     const to = (from + hop) % count;
     if (from === to) continue;
-    edges.push({
+    const sourceIndex = Math.floor(rand() * socketsPerSide);
+    const targetIndex = Math.floor(rand() * socketsPerSide);
+    const edge: Edge = {
       id: `e${e}`,
       source: `n${from}`,
       target: `n${to}`,
-      sourceSocket: `out-${Math.floor(rand() * socketsPerSide)}`,
-      targetSocket: `in-${Math.floor(rand() * socketsPerSide)}`,
-    });
+      sourceSocket: `out-${sourceIndex}`,
+      targetSocket: `in-${typed ? sourceIndex : targetIndex}`,
+    };
+    if (animated) edge.animated = true;
+    edges.push(edge);
   }
 
   return { entities, edges };

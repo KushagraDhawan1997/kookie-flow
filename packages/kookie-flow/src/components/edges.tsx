@@ -23,9 +23,50 @@ const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6 + 6;
 // Max points per edge (bezier has SEGMENTS+1, step has 4, straight has 2)
 const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
 
-// Edge visual settings
-const EDGE_WIDTH = 1.5; // pixels in world space
-const AA_SMOOTHNESS = 3.0; // anti-aliasing edge softness (higher = softer edges)
+/**
+ * Edge visual settings, all in SCREEN px: the vertex shader divides by zoom, so an edge is the
+ * same width at every zoom, the way a hairline on a card is.
+ *
+ * The ribbon is one quad that carries two things: a 2px core (the line) and a soft glow that dies
+ * quadratically over the 3px beyond it. The glow is light, not material — it is what says an edge
+ * is live, and it is the only thing that changes when an edge is selected. It fades out below
+ * zoom 0.8 so a zoomed-out graph is a graph and not a bloom.
+ */
+const EDGE_CORE_HALF = 1.0;
+const EDGE_HALF_WIDTH = 4.0;
+const EDGE_GLOW_ALPHA = { dark: 0.12, light: 0.08 } as const;
+const EDGE_GLOW_ALPHA_SELECTED = 0.22;
+/** Two spots per edge, one lap every four seconds. */
+const EDGE_LIGHT_LAPS_PER_SEC = 0.25;
+
+/**
+ * Where the glow goes as the graph zooms out: the half-width in screen px that the vertex shader
+ * expands the ribbon to. Full 8px ribbon at zoom >= 0.8, core only (2px) at <= 0.45, smooth
+ * between. Written where `uZoom` is written, so it costs one float per frame.
+ */
+export function edgeHalfWidthAtZoom(zoom: number): number {
+  const t = Math.min(1, Math.max(0, (zoom - 0.45) / (0.8 - 0.45)));
+  return EDGE_CORE_HALF + (EDGE_HALF_WIDTH - EDGE_CORE_HALF) * t * t * (3 - 2 * t);
+}
+
+/**
+ * The edge's state bits, packed into the magnitude of `uv2.y` beside the ribbon side.
+ *
+ * `uv2.y` was ±1 (which side of the centreline a vertex sits on) and 0 on arrow vertices. It is
+ * now `side * (1 + flags)`: the sign is still the side, the magnitude minus one is these three
+ * bits, and an arrow vertex is still 0 — so no buffer grows and no attribute is added to carry a
+ * state that changes only when a selection or an edge does. The fragment shader unpacks it with
+ * `mod` and `step`; `edges.test.ts` pins that the two agree.
+ */
+export function packEdgeFlags(animated: boolean, selected: boolean, invalid: boolean): number {
+  return (animated ? 1 : 0) + (selected ? 2 : 0) + (invalid ? 4 : 0);
+}
+
+/** What the fragment shader recovers from a packed `uv2.y` magnitude; the test's mirror of the GLSL. */
+export function unpackEdgeFlags(flags: number): { animated: boolean; selected: boolean; invalid: boolean } {
+  const f = Math.floor(flags + 0.5);
+  return { animated: f % 2 === 1, selected: Math.floor(f / 2) % 2 === 1, invalid: f >= 4 };
+}
 
 // Arrow marker settings
 const ARROW_WIDTH = 12; // width of arrow base in pixels
@@ -57,8 +98,10 @@ const vertexShader = /* glsl */ `
   uniform float uZoom;
   uniform float uMeshLayer;
 
-  varying vec2 vUv;
   varying vec3 vColor;
+  varying float vAcross;
+  varying float vFlags;
+  varying float vU;
 
   void main() {
     // Discard vertices not belonging to this mesh's layer
@@ -67,36 +110,86 @@ const vertexShader = /* glsl */ `
       return;
     }
 
-    vUv = uv2;
+    // uv2.y is side * (1 + flags): sign is the ribbon side, magnitude carries the state bits.
+    // Both are 0 on arrow vertices, whose perpendicular is (0,0) and which take no offset.
+    float side = sign(uv2.y);
+    vAcross = side;
+    vFlags = max(0.0, abs(uv2.y) - 1.0);
+    vU = uv2.x;
     vColor = aColor;
 
-    // Compute ribbon offset: center + perpendicular * width * side
-    // uv2.y is ±1 indicating which side of the ribbon
-    // For arrow vertices (perpendicular = 0,0), no offset is applied
-    float scaledWidth = uHalfWidth / uZoom;
-    vec3 offset = vec3(aPerpendicular * scaledWidth * uv2.y, 0.0);
-    vec3 finalPosition = position + offset;
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPosition, 1.0);
+    vec3 offset = vec3(aPerpendicular * (uHalfWidth / uZoom) * side, 0.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position + offset, 1.0);
   }
 `;
 
-// Fragment shader - applies color with anti-aliased edges
+// Fragment shader - a 2px core over a quadratic glow, graded along u, with the moving light
 const fragmentShader = /* glsl */ `
-  varying vec2 vUv;
-  varying vec3 vColor;
+  uniform float uHalfWidth;
+  uniform float uCore;
+  uniform float uGlowAlpha;
+  uniform float uGlowAlphaSelected;
+  uniform float uTime;
+  uniform float uSpotTint;
 
-  uniform float uAASmooth;
+  varying vec3 vColor;
+  varying float vAcross;
+  varying float vFlags;
+  varying float vU;
 
   void main() {
-    // vUv.y goes from -1 to 1 across the width
-    // Anti-alias based on distance from center
-    float dist = abs(vUv.y);
-    float alpha = 1.0 - smoothstep(1.0 - uAASmooth, 1.0, dist);
+    // The flags are constant across a triangle, but they arrive through an interpolator, and
+    // 3.9999 is not 4.0 to step(). Round before unpacking.
+    float flags = floor(vFlags + 0.5);
+    float anim = mod(flags, 2.0);
+    float sel  = mod(floor(flags * 0.5), 2.0);
+    float inv  = step(4.0, flags);
 
-    gl_FragColor = vec4(vColor, alpha * 0.9);
+    // Screen px from the centreline: the ribbon is uHalfWidth px each side.
+    float px   = abs(vAcross) * uHalfWidth;
+    float core = 1.0 - smoothstep(uCore - 0.75, uCore + 0.75, px);
+    float glow = 1.0 - smoothstep(uCore, uHalfWidth, px);
+    glow *= glow;
+    float ga   = mix(uGlowAlpha, uGlowAlphaSelected, sel) * (1.0 - inv);
+
+    // Two soft spots travelling source -> target on a live edge; a lap every four seconds.
+    float s    = fract(vU * 2.0 - uTime * ${(2 * EDGE_LIGHT_LAPS_PER_SEC).toFixed(3)});
+    float spot = exp(-pow((s - 0.5) * 7.0, 2.0)) * max(anim, sel);
+
+    // An invalid edge is 24 soft dashes and no glow.
+    float ph   = fract(vU * 24.0);
+    float dash = mix(1.0, smoothstep(0.0, 0.1, ph) * (1.0 - smoothstep(0.4, 0.5, ph)), inv);
+
+    // The light lifts toward white in dark and toward a deeper cut of the hue in light.
+    vec3  lift = mix(vColor * 0.55, vec3(1.0), uSpotTint);
+    vec3  col  = mix(vColor, lift, spot * 0.5);
+    float a    = max(core * 0.9 * dash, glow * ga * (1.0 + spot));
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(col, a);
   }
 `;
+
+/** One of the two edge materials. The per-appearance alphas are chosen here, once per theme. */
+function createEdgeMaterial(appearance: 'light' | 'dark', meshLayer: number): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: {
+      uCore: { value: EDGE_CORE_HALF },
+      uHalfWidth: { value: EDGE_HALF_WIDTH },
+      uGlowAlpha: { value: EDGE_GLOW_ALPHA[appearance] },
+      uGlowAlphaSelected: { value: EDGE_GLOW_ALPHA_SELECTED },
+      uTime: { value: 0 },
+      uSpotTint: { value: appearance === 'dark' ? 1 : 0 },
+      uZoom: { value: 1 },
+      uMeshLayer: { value: meshLayer },
+    },
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    side: THREE.DoubleSide,
+  });
+}
 
 /** What one frame of the edge renderer actually has to do, derived from the four dirty flags. */
 export interface EdgeUpdatePlan {
@@ -148,9 +241,8 @@ export function planEdgeUpdate(dirty: {
  * High-performance mesh-based edge renderer.
  *
  * Uses triangle strips (ribbons) with custom ShaderMaterial for:
- * - Configurable line width
- * - Anti-aliased edges via SDF
- * - Future effects: glow, animation, gradients, dashes
+ * - A screen-constant 2px core with a soft glow, anti-aliased via SDF
+ * - Source-to-target hue gradient, moving light on live edges, dashes on invalid ones
  *
  * Key optimizations:
  * - Pre-allocated, reusable buffers (no GC pressure)
@@ -279,39 +371,14 @@ export function Edges({
     colorDirtyRef.current = true;
   }, [tokens]);
 
-  // Shader materials — separate instances for bg/fg with different uMeshLayer uniform
-  const bgMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: {
-        uAASmooth: { value: AA_SMOOTHNESS / 10 },
-        uHalfWidth: { value: EDGE_WIDTH / 2 },
-        uZoom: { value: 1 },
-        uMeshLayer: { value: 0.0 },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      side: THREE.DoubleSide,
-    });
-  }, []);
-  const fgMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: {
-        uAASmooth: { value: AA_SMOOTHNESS / 10 },
-        uHalfWidth: { value: EDGE_WIDTH / 2 },
-        uZoom: { value: 1 },
-        uMeshLayer: { value: 1.0 },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      side: THREE.DoubleSide,
-    });
-  }, []);
+  // Shader materials — separate instances for bg/fg with different uMeshLayer uniform. The
+  // per-appearance alphas are chosen here, once per theme, never per frame.
+  const appearance = tokens.appearance;
+  const bgMaterial = useMemo(() => createEdgeMaterial(appearance, 0), [appearance]);
+  const fgMaterial = useMemo(() => createEdgeMaterial(appearance, 1), [appearance]);
+
+  // True while any edge is animated or selected: the only time uTime has to move.
+  const hasLiveRef = useRef(false);
 
   // Ensure buffer capacity
   const ensureCapacity = (neededEdges: number): boolean => {
@@ -503,7 +570,7 @@ export function Edges({
   useEffect(() => () => { bgMaterial.dispose(); fgMaterial.dispose(); }, [bgMaterial, fgMaterial]);
 
   // RAF-synchronized updates
-  useFrame(({ size }) => {
+  useFrame(({ size, clock }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
 
     const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap, hiddenEntityIds } =
@@ -513,9 +580,17 @@ export function Edges({
     // entityMapRef stale. The store's getState() is synchronous and cheap.
     entityMapRef.current = entityMap;
 
-    // Always update zoom uniform on both materials (cheap operation)
+    // Always update zoom uniform on both materials (cheap operation). The glow fades with it.
+    const halfWidth = edgeHalfWidthAtZoom(viewport.zoom);
     bgMaterial.uniforms.uZoom.value = viewport.zoom;
     fgMaterial.uniforms.uZoom.value = viewport.zoom;
+    bgMaterial.uniforms.uHalfWidth.value = halfWidth;
+    fgMaterial.uniforms.uHalfWidth.value = halfWidth;
+    // The clock only reaches the shader while something is lit; a still graph never re-uploads.
+    if (hasLiveRef.current) {
+      bgMaterial.uniforms.uTime.value = clock.elapsedTime;
+      fgMaterial.uniforms.uTime.value = clock.elapsedTime;
+    }
 
     // Mark dirty on canvas resize (prevents ghosting)
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {
@@ -612,53 +687,76 @@ export function Edges({
       const evStarts = edgeVertexStartsRef.current;
       const evCounts = edgeVertexCountsRef.current;
 
-      // Color update: update colors for all edges using recorded vertex layout
+      // Color update: update colors for all edges using recorded vertex layout. The state bits
+      // ride in uv2.y, so a selection flip rewrites that too — over the same range, marked the
+      // same way — and the gradient reads `u` back from the buffer it is already in.
       if (plan.color) {
+        let anyLive = false;
         for (let i = 0; i < edges.length; i++) {
           const edge = edges[i];
           const vertexStart = evStarts[i];
           const vertexCount = evCounts[i];
           if (vertexCount === 0) continue;
 
+          const selected = selectedEdgeIds.has(edge.id);
+          const flags = packEdgeFlags(edge.animated === true, selected, edge.invalid === true);
+          if (edge.animated || selected) anyLive = true;
+
           let cr: number, cg: number, cb: number;
-          if (selectedEdgeIds.has(edge.id)) {
-            cr = selectedColor.r;
-            cg = selectedColor.g;
-            cb = selectedColor.b;
+          let tr: number, tg: number, tb: number;
+          if (selected) {
+            cr = tr = selectedColor.r;
+            cg = tg = selectedColor.g;
+            cb = tb = selectedColor.b;
           } else if (edge.invalid) {
-            cr = invalidColor.r;
-            cg = invalidColor.g;
-            cb = invalidColor.b;
+            cr = tr = invalidColor.r;
+            cg = tg = invalidColor.g;
+            cb = tb = invalidColor.b;
           } else {
-            let typeColor: THREE.Color | undefined;
-            if (edge.sourceSocket) {
-              const socketInfo = socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`);
-              if (socketInfo) {
-                typeColor =
-                  socketTypeColors.get(socketInfo.socket.type) ?? socketTypeColors.get('any');
-              }
-            }
-            if (typeColor) {
-              cr = typeColor.r;
-              cg = typeColor.g;
-              cb = typeColor.b;
-            } else {
-              cr = defaultColor.r;
-              cg = defaultColor.g;
-              cb = defaultColor.b;
-            }
+            const sourceInfo = edge.sourceSocket
+              ? socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`)
+              : undefined;
+            const targetInfo = edge.targetSocket
+              ? socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`)
+              : undefined;
+            const sourceTypeColor = sourceInfo
+              ? socketTypeColors.get(sourceInfo.socket.type) ?? socketTypeColors.get('any')
+              : undefined;
+            const targetTypeColor = targetInfo
+              ? socketTypeColors.get(targetInfo.socket.type) ?? socketTypeColors.get('any')
+              : undefined;
+            const from = sourceTypeColor ?? defaultColor;
+            const to = targetTypeColor ?? from;
+            cr = from.r;
+            cg = from.g;
+            cb = from.b;
+            tr = to.r;
+            tg = to.g;
+            tb = to.b;
           }
+          const dr = tr - cr;
+          const dg = tg - cg;
+          const db = tb - cb;
 
           for (let v = 0; v < vertexCount; v++) {
+            const uvIdx = (vertexStart + v) * 2;
             const colIdx = (vertexStart + v) * 3;
-            buffers.colors[colIdx] = cr;
-            buffers.colors[colIdx + 1] = cg;
-            buffers.colors[colIdx + 2] = cb;
+            const side = Math.sign(buffers.uvs[uvIdx + 1]);
+            // An arrow vertex (side 0) is a solid marker in the target hue, not a graded one.
+            const u = side === 0 ? 1 : buffers.uvs[uvIdx];
+            buffers.uvs[uvIdx + 1] = side * (1 + flags);
+            buffers.colors[colIdx] = cr + dr * u;
+            buffers.colors[colIdx + 1] = cg + dg * u;
+            buffers.colors[colIdx + 2] = cb + db * u;
           }
         }
         if (buffers.colorAttr) {
           buffers.colorAttr.needsUpdate = true;
         }
+        if (buffers.uvAttr) {
+          buffers.uvAttr.needsUpdate = true;
+        }
+        hasLiveRef.current = anyLive;
         colorDirtyRef.current = false;
       }
 
@@ -715,6 +813,9 @@ export function Edges({
     // only as far as the last selected edge. See the layer pass above for why it exists.
     let fgVertexMax = 0;
     const edgeLayers = edgeLayersRef.current;
+    // Whether any edge visited wants the clock. Only a full rebuild sees every edge, so only a
+    // full rebuild is allowed to write it back.
+    let anyLive = false;
 
     {
       for (let i = 0; i < edges.length; i++) {
@@ -771,12 +872,14 @@ export function Edges({
           sourceYOffset = getSocketYOffset(sourceEntity, sourceSocketInfo.index, false, socketLayout);
         }
 
+        // Hoisted for the same reason as the source: the gradient's far end is this socket's hue.
+        const targetSocketInfo = edge.targetSocket
+          ? socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`)
+          : undefined;
+
         let targetYOffset = targetHeight / 2;
-        if (edge.targetSocket) {
-          const socketInfo = socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`);
-          if (socketInfo) {
-            targetYOffset = getSocketYOffset(targetEntity, socketInfo.index, true, socketLayout);
-          }
+        if (targetSocketInfo) {
+          targetYOffset = getSocketYOffset(targetEntity, targetSocketInfo.index, true, socketLayout);
         }
 
         // Edge endpoints at actual socket positions (outside entity body)
@@ -854,34 +957,47 @@ export function Edges({
           cy2 = y1;
         }
 
-        // Determine edge color: selected → blue, invalid → red, otherwise → source socket type color
-        // Note: edge.invalid is set when edges are created via UI (no runtime type checking for performance)
+        // Edge colour is a gradient, source-socket hue at u=0 to target-socket hue at u=1, so a
+        // float feeding an image reads as blue becoming purple. Selected and invalid are one hue
+        // at both ends. edge.invalid is set when edges are created via UI (no runtime type checking
+        // for performance).
+        const selected = selectedEdgeIds.has(edge.id);
+        const flags = packEdgeFlags(edge.animated === true, selected, edge.invalid === true);
+        if (edge.animated || selected) anyLive = true;
         let cr: number, cg: number, cb: number;
-        if (selectedEdgeIds.has(edge.id)) {
-          cr = selectedColor.r;
-          cg = selectedColor.g;
-          cb = selectedColor.b;
+        let tr: number, tg: number, tb: number;
+        if (selected) {
+          cr = tr = selectedColor.r;
+          cg = tg = selectedColor.g;
+          cb = tb = selectedColor.b;
         } else if (edge.invalid) {
-          // Invalid connection (incompatible types in loose mode)
-          cr = invalidColor.r;
-          cg = invalidColor.g;
-          cb = invalidColor.b;
+          cr = tr = invalidColor.r;
+          cg = tg = invalidColor.g;
+          cb = tb = invalidColor.b;
         } else {
-          // Get source socket type color - O(1) from the socket resolved above and the pre-parsed
-          // colour table
-          const typeColor = sourceSocketInfo
+          // O(1) from the sockets resolved above and the pre-parsed colour table. A target with
+          // no socket takes the source hue, so an edge into an entity's centre stays one colour.
+          const sourceTypeColor = sourceSocketInfo
             ? socketTypeColors.get(sourceSocketInfo.socket.type) ?? socketTypeColors.get('any')
             : undefined;
-          if (typeColor) {
-            cr = typeColor.r;
-            cg = typeColor.g;
-            cb = typeColor.b;
-          } else {
-            cr = defaultColor.r;
-            cg = defaultColor.g;
-            cb = defaultColor.b;
-          }
+          const targetTypeColor = targetSocketInfo
+            ? socketTypeColors.get(targetSocketInfo.socket.type) ?? socketTypeColors.get('any')
+            : undefined;
+          const from = sourceTypeColor ?? defaultColor;
+          const to = targetTypeColor ?? from;
+          cr = from.r;
+          cg = from.g;
+          cb = from.b;
+          tr = to.r;
+          tg = to.g;
+          tb = to.b;
         }
+        const dr = tr - cr;
+        const dg = tg - cg;
+        const db = tb - cb;
+        // uv2.y for the two ribbon sides, with the state bits in the magnitude.
+        const sideTop = 1 + flags;
+        const sideBottom = -(1 + flags);
 
         // Generate curve points into pre-allocated buffer (avoids GC)
         // points buffer stores [x0, y0, x1, y1, ...] as flat array
@@ -960,10 +1076,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p0y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u0;
-          buffers.uvs[uvIdx + 1] = 1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideTop;
+          buffers.colors[colIdx] = cr + dr * u0;
+          buffers.colors[colIdx + 1] = cg + dg * u0;
+          buffers.colors[colIdx + 2] = cb + db * u0;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -977,10 +1093,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p0y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u0;
-          buffers.uvs[uvIdx + 1] = -1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideBottom;
+          buffers.colors[colIdx] = cr + dr * u0;
+          buffers.colors[colIdx + 1] = cg + dg * u0;
+          buffers.colors[colIdx + 2] = cb + db * u0;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -994,10 +1110,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p1y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u1;
-          buffers.uvs[uvIdx + 1] = 1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideTop;
+          buffers.colors[colIdx] = cr + dr * u1;
+          buffers.colors[colIdx + 1] = cg + dg * u1;
+          buffers.colors[colIdx + 2] = cb + db * u1;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -1012,10 +1128,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p1y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u1;
-          buffers.uvs[uvIdx + 1] = 1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideTop;
+          buffers.colors[colIdx] = cr + dr * u1;
+          buffers.colors[colIdx + 1] = cg + dg * u1;
+          buffers.colors[colIdx + 2] = cb + db * u1;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -1029,10 +1145,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p0y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u0;
-          buffers.uvs[uvIdx + 1] = -1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideBottom;
+          buffers.colors[colIdx] = cr + dr * u0;
+          buffers.colors[colIdx + 1] = cg + dg * u0;
+          buffers.colors[colIdx + 2] = cb + db * u0;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -1046,10 +1162,10 @@ export function Edges({
           buffers.positions[posIdx + 1] = -p1y;
           buffers.positions[posIdx + 2] = z;
           buffers.uvs[uvIdx] = u1;
-          buffers.uvs[uvIdx + 1] = -1;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.uvs[uvIdx + 1] = sideBottom;
+          buffers.colors[colIdx] = cr + dr * u1;
+          buffers.colors[colIdx + 1] = cg + dg * u1;
+          buffers.colors[colIdx + 2] = cb + db * u1;
           buffers.perpendiculars[perpIdx] = normX;
           buffers.perpendiculars[perpIdx + 1] = normY;
           vertexIndex++;
@@ -1113,9 +1229,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 0.5;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1129,9 +1245,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 0;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1145,9 +1261,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 1;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1201,9 +1317,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 0.5;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1217,9 +1333,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 0;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1233,9 +1349,9 @@ export function Edges({
           buffers.positions[posIdx + 2] = arrowZ;
           buffers.uvs[uvIdx] = 1;
           buffers.uvs[uvIdx + 1] = 0;
-          buffers.colors[colIdx] = cr;
-          buffers.colors[colIdx + 1] = cg;
-          buffers.colors[colIdx + 2] = cb;
+          buffers.colors[colIdx] = tr;
+          buffers.colors[colIdx + 1] = tg;
+          buffers.colors[colIdx + 2] = tb;
           buffers.perpendiculars[perpIdx] = 0;
           buffers.perpendiculars[perpIdx + 1] = 0;
           vertexIndex++;
@@ -1332,6 +1448,7 @@ export function Edges({
       bgMeshRef.current!.geometry.setDrawRange(0, vertexIndex);
       fgMeshRef.current!.geometry.setDrawRange(0, fgVertexMax);
       buffers.lastVertexCount = vertexIndex;
+      hasLiveRef.current = anyLive;
     }
     geometryDirtyRef.current = false;
     positionDirtyRef.current = false;

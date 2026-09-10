@@ -11,13 +11,18 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 
 const tempMatrix = new THREE.Matrix4();
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 64;
 
-/** Reroute entity visual settings */
+/**
+ * Reroute entity visual settings. The quad is a 6px circle and the dot inside it is built the way
+ * a socket is: a 3.5px dot, a 1.5px punch ring of canvas colour so it reads over the edge under
+ * it, and a 1px halo that lights on hover. No cross, no hover scale — motion in geometry reads as
+ * jitter; a halo reads as light.
+ */
 const REROUTE_RADIUS = 6; // Radius in world space
 const REROUTE_SEGMENTS = 12; // Circle segments
 
@@ -50,13 +55,19 @@ export function RerouteNodes() {
     return new THREE.Color(c[0], c[1], c[2]);
   }, [tokens]);
 
+  // The punch ring prints canvas colour, so it has to be the canvas the DOM paints (a pair token).
+  const canvasColor = useMemo(() => {
+    const c = resolveColor(THEME_COLORS.canvas.background, tokens);
+    return new THREE.Color(c[0], c[1], c[2]);
+  }, [tokens]);
+
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
   // Mark dirty when theme colors change
   useEffect(() => {
     dirtyRef.current = true;
-  }, [rerouteColor, selectedColor]);
+  }, [rerouteColor, selectedColor, canvasColor]);
 
   // Circle geometry
   const geometry = useMemo(() => new THREE.CircleGeometry(REROUTE_RADIUS, REROUTE_SEGMENTS), []);
@@ -71,6 +82,7 @@ export function RerouteNodes() {
         uniforms: {
           uColor: { value: rerouteColor },
           uSelectedColor: { value: selectedColor },
+          uCanvas: { value: canvasColor },
         },
         vertexShader: /* glsl */ `
           attribute float aSelected;
@@ -84,11 +96,7 @@ export function RerouteNodes() {
             vSelected = aSelected;
             vHovered = aHovered;
             vUv = uv;
-
-            // Scale up when hovered
-            vec3 pos = position * (1.0 + aHovered * 0.3);
-
-            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
           }
         `,
         fragmentShader: /* glsl */ `
@@ -96,47 +104,36 @@ export function RerouteNodes() {
 
           uniform vec3 uColor;
           uniform vec3 uSelectedColor;
+          uniform vec3 uCanvas;
 
           varying float vSelected;
           varying float vHovered;
           varying vec2 vUv;
 
           void main() {
-            // Distance from center for SDF circle
-            vec2 center = vec2(0.5, 0.5);
-            float dist = length(vUv - center) * 2.0;
+            // px from the centre; the quad radius is 6
+            float r  = length(vUv - 0.5) * 12.0;
+            float aa = fwidth(r);
+            float dot   = 1.0 - smoothstep(3.5 - aa, 3.5 + aa, r);
+            float punch = smoothstep(3.5 - aa, 3.5 + aa, r) * (1.0 - smoothstep(5.0 - aa, 5.0 + aa, r));
+            float halo  = smoothstep(5.0 - aa, 5.0 + aa, r) * (1.0 - smoothstep(5.0, 6.0, r));
+            halo *= halo;
+            // Steady on a selected reroute, lit on hover.
+            float haloOn = max(vHovered, vSelected) * 0.22;
 
-            // Anti-aliased circle
-            float aa = fwidth(dist) * 1.5;
-            float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
-
-            // Color: selected or default
-            vec3 color = mix(uColor, uSelectedColor, vSelected);
-
-            // Brighten on hover
-            color = mix(color, color * 1.4, vHovered);
-
-            // Small cross in center to distinguish from sockets
-            vec2 p = (vUv - center) * 2.0;
-            float crossWidth = 0.15;
-            float crossMask = 0.0;
-            if (abs(p.x) < crossWidth || abs(p.y) < crossWidth) {
-              if (abs(p.x) < 0.5 && abs(p.y) < 0.5) {
-                crossMask = 0.3;
-              }
-            }
-
-            // Darken center cross area
-            color = mix(color, color * 0.5, crossMask);
-
-            gl_FragColor = vec4(color, alpha);
+            vec3  c = mix(uColor, uSelectedColor, vSelected);
+            float a = dot + punch + halo * haloOn;
+            // Three bands that never overlap, blended as one premultiplied colour and un-premultiplied.
+            vec3  col = (c * dot + uCanvas * punch + c * halo * haloOn) / max(a, 1e-4);
+            if (a < 0.004) discard;
+            gl_FragColor = vec4(col, a);
           }
         `,
         transparent: true,
         depthWrite: false,
         depthTest: false,
       }),
-    [rerouteColor, selectedColor]
+    [rerouteColor, selectedColor, canvasColor]
   );
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */

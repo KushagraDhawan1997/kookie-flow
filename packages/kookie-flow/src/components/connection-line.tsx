@@ -15,7 +15,14 @@ const SEGMENTS = 32;
 const VERTICES_PER_SEGMENT = 6;
 const TOTAL_VERTICES = SEGMENTS * VERTICES_PER_SEGMENT;
 
-const LINE_WIDTH = 3;
+/**
+ * Same construction as an edge, in screen px: a 2px core over a glow that dies over the 3px
+ * beyond it. The two numbers are copied from edges.tsx rather than imported — the line owns its
+ * own look, and an edge tweak should not move it by accident.
+ */
+const CONNECTION_HALF_WIDTH = 4;
+/** How fast the dashes travel toward the pointer, in cycles per second. */
+const DASH_SPEED = 1.5;
 
 interface ConnectionLineProps {
   socketTypes?: Record<string, SocketType>;
@@ -33,25 +40,30 @@ const vertexShader = /* glsl */ `
   }
 `;
 
-// Fragment shader with dashed line effect
+// Fragment shader — core + glow like an edge, dashes soft-ended and travelling toward the pointer
 const fragmentShader = /* glsl */ `
   uniform vec3 uColor;
-  uniform float uAASmooth;
   uniform float uLength;
+  uniform float uTime;
+  uniform float uHalfWidth;
 
   varying vec2 vUv;
 
   void main() {
-    float dist = abs(vUv.y);
-    float alpha = 1.0 - smoothstep(1.0 - uAASmooth, 1.0, dist);
+    // Screen px from the centreline; the ribbon is uHalfWidth px each side.
+    float px   = abs(vUv.y) * uHalfWidth;
+    float core = 1.0 - smoothstep(0.25, 1.75, px);
+    float glow = 1.0 - smoothstep(1.0, uHalfWidth, px);
+    glow *= glow;
 
-    // Dashed pattern - fixed 8px dash, 8px gap (16px cycle)
-    float dashCycle = 16.0;
-    float dashCount = uLength / dashCycle;
-    float dash = step(0.5, fract(vUv.x * dashCount));
-    alpha *= dash;
+    // 16px cycle in world units along the curve, phase moving with the clock so the dashes run
+    // from the socket to the pointer — the direction the connection is being made in.
+    float ph   = fract(vUv.x * uLength / 16.0 - uTime * ${DASH_SPEED.toFixed(2)});
+    float dash = smoothstep(0.0, 0.1, ph) * (1.0 - smoothstep(0.4, 0.5, ph));
 
-    gl_FragColor = vec4(uColor, alpha * 0.9);
+    float a = max(core * 0.9 * dash, glow * 0.16);
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(uColor, a);
   }
 `;
 
@@ -105,8 +117,9 @@ export function ConnectionLine({
         fragmentShader,
         uniforms: {
           uColor: { value: new THREE.Color(defaultLineColor) },
-          uAASmooth: { value: 0.3 },
           uLength: { value: 100 },
+          uTime: { value: 0 },
+          uHalfWidth: { value: CONNECTION_HALF_WIDTH },
         },
         transparent: true,
         depthWrite: false,
@@ -142,7 +155,7 @@ export function ConnectionLine({
     };
   }, [material]);
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const mesh = meshRef.current;
     if (!mesh || !initializedRef.current) return;
 
@@ -216,8 +229,8 @@ export function ConnectionLine({
     const cx2 = connectionDraft.source.isInput ? targetX + offset : targetX - offset;
     const cy2 = targetY;
 
-    // Half-width for ribbon (scaled by zoom)
-    const halfWidth = LINE_WIDTH / 2 / viewport.zoom;
+    // Half-width for ribbon in world units (screen-constant, so divided by zoom)
+    const halfWidth = CONNECTION_HALF_WIDTH / viewport.zoom;
 
     // Generate curve points into pre-allocated buffer
     const points = pointsRef.current;
@@ -322,8 +335,10 @@ export function ConnectionLine({
       vertexIndex++;
     }
 
-    // Update length uniform for consistent dash sizing
+    // Update length uniform for consistent dash sizing. The clock only moves while a draft
+    // exists — this branch already rebuilds the mesh every drag frame, so one more float is free.
     material.uniforms.uLength.value = curveLength;
+    material.uniforms.uTime.value = clock.elapsedTime;
 
     // Update GPU buffers
     if (buffers.positionAttr && buffers.uvAttr) {

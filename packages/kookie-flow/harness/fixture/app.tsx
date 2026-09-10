@@ -169,6 +169,11 @@ function params() {
     // counts spike turns it on with `widgets=1`, because widget VALUES are glyphs and a graph of
     // empty sockets would report that drawing them costs nothing.
     values: q.get('values') === '1',
+    // `animated: true` on every generated edge, so the moving light has a graph to run on.
+    animated: q.get('animated') === '1',
+    // Socket i shares a type on both sides and edges connect out-i to in-i, so generated edges
+    // are valid and hued by type instead of all red. Off by default, like `values`.
+    typed: q.get('typed') === '1',
     // Mount N KookieFlow instances. Two is the reentrancy case: module-level state in the store
     // used to make the second instance break dragging in the first.
     instances: Math.max(1, Math.min(3, num('instances', 1))),
@@ -1128,8 +1133,10 @@ function App() {
       edgeRatio: p.edgeRatio,
       explicitSize: p.explicitSize,
       values: p.values,
+      animated: p.animated,
+      typed: p.typed,
     });
-  }, [p.scene, p.count, p.seed, p.edgeRatio, p.explicitSize, p.values]);
+  }, [p.scene, p.count, p.seed, p.edgeRatio, p.explicitSize, p.values, p.animated, p.typed]);
 
   const [entities, setEntities] = useState<Entity[]>(initial.entities);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);
