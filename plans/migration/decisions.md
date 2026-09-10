@@ -976,3 +976,17 @@ progress cannot scribble on the record. Two law mistakes are recorded because th
 that pass silently: `glyphs()` is one batch per mesh, not per label, so a message is observed as a
 glyph-count delta — and that delta is the message's non-space length, since a space is advance and
 not a quad. 521 unit tests, 209 laws.
+
+**Addendum (2026-09-11) — the outline is the progress.** The bottom bar went. It was a widget
+bolted onto the card; the card's own outline can say everything the bar said. While running, the
+ring sweeps the perimeter from top-centre clockwise to `ctx.progress`, at one speed all the way
+round (`perimeterT` measures straights by length and corners by angle — a plain angle about the
+centre races along a wide card's short sides). A run reporting nothing sends a short arc round
+instead. Done completes the ring and then DISSOLVES it over the hold, and the dissolve is not
+decoration: a full accent ring held still is exactly what a selected card looks like, and one cue
+must not carry two meanings. That needed the record to carry `since` and the node pass to keep
+rebuilding while a hold runs — bounded, because the engine ends the hold. Stale fades the card a
+step and tints the hairline. One hue for all of it, the theme's accent; error keeps the graph's
+invalid red; warning stays the consumer's amber. The laws read the ring at both edge midpoints,
+so the clockwise direction is pinned, not just the fact; and the dissolve is pinned by two samples
+in the hold. 532 unit tests, 211 laws.

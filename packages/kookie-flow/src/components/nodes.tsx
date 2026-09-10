@@ -11,6 +11,8 @@ import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
 import type { RGBColor } from '../utils/color';
 import { isSelfDrawn } from '../utils/entity-kind';
+import { THEME_COLORS } from '../core/theme-colors';
+import { SUCCESS_HOLD_MS } from '../core/evaluation';
 import { entityDepth } from '../utils/entity-depth';
 
 // Status enum encoding for GPU (matches aStatus attribute)
@@ -214,10 +216,12 @@ export function Entities() {
         uTopLight: { value: resolvedStyle.topLightAlpha },
         // Status rendering
         uTime: { value: 0 },
-        uStatusErrorColor: { value: new THREE.Color(0.93, 0.28, 0.26) },   // red-9
-        uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },   // amber-9
-        uStatusRunningColor: { value: new THREE.Color(0.39, 0.40, 0.96) },  // indigo-9 (accent)
-        uStatusSuccessColor: { value: new THREE.Color(0.30, 0.75, 0.39) },  // green-9
+        // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
+        // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
+        // the graph's own invalid red. Warning is the consumer's and keeps amber.
+        uAccentColor: { value: new THREE.Color(...tokens[THEME_COLORS.node.borderSelected]) },
+        uStatusErrorColor: { value: new THREE.Color(...tokens[THEME_COLORS.edge.invalid]) },
+        uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },
       },
       vertexShader: /* glsl */ `
         attribute vec2 aSize;
@@ -274,10 +278,9 @@ export function Entities() {
         uniform float uTopLight;
         // Status uniforms
         uniform float uTime;
+        uniform vec3 uAccentColor;
         uniform vec3 uStatusErrorColor;
         uniform vec3 uStatusWarningColor;
-        uniform vec3 uStatusRunningColor;
-        uniform vec3 uStatusSuccessColor;
 
         varying vec2 vUv;
         varying vec2 vSize;
@@ -287,6 +290,39 @@ export function Entities() {
         varying float vProgress;
 
         ${squircleBoxSDF}
+
+        /**
+         * Where a point on the border sits along the perimeter: 0 at top-centre, rising clockwise
+         * on screen, 1 back at the top. GL y is up, so "top" is +y and clockwise runs top, right,
+         * bottom, left. Straight edges are measured by length and corners by angle, so the sweep
+         * moves at one speed all the way round — a plain angle about the centre would race along
+         * the short sides of a wide card.
+         */
+        float perimeterT(vec2 p, vec2 b, float r) {
+          float sw = max(b.x - r, 0.0);
+          float sh = max(b.y - r, 0.0);
+          float arc = 1.5707963 * r;
+          float L = 4.0 * (sw + sh + arc);
+          float s;
+          if (p.y >= sh && abs(p.x) <= sw) {
+            s = p.x;                                          // top: 0 at centre, negative x wraps
+          } else if (p.x >= sw && abs(p.y) <= sh) {
+            s = sw + arc + (sh - p.y);                        // right, going down
+          } else if (p.y <= -sh && abs(p.x) <= sw) {
+            s = sw + 2.0 * arc + 2.0 * sh + (sw - p.x);       // bottom, going left
+          } else if (p.x <= -sw && abs(p.y) <= sh) {
+            s = 3.0 * sw + 3.0 * arc + 2.0 * sh + (p.y + sh); // left, going up
+          } else {
+            vec2 q = p - vec2(sign(p.x) * sw, sign(p.y) * sh);
+            float a = atan(q.x, q.y);                         // 0 at up, clockwise toward right
+            if (a < 0.0) a += 6.2831853;
+            float k = floor(a / 1.5707963);                   // 0 TR, 1 BR, 2 BL, 3 TL
+            float within = (a - k * 1.5707963) * r;
+            float before = k < 0.5 ? sw : k < 1.5 ? sw + 2.0 * sh : k < 2.5 ? 3.0 * sw + 2.0 * sh : 3.0 * sw + 4.0 * sh;
+            s = before + k * arc + within;
+          }
+          return fract(s / L + 1.0);
+        }
 
         void main() {
           // Map UV to expanded coordinate space, then use entity size for SDF
@@ -332,34 +368,50 @@ export function Entities() {
           // Border color (selection/hover handled by EntitySelection layer)
           vec3 borderColor = uBorderColor;
 
-          // Status border override
+          // Status: the card's own outline tells it. Apple's rule, not a badge bolted on — the
+          // ring IS the progress, sweeping the perimeter from top-centre clockwise; a run that
+          // reports nothing sends a short arc round instead; done completes the ring for a moment
+          // and lets it go; stale fades the card a step and tints the hairline. One hue.
           float statusBorderWidth = uBorderWidth;
+          float bgAlphaScale = 1.0;
           if (vStatus > 0.5) {
-            vec3 statusColor = uBorderColor;
             if (vStatus < 1.5) {
-              // Error: solid red border
-              statusColor = uStatusErrorColor;
+              // Error: the graph's invalid red, a step thicker.
+              borderColor = uStatusErrorColor;
+              statusBorderWidth = uBorderWidth + 1.0;
             } else if (vStatus < 2.5) {
-              // Warning: solid amber border
-              statusColor = uStatusWarningColor;
+              // Warning: the consumer's, in amber.
+              borderColor = uStatusWarningColor;
+              statusBorderWidth = uBorderWidth + 1.0;
             } else if (vStatus < 3.5) {
-              // Running: pulsing accent border (sine wave 0.4–1.0 opacity)
-              float pulse = 0.7 + 0.3 * sin(uTime * 3.0);
-              statusColor = mix(uBorderColor, uStatusRunningColor, pulse);
+              float crS = min(uCornerRadius, min(b.x, b.y));
+              float t = perimeterT(p, b, crS);
+              float swept;
+              if (vProgress >= 0.0) {
+                // Determinate: everything behind the head is lit, with a soft head.
+                swept = 1.0 - smoothstep(vProgress, vProgress + 0.008, t);
+              } else {
+                // Indeterminate: a comet a fifth of the perimeter long, fading behind its head.
+                float head = fract(uTime * 0.3);
+                float behind = fract(head - t);
+                swept = 1.0 - smoothstep(0.0, 0.2, behind);
+              }
+              borderColor = mix(uBorderColor, uAccentColor, swept);
+              statusBorderWidth = uBorderWidth + swept;
             } else if (vStatus < 4.5) {
-              // Success: green flash that fades out (uses fract of time as progress)
-              // The CPU side encodes a countdown in the status; here we just show green
-              float flash = 0.7 + 0.3 * sin(uTime * 4.0);
-              statusColor = mix(uBorderColor, uStatusSuccessColor, flash);
+              // Done: the ring completes, then dissolves over the hold — vProgress carries how far
+              // into the hold this is. A full ring held still would read as SELECTED, which is the
+              // same hue; the dissolve is what keeps the two cues apart.
+              float fade = 1.0 - clamp(vProgress, 0.0, 1.0);
+              fade = fade * fade;
+              borderColor = mix(uBorderColor, uAccentColor, fade);
+              statusBorderWidth = uBorderWidth + fade;
             } else {
-              // Dirty: inputs changed and nothing has answered. A stale indicator, not an
-              // alarm — the border steps toward the warning hue at a fraction, and stays
-              // hairline. Subtle by design: on a board mid-edit, most nodes are dirty.
-              statusColor = mix(uBorderColor, uStatusWarningColor, 0.45);
+              // Stale: the card fades a step and the hairline takes a quiet accent tint. Subtle
+              // by design — on a board mid-edit most cards are stale, and stale is not an alarm.
+              borderColor = mix(uBorderColor, uAccentColor, 0.35);
+              bgAlphaScale = 0.7;
             }
-            borderColor = statusColor;
-            // Thicker for every alarm state; dirty keeps the resting hairline.
-            statusBorderWidth = vStatus < 4.5 ? uBorderWidth + 0.5 : uBorderWidth;
           }
 
           // Simplified AA - single fwidth call
@@ -371,30 +423,10 @@ export function Entities() {
 
           // Background fill (respects backgroundAlpha for ghost/outline variants)
           float fillMask = 1.0 - smoothstep(-aa, aa, d);
-          float bgAlpha = fillMask * uBackgroundAlpha;
+          float bgAlpha = fillMask * uBackgroundAlpha * bgAlphaScale;
 
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
-
-          // Progress: a bar along the bottom edge, inside the border, in the running hue, over a
-          // faint full-width track so a short bar reads as "a fraction of this" rather than as a
-          // stray line. The corner clamp keeps it out of the squircle. Drawn only while the
-          // consumer reports progress; a run that reports nothing keeps the pulsing ring alone.
-          if (vProgress >= 0.0) {
-            float cr = min(uCornerRadius, min(b.x, b.y));
-            float barH = 3.0;
-            float inset = uBorderWidth + 4.0;
-            float x0 = -b.x + cr;
-            float span = vSize.x - 2.0 * cr;
-            float yTop = -b.y + inset + barH;
-            float yBot = -b.y + inset;
-            float inBand = step(yBot, p.y) * step(p.y, yTop);
-            float track = inBand * step(x0, p.x) * step(p.x, x0 + span);
-            float fill = inBand * step(x0, p.x) * step(p.x, x0 + span * clamp(vProgress, 0.0, 1.0));
-            color = mix(color, uStatusRunningColor, track * 0.25);
-            color = mix(color, uStatusRunningColor, fill);
-            alpha = max(alpha, fillMask * max(track * 0.25, fill));
-          }
 
           // Separator under an inside header: the header is typographic, the line is all that
           // is left of the block. Inset 12 world px from each side so it reads as a rule, not a
@@ -440,7 +472,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle]);
+  }, [resolvedStyle, tokens]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { material.dispose(); }, [material]);
@@ -562,6 +594,12 @@ export function Entities() {
 
   // Track whether any entity has an animated status (running/success)
   const hasAnimatedStatusRef = useRef(false);
+  /**
+   * Whether any card is in its success hold. The dissolve is driven by `aProgress`, which only
+   * the rebuild writes — uTime alone cannot move it — so while a hold is running the rebuild is
+   * forced every frame. Bounded: a hold is SUCCESS_HOLD_MS long, and the engine ends it.
+   */
+  const hasDissolvingRef = useRef(false);
 
   // Use R3F's useFrame for RAF-synchronized updates
   useFrame(({ size, clock }) => {
@@ -574,10 +612,13 @@ export function Entities() {
     if (hasAnimatedStatusRef.current) {
       (material.uniforms.uTime as { value: number }).value = clock.elapsedTime;
     }
+    if (hasDissolvingRef.current) dirtyRef.current = true;
 
     if (!dirtyRef.current) return;
 
     const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus, getEvaluationRecord } = store.getState();
+    // One clock read per pass, for the dissolve; the engine stamps in the same clock.
+    const passNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
@@ -612,6 +653,7 @@ export function Entities() {
     let bgCount = 0;
     let fgCount = 0;
     let hasAnimated = false;
+    let dissolving = false;
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -683,19 +725,29 @@ export function Entities() {
         entity.data?.status ?? (engineStatus === 'idle' ? undefined : engineStatus)
       );
       bufs.status[idx] = status;
+      // Running animates its arc and done dissolves its ring, so both keep the pass alive.
       if (status > 2.5 && status < 4.5) hasAnimated = true;
-      // The bar is the engine's alone: a consumer overriding status to something other than
-      // running has said the run is not what is happening, and a bar under it would lie.
-      const record = engineStatus === 'running' ? getEvaluationRecord(entity.id) : undefined;
-      const showBar = record !== undefined && record.progress !== undefined &&
-        (entity.data?.status === undefined || entity.data.status === 'running');
-      bufs.progress[idx] = showBar ? (record.progress as number) : -1;
+      if (status > 3.5 && status < 4.5 && entity.data?.status === undefined) dissolving = true;
+      // What the ring does is the engine's alone: a consumer overriding status has said the run
+      // is not what is happening. `aProgress` carries the sweep while running and the fraction of
+      // the hold elapsed while done; -1 asks the shader for the indeterminate arc.
+      const consumerSilent = entity.data?.status === undefined;
+      let progress = -1;
+      if (consumerSilent && engineStatus === 'running') {
+        const record = getEvaluationRecord(entity.id);
+        if (record?.progress !== undefined) progress = record.progress;
+      } else if (consumerSilent && engineStatus === 'success') {
+        const record = getEvaluationRecord(entity.id);
+        if (record) progress = Math.min(1, Math.max(0, (passNow - record.since) / SUCCESS_HOLD_MS));
+      }
+      bufs.progress[idx] = progress;
 
       if (isSelected) fgCount++;
       else bgCount++;
     }
 
     hasAnimatedStatusRef.current = hasAnimated;
+    hasDissolvingRef.current = dissolving;
 
     // Safety: never exceed buffer capacity to prevent WebGL errors
     bgMesh.count = Math.min(bgCount, capacity);

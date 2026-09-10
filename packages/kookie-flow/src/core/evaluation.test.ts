@@ -367,6 +367,19 @@ describe('status lifecycle', () => {
     }
   });
 
+  it('stamps each transition with when it happened, so a renderer can animate a state', async () => {
+    const w = world([ent('a', [sock('i', 1)])]);
+    const ev = new Evaluator(hostFor(w), async () => { await tick(); return {}; });
+    ev.markDirty('a');
+    const dirtyAt = ev.record('a')?.since ?? -1;
+    expect(dirtyAt).toBeGreaterThan(0);
+    await ev.settled();
+    const doneAt = ev.record('a')?.since ?? -1;
+    expect(ev.status('a')).toBe('success');
+    expect(doneAt).toBeGreaterThanOrEqual(dirtyAt);
+    ev.dispose();
+  });
+
   it('the success hold is at least long enough to be seen', () => {
     expect(SUCCESS_HOLD_MS).toBeGreaterThanOrEqual(1000);
   });

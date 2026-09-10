@@ -48,6 +48,12 @@ export type EvaluationMode = 'reactive' | 'manual';
 /** What the engine knows about one entity. */
 export interface EvaluationRecord {
   status: EvaluationStatus;
+  /**
+   * When the status was last set, in `performance.now()` milliseconds. A renderer that animates a
+   * state — the ring dissolving over the success hold — needs to know how far into it it is, and
+   * the engine is the only party that knows when the state began.
+   */
+  since: number;
   /** The thrown error's message, on `error`. Cleared on the next mark. */
   message?: string;
   /** 0..1 as reported through `ctx.progress`, on `running`. */
@@ -107,6 +113,13 @@ export interface EvaluationHost {
  * green and staying there.
  */
 export const SUCCESS_HOLD_MS = 1500;
+
+/** Monotonic milliseconds where the platform has them; wall-clock where it does not (SSR, old jsdom). */
+function now(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
 
 /** Key for a stored output value. Same shape `connectedSockets` and `widgetKey` use. */
 export function socketValueKey(entityId: string, socketId: string): string {
@@ -456,11 +469,12 @@ export class Evaluator {
       // Born idle, then transitioned, so the FIRST change on an entity is reported like every
       // other. Creating the record already holding the new status made prev === status below
       // and swallowed the initial `dirty` for every entity in the graph.
-      rec = { status: 'idle' };
+      rec = { status: 'idle', since: 0 };
       this.records.set(id, rec);
     }
     const prev = rec.status;
     rec.status = status;
+    rec.since = now();
     rec.message = message;
     if (status !== 'running') rec.progress = undefined;
 

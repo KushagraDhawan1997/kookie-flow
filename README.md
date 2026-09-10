@@ -317,8 +317,9 @@ What the library does on its own: marks an entity and everything downstream stal
 moves, a wire lands or leaves, or an upstream result arrives; runs reactive entities as soon as
 their inputs settle, siblings in parallel; stops at manual gates; aborts a run whose inputs changed
 and discards its result; holds a chain at a failed node rather than running on stale output; draws
-the status on the node — a stale ring, a pulsing ring while running, a progress bar along the
-bottom edge when `ctx.progress` is reported, and the thrown message under a failed node. Set
+the status on the node in its own outline — a quiet accent tint when stale, the ring sweeping
+the perimeter to `ctx.progress` while running (a travelling arc when nothing is reported), the
+full ring for a moment when done, red with the thrown message underneath when failed. Set
 `entity.data.status` / `statusMessage` yourself and your word wins over the engine's. Muted
 entities pass inputs through to outputs. Computed values live in the
 engine, not on entity data, and are not part of the graph you serialise.

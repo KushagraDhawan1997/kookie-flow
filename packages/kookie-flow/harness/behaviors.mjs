@@ -3495,46 +3495,73 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
     );
   }
 
-  // ---- the progress bar ----
-  // gen runs slow and reports 0.5 half way. Mid-run, a bar covers the left half of the bottom
-  // band in the running hue; after, it is gone. Both are read at the same pixel, so the claim is
-  // the DIFFERENCE, not a colour that depends on the theme.
+  // ---- the ring is the progress ----
+  // gen runs slow and reports 0.5 half way. The card's outline sweeps from top-centre clockwise,
+  // so at one half the RIGHT edge is lit and the LEFT edge is not — which pins the direction as
+  // well as the fact. Both edges are read at their midpoints, on the ring.
   await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', true));
-  const barPx = () =>
-    page.evaluate(() => {
+  const ringAt = (side, id = 'gen') =>
+    page.evaluate(([which, entityId]) => {
       const s = window.__harness.store.getState();
-      const e = s.entityMap.get('gen');
+      const e = s.entityMap.get(entityId);
       const { x, y, zoom } = s.viewport;
-      // Inside the bar: past the corner clamp on the left, in the 3px band above the border.
-      return window.__harness.readPixel(
-        Math.round((e.position.x + 80) * zoom + x),
-        Math.round((e.position.y + e.height - 6) * zoom + y)
-      );
-    });
-  const restPx = await barPx();
+      const px = which === 'right' ? e.position.x + e.width - 1 : e.position.x + 1;
+      return window.__harness.readPixel(Math.round(px * zoom + x), Math.round((e.position.y + e.height / 2) * zoom + y));
+    }, [side, id]);
+  const far = (a, c) => a && c && (Math.abs(a[0] - c[0]) > 20 || Math.abs(a[1] - c[1]) > 20 || Math.abs(a[2] - c[2]) > 20);
+  const restRight = await ringAt('right');
+  const restLeft = await ringAt('left');
   const genRun = page.evaluate(() => window.__harness.evaluate('gen'));
   await page.waitForTimeout(200);
   const midProgress = await page.evaluate(() => window.__harness.evaluationRecord('gen'));
-  const runningPx = await barPx();
+  const runRight = await ringAt('right');
+  const runLeft = await ringAt('left');
   await genRun;
-  await settle();
+  // Done: the ring completes and then dissolves over the hold, so a finished card stops looking
+  // like a selected one. Two samples on the right edge, early and late in the hold: the later
+  // must be closer to the idle hairline than the earlier.
+  await page.waitForTimeout(150);
+  const earlyDone = await ringAt('right');
+  await page.waitForTimeout(900);
+  const lateDone = await ringAt('right');
+  await page.waitForTimeout(900); // the rest of the hold, back to idle
   await page.evaluate(() => window.__harness.setEvaluationHook('slowGen', false));
   check(
     'INSTRUMENT: the record carries the reported progress while running',
     midProgress?.status === 'running' && midProgress?.progress === 0.5,
     JSON.stringify(midProgress)
   );
-  const far = (a, c) => a && c && (Math.abs(a[0] - c[0]) > 20 || Math.abs(a[1] - c[1]) > 20 || Math.abs(a[2] - c[2]) > 20);
   check(
-    'reported progress is drawn as a bar on the node while it runs',
-    far(restPx, runningPx),
-    `rest=${JSON.stringify(restPx)} running=${JSON.stringify(runningPx)}`
+    'at half progress the outline has swept the right edge',
+    far(restRight, runRight),
+    `rest=${JSON.stringify(restRight)} running=${JSON.stringify(runRight)}`
   );
-  const afterPx = await barPx();
   check(
-    'and the bar is gone once the run has landed',
-    !far(afterPx, restPx),
-    `rest=${JSON.stringify(restPx)} after=${JSON.stringify(afterPx)}`
+    'and not yet the left: the sweep is clockwise from the top',
+    !far(restLeft, runLeft),
+    `rest=${JSON.stringify(restLeft)} running=${JSON.stringify(runLeft)}`
+  );
+  // The two probes are not symmetric — one lands on the hairline, the other just inside it — so
+  // "both sides equal" was never a fair claim. Each side is compared to the SAME offset on `src`,
+  // an entity that has been idle since the drag; every card is the same width, so the sub-pixel
+  // geometry matches. Once gen is idle it must look like src.
+  const afterRight = await ringAt('right');
+  const afterLeft = await ringAt('left');
+  const idleRight = await ringAt('right', 'src');
+  const idleLeft = await ringAt('left', 'src');
+  {
+    const dist = (a, c) => (a && c ? Math.abs(a[0] - c[0]) + Math.abs(a[1] - c[1]) + Math.abs(a[2] - c[2]) : Infinity);
+    const idleRef = await ringAt('right', 'src');
+    check(
+      'done completes the ring and then dissolves it, so a finished card is not a selected one',
+      dist(earlyDone, idleRef) > dist(lateDone, idleRef) + 15,
+      `early=${JSON.stringify(earlyDone)} late=${JSON.stringify(lateDone)} idle=${JSON.stringify(idleRef)}`
+    );
+  }
+  check(
+    'and once the run has landed and the hold has passed, the card looks like an idle one again',
+    !far(afterRight, idleRight) && !far(afterLeft, idleLeft),
+    `gen right=${JSON.stringify(afterRight)} idle=${JSON.stringify(idleRight)}; left=${JSON.stringify(afterLeft)} idle=${JSON.stringify(idleLeft)}`
   );
 
   // ---- an error, and its message ----
