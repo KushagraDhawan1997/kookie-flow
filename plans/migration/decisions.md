@@ -516,3 +516,62 @@ a keydown and no change at all, and a flag left standing there makes the NEXT pi
   string, exactly as the cycling press did.
 - The OPEN list is drawn by the OS and is not styleable in any portable way. This is the same trade
   already accepted for the colour picker. The CLOSED control is matched exactly.
+
+---
+
+## D10. The GL layer draws light. D5's "keep it flat" is amended.
+
+**Owner ruling (2026-09-10): "The edges are plain old boring edges when we have the entire world
+of shaders at our disposal. Think Flora."**
+
+D5 said the GL layer stays flat and that material is a DOM-chrome concern. Half of that survives.
+The GL layer now draws LIGHT — a card's shadow, a selection's halo, an edge's glow and gradient,
+the moving spot on an animated edge, a socket's punch ring and hover halo, a well's inner shade
+and focus ring — every one an SDF falloff or a `uTime` read inside a pass that already existed.
+It still draws no MATERIAL: no glass, no `backdrop-filter`, no SVG filter, no DOM dress. The edit
+overlay is transparent for every kind and GL paints its focus, which is what fixed the select
+looking different when pressed (a serif fallback font, a 4px radius under an 8px well, and a
+border the GL well never drew).
+
+### The value stack, and why colours became pairs
+
+The canvas is the floor in dark (`--neutral-1`) and a step below the card in light
+(`--neutral-2`); a card sits a step ABOVE the floor in dark (`--neutral-3`) and is the white
+thing in light (`--neutral-1`); a well is punched through to the canvas in dark and one step
+below the card in light. One token index cannot play "the well" in both, so `THEME_COLORS` takes
+a `ColorTokenRef` — a key, or `{ light, dark }` — collapsed by `pickToken` at material build and
+never per frame. The DOM canvas colour renders the light half and writes the dark half in a
+layout effect: the token reader detects appearance from the DOM in a state initialiser, so an
+appearance-dependent style attribute was a hydration mismatch on every dark page.
+
+### What was measured, and what it cost
+
+Counts at 2000 entities with widgets and values, before → after: pan 6 → 6 KB/frame uploaded,
+zoom 2 → 2, hover 0 → 0 with zero React commits, drag 835 → 822 KB/frame. Draw calls unchanged.
+The cost is fill: edges are an 8px ribbon (core 2 + glow 3 each side) instead of 1.5px, sockets
+draw a 10px quad instead of 6, widgets grow 4px a side for the focus ring, node shadow quads grow
+28 world px a side. `EDGE_HALF_WIDTH` in edges.tsx is the dial if a DPR-2 Safari frame ever pays
+more than a millisecond for it. 180 browser laws pass unchanged; no geometry, hit box, socket
+position or row metric moved.
+
+### Three things the pass found that were not visual
+
+- The selection outline's `uCornerRadius` was created at 0 and never written, so every selection
+  and hover ring had been square around a rounded card.
+- The text renderer attached its glyph attributes in a passive effect, so one frame after every
+  capacity growth drew the new mesh against the previous capacity's buffers:
+  `glDrawElementsInstanced: Vertex buffer is not big enough`, in every graph big enough to grow.
+  Both init effects are layout effects now, in declaration order.
+- The grid's dirty check compared the store viewport and not the camera frustum, so a canvas that
+  got its size after the first frame kept a zero-sized grid plane. The harness had never painted a
+  grid at rest.
+
+### Deliberately not done
+
+- Node hover as material (shadow lift, a hover attribute on the node layer): the node `useFrame`
+  is the hottest loop here and hover stays a hairline in the selection pass.
+- A pressed state for checkbox and slider with duration: the shader paths exist (`aHover = 2`),
+  only `editingWidgetKey` drives them. Driving a press needs a store field; `editingWidgetKey`
+  cannot be reused because the text layer suppresses the readout on it.
+- Mid-edge resize handles are hit-testable and undrawn; the cursor is the affordance. The four
+  corner dots draw only while the selected entity is also hovered.
