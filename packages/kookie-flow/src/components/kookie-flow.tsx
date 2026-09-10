@@ -75,6 +75,7 @@ import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { findAlignment, type AlignRect } from '../utils/alignment';
+import { mediaEntity, mediaKindOfFile, mediaKindOfUrl } from '../utils/media-paste';
 import {
   hitVideoControls,
   isMeshDragStrip,
@@ -2840,6 +2841,55 @@ function InputHandler({
   const onFileDropRef = useRef(onFileDrop);
   onFileDropRef.current = onFileDrop;
 
+  /** A new entity's id: the same shape the text tool mints. */
+  const newEntityId = (kind: string) =>
+    `kf-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  /** Put entities on the board and tell the consumer, the one way everything here does it. */
+  const addEntities = useCallback(
+    (created: Entity[]) => {
+      if (created.length === 0) return;
+      store.getState().addElements({ entities: created });
+      onEntitiesChangeRef.current?.(created.map((entity) => ({ type: 'add', entity })));
+      // The last one is what was just made, so it is what is selected and what the cursor is on.
+      const last = created[created.length - 1];
+      store.getState().selectEntity(last.id);
+      store.getState().setFocusedEntityId(last.id);
+    },
+    [store]
+  );
+
+  /**
+   * Make entities for whatever media is in a set of files, and say whether any were.
+   *
+   * The URL is an object URL, and it is the app's to revoke — the entity holds it, so its life is
+   * the entity's life, and the library has no idea when that ends. A consumer that minds supplies
+   * `onFileDrop` and never reaches this.
+   */
+  const createMediaEntities = useCallback(
+    (files: File[], at: { x: number; y: number }): boolean => {
+      const created: Entity[] = [];
+      let offset = 0;
+      for (const file of files) {
+        const kind = mediaKindOfFile(file);
+        if (!kind) continue;
+        created.push(
+          mediaEntity(
+            kind,
+            URL.createObjectURL(file),
+            { x: at.x + offset, y: at.y + offset },
+            newEntityId(kind)
+          )
+        );
+        // Two pictures pasted at once should not land exactly on top of each other.
+        offset += 24;
+      }
+      addEntities(created);
+      return created.length > 0;
+    },
+    [addEntities]
+  );
+
   /**
    * Live mirrors of the two change callbacks, for the window keyboard listener.
    *
@@ -2881,25 +2931,72 @@ function InputHandler({
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     };
     const handleDrop = (e: DragEvent) => {
-      if (!onFileDropRef.current || !e.dataTransfer || !inBounds(e)) return;
-      e.preventDefault();
-      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      if (!e.dataTransfer || !inBounds(e)) return;
+      const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
+      e.preventDefault();
       const rect = cachedRectRef.current;
       const worldPos = screenToWorld(
         { x: e.clientX - rect.left, y: e.clientY - rect.top },
         store.getState().viewport,
       );
-      onFileDropRef.current(files, worldPos);
+      /**
+       * The consumer's callback wins where there is one: an app that uploads a file before it
+       * shows it must be the one to decide when it appears. Where there is none, the canvas makes
+       * the entity itself — a picture dropped on a canvas that does nothing reads as broken.
+       */
+      if (onFileDropRef.current) {
+        onFileDropRef.current(files, worldPos);
+        return;
+      }
+      createMediaEntities(files, worldPos);
+    };
+
+    /**
+     * Paste. Files first — a screenshot on the clipboard is a file — then a URL, which is what
+     * copying an image out of a browser usually gives.
+     */
+    const handlePaste = (e: ClipboardEvent) => {
+      const container = containerRef.current;
+      const active = document.activeElement;
+      // Only when the graph is what has focus. A window listener that acts on every paste on the
+      // page would put a node on the canvas when someone pastes into the host app's search box.
+      if (!container || !active || !(active === container || container.contains(active))) return;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      const data = e.clipboardData;
+      if (!data) return;
+
+      const { viewport } = store.getState();
+      const rect = cachedRectRef.current;
+      const centre = screenToWorld({ x: rect.width / 2, y: rect.height / 2 }, viewport);
+
+      const files = Array.from(data.files);
+      if (files.length > 0) {
+        if (onFileDropRef.current) {
+          e.preventDefault();
+          onFileDropRef.current(files, centre);
+          return;
+        }
+        if (createMediaEntities(files, centre)) e.preventDefault();
+        return;
+      }
+
+      const text = data.getData('text/plain');
+      const kind = text ? mediaKindOfUrl(text) : null;
+      if (!kind) return;
+      e.preventDefault();
+      addEntities([mediaEntity(kind, text.trim(), centre, newEntityId(kind))]);
     };
 
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('drop', handleDrop);
+    window.addEventListener('paste', handlePaste);
     return () => {
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('drop', handleDrop);
+      window.removeEventListener('paste', handlePaste);
     };
-  }, [store]);
+  }, [store, addEntities, createMediaEntities]);
 
   // Handle keyboard events for space key, Ctrl+A, and Escape
   useEffect(() => {

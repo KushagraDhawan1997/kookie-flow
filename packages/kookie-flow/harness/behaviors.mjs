@@ -4326,6 +4326,104 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
   );
 });
 
+// ---------------------------------------------------------------- paste
+/**
+ * Pasting a picture into a canvas has to put a picture on the canvas.
+ *
+ * A synthetic ClipboardEvent, because Playwright cannot put a file on the system clipboard. What
+ * is exercised is everything from the event onward: the focus gate, the classification, the
+ * entity that gets made, and the consumer being told about it.
+ */
+await withPage('scene=graph&count=2&seed=3&grid=0', async (page) => {
+  await page.waitForTimeout(300);
+
+  const before = await page.evaluate(() => window.__harness.counts().entities);
+
+  // Paste with the graph focused: a node appears.
+  const pasted = await page.evaluate(async () => {
+    document.querySelector('[data-kookie-flow-container]').focus();
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const file = new File([bytes], 'shot.png', { type: 'image/png' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    const s = window.__harness.store.getState();
+    const image = s.entities.find((e) => e.type === 'image');
+    return {
+      count: s.entities.length,
+      type: image?.type ?? null,
+      src: (image?.data?.src ?? '').slice(0, 5),
+      selected: image ? s.selectedEntityIds.has(image.id) : false,
+      consumerHasIt: window.__harness.consumerEntities().some((e) => e.id === image?.id),
+    };
+  });
+
+  check(
+    'pasting an image puts an image entity on the canvas',
+    pasted.count === before + 1 && pasted.type === 'image',
+    JSON.stringify(pasted)
+  );
+  check(
+    'and it holds a URL the renderer can load',
+    pasted.src === 'blob:',
+    pasted.src
+  );
+  check(
+    'and it is selected, because it is the thing that just arrived',
+    pasted.selected,
+    String(pasted.selected)
+  );
+  check(
+    'and the consumer was told, so a controlled board does not lose it on the next render',
+    pasted.consumerHasIt,
+    String(pasted.consumerHasIt)
+  );
+
+  // A URL on the clipboard is the other half of pasting an image out of a browser.
+  const urlPaste = await page.evaluate(async () => {
+    document.querySelector('[data-kookie-flow-container]').focus();
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'https://example.com/photo.jpg');
+    window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    const s = window.__harness.store.getState();
+    return s.entities.filter((e) => e.type === 'image').length;
+  });
+  check('a pasted image URL makes an entity too', urlPaste === 2, String(urlPaste));
+
+  // Text that is not media is left alone: a canvas must not eat an ordinary paste.
+  const textPaste = await page.evaluate(async () => {
+    document.querySelector('[data-kookie-flow-container]').focus();
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'just some words');
+    window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    return window.__harness.counts().entities;
+  });
+  check('and text that is not media makes nothing', textPaste === before + 2, String(textPaste));
+
+  // Focus elsewhere: the canvas must not answer a paste meant for the host page.
+  const away = await page.evaluate(async () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'shot.png', { type: 'image/png' }));
+    window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    const count = window.__harness.counts().entities;
+    input.remove();
+    return count;
+  });
+  check(
+    'a paste that belongs to the host page is left to the host page',
+    away === before + 2,
+    String(away)
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

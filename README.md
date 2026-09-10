@@ -290,6 +290,12 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Paste and drop.** Paste a screenshot, a picture, a clip or a `.glb` onto a focused canvas and
+it becomes an entity where the view is centred; drop one and it lands where you dropped it. A URL
+on the clipboard works the same way. Anything that is not media is left to the page, and a paste
+made while the host app has focus is never taken. Supply `onFileDrop` and the app decides instead
+— which is what you want if a file is uploaded before it is shown.
+
 **Tidy and export.** `flowRef.current.autoLayout()` puts every node in a column behind whatever
 feeds it — left to right, or `{ direction: 'vertical' }` — and returns the positions it chose, so
 a controlled consumer can report them onwards. `toImage()` gives a PNG data URL of what is on
