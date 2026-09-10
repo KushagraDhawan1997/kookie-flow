@@ -19,7 +19,7 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation, makeTypes, TYPE_TABLE } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -83,6 +83,8 @@ export interface HarnessApi {
   evaluationStatus(id: string): string;
   /** A computed output value. */
   socketValue(entityId: string, socketId: string): unknown;
+  /** Put a value on an output socket, the way a finished run does. */
+  setSocketValue(entityId: string, socketId: string, value: unknown): void;
   /** Open a manual gate. Resolves when the entity's own run settles. */
   evaluate(id: string): Promise<void>;
   /** The engine's whole record for one entity: status, message, progress. */
@@ -175,7 +177,7 @@ function params() {
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types' | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -890,6 +892,10 @@ function Probe() {
       evaluationStatus(id: string) {
         return (store as { getState(): { getEvaluationStatus(id: string): string } }).getState().getEvaluationStatus(id);
       },
+      setSocketValue(entityId: string, socketId: string, value: unknown) {
+        (store as { getState(): { setSocketValue(a: string, b: string, v: unknown): void } })
+          .getState().setSocketValue(entityId, socketId, value);
+      },
       socketValue(entityId: string, socketId: string) {
         return (store as { getState(): { getSocketValue(a: string, b: string): unknown } }).getState().getSocketValue(entityId, socketId);
       },
@@ -1206,6 +1212,7 @@ function App() {
     if (p.scene === 'media') return makeMedia();
     if (p.scene === 'evaluation') return makeEvaluation();
     if (p.scene === 'types') return makeTypes();
+    if (p.scene === 'preview') return makePreview();
     return makeGraph({
       count: p.count,
       seed: p.seed,

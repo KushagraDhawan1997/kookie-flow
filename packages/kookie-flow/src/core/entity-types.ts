@@ -66,6 +66,7 @@ export function resolveEntity(
   const inputs = entity.inputs === undefined ? def.inputs : undefined;
   const outputs = entity.outputs === undefined ? def.outputs : undefined;
   const width = entity.width === undefined ? def.defaultWidth : undefined;
+  const preview = entity.preview === undefined ? def.preview : undefined;
   const height = entity.height === undefined ? def.defaultHeight : undefined;
   // `data.label` is what the header draws. The table's label is a default for the type — "Add" —
   // and a node that carries its own keeps it.
@@ -76,7 +77,7 @@ export function resolveEntity(
 
   if (
     inputs === undefined && outputs === undefined && width === undefined &&
-    height === undefined && label === undefined
+    height === undefined && label === undefined && preview === undefined
   ) {
     // Nothing to fill. Cached too: the next sync skips even this check.
     cache?.resolved.set(entity, entity);
@@ -87,6 +88,7 @@ export function resolveEntity(
   if (inputs !== undefined) resolved.inputs = inputs;
   if (outputs !== undefined) resolved.outputs = outputs;
   if (width !== undefined) resolved.width = width;
+  if (preview !== undefined) resolved.preview = preview;
   if (height !== undefined) resolved.height = height;
   if (label !== undefined) {
     // Spread rather than replace: `data.values` must keep its identity, because a changed values

@@ -449,6 +449,12 @@ export interface Entity<T extends EntityData = EntityData> {
    */
   resizable?: boolean | { width?: boolean; height?: boolean };
 
+  /**
+   * A band inside the body showing what one of this entity's outputs holds — the picture a node
+   * made, the model it loaded. See `EntityPreview`.
+   */
+  preview?: EntityPreview;
+
   // ============================================================================
   // Grouping / Hierarchy
   // ============================================================================
@@ -469,6 +475,27 @@ export interface Entity<T extends EntityData = EntityData> {
    * - 'fixed': Frame uses explicit width/height
    */
   extent?: 'auto' | 'fixed';
+}
+
+/**
+ * A picture, a video or a model, drawn inside the entity's body.
+ *
+ * The node names one of its OUTPUT SOCKETS and the library draws whatever value is sitting on it.
+ * Values live in the evaluation engine rather than on entity data, so a node that produced an
+ * image shows it without the app echoing anything back through props — the same reason status
+ * lives there. `setSocketValue` fills the band for a graph that does not evaluate at all.
+ *
+ * What can be drawn: an image URL or data URI, a video URL, a `.glb`/`.gltf` model URL, or an
+ * `ImageBitmap`, `HTMLImageElement` or `HTMLCanvasElement` handed over directly. Anything else —
+ * a number, an object, nothing yet — leaves the band empty.
+ */
+export interface EntityPreview {
+  /** The output socket whose value is shown. */
+  socket: string;
+  /** The band's height in world pixels. Default: 160. */
+  height?: number;
+  /** Whether the picture fills the band and crops, or fits inside it whole. Default: 'cover'. */
+  fit?: 'cover' | 'contain';
 }
 
 /** Edge connecting two entities */
@@ -632,11 +659,8 @@ export interface EntityTypeDefinition<T extends EntityData = EntityData> {
    */
   inputs?: Socket[];
   outputs?: Socket[];
-  /** Preview configuration */
-  preview?: {
-    type: 'image' | 'mesh' | 'custom';
-    source?: string;
-  };
+  /** The preview band every node of this type has, unless the node states its own. */
+  preview?: EntityPreview;
   /** Custom React component for hybrid mode */
   component?: React.ComponentType<EntityComponentProps<T>>;
   /** Toolbar configuration — controls shown when this entity type is selected */

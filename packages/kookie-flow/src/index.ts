@@ -172,6 +172,7 @@ export type {
   CloneElementsResult,
   ElementsBatch,
   DeleteElementsBatch,
+  EntityPreview,
   FlowObject,
   InternalClipboard,
   PasteFromInternalOptions,

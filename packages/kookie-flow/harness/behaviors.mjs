@@ -3814,6 +3814,132 @@ await withPage('scene=types&grid=0&preserveBuffer=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- preview bands
+/**
+ * A node showing what it produced.
+ *
+ * `entity.preview` names one of the node's OUTPUT SOCKETS, and the band draws whatever value is
+ * sitting on it. The value is put there with `setSocketValue` — the same door a finished run uses
+ * — so these laws exercise the real path: the engine holds the value, and nothing is echoed back
+ * through props to make it appear.
+ */
+await withPage('scene=preview&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(500);
+
+  // The band's own rectangle, from the layout the library computed.
+  const bandRect = (id) =>
+    page.evaluate((entityId) => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get(entityId);
+      const rows = (e.outputs ?? []).length + (e.inputs ?? []).length;
+      const layout = s.socketLayout;
+      // Same arithmetic the renderer uses: sockets first, then the band, inset by the padding.
+      const top = layout.marginTop + rows * layout.rowHeight;
+      return {
+        x: e.position.x + layout.padding,
+        y: e.position.y + top,
+        w: e.width - layout.padding * 2,
+        h: e.preview?.height ?? 160,
+      };
+    }, id);
+
+  const pixelIn = (rect, fx, fy) =>
+    page.evaluate(([r, x, y]) => {
+      const { x: vx, y: vy, zoom } = window.__harness.store.getState().viewport;
+      return window.__harness.readPixel(
+        Math.round((r.x + r.w * x) * zoom + vx),
+        Math.round((r.y + r.h * y) * zoom + vy)
+      );
+    }, [rect, fx, fy]);
+
+  const differ = (a, b) => a && b && (Math.abs(a[0] - b[0]) > 20 || Math.abs(a[1] - b[1]) > 20 || Math.abs(a[2] - b[2]) > 20);
+
+  const imageRect = await bandRect('preview-image');
+  const emptyBefore = await pixelIn(imageRect, 0.5, 0.5);
+
+  // A picture arrives on the socket. Nothing else changes: no prop, no re-render.
+  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  await page.evaluate((src) => window.__harness.setSocketValue('preview-image', 'out', src),
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg==');
+  await page.waitForTimeout(400);
+  const afterImage = await pixelIn(imageRect, 0.5, 0.5);
+  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+
+  check(
+    'a value landing on the named socket fills the band',
+    differ(emptyBefore, afterImage),
+    `before=${JSON.stringify(emptyBefore)} after=${JSON.stringify(afterImage)}`
+  );
+  check(
+    'and it costs no React commits, because the value never went through props',
+    commitsAfter === commitsBefore,
+    `commits ${commitsBefore} -> ${commitsAfter}`
+  );
+
+  // The band is a band: the card is taller by exactly its height, and the rows above are where
+  // they would have been without it.
+  const geometry = await page.evaluate(() => ({
+    sockets: window.__harness.indexedSockets().filter(
+      (k) => k.entityId === 'preview-image' || k.entityId === 'preview-none'
+    ),
+  }));
+  const bandSocket = geometry.sockets.find((s) => s.entityId === 'preview-image');
+  const plainSocket = geometry.sockets.find((s) => s.entityId === 'preview-none');
+  check(
+    'the band sits under the sockets: a node with one has its output row where a node without has it',
+    !!bandSocket && !!plainSocket &&
+      Math.abs((bandSocket.y - 100) - (plainSocket.y - 100)) < 0.51,
+    `band=${JSON.stringify(bandSocket)} plain=${JSON.stringify(plainSocket)}`
+  );
+
+  // A socket holding something that is not media leaves the band empty rather than guessing.
+  const emptyRect = await bandRect('preview-empty');
+  const beforeWord = await pixelIn(emptyRect, 0.5, 0.5);
+  await page.evaluate(() => window.__harness.setSocketValue('preview-empty', 'out', 'done'));
+  await page.waitForTimeout(250);
+  const afterWord = await pixelIn(emptyRect, 0.5, 0.5);
+  check(
+    'a socket holding a word, not a picture, leaves the band as it was',
+    !differ(beforeWord, afterWord),
+    `before=${JSON.stringify(beforeWord)} after=${JSON.stringify(afterWord)}`
+  );
+
+  // A model on the socket goes through the render-target path, like a mesh entity.
+  const meshRect = await bandRect('preview-mesh');
+  const beforeMesh = await pixelIn(meshRect, 0.5, 0.5);
+  await page.evaluate(() => window.__harness.setSocketValue('preview-mesh', 'out', 'media/test.glb'));
+  await page.waitForTimeout(2500);
+  const afterMesh = await pixelIn(meshRect, 0.5, 0.5);
+  check(
+    'a model on the socket is rendered into the band',
+    differ(beforeMesh, afterMesh),
+    `before=${JSON.stringify(beforeMesh)} after=${JSON.stringify(afterMesh)}`
+  );
+
+  // And the band is clipped to the card: a pixel below the card's bottom edge is background.
+  const outside = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('preview-image');
+    const { x, y, zoom } = s.viewport;
+    const layout = s.socketLayout;
+    const rows = (e.outputs ?? []).length + (e.inputs ?? []).length;
+    const bottom = e.position.y + layout.marginTop + rows * layout.rowHeight + 160 + layout.padding;
+    return window.__harness.readPixel(
+      Math.round((e.position.x + e.width / 2) * zoom + x),
+      Math.round((bottom + 12) * zoom + y)
+    );
+  });
+  const background = await page.evaluate(() => {
+    const { x, y, zoom } = window.__harness.store.getState().viewport;
+    return window.__harness.readPixel(Math.round(20 * zoom + x), Math.round(600 * zoom + y));
+  });
+  check(
+    'the band stops at the card: below it is background, not picture',
+    !differ(outside, background),
+    `below=${JSON.stringify(outside)} background=${JSON.stringify(background)}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

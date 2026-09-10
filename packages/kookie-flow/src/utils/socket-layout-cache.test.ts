@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getEntitySocketLayout, resetLayoutGeneration } from './socket-layout-cache';
+import { getEntitySocketLayout, resetLayoutGeneration, DEFAULT_PREVIEW_HEIGHT } from './socket-layout-cache';
 import type { ResolvedSocketLayout } from './style-resolver';
 import type { Entity } from '../types';
 
@@ -98,5 +98,66 @@ describe('the layout cache is keyed on the layout it was built with', () => {
     const bBig = getEntitySocketLayout(b, SIZE_4);
     const aBig = getEntitySocketLayout(a, SIZE_4);
     expect(aBig.computedHeight).toBe(bBig.computedHeight);
+  });
+});
+
+describe('the preview band', () => {
+  const layout = SIZE_2;
+
+  const withPreview = (extra: Partial<Entity> = {}): Entity => ({
+    id: 'p',
+    type: 'default',
+    position: { x: 0, y: 0 },
+    data: {},
+    preview: { socket: 'out' },
+    ...extra,
+  });
+
+  it('sits under the sockets, so adding one moves nothing above it', () => {
+    const sockets = [{ id: 'out', name: 'Out', type: 'float' }];
+    const without = getEntitySocketLayout(
+      { id: 'a', type: 'default', position: { x: 0, y: 0 }, data: {}, outputs: sockets },
+      layout
+    );
+    const with_ = getEntitySocketLayout(withPreview({ id: 'b', outputs: sockets }), layout);
+    expect(with_.outputs[0].yOffset).toBe(without.outputs[0].yOffset);
+    expect(with_.previewY).toBeGreaterThan(without.outputs[0].yOffset);
+  });
+
+  it('grows the card by exactly its own height', () => {
+    const plain = getEntitySocketLayout(
+      { id: 'a', type: 'default', position: { x: 0, y: 0 }, data: {}, outputs: [{ id: 'out', name: 'Out', type: 'float' }] },
+      layout
+    );
+    const tall = getEntitySocketLayout(
+      withPreview({ id: 'b', outputs: [{ id: 'out', name: 'Out', type: 'float' }], preview: { socket: 'out', height: 200 } }),
+      layout
+    );
+    expect(tall.computedHeight - plain.computedHeight).toBe(200);
+  });
+
+  it('takes a default height when the entity names none', () => {
+    expect(getEntitySocketLayout(withPreview(), layout).previewHeight).toBe(DEFAULT_PREVIEW_HEIGHT);
+  });
+
+  it('an entity with a band and no sockets does not also get the empty row', () => {
+    // The empty-entity minimum exists so a socketless card is not a sliver. A band fills it.
+    const band = getEntitySocketLayout(withPreview({ preview: { socket: 'out', height: 100 } }), layout);
+    expect(band.computedHeight).toBe(layout.marginTop + 100 + layout.padding);
+  });
+
+  it('no preview means no band, and the number says so rather than being undefined', () => {
+    const plain = getEntitySocketLayout(
+      { id: 'a', type: 'default', position: { x: 0, y: 0 }, data: {} },
+      layout
+    );
+    expect(plain.previewHeight).toBe(0);
+    expect(plain.previewY).toBe(0);
+  });
+
+  it('changing the band height recomputes rather than serving the cached layout', () => {
+    const first = getEntitySocketLayout(withPreview({ preview: { socket: 'out', height: 100 } }), layout);
+    const second = getEntitySocketLayout(withPreview({ preview: { socket: 'out', height: 240 } }), layout);
+    expect(second.computedHeight - first.computedHeight).toBe(140);
   });
 });

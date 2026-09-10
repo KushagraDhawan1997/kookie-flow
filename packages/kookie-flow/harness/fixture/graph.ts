@@ -572,6 +572,41 @@ export function makeTypes(): Fixture {
   };
 }
 
+/**
+ * Preview bands: a picture, a model, and a socket holding something that is not media.
+ *
+ * The values live where a real one would — on the engine's output sockets, put there by
+ * `setSocketValue` rather than by entity data, because that is the path a node's own result takes.
+ */
+export function makePreview(): Fixture {
+  const node = (id: string, x: number, socket: string, height?: number): Entity => ({
+    id,
+    type: 'default',
+    position: { x, y: 100 },
+    width: 240,
+    data: { label: id },
+    outputs: [{ id: socket, name: 'Out', type: 'image' }],
+    preview: { socket, height },
+  });
+  return {
+    entities: [
+      node('preview-image', 60, 'out'),
+      node('preview-mesh', 360, 'out'),
+      node('preview-empty', 660, 'out'),
+      // No band at all, as the height reference every band law measures against.
+      {
+        id: 'preview-none',
+        type: 'default',
+        position: { x: 960, y: 100 },
+        width: 240,
+        data: { label: 'preview-none' },
+        outputs: [{ id: 'out', name: 'Out', type: 'image' }],
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}
+
 export function makeWidgets(): Fixture {
   return {
     entities: [

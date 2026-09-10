@@ -23,6 +23,7 @@ import { TextEntities } from './text-entities';
 import { ImageEntities } from './image-entities';
 import { VideoEntities } from './video-entities';
 import { MeshEntities } from './mesh-entities';
+import { PreviewEntities } from './preview-entities';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -3268,6 +3269,7 @@ function FlowCanvas({
         <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
         <VideoEntities onEntitiesChange={onEntitiesChange} />
         <MeshEntities onEntitiesChange={onEntitiesChange} />
+        <PreviewEntities />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />
         {showWidgets && (

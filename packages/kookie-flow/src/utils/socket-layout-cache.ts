@@ -50,7 +50,14 @@ export interface EntitySocketLayoutCache {
   inputs: ComputedSocketPosition[];
   /** Total computed entity height based on socket layout */
   computedHeight: number;
+  /** Top of the preview band, from the entity's top edge. 0 when there is no band. */
+  previewY: number;
+  /** The band's height. 0 when the entity has no preview. */
+  previewHeight: number;
 }
+
+/** What a preview band takes when the entity names no height of its own. */
+export const DEFAULT_PREVIEW_HEIGHT = 160;
 
 // ============================================================================
 // Cache Implementation
@@ -72,6 +79,15 @@ const entityCacheGen = new WeakMap<Entity, number>();
 const entityIdCache = new Map<string, {
   inputs: Socket[] | undefined;
   outputs: Socket[] | undefined;
+  /**
+   * The other two things the layout depends on.
+   *
+   * They are here because this fast path answers on identity alone, and anything it does not
+   * compare is a change it cannot see: a preview band appearing, or an entity changing type into
+   * a headerless one, both moved every row below them while this returned the previous answer.
+   */
+  preview: Entity['preview'];
+  type: string;
   layout: EntitySocketLayoutCache;
 }>();
 
@@ -125,7 +141,10 @@ function buildCacheKey(entity: Entity): string {
   const outputs = (entity.outputs ?? [])
     .map((s) => `${s.id}:${s.layout ?? 'i'}:${s.rows ?? 1}:${s.height ?? 0}`)
     .join(',');
-  return `${entity.type}|${inputs}|${outputs}`;
+  const preview = entity.preview
+    ? `${entity.preview.socket}:${entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT}`
+    : '';
+  return `${entity.type}|${inputs}|${outputs}|${preview}`;
 }
 
 /**
@@ -221,13 +240,28 @@ function computeEntitySocketLayout(
   }
 
   // Ensure minimum height even if no sockets
-  if (outputs.length === 0 && inputs.length === 0) {
+  if (outputs.length === 0 && inputs.length === 0 && !entity.preview) {
     currentY += baseLayout.rowHeight;
+  }
+
+  /**
+   * The preview band goes UNDER the sockets, at the bottom of the body.
+   *
+   * Under, so that adding one to an existing node moves nothing: every socket keeps the row it
+   * had and the card simply grows downwards. It is inset by the body's padding on each side,
+   * like everything else drawn in the body.
+   */
+  let previewY = 0;
+  let previewHeight = 0;
+  if (entity.preview) {
+    previewHeight = Math.max(0, entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT);
+    previewY = currentY;
+    currentY += previewHeight;
   }
 
   const computedHeight = currentY + baseLayout.padding;
 
-  return { outputs, inputs, computedHeight };
+  return { outputs, inputs, computedHeight, previewY, previewHeight };
 }
 
 /**
@@ -260,7 +294,9 @@ export function getEntitySocketLayout(
   const idCached = entityIdCache.get(entity.id);
   if (idCached &&
       idCached.inputs === entity.inputs &&
-      idCached.outputs === entity.outputs) {
+      idCached.outputs === entity.outputs &&
+      idCached.preview === entity.preview &&
+      idCached.type === entity.type) {
     // Socket config unchanged — reuse layout, update WeakMap for future hits
     entityLayoutCache.set(entity, idCached.layout);
     // Use '_' sentinel (truthy) so WeakMap fast path 1 fires on subsequent same-ref lookups
@@ -293,6 +329,8 @@ export function getEntitySocketLayout(
   entityIdCache.set(entity.id, {
     inputs: entity.inputs,
     outputs: entity.outputs,
+    preview: entity.preview,
+    type: entity.type,
     layout,
   });
 

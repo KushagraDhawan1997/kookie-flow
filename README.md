@@ -314,6 +314,18 @@ The node always wins: anything it states itself is kept, and an empty list (`inp
 statement, not a gap. Filling happens once, where entities enter the store, so what you passed
 stays yours and every socket is drawn and clickable on the first frame.
 
+**Preview.** A node can show what it produced, inside its own body:
+
+```tsx
+{ id: 'gen', type: 'ai/generate', position, data: {}, preview: { socket: 'image' } }
+```
+
+The band names an output socket and draws whatever value is sitting on it — a picture, a video,
+a `.glb` model, or an `ImageBitmap` handed straight over. Values live in the engine, so a run
+filling one costs no React render; `setSocketValue` fills it in a graph that does not evaluate.
+The band sits under the sockets, so adding one moves nothing above it, and a socket holding
+something that is not media leaves it empty rather than guessing.
+
 **Evaluation.** The library orchestrates and never computes. You give it one function; it
 decides when to call it, with what, and what to do with the answer.
 
