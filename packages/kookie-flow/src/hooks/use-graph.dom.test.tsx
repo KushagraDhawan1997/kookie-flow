@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useGraph } from './use-graph';
-import type { Entity, UseGraphReturn } from '../index';
+import { useGraph, type UseGraphReturn } from './use-graph';
+import type { Entity } from '../types';
 
 /**
  * Undo, through the hook a consumer actually holds.
@@ -77,26 +77,27 @@ describe('undo through useGraph', () => {
     expect(g.api().entities).toHaveLength(1);
 
     act(() => { g.api().undo(); });
-    expect(g.api().entities.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(g.api().entities.map((e: Entity) => e.id)).toEqual(['a', 'b']);
     g.unmount();
   });
 
   it('off by default, so a consumer with its own history does not end up with two', () => {
-    let latest: UseGraphReturn | null = null;
+    const seen: UseGraphReturn[] = [];
     function Harness() {
-      latest = useGraph({ initialEntities: entities });
+      seen.push(useGraph({ initialEntities: entities }));
       return null;
     }
+    const api = () => seen[seen.length - 1];
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
     act(() => { root.render(<Harness />); });
     act(() => {
-      latest?.onEntitiesChange([{ type: 'position', id: 'a', position: { x: 5, y: 5 } }]);
+      api().onEntitiesChange([{ type: 'position', id: 'a', position: { x: 5, y: 5 } }]);
     });
-    expect(latest?.canUndo).toBe(false);
-    act(() => { latest?.undo(); });
-    expect(latest?.entities[0].position.x).toBe(5);
+    expect(api().canUndo).toBe(false);
+    act(() => { api().undo(); });
+    expect(api().entities[0].position.x).toBe(5);
     act(() => { root.unmount(); });
     host.remove();
   });
