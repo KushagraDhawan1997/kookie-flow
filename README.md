@@ -290,6 +290,11 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Undo.** `useGraph({ history: true })` returns `undo`, `redo`, `canUndo`, `canRedo`, and binds
+Cmd/Ctrl+Z while the graph has focus — scoped to the graph, so a page embedding a canvas keeps
+undo in its own fields. A drag is one step however many frames it took; a selection is not a step
+at all. Off by default, so a consumer with its own history does not end up with two.
+
 **Saving.** `flowRef.current.toObject()` returns `{ entities, edges, viewport }` — the graph as
 data, ready for `JSON.stringify`. It is what `<KookieFlow entities edges>` takes back in. Pending
 widget edits are folded in, so a save holds what the person can see; selection and drag state are

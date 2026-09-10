@@ -1,15 +1,50 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Entity, Edge, EntityChange, EdgeChange, Connection, TextEntityData } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
+import {
+  DEFAULT_HISTORY_LIMIT,
+  coalesceKey,
+  emptyHistory,
+  isEdit,
+  record,
+  stepBack,
+  stepForward,
+  type HistoryState,
+} from '../core/history';
 
 export interface UseGraphOptions {
   initialEntities?: Entity[];
   initialEdges?: Edge[];
+  /**
+   * Undo and redo over the graph this hook holds. Off by default, because a consumer with its own
+   * history — a document store, a server, a CRDT — must not end up with two.
+   *
+   * `true` takes the defaults: fifty steps, and Cmd/Ctrl+Z bound while the graph has focus.
+   */
+  history?: boolean | UseGraphHistoryOptions;
+}
+
+export interface UseGraphHistoryOptions {
+  /** How many steps back. Default: 50. */
+  limit?: number;
+  /**
+   * Bind Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z (and Ctrl+Y) while the graph has focus. Default: true.
+   *
+   * Scoped to the graph on purpose: a page that embeds a canvas must not lose undo in its own
+   * text fields, which is exactly what a bare window listener does.
+   */
+  shortcuts?: boolean;
 }
 
 export interface UseGraphReturn {
   entities: Entity[];
   edges: Edge[];
+  /** Step back. Does nothing at the beginning of history, or when history is off. */
+  undo: () => void;
+  /** Step forward again. */
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   setEntities: React.Dispatch<React.SetStateAction<Entity[]>>;
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   onEntitiesChange: (changes: EntityChange[]) => void;
@@ -29,13 +64,103 @@ export interface UseGraphReturn {
  * Use this for controlled component pattern.
  */
 export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
-  const { initialEntities = [], initialEdges = [] } = options;
+  const { initialEntities = [], initialEdges = [], history = false } = options;
 
   // Use React state for external management
   const [entities, setEntities] = useState<Entity[]>(initialEntities);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
 
+  // ---- history ----
+
+  const historyOn = history !== false;
+  const historyLimit =
+    (typeof history === 'object' ? history.limit : undefined) ?? DEFAULT_HISTORY_LIMIT;
+  const historyShortcuts =
+    (typeof history === 'object' ? history.shortcuts : undefined) ?? true;
+
+  /**
+   * The stack lives in a ref, and only its two booleans live in state.
+   *
+   * Recording happens inside the change handlers, which run during gestures — a snapshot per
+   * frame of a drag through `setState` would re-render the consumer sixty times a second, which
+   * is the one thing this library will not do. What React needs to know is whether the buttons
+   * are enabled, and that changes a handful of times.
+   */
+  const historyRef = useRef<HistoryState>(emptyHistory());
+  const graphRef = useRef<{ entities: Entity[]; edges: Edge[] }>({ entities, edges });
+  graphRef.current = { entities, edges };
+  const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+
+  const syncHistoryFlags = useCallback(() => {
+    const { past, future } = historyRef.current;
+    const canUndo = past.length > 0;
+    const canRedo = future.length > 0;
+    setHistoryFlags((prev) =>
+      prev.canUndo === canUndo && prev.canRedo === canRedo ? prev : { canUndo, canRedo }
+    );
+  }, []);
+
+  /** Remember where the graph is, before a batch of changes is applied to it. */
+  const remember = useCallback(
+    (changes: readonly (EntityChange | EdgeChange)[]) => {
+      if (!historyOn || !isEdit(changes)) return;
+      historyRef.current = record(
+        historyRef.current,
+        graphRef.current,
+        coalesceKey(changes),
+        Date.now(),
+        historyLimit
+      );
+      syncHistoryFlags();
+    },
+    [historyOn, historyLimit, syncHistoryFlags]
+  );
+
+  const undo = useCallback(() => {
+    if (!historyOn) return;
+    const step = stepBack(historyRef.current, graphRef.current);
+    if (!step) return;
+    historyRef.current = step.state;
+    setEntities(step.restored.entities);
+    setEdges(step.restored.edges);
+    syncHistoryFlags();
+  }, [historyOn, syncHistoryFlags]);
+
+  const redo = useCallback(() => {
+    if (!historyOn) return;
+    const step = stepForward(historyRef.current, graphRef.current);
+    if (!step) return;
+    historyRef.current = step.state;
+    setEntities(step.restored.entities);
+    setEdges(step.restored.edges);
+    syncHistoryFlags();
+  }, [historyOn, syncHistoryFlags]);
+
+  /**
+   * Cmd/Ctrl+Z, and its two redo spellings, while the graph has focus.
+   *
+   * The focus test is what keeps a page that embeds a canvas from losing undo in its own text
+   * fields. A bare window listener would take the key everywhere on the page, which is a defect
+   * this codebase has already recorded once for the graph's own shortcuts.
+   */
+  useEffect(() => {
+    if (!historyOn || !historyShortcuts) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const active = document.activeElement;
+      if (!active || !active.closest('[data-kookie-flow-container]')) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [historyOn, historyShortcuts, undo, redo]);
+
   const onEntitiesChange = useCallback((changes: EntityChange[]) => {
+    remember(changes);
     setEntities((nds) => {
       const nextEntities = [...nds];
 
@@ -108,9 +233,10 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
 
       return nextEntities;
     });
-  }, []);
+  }, [remember]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    remember(changes);
     setEdges((eds) => {
       const nextEdges = [...eds];
 
@@ -151,10 +277,12 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
 
       return nextEdges;
     });
-  }, []);
+  }, [remember]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
+    // A new wire is an edit like any other, and arrives by its own door rather than as a change.
+    remember([{ type: 'add', edge: { id: 'pending', source: connection.source, target: connection.target } }]);
 
     const newEdge: Edge = {
       id: `${connection.source}-${connection.sourceSocket ?? 'out'}-${connection.target}-${connection.targetSocket ?? 'in'}`,
@@ -166,7 +294,7 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     };
 
     setEdges((eds) => [...eds, newEdge]);
-  }, []);
+  }, [remember]);
 
   const addEntity = useCallback((entity: Entity) => {
     setEntities((nds) => [...nds, entity]);
@@ -204,6 +332,10 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
   return {
     entities,
     edges,
+    undo,
+    redo,
+    canUndo: historyFlags.canUndo,
+    canRedo: historyFlags.canRedo,
     setEntities,
     setEdges,
     onEntitiesChange,
