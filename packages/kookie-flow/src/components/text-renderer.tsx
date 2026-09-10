@@ -456,6 +456,17 @@ export function MultiWeightTextRenderer({
   const tokens = useTheme();
   const { resolved: style, config } = useEntityStyle();
   const socketLayout = useSocketLayout();
+
+  /**
+   * Where a node's own text starts, measured from the body's outer edge.
+   *
+   * This was the literal 12 in four places, which happened to equal the size-2 body padding and
+   * tracked nothing: at size 1 or 4 the body padded 8 or 24 and the labels still printed at 12,
+   * while the WIDGETS beside them did follow the padding — so the two layers disagreed the moment
+   * a consumer set `size`. It is `padding + borderWidth` because the body is border-box, the same
+   * inset `widget-geometry` gives the widget boxes on the same rows.
+   */
+  const contentInset = socketLayout.padding + socketLayout.borderWidth;
   const fontContext = useFont();
 
   // Resolve fonts: props take precedence, then context
@@ -585,7 +596,7 @@ export function MultiWeightTextRenderer({
             : entity.position.y + verticalOffset;
         const entry: TextEntry = {
           text: label,
-          position: [entity.position.x + 12, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+          position: [entity.position.x + contentInset, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
           fontSize: 12,
           color: primaryTextColor,
           anchor: 'left',
@@ -646,7 +657,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + width - 12, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+                position: [entity.position.x + width - contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'right',
@@ -678,7 +689,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + 12, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+                position: [entity.position.x + contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'left',
@@ -756,7 +767,7 @@ export function MultiWeightTextRenderer({
               key,
               values?.[socket.id] ?? config.defaultValue
             );
-            const placed = widgetValueText(config, value, box);
+            const placed = widgetValueText(config, value, box, style.widgetPad);
             if (!placed) continue;
 
             /**

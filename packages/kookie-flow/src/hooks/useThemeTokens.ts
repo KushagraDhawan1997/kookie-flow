@@ -46,11 +46,79 @@ export interface ThemeTokens {
   '--radius-surface-3': number;
   '--radius-surface-4': number;
 
+  /**
+   * The v2 LAYOUT families, read unshifted.
+   *
+   * The `+1` shift below applies to `--space-N` and to nothing else: the space palette is the raw
+   * material v1 and v2 index differently, while these are named bands that mean the same thing on
+   * both. Each is the number v2 hands a component of that role at that index, so a value in the
+   * package can say WHICH ROLE it is playing instead of landing on a `--space-N` that happens to
+   * have the right magnitude.
+   */
+  '--surface-p-1': number;
+  '--surface-p-2': number;
+  '--surface-p-3': number;
+  '--surface-p-4': number;
+  '--control-height-1': number;
+  '--control-height-2': number;
+  '--control-height-3': number;
+  '--control-height-4': number;
+  '--control-px-1': number;
+  '--control-px-2': number;
+  '--control-px-3': number;
+  '--control-px-4': number;
+  /**
+   * A control's inner inset when its own corner is a pill.
+   *
+   * v2 sets `padding-inline` from this unconditionally and lets the token carry the bump — at every
+   * radius level below `full` it IS `--control-px-N`, and at `full` it steps up (10 -> 14 at index
+   * 2) because a capsule's curve eats the corner the text would otherwise sit in. Roundness buys
+   * its own padding, and it is a token rather than a formula.
+   */
+  '--control-px-pill-1': number;
+  '--control-px-pill-2': number;
+  '--control-px-pill-3': number;
+  '--control-px-pill-4': number;
+  '--control-gap-1': number;
+  '--control-gap-2': number;
+  '--control-gap-3': number;
+  '--control-gap-4': number;
+  '--row-inset-1': number;
+  '--row-inset-2': number;
+  '--row-inset-3': number;
+  '--row-inset-4': number;
+  '--line-height-1': number;
+  '--line-height-2': number;
+  '--line-height-3': number;
+  '--line-height-4': number;
+  /** The checkbox square and the slider grip. Byte-identical to `--line-height-N` in v2, which is
+   * what makes a mark land on its own label's line with no alignment rule at all. */
+  '--mark-1': number;
+  '--mark-2': number;
+  '--mark-3': number;
+  '--mark-4': number;
+  '--radius-control-1': number;
+  '--radius-control-2': number;
+  '--radius-control-3': number;
+  '--radius-control-4': number;
+  '--icon-size-1': number;
+  '--icon-size-2': number;
+  '--icon-size-3': number;
+  '--icon-size-4': number;
+  '--slider-track-1': number;
+  '--slider-track-2': number;
+  '--slider-track-3': number;
+  '--slider-track-4': number;
+  /** `.kui-surface` and `.kui-control` are border-box and declare their border beside their
+   * padding, so every content inset in this package is `padding + borderWidth`. */
+  '--border-width': number;
+
   // Typography - Font sizes (resolved to pixels)
   // Used for entity labels and widget sizing alignment
   '--font-size-1': number;
   '--font-size-2': number;
   '--font-size-3': number;
+  '--font-size-4': number;
 
   // Typography - Line heights (resolved to pixels)
   // Used for header heights to match text vertical rhythm
@@ -138,10 +206,60 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--radius-surface-3': 16,
   '--radius-surface-4': 20,
 
+  // The layout families at v2's default density and fine pointer, scale 1. v1 publishes none of
+  // these names, so a v1 host lands here — and these are the numbers v1's own components used.
+  '--surface-p-1': 16,
+  '--surface-p-2': 24,
+  '--surface-p-3': 32,
+  '--surface-p-4': 40,
+  '--control-height-1': 28,
+  '--control-height-2': 32,
+  '--control-height-3': 40,
+  '--control-height-4': 48,
+  '--control-px-1': 8,
+  '--control-px-2': 10,
+  '--control-px-3': 13,
+  '--control-px-4': 16,
+  // The non-pill values: v1 has no capsule level to bump for.
+  '--control-px-pill-1': 8,
+  '--control-px-pill-2': 10,
+  '--control-px-pill-3': 13,
+  '--control-px-pill-4': 16,
+  '--control-gap-1': 4,
+  '--control-gap-2': 8,
+  '--control-gap-3': 8,
+  '--control-gap-4': 12,
+  '--row-inset-1': 4,
+  '--row-inset-2': 5,
+  '--row-inset-3': 5,
+  '--row-inset-4': 6,
+  '--line-height-1': 16,
+  '--line-height-2': 20,
+  '--line-height-3': 24,
+  '--line-height-4': 26,
+  '--mark-1': 16,
+  '--mark-2': 20,
+  '--mark-3': 24,
+  '--mark-4': 26,
+  '--radius-control-1': 4,
+  '--radius-control-2': 6,
+  '--radius-control-3': 8,
+  '--radius-control-4': 10,
+  '--icon-size-1': 16,
+  '--icon-size-2': 16,
+  '--icon-size-3': 20,
+  '--icon-size-4': 24,
+  '--slider-track-1': 4,
+  '--slider-track-2': 5,
+  '--slider-track-3': 6,
+  '--slider-track-4': 7,
+  '--border-width': 1,
+
   // Typography - Font sizes (assuming scaling = 1)
   '--font-size-1': 12,
   '--font-size-2': 14,
   '--font-size-3': 16,
+  '--font-size-4': 18,
 
   // Typography - Line heights (assuming scaling = 1)
 
@@ -310,10 +428,58 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--radius-surface-3': getCSSVarPx(styles, '--radius-surface-3', FALLBACK_TOKENS['--radius-surface-3']),
     '--radius-surface-4': getCSSVarPx(styles, '--radius-surface-4', FALLBACK_TOKENS['--radius-surface-4']),
 
+    // The layout families, read UNSHIFTED — the space shift above is for `--space-N` alone.
+    '--surface-p-1': getCSSVarPx(styles, '--surface-p-1', FALLBACK_TOKENS['--surface-p-1']),
+    '--surface-p-2': getCSSVarPx(styles, '--surface-p-2', FALLBACK_TOKENS['--surface-p-2']),
+    '--surface-p-3': getCSSVarPx(styles, '--surface-p-3', FALLBACK_TOKENS['--surface-p-3']),
+    '--surface-p-4': getCSSVarPx(styles, '--surface-p-4', FALLBACK_TOKENS['--surface-p-4']),
+    '--control-height-1': getCSSVarPx(styles, '--control-height-1', FALLBACK_TOKENS['--control-height-1']),
+    '--control-height-2': getCSSVarPx(styles, '--control-height-2', FALLBACK_TOKENS['--control-height-2']),
+    '--control-height-3': getCSSVarPx(styles, '--control-height-3', FALLBACK_TOKENS['--control-height-3']),
+    '--control-height-4': getCSSVarPx(styles, '--control-height-4', FALLBACK_TOKENS['--control-height-4']),
+    '--control-px-1': getCSSVarPx(styles, '--control-px-1', FALLBACK_TOKENS['--control-px-1']),
+    '--control-px-2': getCSSVarPx(styles, '--control-px-2', FALLBACK_TOKENS['--control-px-2']),
+    '--control-px-3': getCSSVarPx(styles, '--control-px-3', FALLBACK_TOKENS['--control-px-3']),
+    '--control-px-4': getCSSVarPx(styles, '--control-px-4', FALLBACK_TOKENS['--control-px-4']),
+    '--control-px-pill-1': getCSSVarPx(styles, '--control-px-pill-1', FALLBACK_TOKENS['--control-px-pill-1']),
+    '--control-px-pill-2': getCSSVarPx(styles, '--control-px-pill-2', FALLBACK_TOKENS['--control-px-pill-2']),
+    '--control-px-pill-3': getCSSVarPx(styles, '--control-px-pill-3', FALLBACK_TOKENS['--control-px-pill-3']),
+    '--control-px-pill-4': getCSSVarPx(styles, '--control-px-pill-4', FALLBACK_TOKENS['--control-px-pill-4']),
+    '--control-gap-1': getCSSVarPx(styles, '--control-gap-1', FALLBACK_TOKENS['--control-gap-1']),
+    '--control-gap-2': getCSSVarPx(styles, '--control-gap-2', FALLBACK_TOKENS['--control-gap-2']),
+    '--control-gap-3': getCSSVarPx(styles, '--control-gap-3', FALLBACK_TOKENS['--control-gap-3']),
+    '--control-gap-4': getCSSVarPx(styles, '--control-gap-4', FALLBACK_TOKENS['--control-gap-4']),
+    '--row-inset-1': getCSSVarPx(styles, '--row-inset-1', FALLBACK_TOKENS['--row-inset-1']),
+    '--row-inset-2': getCSSVarPx(styles, '--row-inset-2', FALLBACK_TOKENS['--row-inset-2']),
+    '--row-inset-3': getCSSVarPx(styles, '--row-inset-3', FALLBACK_TOKENS['--row-inset-3']),
+    '--row-inset-4': getCSSVarPx(styles, '--row-inset-4', FALLBACK_TOKENS['--row-inset-4']),
+    '--line-height-1': getCSSVarPx(styles, '--line-height-1', FALLBACK_TOKENS['--line-height-1']),
+    '--line-height-2': getCSSVarPx(styles, '--line-height-2', FALLBACK_TOKENS['--line-height-2']),
+    '--line-height-3': getCSSVarPx(styles, '--line-height-3', FALLBACK_TOKENS['--line-height-3']),
+    '--line-height-4': getCSSVarPx(styles, '--line-height-4', FALLBACK_TOKENS['--line-height-4']),
+    '--mark-1': getCSSVarPx(styles, '--mark-1', FALLBACK_TOKENS['--mark-1']),
+    '--mark-2': getCSSVarPx(styles, '--mark-2', FALLBACK_TOKENS['--mark-2']),
+    '--mark-3': getCSSVarPx(styles, '--mark-3', FALLBACK_TOKENS['--mark-3']),
+    '--mark-4': getCSSVarPx(styles, '--mark-4', FALLBACK_TOKENS['--mark-4']),
+    '--radius-control-1': getCSSVarPx(styles, '--radius-control-1', FALLBACK_TOKENS['--radius-control-1']),
+    '--radius-control-2': getCSSVarPx(styles, '--radius-control-2', FALLBACK_TOKENS['--radius-control-2']),
+    '--radius-control-3': getCSSVarPx(styles, '--radius-control-3', FALLBACK_TOKENS['--radius-control-3']),
+    '--radius-control-4': getCSSVarPx(styles, '--radius-control-4', FALLBACK_TOKENS['--radius-control-4']),
+    '--icon-size-1': getCSSVarPx(styles, '--icon-size-1', FALLBACK_TOKENS['--icon-size-1']),
+    '--icon-size-2': getCSSVarPx(styles, '--icon-size-2', FALLBACK_TOKENS['--icon-size-2']),
+    '--icon-size-3': getCSSVarPx(styles, '--icon-size-3', FALLBACK_TOKENS['--icon-size-3']),
+    '--icon-size-4': getCSSVarPx(styles, '--icon-size-4', FALLBACK_TOKENS['--icon-size-4']),
+    '--slider-track-1': getCSSVarPx(styles, '--slider-track-1', FALLBACK_TOKENS['--slider-track-1']),
+    '--slider-track-2': getCSSVarPx(styles, '--slider-track-2', FALLBACK_TOKENS['--slider-track-2']),
+    '--slider-track-3': getCSSVarPx(styles, '--slider-track-3', FALLBACK_TOKENS['--slider-track-3']),
+    '--slider-track-4': getCSSVarPx(styles, '--slider-track-4', FALLBACK_TOKENS['--slider-track-4']),
+    '--border-width': getCSSVarPx(styles, '--border-width', FALLBACK_TOKENS['--border-width']),
+
     // Typography - Font sizes
     '--font-size-1': getCSSVarPx(styles, '--font-size-1', FALLBACK_TOKENS['--font-size-1']),
     '--font-size-2': getCSSVarPx(styles, '--font-size-2', FALLBACK_TOKENS['--font-size-2']),
     '--font-size-3': getCSSVarPx(styles, '--font-size-3', FALLBACK_TOKENS['--font-size-3']),
+    '--font-size-4': getCSSVarPx(styles, '--font-size-4', FALLBACK_TOKENS['--font-size-4']),
 
     // Typography - Line heights
 

@@ -359,6 +359,7 @@ describe('fitEntityToContent finishes the resize', () => {
     marginTop: 12,
     socketSize: 10,
     padding: 12,
+    borderWidth: 1,
   };
 
   const sized = (): Entity => ({
@@ -421,6 +422,7 @@ describe('the store can be built with the socket layout it will use', () => {
     marginTop: 12,
     socketSize: 10,
     padding: 12,
+    borderWidth: 1,
   };
 
   const socketed = (): Entity => ({

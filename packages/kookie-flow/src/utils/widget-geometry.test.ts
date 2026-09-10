@@ -21,6 +21,7 @@ const layout: ResolvedSocketLayout = {
   marginTop: 12,
   socketSize: 10,
   padding: 12,
+  borderWidth: 1,
 };
 
 const entity: Entity = {
@@ -70,8 +71,10 @@ describe('readWidgetBoxInto writes the same rectangle into the caller storage', 
     // until a consumer set one.
     const out: WidgetBox = { x: 0, y: 0, width: 0, height: 0 };
     readWidgetBoxInto(out, { ...entity, width: undefined }, 0, layout, 400, 20);
-    expect(out.width).toBe(400 - layout.padding * 2 - 20);
-    expect(out.x).toBe(entity.position.x + layout.padding + 20);
+    // padding + border on each side: the body is border-box.
+    const inset = layout.padding + layout.borderWidth;
+    expect(out.width).toBe(400 - inset * 2 - 20);
+    expect(out.x).toBe(entity.position.x + inset + 20);
   });
 
   it('contains its own centre and excludes a point just outside it', () => {

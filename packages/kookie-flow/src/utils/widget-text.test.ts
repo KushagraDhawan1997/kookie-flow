@@ -4,6 +4,7 @@ import {
   widgetValueText,
   WIDGET_VALUE_MIN_ZOOM,
   MIN_WIDGET_ZOOM,
+  PAD,
 } from './widget-text';
 import type { WidgetBox } from './widget-geometry';
 import type { ResolvedWidgetConfig, WidgetType } from '../types';
@@ -17,7 +18,9 @@ import type { ResolvedWidgetConfig, WidgetType } from '../types';
  */
 
 const BOX: WidgetBox = { x: 100, y: 50, width: 120, height: 32 };
-const PAD = 6;
+// Imported, never restated: a private copy of the number this file exists to protect would keep
+// passing after the real one moved. The inset is theme-resolved now (`--control-px-pill-N`) and
+// `widgetValueText` defaults to this when a caller has no theme.
 
 function config(type: WidgetType, extra: Partial<ResolvedWidgetConfig> = {}): ResolvedWidgetConfig {
   return { type, ...extra };

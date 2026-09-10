@@ -57,7 +57,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { THEME_COLORS, resolveColor, type ColorTokenRef } from '../core/theme-colors';
 import { themeRoot } from '../utils/theme-root';
-import { PAD } from '../utils/widget-text';
+
 import type { WidgetHit } from '../utils/widget-hit';
 
 /**
@@ -292,14 +292,15 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     transformOrigin: '0 0',
     boxSizing: 'border-box',
     // The glyphs GL was printing a frame ago: same family, same size, same left inset (PAD is
-    // the number widget-text.ts places the value at). Zero border, so the inset is PAD and not
-    // PAD + 1. Nothing here paints a well, a hairline or a ring — that is GL's, see the top.
+    // the resolved control inset widget-text.ts places the value at, which grows when the corner
+    // is a pill). Zero border, so the inset is that number and not that number + 1. Nothing here
+    // paints a well, a hairline or a ring — that is GL's, see the top.
     fontFamily: themeFont,
     fontSize: '12px',
     fontWeight: 400,
     letterSpacing: 0,
     lineHeight: `${rowHeight}px`,
-    padding: `${OVERLAY_PADDING_TOP}px ${PAD}px 0`,
+    padding: `${OVERLAY_PADDING_TOP}px ${resolvedStyle.widgetPad}px 0`,
     border: 0,
     outline: 'none',
     boxShadow: 'none',

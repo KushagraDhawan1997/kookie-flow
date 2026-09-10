@@ -7,6 +7,7 @@ import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
 import { pickToken, type ColorTokenRef } from '../core/theme-colors';
 import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
 import { parseColorToRGB, type RGBColor } from './color';
+import { SOCKET_HIT_TOLERANCE } from '../core/constants';
 
 // ============================================================================
 // Header Position Map
@@ -34,46 +35,79 @@ interface SizeConfig {
 }
 
 /**
- * Socket row height token (fixed to --space-7 = 40px).
- * Both header (inside) and socket rows use this height for widget alignment.
+ * @deprecated The row height is derived (see `resolveSocketLayout`), not read from one token.
+ * Kept because it is exported from the package index.
  */
 export const SOCKET_ROW_HEIGHT_TOKEN: keyof ThemeTokens = '--space-7';
 
 /**
- * Widget height token (--space-6 = 32px at scale 1).
- * All Kookie UI components at size 2 use this height.
+ * @deprecated The widget height is the row minus its own block inset (see `resolveSocketLayout`).
+ * Kept because it is exported from the package index.
  */
 export const WIDGET_HEIGHT_TOKEN: keyof ThemeTokens = '--space-6';
 
+/**
+ * Which v2 index a node's interior reads from, one step BELOW the host's page default.
+ *
+ * v2's index 2 is calibrated for a page card several hundred pixels wide read at 1:1. A node is
+ * `DEFAULT_ENTITY_WIDTH` = 240 and this package already reasons about being read below 1:1 —
+ * `WIDGET_VALUE_MIN_ZOOM` is argued in DEVICE pixels. Index 2 applied wholesale spends
+ * 24 + 96 + 24 = 144px of a 240px node on chrome before the first glyph, and puts the resting type
+ * step at 14px on a canvas routinely viewed at half scale. Index 1 spends 128 and leaves type at 12.
+ *
+ * It also settles `EntitySize` '5', which v2 has no index for at all: it clamps to 4.
+ */
+export function nodeIndex(size: EntitySize): 1 | 2 | 3 | 4 {
+  const n = Number(size) - 1;
+  return Math.min(4, Math.max(1, n)) as 1 | 2 | 3 | 4;
+}
+
+/** A family token at the node's index, e.g. `--control-height-1`. */
+function atIndex(family: string, size: EntitySize): keyof ThemeTokens {
+  return `${family}-${nodeIndex(size)}` as keyof ThemeTokens;
+}
+
+/**
+ * The clear space between two adjacent socket hit circles at the resting size.
+ *
+ * This is the constraint under the socket row height and it belongs to neither design system: a
+ * row's pitch is also the pitch at which EDGE ENDPOINTS are separated, and a hit circle is
+ * `socketSize + SOCKET_HIT_TOLERANCE` in radius. At size 2 that is 14, so two adjacent circles are
+ * 28px across and a v2 control height of 32 would leave 4px between them — two device pixels at
+ * the half zoom this canvas is read at. Wiring and hit disambiguation get measurably worse for a
+ * number that was chosen against a page button.
+ */
+export const SOCKET_MIN_CLEAR = 12;
+
 export const SIZE_MAP: Record<EntitySize, SizeConfig> = {
   '1': {
-    padding: '--space-2', // 8px
+    padding: '--surface-p-1',
     borderRadius: '--radius-surface-1',
-    fontSize: '--font-size-1', // 12px
+    fontSize: '--font-size-1',
     socketSize: 8,
   },
   '2': {
-    padding: '--space-3', // 12px
-    borderRadius: '--radius-surface-2',
-    fontSize: '--font-size-2', // 14px
+    padding: '--surface-p-1',
+    borderRadius: '--radius-surface-1',
+    fontSize: '--font-size-1',
     socketSize: 10,
   },
   '3': {
-    padding: '--space-4', // 16px
+    padding: '--surface-p-2',
     borderRadius: '--radius-surface-2',
-    fontSize: '--font-size-2', // 14px
+    fontSize: '--font-size-2',
     socketSize: 10,
   },
   '4': {
-    padding: '--space-5', // 24px
+    padding: '--surface-p-3',
     borderRadius: '--radius-surface-3',
-    fontSize: '--font-size-3', // 16px
+    fontSize: '--font-size-3',
     socketSize: 12,
   },
   '5': {
-    padding: '--space-6', // 32px
-    borderRadius: '--radius-surface-3',
-    fontSize: '--font-size-3', // 16px
+    padding: '--surface-p-4',
+    borderRadius: '--radius-surface-4',
+    fontSize: '--font-size-4',
     socketSize: 12,
   },
 };
@@ -215,8 +249,6 @@ export const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   full: '--radius-full',
 };
 
-/** The level a widget takes when the entity states no `radius` at all. */
-const DEFAULT_WIDGET_RADIUS_TOKEN: keyof ThemeTokens = '--radius-2';
 
 // ============================================================================
 // Resolved Style (WebGL-ready)
@@ -250,6 +282,13 @@ export interface ResolvedEntityStyle {
    * `full` level is a pill and not an overflow.
    */
   widgetRadius: number;
+  /**
+   * The inner inset a widget prints its value at, and the one number in this file that ROUNDNESS
+   * moves: v2 spends `--control-px-pill-N` here unconditionally and lets the token carry the bump —
+   * it equals `--control-px-N` at every radius level below `full`, and steps up at `full` because a
+   * capsule's curve eats the corner the first glyph would otherwise sit in.
+   */
+  widgetPad: number;
   borderWidth: number;
   borderColor: RGBColor;
   borderColorHover: RGBColor;
@@ -372,10 +411,13 @@ export function resolveEntityStyle(
   // The control half of the same level. Deliberately NOT taking `overrides.borderRadius`: that
   // override is the body's shape, and a node with square corners does not thereby have square
   // fields — v2 keeps the two families independent for the same reason.
+  // The prop still names the level (that is what a per-entity `radius` is for); with no prop the
+  // widget takes the control corner at the node's own index, which is what v2 indexes by.
   const widgetRadius = resolveTokenPx(
-    radius !== undefined ? WIDGET_RADIUS_MAP[radius] : DEFAULT_WIDGET_RADIUS_TOKEN,
+    radius !== undefined ? WIDGET_RADIUS_MAP[radius] : atIndex('--radius-control', size),
     tokens
   );
+  const widgetPad = resolveTokenPx(atIndex('--control-px-pill', size), tokens);
 
   // Resolve background colors
   const background = overrides?.background
@@ -441,6 +483,7 @@ export function resolveEntityStyle(
     headerPosition,
     borderRadius,
     widgetRadius,
+    widgetPad,
     borderWidth,
     borderColor,
     borderColorHover,
@@ -476,6 +519,12 @@ export interface ResolvedSocketLayout {
   socketSize: number;
   /** Padding inside node (from size config) */
   padding: number;
+  /**
+   * The body's border, which every content inset owes. `.kui-surface` is border-box and declares
+   * its border in the same rule as its padding, so the distance from the outer edge to the first
+   * glyph is `padding + borderWidth`, not `padding`.
+   */
+  borderWidth: number;
 }
 
 /**
@@ -493,9 +542,29 @@ export function resolveSocketLayout(
   tokens: ThemeTokens
 ): ResolvedSocketLayout {
   const sizeConfig = SIZE_MAP[size];
-  const rowHeight = resolveTokenPx(SOCKET_ROW_HEIGHT_TOKEN, tokens);
-  const widgetHeight = resolveTokenPx(WIDGET_HEIGHT_TOKEN, tokens);
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
+  const borderWidth = 1;
+
+  /*
+   * THE ROW PITCH IS DECLARED, not imported, and this is the one number in the file that a design
+   * system cannot hand over.
+   *
+   * A v2 stack of label-beside-control rows is `.kui-field-item` (`grid-template-columns: auto 1fr`)
+   * inside a `.kui-field-group` whose `row-gap` is `--layout-space-3`, so its pitch is the control
+   * height plus that gap — 32 + 8 = 40 at index 2. That is where today's 40 came from by accident,
+   * via `--space-7`. But a socket row is also the pitch at which EDGE ENDPOINTS are separated, and
+   * that has a floor a page row never has to respect: see SOCKET_MIN_CLEAR. The row takes whichever
+   * is larger, so the wiring constraint can never be silently cut by a type-scale change.
+   */
+  const controlHeight = resolveTokenPx(atIndex('--control-height', size), tokens);
+  const rowInset = resolveTokenPx(atIndex('--row-inset', size), tokens);
+  const wiringFloor = 2 * (sizeConfig.socketSize + SOCKET_HIT_TOLERANCE) + SOCKET_MIN_CLEAR;
+  const rowHeight = Math.max(controlHeight + resolveTokenPx('--control-gap-2', tokens), wiringFloor);
+
+  // The air a row gives its control is the ROW'S OWN block inset, which is what
+  // `.kui-row { padding-block: ... }` spends. It was the residue between two unrelated --space-N
+  // steps before, and it landed on the same 8px by luck.
+  const widgetHeight = Math.max(controlHeight, rowHeight - 2 * rowInset);
 
   // Margin from top depends on header position:
   // - No header or outside header: marginTop = padding
@@ -508,6 +577,7 @@ export function resolveSocketLayout(
     marginTop,
     socketSize: sizeConfig.socketSize,
     padding,
+    borderWidth,
   };
 }
 

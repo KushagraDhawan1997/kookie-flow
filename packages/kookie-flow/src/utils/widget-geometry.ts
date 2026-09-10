@@ -84,9 +84,11 @@ export function readWidgetBoxInto(
   const centerOffset = (height - layout.computedHeight) / 2;
 
   const stacked = pos.layout === 'stacked';
-  out.x = entity.position.x + socketLayout.padding + (stacked ? 0 : labelWidth);
+  // padding + border: the body is border-box, so the content edge owes the hairline too.
+  const inset = socketLayout.padding + socketLayout.borderWidth;
+  out.x = entity.position.x + inset + (stacked ? 0 : labelWidth);
   out.y = entity.position.y + pos.widgetY + centerOffset;
-  out.width = width - socketLayout.padding * 2 - (stacked ? 0 : labelWidth);
+  out.width = width - inset * 2 - (stacked ? 0 : labelWidth);
   out.height = pos.widgetHeight;
   return out;
 }

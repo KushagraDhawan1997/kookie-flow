@@ -41,11 +41,13 @@ import type { ResolvedWidgetConfig } from '../types';
 export const WIDGET_VALUE_MIN_ZOOM = 0.5;
 
 /**
- * The inner padding a value is printed at, and the padding the borrowed input takes
- * (widget-edit-overlay.tsx reads this rather than restating it). Opening an edit must not shift
- * the text sideways.
+ * The inset a widget's value is printed at, when nobody states one.
+ *
+ * The real number is `ResolvedEntityStyle.widgetPad` — `--control-px-N`, pill-corrected — and it
+ * is passed in. This is the stand-in for the default style context and for callers that have no
+ * theme, and it is v1's own `--control-px-1`.
  */
-export const PAD = 6;
+export const PAD = 8;
 
 /**
  * The corner a widget wears before a StyleProvider has resolved one.
@@ -128,14 +130,21 @@ function printable(value: unknown): string | null {
 export function widgetValueText(
   config: ResolvedWidgetConfig,
   value: unknown,
-  box: WidgetBox
+  box: WidgetBox,
+  /**
+   * The control's own inner inset. Passed rather than imported because it is theme-resolved and
+   * ROUNDNESS-DEPENDENT: v2 spends `--control-px-pill-N` here, which is `--control-px-N` at every
+   * radius level below `full` and steps up at `full`, because a capsule's curve eats the corner
+   * the first glyph would otherwise sit in.
+   */
+  pad: number = PAD
 ): WidgetTextPlacement | null {
   // A consumer's own component is still mounted as real DOM over this box (widgets-layer.tsx) and
   // prints whatever it prints. Drawing glyphs underneath it double-prints the value, at a font and
   // a position the consumer did not choose.
   if (config.customComponent) return null;
 
-  const inner = box.width - PAD * 2;
+  const inner = box.width - pad * 2;
   if (inner <= 0) return null;
 
   switch (config.type) {
@@ -163,7 +172,7 @@ export function widgetValueText(
       // palette, neutral-12 over the neutral-1 thumb, so it reads rather than smears.
       return {
         text: formatWidgetNumber(n, config.step),
-        x: box.x + box.width - PAD,
+        x: box.x + box.width - pad,
         anchor: 'right',
         muted: false,
         // Half the box: a readout that could grow across the whole track would cover the fill it
@@ -177,7 +186,7 @@ export function widgetValueText(
       const text = chosen ?? config.placeholder ?? 'Select…';
       return {
         text,
-        x: box.x + PAD,
+        x: box.x + pad,
         anchor: 'left',
         muted: chosen === null,
         maxWidth: Math.max(0, inner - CHEVRON_RESERVE),
@@ -188,12 +197,12 @@ export function widgetValueText(
       const n = typeof value === 'number' ? value : Number(value);
       if (value === '' || value === null || value === undefined || !Number.isFinite(n)) {
         return config.placeholder
-          ? { text: config.placeholder, x: box.x + PAD, anchor: 'left', muted: true, maxWidth: inner }
+          ? { text: config.placeholder, x: box.x + pad, anchor: 'left', muted: true, maxWidth: inner }
           : null;
       }
       return {
         text: formatWidgetNumber(n, config.step),
-        x: box.x + PAD,
+        x: box.x + pad,
         anchor: 'left',
         muted: false,
         maxWidth: inner,
@@ -208,7 +217,7 @@ export function widgetValueText(
         // An empty field with no placeholder prints nothing, which is the right cost: zero glyphs
         // for a widget whose whole content is the well the shader already drew.
         return config.placeholder
-          ? { text: config.placeholder, x: box.x + PAD, anchor: 'left', muted: true, maxWidth: inner }
+          ? { text: config.placeholder, x: box.x + pad, anchor: 'left', muted: true, maxWidth: inner }
           : null;
       }
       // ONE LINE ONLY. `layoutText` has no newline handling — it skips glyphs it cannot find in
@@ -216,7 +225,7 @@ export function widgetValueText(
       // top of it. Cut at the break and say so with an ellipsis instead.
       const brk = printed.indexOf('\n');
       const text = brk >= 0 ? `${printed.slice(0, brk)}…` : printed;
-      return { text, x: box.x + PAD, anchor: 'left', muted: false, maxWidth: inner };
+      return { text, x: box.x + pad, anchor: 'left', muted: false, maxWidth: inner };
     }
   }
 }

@@ -7,7 +7,8 @@ import {
   type ResolvedSocketLayout,
 } from '../utils/style-resolver';
 import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
-import { WIDGET_RADIUS } from '../utils/widget-text';
+import { WIDGET_RADIUS, PAD } from '../utils/widget-text';
+import { FALLBACK_TOKENS } from '../hooks/useThemeTokens';
 
 /**
  * Style configuration props passed to KookieFlow.
@@ -56,6 +57,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     headerPosition: 0, // none
     borderRadius: 12,
     widgetRadius: WIDGET_RADIUS,
+    widgetPad: PAD,
     borderWidth: 1,
     borderColor: [0.239, 0.239, 0.239],
     borderColorHover: [0.306, 0.306, 0.306],
@@ -70,13 +72,9 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     fontSize: 14,
     socketSize: 10,
   },
-  socketLayout: {
-    rowHeight: 40, // --space-7 default
-    widgetHeight: 32, // --space-6 default
-    marginTop: 12, // padding (no header)
-    socketSize: 10,
-    padding: 12,
-  },
+  // ONE source, not a second copy. These literals were the object eight unit fixtures were copied
+  // from, so every one of them drifted the moment the real resolver moved.
+  socketLayout: resolveSocketLayout(false, '2', FALLBACK_TOKENS),
   config: DEFAULT_CONFIG,
 };
 

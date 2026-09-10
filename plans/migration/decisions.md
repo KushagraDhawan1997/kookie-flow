@@ -638,3 +638,97 @@ Widgets now move with the level: 0 at `none`, a pill at `full`.
 The harness still pins `<Theme radius="large">`. The reason has changed and is written into the
 fixture: the body is capsule-proof now, but at v2's default level every widget is a pill, and that
 is a different picture in every pixel law in the suite.
+
+---
+
+## D12. Spacing reads the layout FAMILIES, and roundness buys its own padding.
+
+**Owner ruling (2026-09-10): "Spacing and padding is all wrong still, please check with kookie ui
+v2 properly." and "Roundness also uses extra padding."**
+
+Twelve agents audited every number in the node interior against v2's shipped stylesheet and source.
+Forty-eight findings, three skeptics on different axes, and the honest headline is that **most of
+the numbers were already right and almost none of the derivations were**.
+
+### v2 has three spacing families, and this package was reading one for all three jobs
+
+| family | tokens | what it dresses |
+|---|---|---|
+| raw palette | `--space-1..12` = 2,4,8,12,16,24,32,40,48,64,96,128 | the material other bands index into |
+| layout | `--layout-space-N`, `--surface-p-N` = 16,24,32,40 | a surface's padding — the one lever density moves |
+| control | `--control-height-N`, `--control-px-N`, `--control-px-pill-N`, `--control-gap-N`, `--row-inset-N` | everything inside a control |
+
+Every number here came from `--space-N`, so a node body's inset was invariant to density while
+every real card beside it moved, and a widget's height would not follow a coarse pointer.
+
+### Two decisions the audit could not make for itself
+
+**The node index is one below the host's page default.** `nodeIndex(size) = clamp(size - 1, 1, 4)`,
+so a resting `size="2"` node reads index 1 from every family. v2's index 2 is calibrated for a page
+card several hundred pixels wide at 1:1; a node is 240px and this package already argues in device
+pixels (`WIDGET_VALUE_MIN_ZOOM`). Index 2 wholesale spends 24 + 96 + 24 = 144px of a 240px node on
+chrome before the first glyph and puts body type at 14px on a canvas read at half scale. It also
+settles `EntitySize` '5', which v2 has no index for: it clamps to 4.
+
+**The row pitch is declared, not imported.** An audit finding wanted 40 → `--control-height-2` = 32.
+That reads `.kui-row`, which is a modifier on `.kui-control` for a row that CONTAINS TEXT. A socket
+row is a `.kui-field-item` — `grid-template-columns: auto 1fr` inside a `.kui-field-group` whose
+`row-gap` is `--layout-space-3` — so its pitch is control height + gap = 32 + 8 = 40. And a socket
+row is also the pitch at which EDGE ENDPOINTS are separated, which has a floor a page row never has
+to respect: a hit circle is `socketSize + SOCKET_HIT_TOLERANCE` = 14 in radius, so 32 would leave
+4px between adjacent circles — two device pixels at half zoom. The row now takes
+`max(controlHeight + gap, 2*(socketSize + tolerance) + SOCKET_MIN_CLEAR)`, which is 40 today and
+says why.
+
+### Roundness buys its own padding, and v2 spends it as a token
+
+`.kui-control` sets `padding-inline` from `--control-px-pill-N` **unconditionally** and lets the
+token carry the bump: it equals `--control-px-N` at every radius level below `full`, and steps up
+(10 → 14 at index 2) at `full`, because a capsule's curve eats the corner the first glyph would
+otherwise sit in. The same idea appears for nested surfaces as
+`--kui-sf-radius: calc(--radius-row-N + --kui-sf-p)` — a container's corner is its child's corner
+plus the padding between them, so the curves stay concentric.
+
+Measured here: a corner of radius r needs about `0.29 r` of inset before content clears the arc. At
+`radius="full"` the body corner is 48 and needs 14; the padding was 12, so the title and the first
+row sat inside the curve. `--surface-p-1` = 16 clears every level.
+
+The synthesised spec REJECTED the pill inset, on the grounds that a widget's corner is not a pill —
+while, four sections earlier, moving the widget corner to `--radius-control-N`, which at the shipped
+`radius="full"` is half the control height. That is a near-pill. The rejection is overruled and
+`--control-px-pill-N` is read.
+
+### What moved, and what deliberately did not
+
+| | before | after |
+|---|---|---|
+| body inset (padding + border) | 12 | 17 |
+| row pitch | 40 (`--space-7`) | 40 (`control-height + gap`, floored by the wiring clear) |
+| widget height | 32 (`--space-6`) | 32 (`row − 2 × row-inset`) |
+| value inset | 6 (literal) | `--control-px-pill-N`, so it grows when the well is a pill |
+| body type | 12 (literal) | 12 (`--font-size-1` at the node index) |
+| label origin | 12 (literal, four sites) | `padding + borderWidth` |
+
+Type does not move at the resting size, and neither does the pitch — the two changes the audit
+argued loudest for are the two the skeptics killed. 180 laws pass unchanged.
+
+### Rejected
+
+- **Row 40 → 32.** Wrong v2 pattern; see above.
+- **Body type 12 → 14, title → 16.** v2's 14 is a page number at 1:1. Titles also get no
+  truncation, so 16 overruns the node edge on any realistic name.
+- **Flat `--surface-p-2` = 24 padding.** 20% of a 240px node, before a 96px gutter.
+- **A squircle corner** (`radius × 1.613`). Needs a superellipse term in the SDF and is a
+  corner-profile question, not a spacing one.
+- **`SOCKET_LABEL_WIDTH` → content-sized.** v2's `auto 1fr` refuses a fixed label column, but a
+  graph wants its controls in a column so rows scan vertically. Kept, and now documented as a
+  canvas decision with no token behind it.
+
+### Still open
+
+- The label gutter is a fixed 96 while `text-renderer` truncates against the CONSTANT and
+  `widget-geometry` lays out against the PROP, so a consumer who sets `socketLabelWidth` gets dead
+  gutter. Named, not fixed.
+- The checkbox mark (18) and slider track (4) are still shader literals where `--mark-N` and
+  `--slider-track-N` exist.
+- `--scale` is a public v2 lever and every fallback literal in the reader pins it to 1.

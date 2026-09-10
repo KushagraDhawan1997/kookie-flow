@@ -51,6 +51,7 @@ const LAYOUT: ResolvedSocketLayout = {
   marginTop: 12,
   socketSize: 10,
   padding: 12,
+  borderWidth: 1,
 };
 
 function socketed(id: string, x: number, y: number, extra: Partial<Entity> = {}): Entity {

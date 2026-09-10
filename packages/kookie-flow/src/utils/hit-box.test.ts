@@ -29,6 +29,7 @@ const LAYOUT: ResolvedSocketLayout = {
   marginTop: 12,
   socketSize: 10,
   padding: 12,
+  borderWidth: 1,
 };
 
 /** No width, no height — the shape whose drawn size is computed rather than stated. */

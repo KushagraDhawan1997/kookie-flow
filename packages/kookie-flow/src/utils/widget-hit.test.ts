@@ -22,6 +22,7 @@ const layout: ResolvedSocketLayout = {
   marginTop: 12,
   socketSize: 10,
   padding: 12,
+  borderWidth: 1,
 };
 
 const socketTypes: Record<string, SocketType> = {
