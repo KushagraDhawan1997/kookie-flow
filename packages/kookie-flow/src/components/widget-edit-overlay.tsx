@@ -310,7 +310,6 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     resize: 'none',
     appearance: 'none',
     WebkitAppearance: 'none',
-    MozAppearance: 'textfield',
   };
 
   const kind = inputTypeFor(hit.config.type);
@@ -323,6 +322,10 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
       ? { ...style, paddingRight: '20px', textIndent: 0 }
       : kind === 'color'
         ? { ...style, opacity: 0 }
+        // Firefox aliases -moz-appearance to appearance, so 'textfield' on the shared style put a
+        // native arrow back on the select. Only the number kind wants it, for its spin buttons.
+        : kind === 'number'
+          ? { ...style, MozAppearance: 'textfield' }
         : style;
 
   const commit = (raw: string) => {

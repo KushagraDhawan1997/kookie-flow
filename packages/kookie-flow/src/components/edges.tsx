@@ -33,6 +33,8 @@ const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
  * zoom 0.8 so a zoomed-out graph is a graph and not a bloom.
  */
 const EDGE_CORE_HALF = 1.0;
+/** Half the core's anti-alias ramp, in screen px; the fragment shader uses the same 0.75. */
+const EDGE_CORE_AA = 0.75;
 const EDGE_HALF_WIDTH = 4.0;
 const EDGE_GLOW_ALPHA = { dark: 0.12, light: 0.08 } as const;
 const EDGE_GLOW_ALPHA_SELECTED = 0.22;
@@ -46,7 +48,10 @@ const EDGE_LIGHT_LAPS_PER_SEC = 0.25;
  */
 export function edgeHalfWidthAtZoom(zoom: number): number {
   const t = Math.min(1, Math.max(0, (zoom - 0.45) / (0.8 - 0.45)));
-  return EDGE_CORE_HALF + (EDGE_HALF_WIDTH - EDGE_CORE_HALF) * t * t * (3 - 2 * t);
+  // The floor keeps the core's 0.75px AA ramp inside the ribbon: shrunk to the bare core, the
+  // ribbon ended where the ramp was still at half alpha and every diagonal showed a 2px stair.
+  const floor = EDGE_CORE_HALF + EDGE_CORE_AA;
+  return floor + (EDGE_HALF_WIDTH - floor) * t * t * (3 - 2 * t);
 }
 
 /**
@@ -750,10 +755,15 @@ export function Edges({
             buffers.colors[colIdx + 2] = cb + db * u;
           }
         }
+        // Ranged to what is drawn: both arrays are capacity-sized (1.5x the edges), and a bare
+        // needsUpdate handed three the whole thing — at 1.8k edges, ~10 MB per selection change,
+        // most of it past lastVertexCount and never drawn.
         if (buffers.colorAttr) {
+          buffers.colorAttr.addUpdateRange(0, buffers.lastVertexCount * 3);
           buffers.colorAttr.needsUpdate = true;
         }
         if (buffers.uvAttr) {
+          buffers.uvAttr.addUpdateRange(0, buffers.lastVertexCount * 2);
           buffers.uvAttr.needsUpdate = true;
         }
         hasLiveRef.current = anyLive;

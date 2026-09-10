@@ -21,6 +21,8 @@ export interface GridProps {
  * seen against its canvas. Light needs less: the canvas is a step below white and the dot is dark
  * on it, where in dark the dot is a mid grey on near-black and wants a touch more.
  */
+/** The zoom below which the lattice is fully faded and the quad is not drawn at all. */
+const GRID_FADE_START = 0.45;
 const GRID_DOT_ALPHA = { dark: 0.18, light: 0.14 } as const;
 
 /**
@@ -93,7 +95,7 @@ export function Grid({
           float dot = 1.0 - smoothstep(0.6 * px, 1.6 * px, length(g));
 
           // Gone below zoom 0.45, full from 0.9: a lattice denser than a few px moirés.
-          float alpha = dot * uAlpha * smoothstep(0.45, 0.9, uZoom);
+          float alpha = dot * uAlpha * smoothstep(${GRID_FADE_START.toFixed(2)}, 0.9, uZoom);
           if (alpha < 0.01) discard;
 
           gl_FragColor = vec4(uColor, alpha);
@@ -107,6 +109,11 @@ export function Grid({
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { gridMaterial.dispose(); }, [gridMaterial]);
+
+  // A rebuilt material (theme flip) starts with uZoom at 1; the frame loop only writes it in
+  // its dirty branch, so mark it — otherwise a lattice faded out at zoom 0.4 came back at full
+  // strength on the flip and stayed until the next pan.
+  useEffect(() => { dirtyRef.current = true; }, [gridMaterial]);
 
   // Subscribe to viewport changes
   useEffect(() => {
@@ -147,6 +154,8 @@ export function Grid({
     // The fade is a uniform, not a re-render: written here, in the branch that already runs only
     // when something moved.
     gridMaterial.uniforms.uZoom.value = zoom;
+    // Below the fade every fragment discards; the full-screen quad is not worth submitting.
+    meshRef.current.visible = zoom >= GRID_FADE_START;
 
     // Position grid at the center of what the camera sees
     const centerX = (camera.left + camera.right) / 2;

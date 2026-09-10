@@ -100,6 +100,14 @@ export interface FlowState {
   editingWidgetKey: string | null;
 
   /**
+   * The slider being dragged, for the length of the gesture — the one widget press with any
+   * duration. Its own field rather than `editingWidgetKey`, which the text layer reads as "the
+   * readout is being replaced by a DOM input" and suppresses; a dragged slider must keep its value
+   * on screen.
+   */
+  pressedWidgetKey: string | null;
+
+  /**
    * Stacking order: entity id -> a monotonically increasing index; higher is nearer the camera.
    * See utils/entity-depth.ts for how the renderers turn it into depth. Mutated in place, with
    * `stackVersion` as the dirty flag beside it — the same shape as `widgetValues`.
@@ -225,6 +233,7 @@ export interface FlowState {
 
   /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
   setEditingWidgetKey: (key: string | null) => void;
+  setPressedWidgetKey: (key: string | null) => void;
 
   /** Move the keyboard cursor. See `focusedEntityId` for why this is not selection. */
   setFocusedEntityId: (id: string | null) => void;
@@ -752,6 +761,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       widgetValues: new Map<string, WidgetOverride>(),
       widgetValuesVersion: 0,
       editingWidgetKey: null,
+      pressedWidgetKey: null,
       stackOrder: initialStackOrder,
       stackVersion: 0,
 
@@ -951,6 +961,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       setEditingWidgetKey: (editingWidgetKey) => set({ editingWidgetKey }),
+
+      setPressedWidgetKey: (pressedWidgetKey) => {
+        if (get().pressedWidgetKey === pressedWidgetKey) return;
+        set({ pressedWidgetKey });
+      },
 
       setFocusedEntityId: (focusedEntityId) => {
         // Deduped, because the pointer path calls it on every press: a re-press on the node the

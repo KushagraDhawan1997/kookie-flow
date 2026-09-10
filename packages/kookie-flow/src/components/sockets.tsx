@@ -333,10 +333,14 @@ export function Sockets({
       // The dot is still SOCKET_RADIUS: the hit radius, the drawn radius. Unconnected sockets are
       // hollow to r 4.5, a 1.5px ring, so the canvas shows through their centre.
       float dot   = 1.0 - smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r);
-      float hole  = (1.0 - smoothstep(4.5 - aa, 4.5 + aa, r)) * (1.0 - vConnected);
+      // aConnected carries two bits: 1 = connected, 2 = no punch (a grouped child's socket sits
+      // on its parent's body, where a ring of canvas colour would be a visibly wrong hole).
+      float connected = mod(vConnected, 2.0);
+      float punchOn = 1.0 - step(1.5, vConnected);
+      float hole  = (1.0 - smoothstep(4.5 - aa, 4.5 + aa, r)) * (1.0 - connected);
       // A 1.5px punch of canvas colour around the dot, always: an edge running under a socket
       // stops short of it, so the dot reads over any ribbon rather than merging with it.
-      float punch = smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r) * (1.0 - smoothstep(7.5 - aa, 7.5 + aa, r));
+      float punch = smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r) * (1.0 - smoothstep(7.5 - aa, 7.5 + aa, r)) * punchOn;
       // The halo outside the punch, quadratic, gone by the quad edge. Only lit by a state.
       float halo  = smoothstep(7.5 - aa, 7.5 + aa, r) * (1.0 - smoothstep(7.5, 10.0, r));
       halo *= halo;
@@ -557,6 +561,8 @@ export function Sockets({
     // composite key string per socket instead.
     const entityConnectedInputs = connectedInputs.get(entity.id);
     const entityConnectedOutputs = connectedOutputs.get(entity.id);
+    // A grouped child's sockets sit on its parent's body: no punch ring there (see the shader).
+    const punchOff = entity.parentId ? 2.0 : 0.0;
     // Hoisted out of the socket loops and handed to getSocketYOffset: without it, moving these
     // four sites onto the shared arithmetic would turn one layout-cache lookup per ENTITY into
     // one per SOCKET, in the hottest loop the renderer has.
@@ -593,7 +599,7 @@ export function Sockets({
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
         bufs.connected[idx] =
-          entityConnectedInputs !== undefined && entityConnectedInputs.has(socket.id) ? 1.0 : 0.0;
+          (entityConnectedInputs !== undefined && entityConnectedInputs.has(socket.id) ? 1.0 : 0.0) + punchOff;
 
         let isValidTarget = 0.0;
         if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
@@ -643,7 +649,7 @@ export function Sockets({
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
         bufs.connected[idx] =
-          entityConnectedOutputs !== undefined && entityConnectedOutputs.has(socket.id) ? 1.0 : 0.0;
+          (entityConnectedOutputs !== undefined && entityConnectedOutputs.has(socket.id) ? 1.0 : 0.0) + punchOff;
 
         let isValidTarget = 0.0;
         if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {

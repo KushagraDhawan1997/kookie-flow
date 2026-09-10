@@ -260,13 +260,15 @@ Apply consistent styling to all entities:
   variant="classic"  // 'surface' | 'outline' | 'soft' | 'classic' | 'ghost'
   radius="medium"    // 'none' | 'small' | 'medium' | 'large' | 'full'
   header="outside"   // 'none' | 'inside' | 'outside'
-  accentHeader       // Tint header with accent color
+  accentHeader       // Thin accent light along the top edge, whatever the header position
 />
 ```
 
 ### Per-Entity Colors
 
-Each entity can have its own accent color from Kookie UI's 26-color palette:
+Each entity can have its own accent color from Kookie UI's 26-color palette. It draws as a thin
+light along the entity's top edge, in that hue — the same band `accentHeader` draws in the theme's
+accent:
 
 ```tsx
 const entities = [

@@ -255,8 +255,10 @@ export function EntitySelection() {
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { handleGeometry.dispose(); }, [handleGeometry]);
 
-  const handleFillColor = resolveColor(THEME_COLORS.entitySelection.handleFill, tokens);
-  const handleBorderColor = resolveColor(THEME_COLORS.entitySelection.handleBorder, tokens);
+  // Memoised on the tokens: resolveColor returns a fresh tuple, and as bare render-time calls
+  // these defeated the material memo below — a shader compile and a mesh rebuild per render.
+  const handleFillColor = useMemo(() => resolveColor(THEME_COLORS.entitySelection.handleFill, tokens), [tokens]);
+  const handleBorderColor = useMemo(() => resolveColor(THEME_COLORS.entitySelection.handleBorder, tokens), [tokens]);
 
   const handleMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -552,15 +554,10 @@ export function EntitySelection() {
       }
       const maxHandles = handleCapacity;
 
-      for (const entityId of selectedEntityIds) {
-        if (entityId !== hoveredEntityId) continue;
-        if (handleCount + 4 > maxHandles) break;
-
-        const entity = entityMap.get(entityId);
-        if (!entity || hiddenEntityIds.has(entity.id)) continue;
-
-        // Check if entity is resizable
-        if (entity.resizable === false) continue;
+      // One entity — the hovered one, already proven selected — looked up directly. Walking the
+      // selection set to find it was O(|selection|) on every pan frame with a select-all.
+      const entity = entityMap.get(hoveredEntityId);
+      if (entity && !hiddenEntityIds.has(entity.id) && entity.resizable !== false && handleCount + 4 <= maxHandles) {
 
         const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const entityLayout = getEntitySocketLayout(entity, socketLayout);
@@ -570,12 +567,11 @@ export function EntitySelection() {
         const y = entity.position.y;
 
         // Frustum culling
-        if (
+        const offscreen =
           x + width < viewLeft - cullPadding ||
           x > viewRight + cullPadding ||
           y + height < viewTop - cullPadding ||
-          y > viewBottom + cullPadding
-        ) continue;
+          y > viewBottom + cullPadding;
 
         // Check per-axis resizability
         const resizable = entity.resizable;
@@ -599,14 +595,14 @@ export function EntitySelection() {
           handleCount++;
         };
 
-        if (canResizeW && canResizeH) {
+        // The corners draw for a single-axis entity too: the corner hit already resolves to
+        // whichever axis is allowed, and an entity with no dots at all reads as unresizable.
+        if (!offscreen && (canResizeW || canResizeH)) {
           writeHandle(x - pad, y - pad);                    // NW
           writeHandle(x + width + pad, y - pad);            // NE
           writeHandle(x + width + pad, y + height + pad);   // SE
           writeHandle(x - pad, y + height + pad);           // SW
         }
-        // One entity is ever hovered, so this is the whole loop.
-        break;
       }
 
       // `handleMesh.count` clamps the draw to what was written; the range keeps the upload to it.

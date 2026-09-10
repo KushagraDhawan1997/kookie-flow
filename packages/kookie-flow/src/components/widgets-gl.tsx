@@ -314,8 +314,9 @@ const fragmentShader = /* glsl */ `
       float cg = clamp(d / 3.0, 0.0, 1.0);
       float cbHalo = (1.0 - cg) * (1.0 - cg) * step(0.0, d) * max(foc, hov * on * 0.6) * uFocusAlpha;
       // Outside the shape the fragment IS the ring, so it takes the accent outright; its weight
-      // is in the alpha. Mixing by the alpha as well would leave a ring three parts well colour.
-      color = mix(color, uActive, 1.0 - inside);
+      // is in the alpha. Gated on the ring existing: ungated, the shape's own AA fringe (inside
+      // fractional, alpha = inside) took the accent too and every box wore a blue edge at rest.
+      color = mix(color, uActive, (1.0 - inside) * step(1e-4, cbHalo));
       alpha = max(inside, cbHalo);
     } else if (vKind > 2.5 && vKind < 3.5) {
       // ---- slider: a channel, a filled portion, and a grip ----
@@ -342,9 +343,14 @@ const fragmentShader = /* glsl */ `
       // an alpha of its own.
       float gh = clamp(gd / 4.0, 0.0, 1.0);
       float thumbHalo = (1.0 - gh) * (1.0 - gh) * step(0.0, gd) * foc * uFocusAlpha;
-      float onChrome = max(alpha, grip);
-      color = mix(color, uActive, (1.0 - grip) * mix(1.0, thumbHalo, onChrome));
-      alpha = max(alpha, max(grip, thumbHalo));
+      // Proportional to the halo itself: off the chrome a fragment is pure accent only where the
+      // halo has alpha, on the chrome it is a tint by the halo's weight, and at rest — thumbHalo
+      // zero — nothing moves. The previous weight tinted the channel's and the ring's AA fringes
+      // at rest.
+      float haloA = thumbHalo * (1.0 - grip);
+      float outA = max(alpha, max(grip, thumbHalo));
+      color = mix(color, uActive, haloA / max(outA, 1e-4));
+      alpha = outA;
     } else {
       // ---- field, select, colour: a well with a hairline ----
       float d = roundedBoxSDF(p, halfSize, min(vRadius, min(halfSize.x, halfSize.y)));
@@ -369,8 +375,8 @@ const fragmentShader = /* glsl */ `
       float halo = (1.0 - g) * (1.0 - g) * step(0.0, d) * foc * uFocusAlpha;
       alpha = max(inside, halo);
       // Same rule as the checkbox: outside the shape the colour is the accent, the alpha is the
-      // ring's weight.
-      color = mix(color, uActive, 1.0 - inside);
+      // ring's weight — and only while focused, or the AA fringe wears it at rest.
+      color = mix(color, uActive, (1.0 - inside) * foc);
 
       if (vKind > 3.5 && vKind < 4.5) {
         // The select's chevron, at the trailing edge. Two segments, same construction as the tick;
@@ -536,6 +542,7 @@ export function WidgetsGL({
       // The focused widget wears the ring, and the ring is drawn HERE — the borrowed input over it
       // paints nothing (widget-edit-overlay.tsx). Fires twice per edit: on open and on close.
       store.subscribe((s) => s.editingWidgetKey, markDirty),
+      store.subscribe((s) => s.pressedWidgetKey, markDirty),
     ];
     return () => { for (const u of unsubs) u(); };
   }, [store]);
@@ -548,7 +555,7 @@ export function WidgetsGL({
 
     const {
       entities, viewport, connectedSockets, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder,
-      hoveredWidget, editingWidgetKey,
+      hoveredWidget, editingWidgetKey, pressedWidgetKey,
     } = store.getState();
     if (viewport.zoom < minWidgetZoom) {
       bgMesh.count = 0;
@@ -648,7 +655,7 @@ export function WidgetsGL({
         // widget from one frame to the next — a conditional write would leave the previous
         // occupant's value behind and light the wrong well.
         buffers.hover[n] =
-          key === editingWidgetKey
+          key === editingWidgetKey || key === pressedWidgetKey
             ? 2
             : hoveredWidget !== null &&
                 hoveredWidget.entityId === entity.id &&

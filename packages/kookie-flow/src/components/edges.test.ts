@@ -94,10 +94,10 @@ describe('edgeHalfWidthAtZoom', () => {
     expect(edgeHalfWidthAtZoom(3)).toBeCloseTo(4);
   });
 
-  it('is the bare 2px core at and below zoom 0.45', () => {
-    expect(edgeHalfWidthAtZoom(0.45)).toBeCloseTo(1);
-    expect(edgeHalfWidthAtZoom(0.4)).toBeCloseTo(1);
-    expect(edgeHalfWidthAtZoom(0.1)).toBeCloseTo(1);
+  it('is the core plus its AA ramp at and below zoom 0.45 — never a clipped ramp', () => {
+    expect(edgeHalfWidthAtZoom(0.45)).toBeCloseTo(1.75);
+    expect(edgeHalfWidthAtZoom(0.4)).toBeCloseTo(1.75);
+    expect(edgeHalfWidthAtZoom(0.1)).toBeCloseTo(1.75);
   });
 
   it('is monotonic through the fade', () => {
@@ -107,6 +107,6 @@ describe('edgeHalfWidthAtZoom', () => {
       expect(next).toBeGreaterThanOrEqual(prev);
       prev = next;
     }
-    expect(edgeHalfWidthAtZoom(0.625)).toBeCloseTo(2.5);
+    expect(edgeHalfWidthAtZoom(0.625)).toBeCloseTo(1.75 + (4 - 1.75) / 2);
   });
 });

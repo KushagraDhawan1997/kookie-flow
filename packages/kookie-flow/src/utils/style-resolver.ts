@@ -163,8 +163,6 @@ export const NODE_SHADOW = {
  */
 export const NODE_TOP_LIGHT = { dark: 0.07, light: 0.0 } as const;
 
-/** `headerBackground` with no accent to show: the shader reads a negative red as "draw nothing". */
-const NO_HEADER_ACCENT: RGBColor = [-1, -1, -1];
 
 // ============================================================================
 // Radius Map
@@ -192,11 +190,13 @@ export interface ResolvedEntityStyle {
 
   // Header styling
   /**
-   * The global accent band colour (`--accent-9` when `accentHeader` is set), or `[-1, -1, -1]`
-   * for none. The header block itself is gone — the header is typographic — so the shader reads
-   * this only as the hue of the top-light band. Kept in the public shape.
+   * The header tint a DOM header would wear (`--accent-3` with `accentHeader`, else
+   * `--neutral-3`). The GL header block is gone — the header is typographic — so the shader no
+   * longer reads this; it stays a real colour because it is public and consumers read it as one.
    */
   headerBackground: RGBColor;
+  /** The top-edge accent band (`--accent-9`) when `accentHeader` is set, or null for none. */
+  accentBand: RGBColor | null;
   /** Header position: 0=none, 1=inside, 2=outside */
   headerPosition: 0 | 1 | 2;
 
@@ -366,8 +366,9 @@ export function resolveEntityStyle(
   // Header styling
   const headerPosition = HEADER_POSITION_MAP[header];
   const headerBackground = accentHeader
-    ? resolveTokenColor('--accent-9', tokens)
-    : NO_HEADER_ACCENT;
+    ? resolveTokenColor('--accent-3', tokens)
+    : resolveTokenColor('--neutral-3', tokens);
+  const accentBand = accentHeader ? resolveTokenColor('--accent-9', tokens) : null;
 
   // Header height uses fixed row height token (--space-7 = 40px)
   // This ensures header aligns with socket rows for widget layout
@@ -380,6 +381,7 @@ export function resolveEntityStyle(
     padding,
     headerHeight,
     headerBackground,
+    accentBand,
     headerPosition,
     borderRadius,
     borderWidth,

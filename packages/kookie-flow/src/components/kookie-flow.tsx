@@ -1403,6 +1403,8 @@ function InputHandler({
               // the drag it is responding to begins — the one gesture here with any duration, and
               // the one that most needs to say it is being answered.
               store.getState().setHoveredWidget({ entityId: hit.entityId, socketId: hit.socketId });
+              // Pressed, not merely hovered: the thumb wears its halo for the whole drag.
+              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
               setWidgetCursor(true);
               widgetDragRef.current = { hit, pointerId: e.pointerId };
               containerRef.current?.setPointerCapture(e.pointerId);
@@ -2004,7 +2006,11 @@ function InputHandler({
         // Clear and reuse pre-allocated array to avoid GC
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
-        const newHoveredId = topmostEntityId(queryResultsRef.current, store.getState().stackOrder);
+        // A resize handle straddles the corner, so half its hit disc lies outside the entity's
+        // bounds — where the quadtree says nothing is hovered and the corner dots would vanish
+        // under a resize cursor. A handle hit counts as hovering its entity.
+        const newHoveredId =
+          handleHit?.entityId ?? topmostEntityId(queryResultsRef.current, store.getState().stackOrder);
 
         // Only update if changed to avoid unnecessary re-renders
         if (newHoveredId !== hoveredEntityId) {
@@ -2083,6 +2089,7 @@ function InputHandler({
       if (widgetDragRef.current && widgetDragRef.current.pointerId === e.pointerId) {
         const releasedDrag = widgetDragRef.current;
         widgetDragRef.current = null;
+        store.getState().setPressedWidgetKey(null);
         containerRef.current?.releasePointerCapture(e.pointerId);
         // A slider drag travels well past its own box — the value clamps, the pointer does not —
         // so the release decides whether the grip stays lit. Asked here rather than left to the

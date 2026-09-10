@@ -31,6 +31,9 @@ function encodeStatus(status: EntityStatus | undefined): number {
 // Pre-allocated objects to avoid GC
 const tempMatrix = new THREE.Matrix4();
 
+/** What uHeaderColor carries when there is no global accent band: the shader reads r < 0 as none. */
+const NO_ACCENT_BAND: readonly [number, number, number] = [-1, -1, -1];
+
 // Buffer growth factor
 const BUFFER_GROWTH_FACTOR = 1.5;
 const MIN_CAPACITY = 256;
@@ -185,7 +188,7 @@ export function Entities() {
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
         // Header: the global accent band hue (r < 0 = none) and the separator's row height.
         // A Vector3 rather than a Color so the resolver's negative sentinel is not a colour.
-        uHeaderColor: { value: new THREE.Vector3(...resolvedStyle.headerBackground) },
+        uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
         uHeaderHeight: { value: resolvedStyle.headerHeight },
         uHeaderPosition: { value: resolvedStyle.headerPosition },
         // The card's float and its top light; both per appearance, both from the resolver.
@@ -281,8 +284,12 @@ export function Entities() {
           vec2 b = vSize * 0.5;
 
           // Shadow calculation (rendered behind main shape)
+          // The shadow is priced only in the shadow pass. Both passes share the vertex shader
+          // and so the 28px padded quad; the body pass used to run this SDF, the status branch
+          // and every mask over that whole ring before dying at the final alpha test — a
+          // 240x100 card paid ~1.9x its fragments for nothing.
           float shadowAlpha = 0.0;
-          if (uShadowOpacity > 0.0) {
+          if (uPass < 0.5 && uShadowOpacity > 0.0) {
             // Offset shadow position (Y is negated because WebGL Y-up vs our Y-down)
             vec2 shadowP = p + vec2(0.0, uShadowOffsetY);
             float shadowD = roundedBoxSDF(shadowP, b, uCornerRadius);
@@ -294,9 +301,20 @@ export function Entities() {
 
           float d = roundedBoxSDF(p, b, uCornerRadius);
 
-          // Early discard for pixels outside both shadow and main shape
-          float maxExtent = max(uBorderWidth, uShadowBlur + abs(uShadowOffsetY)) + 1.0;
-          if (d > maxExtent && shadowAlpha < 0.01) discard;
+          // Body pass: anything past the hairline is not the body. Shadow pass: the halo alone,
+          // and it returns here — nothing below it is the shadow's business.
+          if (uPass > 0.5) {
+            // Past the hairline AND its anti-alias ramp: aa is in world units and exceeds a
+            // pixel below zoom ~0.67, so a fixed 1px margin would clip the edge when zoomed out.
+            if (d > uBorderWidth + 0.5 + fwidth(d) * 1.5) discard;
+          } else {
+            float passAA = fwidth(d) * 1.5;
+            float passFill = 1.0 - smoothstep(-passAA, passAA, d);
+            float shadowMask = shadowAlpha * (1.0 - passFill);
+            if (shadowMask < 0.01) discard;
+            gl_FragColor = vec4(0.0, 0.0, 0.0, shadowMask);
+            return;
+          }
 
           // Background color (selection/hover handled by EntitySelection layer)
           vec3 bgColor = uBackgroundColor;
@@ -339,11 +357,6 @@ export function Entities() {
           float fillMask = 1.0 - smoothstep(-aa, aa, d);
           float bgAlpha = fillMask * uBackgroundAlpha;
 
-          // Composite: shadow first, then border on top of background
-          // Shadow is black, behind everything
-          vec3 shadowColor = vec3(0.0);
-          float shadowMask = shadowAlpha * (1.0 - fillMask); // Shadow only visible outside main shape
-
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
 
@@ -362,8 +375,12 @@ export function Entities() {
           // it reads as light and not as a second hairline. (Written the other way round, this
           // lit the whole top-radius zone of every card: a 12px accent bar, not a 1.5px line.)
           float rim = smoothstep(-3.0, -1.5, d) * fillMask;
-          // max(): smoothstep is undefined when its edges coincide, and radius="none" is legal.
-          float up = smoothstep(b.y - max(uCornerRadius, 1.0), b.y, p.y);
+          // Clamped to the shape the way roundedBoxSDF clamps it: radius="full" is 9999, and
+          // unclamped that put up at ~1 around the whole perimeter — a full accent ring on
+          // every pill. max(): smoothstep is undefined when its edges coincide, and radius="none"
+          // is legal.
+          float cr = min(uCornerRadius, min(b.x, b.y));
+          float up = smoothstep(b.y - max(cr, 1.0), b.y, p.y);
           bool accented = vAccentColor.r >= 0.0;
           bool globalAccent = uHeaderColor.r >= 0.0;
           vec3 lightColor = accented ? vAccentColor : (globalAccent ? uHeaderColor : vec3(1.0));
@@ -374,14 +391,6 @@ export function Entities() {
           if (uBackgroundAlpha < 0.01) {
             color = borderColor;
             alpha = borderMask * fillMask;
-          }
-
-          if (uPass < 0.5) {
-            // Shadow pass: the halo alone. It never writes depth (see the material), so the
-            // discard here is only about not blending nothing.
-            if (shadowMask < 0.01) discard;
-            gl_FragColor = vec4(shadowColor, shadowMask);
-            return;
           }
 
           // Body pass. The discard is what keeps the depth write INSIDE the shape: a quad is a

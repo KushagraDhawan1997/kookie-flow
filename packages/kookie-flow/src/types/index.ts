@@ -887,7 +887,10 @@ export interface KookieFlowProps {
   radius?: EntityRadius;
   /** Header position. Default: 'none' */
   header?: HeaderPosition;
-  /** Tint header with accent color. Default: false */
+  /**
+   * Draw a thin `--accent-9` light along every entity's top edge, whatever `header` is. An
+   * entity's own `color` draws the same band in its hue. Default: false
+   */
   accentHeader?: boolean;
   /** Fine-grained style overrides */
   entityStyle?: Partial<EntityStyleOverrides>;
