@@ -48,11 +48,11 @@ export const WIDGET_VALUE_MIN_ZOOM = 0.5;
 export const PAD = 6;
 
 /**
- * A well's corner radius, in world px. A fixed number rather than `min(borderRadius, h/2)`: the
- * theme's card radius made every well a pill, and a pill is a chip, not a field. It lives here,
- * beside PAD, because the two readers are the shader (widgets-gl.tsx, which re-exports it) and the
- * borrowed input that clips its caret to the same shape — and the input must not pull three.js
- * into its module graph to learn one number.
+ * The corner a widget wears before a StyleProvider has resolved one.
+ *
+ * The real value is `ResolvedEntityStyle.widgetRadius`, the control half of the entity's radius
+ * level (see RADIUS_MAP / WIDGET_RADIUS_MAP in utils/style-resolver.ts). This is only the default
+ * context's stand-in, and it is the number v1's `--radius-2` gave.
  */
 export const WIDGET_RADIUS = 8;
 

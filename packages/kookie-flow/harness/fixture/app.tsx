@@ -980,8 +980,9 @@ function Probe() {
        * need a value law: v1's `--space-N` is v2's `--space-(N+1)`, so a socket row silently goes
        * 40px to 32px and a widget 32px to 24px with the census green, no missing token, no compile
        * error and no existing law anywhere. The radius entry catches the other silent one: v2's
-       * default radius level is `full`, where `--radius-4` is 9999px, and every SDF site clamps
-       * the corner so a node body becomes a stadium without erroring.
+       * default radius level is `full`, where `--radius-4` is 9999px. That token is the CONTROL
+       * family; a node body reads `--radius-surface-N` and is bounded at every level, so this
+       * entry now pins the control ladder rather than guarding the body against a stadium.
        *
        * Read off a probe INSIDE the theme, through the same resolver everything else uses.
        */
@@ -1201,12 +1202,12 @@ function App() {
     /*
        `radius` defaults to `large`, not to the design system's own default.
 
-       v2's default level is `full`, where `--radius-1..5` all resolve to 9999px. Every SDF site in
-       the renderer clamps the corner, so a node body silently becomes a stadium — no error, no
-       missing token, nothing in the suite to catch it. `large` is the level whose values sit
-       closest to what v1's `medium` gave, which keeps the v1 -> v2 swap a port rather than a
-       redesign. Moving the node body onto `--radius-surface-N` — capsule-proof at every level — is
-       a design step of its own and has not been taken.
+       The node body IS on `--radius-surface-N` now, so the stadium this note used to warn about
+       cannot happen at any level: v2 holds the surface family at 24/32/40/48 even at `full`, and
+       only the control family goes to 9999 there. What is still pinned is the CONTROL half — at
+       v2's default level every widget on every node is a pill, which is correct and is also a
+       different picture in every pixel law in the suite. `large` keeps the widget corners where
+       the recorded baselines expect them; a consumer on the default gets pills and should.
     */
     <Theme appearance={p.appearance} radius={p.radius ?? 'large'}>
       <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>

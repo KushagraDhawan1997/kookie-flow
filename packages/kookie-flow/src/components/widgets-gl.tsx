@@ -32,12 +32,11 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSocketLayout } from '../contexts/StyleContext';
+import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
-import { WIDGET_RADIUS } from '../utils/widget-text';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
@@ -73,7 +72,6 @@ const RENDER_ORDER_BG = 3;
 const RENDER_ORDER_FG = 5;
 
 /** The well's corner radius; declared beside PAD in widget-text.ts, see there for why. */
-export { WIDGET_RADIUS };
 
 /**
  * Room around the box for the focus ring, in world px each side of the quad. The hit box, the
@@ -430,6 +428,7 @@ export function WidgetsGL({
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
+  const resolvedStyle = useResolvedStyle();
 
   const bgMeshRef = useRef<THREE.InstancedMesh>(null);
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -512,6 +511,16 @@ export function WidgetsGL({
     initializedRef.current = true;
     dirtyRef.current = true;
   }, [bgBuffers, fgBuffers]);
+
+  /**
+   * A radius level change repaints the wells.
+   *
+   * The frame loop reads `widgetRadius` out of this closure, and a new closure alone does not
+   * repaint anything: without this the loop early-returns on a clean dirty flag and the wells keep
+   * the previous level's corners until something else moves. Keyed on the number rather than on
+   * the style object, which is a fresh identity on every theme read.
+   */
+  useEffect(() => { dirtyRef.current = true; }, [resolvedStyle.widgetRadius]);
 
   // Everything that can change what is drawn marks the layer dirty. Deliberately NOT a React
   // re-render: the whole point of this layer is that a pan costs no React work at all.
@@ -637,8 +646,11 @@ export function WidgetsGL({
         const value = readWidgetValue(widgetValues, key, values?.[socket.id] ?? config.defaultValue);
         buffers.size[n * 2] = box.width;
         buffers.size[n * 2 + 1] = box.height;
-        // The checkbox's radius is computed in-shader from its own side; this is the well's.
-        buffers.radius[n] = WIDGET_RADIUS;
+        // The control half of the entity's radius level; the checkbox's radius is computed
+        // in-shader from its own side, so this is the well's alone. The shader clamps it to half
+        // the box, which is what turns the `full` level's 9999 into a pill rather than an
+        // overflow — the same `calc(height / 2)` v2 gives a control at that level.
+        buffers.radius[n] = resolvedStyle.widgetRadius;
         buffers.kind[n] = kindFor(config.type, value);
         buffers.value[n] = config.type === 'slider' ? sliderFraction(value, config) : 0;
         if (config.type === 'color') {

@@ -54,10 +54,10 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSocketLayout } from '../contexts/StyleContext';
+import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { THEME_COLORS, resolveColor, type ColorTokenRef } from '../core/theme-colors';
 import { themeRoot } from '../utils/theme-root';
-import { PAD, WIDGET_RADIUS } from '../utils/widget-text';
+import { PAD } from '../utils/widget-text';
 import type { WidgetHit } from '../utils/widget-hit';
 
 /**
@@ -167,6 +167,7 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
+  const resolvedStyle = useResolvedStyle();
   const elRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
   useOverlayStylesheet();
 
@@ -304,7 +305,10 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     boxShadow: 'none',
     background: 'transparent',
     // Clips the caret and the selection highlight to the well's own shape.
-    borderRadius: `${WIDGET_RADIUS}px`,
+    // The same corner the GL well draws, clamped the same way the shader clamps it — so at the
+    // `full` level the caret and the selection highlight are clipped to a pill and not to a
+    // rectangle sitting inside one.
+    borderRadius: `${Math.min(resolvedStyle.widgetRadius, rowHeight / 2)}px`,
     color: rgb(THEME_COLORS.text.primary),
     caretColor: rgb(THEME_COLORS.widget.active),
     resize: 'none',

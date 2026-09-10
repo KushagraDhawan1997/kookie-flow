@@ -48,31 +48,31 @@ export const WIDGET_HEIGHT_TOKEN: keyof ThemeTokens = '--space-6';
 export const SIZE_MAP: Record<EntitySize, SizeConfig> = {
   '1': {
     padding: '--space-2', // 8px
-    borderRadius: '--radius-3', // 10px
+    borderRadius: '--radius-surface-1',
     fontSize: '--font-size-1', // 12px
     socketSize: 8,
   },
   '2': {
     padding: '--space-3', // 12px
-    borderRadius: '--radius-4', // 12px
+    borderRadius: '--radius-surface-2',
     fontSize: '--font-size-2', // 14px
     socketSize: 10,
   },
   '3': {
     padding: '--space-4', // 16px
-    borderRadius: '--radius-4', // 12px
+    borderRadius: '--radius-surface-2',
     fontSize: '--font-size-2', // 14px
     socketSize: 10,
   },
   '4': {
     padding: '--space-5', // 24px
-    borderRadius: '--radius-5', // 16px
+    borderRadius: '--radius-surface-3',
     fontSize: '--font-size-3', // 16px
     socketSize: 12,
   },
   '5': {
     padding: '--space-6', // 32px
-    borderRadius: '--radius-5', // 16px
+    borderRadius: '--radius-surface-3',
     fontSize: '--font-size-3', // 16px
     socketSize: 12,
   },
@@ -168,13 +168,55 @@ export const NODE_TOP_LIGHT = { dark: 0.07, light: 0.0 } as const;
 // Radius Map
 // ============================================================================
 
+/**
+ * A NODE BODY IS A SURFACE, and that is the whole of this table.
+ *
+ * KookieUI v2 partitions the radius scale by role rather than by magnitude: `--radius-1..5` are
+ * the control family and `--radius-6..10` the surface family, and the theme's `data-radius` level
+ * scales each on its own terms. At the `full` level the control family goes to 9999px — a pill,
+ * bounded by the control's own height — while the surface family stays at 24/32/40/48, exactly
+ * where `large` leaves it. A `.kui-surface[data-size=N]` reads `--radius-surface-N`, and there is
+ * no level at which a surface becomes a capsule.
+ *
+ * This table used to mix the two: `--radius-2`, `--radius-4` and `--radius-6` for the first three
+ * levels and `--radius-full` for the last. Under v2 that reads three control tokens and a pill for
+ * a thing that is a card — so `radius="full"` handed the shader 9999, every SDF site clamped the
+ * corner to half the shorter side, and a node became a stadium with its title and its first socket
+ * row outside the shape. Worse quietly: v2's DEFAULT level (`:root`, no `data-radius`) resolves
+ * `--radius-1..5` to 9999 as well, so `radius="medium"` did the same thing to an app that simply
+ * never set a level.
+ *
+ * Every entry is a surface index now, so every level is bounded by the theme's own scale.
+ */
 export const RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   none: 0,
-  small: '--radius-2', // 8px
-  medium: '--radius-4', // 12px
-  large: '--radius-6', // 20px
-  full: '--radius-full', // 9999px
+  small: '--radius-surface-1',
+  medium: '--radius-surface-2',
+  large: '--radius-surface-3',
+  full: '--radius-surface-4',
 };
+
+/**
+ * A WIDGET IS A CONTROL, so it reads the other half of the scale.
+ *
+ * The same five levels, climbing `--radius-1..3` and ending at `--radius-full` — which is what v2
+ * means by a control at the `full` level: `calc(control-height / 2)`, a true pill. The shader
+ * clamps to half the widget's own box, so 9999 resolves to exactly that and can never reach past
+ * the control it rounds.
+ *
+ * Widgets were a fixed 8px before this, so the `radius` prop stopped at the node body and never
+ * reached the controls on it.
+ */
+export const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
+  none: 0,
+  small: '--radius-1',
+  medium: '--radius-2',
+  large: '--radius-3',
+  full: '--radius-full',
+};
+
+/** The level a widget takes when the entity states no `radius` at all. */
+const DEFAULT_WIDGET_RADIUS_TOKEN: keyof ThemeTokens = '--radius-2';
 
 // ============================================================================
 // Resolved Style (WebGL-ready)
@@ -202,6 +244,12 @@ export interface ResolvedEntityStyle {
 
   // Border
   borderRadius: number;
+  /**
+   * The radius a widget on this entity wears — the control half of the scale, where the body's
+   * `borderRadius` is the surface half. Clamped to the widget's own box by the shader, so the
+   * `full` level is a pill and not an overflow.
+   */
+  widgetRadius: number;
   borderWidth: number;
   borderColor: RGBColor;
   borderColorHover: RGBColor;
@@ -321,6 +369,14 @@ export function resolveEntityStyle(
     borderRadius = resolveTokenPx(sizeConfig.borderRadius, tokens);
   }
 
+  // The control half of the same level. Deliberately NOT taking `overrides.borderRadius`: that
+  // override is the body's shape, and a node with square corners does not thereby have square
+  // fields — v2 keeps the two families independent for the same reason.
+  const widgetRadius = resolveTokenPx(
+    radius !== undefined ? WIDGET_RADIUS_MAP[radius] : DEFAULT_WIDGET_RADIUS_TOKEN,
+    tokens
+  );
+
   // Resolve background colors
   const background = overrides?.background
     ? parseColorToRGB(overrides.background)
@@ -384,6 +440,7 @@ export function resolveEntityStyle(
     accentBand,
     headerPosition,
     borderRadius,
+    widgetRadius,
     borderWidth,
     borderColor,
     borderColorHover,

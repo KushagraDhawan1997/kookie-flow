@@ -33,6 +33,18 @@ export interface ThemeTokens {
   '--radius-5': number;
   '--radius-6': number;
   '--radius-full': number;
+  /**
+   * The SURFACE half of the radius scale.
+   *
+   * v2 partitions the scale by role: `--radius-1..5` are controls and go to 9999px at the theme's
+   * `full` level, `--radius-6..10` are surfaces and never do — at `full` they are the same
+   * 24/32/40/48 they are at `large`. `--radius-surface-1..4` are the four indices a
+   * `.kui-surface[data-size=N]` picks from, and a node body is a surface.
+   */
+  '--radius-surface-1': number;
+  '--radius-surface-2': number;
+  '--radius-surface-3': number;
+  '--radius-surface-4': number;
 
   // Typography - Font sizes (resolved to pixels)
   // Used for entity labels and widget sizing alignment
@@ -119,6 +131,12 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--radius-5': 16,
   '--radius-6': 20,
   '--radius-full': 9999,
+  // v1 defines no surface family; these keep a v1 app on the radii it already had, with
+  // `medium` -> surface-2 -> 12px, which is what `--radius-4` gave it.
+  '--radius-surface-1': 8,
+  '--radius-surface-2': 12,
+  '--radius-surface-3': 16,
+  '--radius-surface-4': 20,
 
   // Typography - Font sizes (assuming scaling = 1)
   '--font-size-1': 12,
@@ -287,6 +305,10 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--radius-5': getCSSVarPx(styles, '--radius-5', FALLBACK_TOKENS['--radius-5']),
     '--radius-6': getCSSVarPx(styles, '--radius-6', FALLBACK_TOKENS['--radius-6']),
     '--radius-full': getCSSVarPx(styles, '--radius-full', FALLBACK_TOKENS['--radius-full']),
+    '--radius-surface-1': getCSSVarPx(styles, '--radius-surface-1', FALLBACK_TOKENS['--radius-surface-1']),
+    '--radius-surface-2': getCSSVarPx(styles, '--radius-surface-2', FALLBACK_TOKENS['--radius-surface-2']),
+    '--radius-surface-3': getCSSVarPx(styles, '--radius-surface-3', FALLBACK_TOKENS['--radius-surface-3']),
+    '--radius-surface-4': getCSSVarPx(styles, '--radius-surface-4', FALLBACK_TOKENS['--radius-surface-4']),
 
     // Typography - Font sizes
     '--font-size-1': getCSSVarPx(styles, '--font-size-1', FALLBACK_TOKENS['--font-size-1']),

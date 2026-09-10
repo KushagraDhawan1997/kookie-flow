@@ -7,6 +7,7 @@ import {
   type ResolvedSocketLayout,
 } from '../utils/style-resolver';
 import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
+import { WIDGET_RADIUS } from '../utils/widget-text';
 
 /**
  * Style configuration props passed to KookieFlow.
@@ -54,6 +55,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     accentBand: null,
     headerPosition: 0, // none
     borderRadius: 12,
+    widgetRadius: WIDGET_RADIUS,
     borderWidth: 1,
     borderColor: [0.239, 0.239, 0.239],
     borderColorHover: [0.306, 0.306, 0.306],

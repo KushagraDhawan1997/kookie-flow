@@ -575,3 +575,66 @@ position or row metric moved.
   cannot be reused because the text layer suppresses the readout on it.
 - Mid-edge resize handles are hit-testable and undrawn; the cursor is the affordance. The four
   corner dots draw only while the selected entity is also hovered.
+
+---
+
+## D11. The radius scale is partitioned by role. A node body is a surface; a widget is a control.
+
+**Owner ruling (2026-09-10): "See how Kookie ui v2 does it and implement here."**
+
+`radius="full"` turned a node into a stadium that cut through its own title and first socket row,
+and the `radius` prop never reached the fields on the node at all. Both are one cause.
+
+### What v2 actually does
+
+The scale is split by role, not by magnitude, and the theme's `data-radius` level scales each half
+on its own terms. Read out of the shipped stylesheet:
+
+| level | `--radius-1..5` (controls) | `--radius-6..10` (surfaces) |
+|---|---|---|
+| none | 0 | 0 |
+| small | 2 3 4 5 6 | 5 6 8 10 12 |
+| medium | 4 6 8 10 12 | 12 18 24 30 36 |
+| large | 6 8 12 14 16 | 24 32 40 48 56 |
+| **full** | **9999 ×5** | **24 32 40 48 56** |
+
+At `full` the control family becomes a pill and **the surface family does not move at all** — it is
+exactly where `large` leaves it. A `.kui-surface[data-size=N]` reads `--radius-surface-N`
+(= `--radius-6..9`), so there is no level at which a surface becomes a capsule. A control at that
+level is `calc(control-height / 2)`: a pill bounded by the element's own height, which is why it
+can never reach past the thing it rounds.
+
+### What was wrong here
+
+`RADIUS_MAP` mixed the halves — `--radius-2`, `--radius-4`, `--radius-6`, then `--radius-full` —
+for a thing that is a card. Three control tokens and a pill. The quiet half of that is worse than
+the loud half: v2's DEFAULT level (`:root`, no `data-radius`) resolves `--radius-1..5` to 9999 too,
+so `radius="medium"` did the same thing to any app that simply never stated a level. Measured on
+the docs app, whose Theme states `medium`, `--radius-4` is 10px; at `:root` it is 9999px.
+
+Widgets were a fixed 8, so the level stopped at the body.
+
+### What it is now
+
+- The body reads `--radius-surface-1..4` at every level (`none` → 0), and `SIZE_MAP` sizes it off
+  the same family. Bounded everywhere, by construction rather than by a clamp.
+- A widget reads the control ladder, `--radius-1..3` and `--radius-full` at the top. The shader
+  already clamps to half the widget's box, so that 9999 lands on v2's own `calc(height / 2)`.
+- An `entityStyle.borderRadius` override is the body's shape alone. A node with square corners does
+  not thereby have square fields; v2 keeps the families independent for the same reason.
+- The borrowed edit overlay wears the resolved control radius, clamped the same way, so the caret
+  and the selection highlight are clipped to a pill rather than to a rectangle inside one.
+
+Four tokens are new — `--radius-surface-1..4` — with v1 fallbacks of 8/12/16/20, which leaves a v1
+app on the radii it already had (`medium` → 12px, the old `--radius-4`).
+
+### What this changes on screen
+
+Nodes are rounder at the default. Under the docs Theme (`medium`) a `radius="medium"` node goes
+10px → 18px; under the harness Theme (`large`) it goes 10px → 32px. That is the design system's
+opinion of a card, and it is the price of reading the surface family instead of the control one.
+Widgets now move with the level: 0 at `none`, a pill at `full`.
+
+The harness still pins `<Theme radius="large">`. The reason has changed and is written into the
+fixture: the body is capsule-proof now, but at v2's default level every widget is a pill, and that
+is a different picture in every pixel law in the suite.
