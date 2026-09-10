@@ -327,10 +327,10 @@ packages/kookie-flow/
 │       └── index.ts
 │
 ├── fonts/
-│   ├── google-sans-regular-msdf.png   # MSDF atlas texture (Regular weight)
-│   ├── google-sans-semibold-msdf.png  # MSDF atlas texture (SemiBold weight)
-│   ├── GoogleSans-Regular.json        # Glyph metrics (Regular)
-│   └── GoogleSans-SemiBold.json       # Glyph metrics (SemiBold)
+│   ├── inter-regular-msdf.png         # MSDF atlas texture (Regular weight)
+│   ├── inter-semibold-msdf.png        # MSDF atlas texture (SemiBold weight)
+│   ├── Inter-Regular.json             # Glyph metrics (Regular)
+│   └── Inter-SemiBold.json            # Glyph metrics (SemiBold)
 │
 ├── package.json
 ├── tsconfig.json

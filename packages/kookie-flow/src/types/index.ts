@@ -672,7 +672,7 @@ export type { FontMetrics } from '../utils/text-layout';
 import type { FontMetrics } from '../utils/text-layout';
 
 /** Built-in font presets with pre-generated MSDF atlases */
-export type FontPreset = 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system';
+export type FontPreset = 'inter' | 'roboto' | 'source-serif' | 'system';
 
 /** Font weight configuration for MSDF rendering */
 export interface FontWeightConfig {
@@ -845,9 +845,9 @@ export interface KookieFlowProps {
   /**
    * Font for text rendering. Labels are drawn with instanced MSDF, so this picks the
    * MSDF atlas rather than a CSS font family.
-   * - Preset name: 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
+   * - Preset name: 'inter' | 'roboto' | 'source-serif' | 'system'
    * - Custom config: { name, weights: { regular, semibold? } } with MSDF metrics/atlas
-   * Default: 'google-sans'
+   * Default: 'inter'
    */
   font?: FontPreset | FontConfig;
   /** Show socket labels next to sockets. Default: true */

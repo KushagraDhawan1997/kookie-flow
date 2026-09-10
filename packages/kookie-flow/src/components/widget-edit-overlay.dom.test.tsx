@@ -281,7 +281,7 @@ describe('the borrowed element is transparent and sits where the glyphs were', (
     if (!input) throw new Error('no input');
     // jsdom has no Theme and no --font-body, which is exactly the bare page the defect showed:
     // the family must still be stated, and must not be 'inherit'.
-    expect(input.style.fontFamily.startsWith('"Google Sans"')).toBe(true);
+    expect(input.style.fontFamily.startsWith('"Inter"')).toBe(true);
     expect(input.style.fontFamily).not.toContain('inherit');
     expect(input.style.fontSize).toBe('12px');
   });

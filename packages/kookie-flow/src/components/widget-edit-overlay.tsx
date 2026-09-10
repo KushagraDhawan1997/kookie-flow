@@ -65,7 +65,7 @@ import type { WidgetHit } from '../utils/widget-hit';
  * glyphs this element replaces ARE that face; the theme's family is the fallback where the page
  * has not loaded it, and `system-ui` is the fallback for a page with no Theme at all.
  */
-const ATLAS_FONT = '"Google Sans"';
+const ATLAS_FONT = '"Inter"';
 const SYSTEM_FONT = 'system-ui, sans-serif';
 
 /**

@@ -36,7 +36,7 @@ export function resolveTextStyle(
   defaults?: TextStyleDefaults
 ): TextStyleConfig {
   return {
-    fontFamily: data.fontFamily ?? defaults?.fontFamily ?? '"Google Sans", system-ui, -apple-system, sans-serif',
+    fontFamily: data.fontFamily ?? defaults?.fontFamily ?? '"Inter", system-ui, -apple-system, sans-serif',
     fontSize: data.fontSize ?? DEFAULT_TEXT_FONT_SIZE,
     fontWeight: data.fontWeight ?? 400,
     lineHeight: data.lineHeight ?? DEFAULT_TEXT_LINE_HEIGHT,

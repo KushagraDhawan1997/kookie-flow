@@ -1,8 +1,18 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { DocsLayout } from '@/components/docs-layout';
 import { appearanceScript } from './appearance-script';
+
+/**
+ * The face the WebGL MSDF atlas is built from, loaded for the DOM too.
+ *
+ * kookie-flow draws every label as instanced MSDF glyphs cut from Inter, and the edit overlay is a
+ * real <input> that lands on top of those glyphs and has to sit on the same shapes. Without this
+ * the overlay falls back to system-ui and the text jumps the moment a field is focused.
+ */
+const inter = Inter({ subsets: ['latin'], weight: ['400', '600'], display: 'swap' });
 
 const siteConfig = {
   name: 'Kookie Flow',
@@ -98,7 +108,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             against — the DOM's and the WebGL canvas's alike. */}
         <script dangerouslySetInnerHTML={{ __html: appearanceScript }} />
       </head>
-      <body>
+      <body className={inter.className}>
         <Providers>
           <DocsLayout>{children}</DocsLayout>
         </Providers>

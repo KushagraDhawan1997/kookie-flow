@@ -6,8 +6,7 @@
  * Supports multiple font families and weights.
  *
  * Usage:
- *   pnpm generate:fonts              - Generate Google Sans (default)
- *   pnpm generate:fonts google-sans  - Generate Google Sans
+ *   pnpm generate:fonts              - Generate Inter (default)
  *   pnpm generate:fonts inter        - Generate Inter
  *   pnpm generate:fonts roboto       - Generate Roboto
  *   pnpm generate:fonts source-serif - Generate Source Serif Pro
@@ -28,21 +27,15 @@ const FONTS_DIR = join(__dirname, '..', 'fonts');
  * Each family has a list of weights with TTF file names and output names.
  */
 const FONT_FAMILIES = {
-  'google-sans': {
-    displayName: 'Google Sans',
-    weights: [
-      { name: 'regular', file: 'GoogleSans-Regular.ttf', output: 'google-sans-regular-msdf' },
-      { name: 'semibold', file: 'GoogleSans-SemiBold.ttf', output: 'google-sans-semibold-msdf' },
-    ],
-    downloadUrl: 'https://fonts.google.com/specimen/Google+Sans',
-  },
+  // Inter is the bundled default: OFL-licensed, and the family KookieUI v2 sets on the DOM, so the
+  // GL glyphs and the edit overlay that lands on top of them are the same shapes.
   'inter': {
     displayName: 'Inter',
     weights: [
       { name: 'regular', file: 'Inter-Regular.ttf', output: 'inter-regular-msdf' },
       { name: 'semibold', file: 'Inter-SemiBold.ttf', output: 'inter-semibold-msdf' },
     ],
-    downloadUrl: 'https://fonts.google.com/specimen/Inter',
+    downloadUrl: 'https://github.com/rsms/inter/releases',
   },
   'roboto': {
     displayName: 'Roboto',
@@ -62,13 +55,19 @@ const FONT_FAMILIES = {
   },
 };
 
+/**
+ * The family that owns `src/core/embedded-font.ts` — the atlas the package ships with and every
+ * consumer gets without asking. Every other family generates into `src/core/embedded-fonts/`.
+ */
+const DEFAULT_FAMILY = 'inter';
+
 // Get target font family from command line args
-const targetFamily = process.argv[2] || 'google-sans';
+const targetFamily = process.argv[2] || DEFAULT_FAMILY;
 
 // For backwards compatibility, also support FONT_WEIGHTS format
 const FONT_WEIGHTS = targetFamily === 'all'
   ? Object.values(FONT_FAMILIES).flatMap(f => f.weights)
-  : (FONT_FAMILIES[targetFamily]?.weights || FONT_FAMILIES['google-sans'].weights);
+  : (FONT_FAMILIES[targetFamily]?.weights || FONT_FAMILIES[DEFAULT_FAMILY].weights);
 
 // Characters to include in atlas (ASCII + common extended)
 const CHARSET =
@@ -224,16 +223,16 @@ async function generateFamily(familyKey, familyConfig) {
 }
 
 async function embedFonts(familyKey, familyConfig, fonts) {
-  // For Google Sans, use the original path for backwards compatibility
-  // For other fonts, use separate files in embedded-fonts directory
-  const isGoogleSans = familyKey === 'google-sans';
+  // The default family owns embedded-font.ts, which is what FontContext dynamically imports.
+  // Every other family generates a sibling in embedded-fonts/ that nothing imports yet.
+  const isDefaultFamily = familyKey === DEFAULT_FAMILY;
   const outputDir = join(__dirname, '..', 'src', 'core');
-  const outputPath = isGoogleSans
+  const outputPath = isDefaultFamily
     ? join(outputDir, 'embedded-font.ts')
     : join(outputDir, 'embedded-fonts', `${familyKey}.ts`);
 
   // Ensure output directory exists
-  if (!isGoogleSans) {
+  if (!isDefaultFamily) {
     const fontsDir = join(outputDir, 'embedded-fonts');
     if (!existsSync(fontsDir)) {
       mkdirSync(fontsDir, { recursive: true });
@@ -272,7 +271,7 @@ async function embedFonts(familyKey, familyConfig, fonts) {
   }
 
   // Determine import path for FontMetrics based on file location
-  const importPath = isGoogleSans ? '../utils/text-layout' : '../../utils/text-layout';
+  const importPath = isDefaultFamily ? '../utils/text-layout' : '../../utils/text-layout';
 
   // Generate TypeScript file
   let tsContent = `/**
@@ -303,9 +302,9 @@ export const ${font.varNameAtlas} = '${font.atlasDataUrl}';
 `;
   }
 
-  // Add convenience aliases for default font (regular) - only for Google Sans for backwards compat
+  // Add convenience aliases for default font (regular) - only for the default family
   const regularFont = fontExports.find(f => f.name === 'regular');
-  if (regularFont && isGoogleSans) {
+  if (regularFont && isDefaultFamily) {
     tsContent += `/**
  * Default font metrics (Regular weight).
  * @deprecated Use EMBEDDED_FONT_METRICS_REGULAR for explicit weight selection.

@@ -35,14 +35,14 @@ const DEFAULT_CONTEXT: FontContextValue = {
   regular: null,
   semibold: null,
   isLoading: true,
-  presetName: 'google-sans',
+  presetName: 'inter',
 };
 
 const FontContext = createContext<FontContextValue>(DEFAULT_CONTEXT);
 
 interface FontProviderProps {
   children: ReactNode;
-  /** Font preset or custom configuration. Default: 'google-sans' */
+  /** Font preset or custom configuration. Default: 'inter' */
   font?: FontPreset | FontConfig;
 }
 
@@ -115,7 +115,7 @@ interface FontState {
 const INITIAL_FONT_STATE: FontState = { regular: null, semibold: null, isLoading: true };
 const EMPTY_LOADED: FontState = { regular: null, semibold: null, isLoading: false };
 
-export function FontProvider({ children, font = 'google-sans' }: FontProviderProps) {
+export function FontProvider({ children, font = 'inter' }: FontProviderProps) {
   const [fontState, setFontState] = useState<FontState>(INITIAL_FONT_STATE);
 
   /**
@@ -212,8 +212,10 @@ export function resolveFontForWeight(
  */
 async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
   switch (preset) {
-    case 'google-sans': {
-      // Google Sans is embedded - import synchronously
+    case 'inter': {
+      // Inter is the bundled atlas. The import is dynamic so the ~568 KB of base64 lands in its own
+      // chunk rather than in the package entry — a consumer that supplies its own FontConfig, or
+      // asks for 'system', never downloads it.
       const {
         EMBEDDED_FONT_METRICS_REGULAR,
         EMBEDDED_FONT_ATLAS_URL_REGULAR,
@@ -221,7 +223,7 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
         EMBEDDED_FONT_ATLAS_URL_SEMIBOLD,
       } = await import('../core/embedded-font');
       return {
-        name: 'Google Sans',
+        name: 'Inter',
         weights: {
           regular: {
             metrics: EMBEDDED_FONT_METRICS_REGULAR,
@@ -235,17 +237,16 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       };
     }
 
-    case 'inter':
     case 'roboto':
     case 'source-serif': {
       // MSDF atlases not yet bundled for these presets.
       // Provide an actionable message so developers know how to supply their own.
       console.warn(
         `[KookieFlow] Font preset "${preset}" is not yet bundled. ` +
-        `Falling back to Google Sans. To use ${preset}, provide a custom FontConfig ` +
+        `Falling back to Inter. To use ${preset}, provide a custom FontConfig ` +
         `with your own MSDF atlas via the \`font\` prop.`
       );
-      return loadFontPreset('google-sans');
+      return loadFontPreset('inter');
     }
 
     case 'system':
@@ -255,9 +256,9 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
     default:
       console.warn(
         `[KookieFlow] Unknown font preset "${preset}". ` +
-        `Falling back to Google Sans. Valid presets: "google-sans", "inter", "roboto", "source-serif", "system".`
+        `Falling back to Inter. Valid presets: "inter", "roboto", "source-serif", "system".`
       );
-      return loadFontPreset('google-sans');
+      return loadFontPreset('inter');
   }
 }
 

@@ -417,7 +417,7 @@ Labels are drawn with instanced MSDF, so `font` picks an MSDF atlas rather than 
 
 ```tsx
 <KookieFlow
-  font="inter"  // 'google-sans' | 'inter' | 'roboto' | 'source-serif' | 'system'
+  font="inter"  // 'inter' | 'roboto' | 'source-serif' | 'system'
 />
 ```
 
@@ -538,7 +538,7 @@ useKeyboardShortcuts({
 | `showMinimap` | `boolean` | `false` | Show minimap overview |
 | `minimapProps` | `MinimapProps` | - | Minimap configuration |
 | `showStats` | `boolean` | `false` | Show FPS stats |
-| `font` | `FontPreset \| FontConfig` | `'google-sans'` | Font for WebGL text rendering |
+| `font` | `FontPreset \| FontConfig` | `'inter'` | Font for WebGL text rendering |
 | `showSocketLabels` | `boolean` | `true` | Show socket labels |
 | `showEdgeLabels` | `boolean` | `true` | Show edge labels |
 | `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
