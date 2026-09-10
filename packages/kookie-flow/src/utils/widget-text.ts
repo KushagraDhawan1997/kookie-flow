@@ -44,7 +44,7 @@ export const WIDGET_VALUE_MIN_ZOOM = 0.5;
  * The inner padding a value is printed at, matching `padding: '0 6px'` on the borrowed input
  * (widget-edit-overlay.tsx). Opening an edit must not shift the text sideways.
  */
-const PAD = 6;
+export const PAD = 6;
 
 /**
  * How much of a select's box the chevron owns. The shader draws it centred at `halfSize.x - 10`

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import {
   DEFAULT_ENTITY_WIDTH,
@@ -225,8 +225,8 @@ export function EntitySelection() {
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { handleGeometry.dispose(); }, [handleGeometry]);
 
-  const handleFillColor = tokens[THEME_COLORS.entitySelection.handleFill];
-  const handleBorderColor = tokens[THEME_COLORS.entitySelection.handleBorder];
+  const handleFillColor = resolveColor(THEME_COLORS.entitySelection.handleFill, tokens);
+  const handleBorderColor = resolveColor(THEME_COLORS.entitySelection.handleBorder, tokens);
 
   const handleMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({

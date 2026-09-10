@@ -366,7 +366,14 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       // The literal was `#191919` — near-black — so under a design system that defines neither
       // name this painted a dark canvas into a light app, silently. It is the light value now,
       // because an un-themed page is a light page; a consumer wanting dark states a theme.
-      backgroundColor: 'var(--neutral-2, var(--gray-2, #f9f9f9))',
+      //
+      // The pair is THEME_COLORS.canvas.background: in dark the canvas is the floor (`--neutral-1`)
+      // and a card floats a step above it; in light the canvas sits a step below the white card.
+      // Every GL reader resolves the same pair, so the DOM ground and the GL ground agree.
+      backgroundColor:
+        tokens.appearance === 'dark'
+          ? 'var(--neutral-1, var(--gray-1, #111111))'
+          : 'var(--neutral-2, var(--gray-2, #f9f9f9))',
     };
 
     return (

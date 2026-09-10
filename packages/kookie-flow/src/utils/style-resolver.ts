@@ -4,6 +4,7 @@
  */
 
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
+import { pickToken, type ColorTokenRef } from '../core/theme-colors';
 import type { EntitySize, EntityVariant, EntityRadius, EntityStyleOverrides, HeaderPosition } from '../types';
 import { parseColorToRGB, type RGBColor } from './color';
 
@@ -83,13 +84,13 @@ export const SIZE_MAP: Record<EntitySize, SizeConfig> = {
 
 interface VariantConfig {
   /** Background color token or 'transparent' */
-  background: keyof ThemeTokens | 'transparent';
+  background: ColorTokenRef | 'transparent';
   /** Background color on hover */
-  backgroundHover: keyof ThemeTokens;
+  backgroundHover: ColorTokenRef;
   /** Border color token or 'transparent' */
-  borderColor: keyof ThemeTokens | 'transparent';
+  borderColor: ColorTokenRef | 'transparent';
   /** Border color on hover */
-  borderColorHover: keyof ThemeTokens | 'transparent';
+  borderColorHover: ColorTokenRef | 'transparent';
   /** Border width in pixels */
   borderWidth: number;
   /** Shadow token or 'none' */
@@ -219,11 +220,14 @@ function resolveTokenPx(
  * Resolve a color token reference to RGB.
  */
 export function resolveTokenColor(
-  token: keyof ThemeTokens | 'transparent',
+  token: keyof ThemeTokens | 'transparent' | ColorTokenRef,
   tokens: ThemeTokens
 ): RGBColor {
   if (token === 'transparent') return TRANSPARENT;
-  const value = tokens[token];
+  // An appearance-keyed pair picks its half here, so every caller that already takes a token
+  // takes a pair for free and nothing downstream learns a second spelling.
+  const key = typeof token === 'object' ? pickToken(token, tokens.appearance) : token;
+  const value = tokens[key];
   if (Array.isArray(value)) {
     // Could be RGB or RGBA, take first 3 values
     return [value[0], value[1], value[2]];

@@ -62,6 +62,8 @@ export interface ThemeTokens {
   // Accent colors (from Theme's accentColor prop)
   '--accent-3': RGBColor;
   '--accent-9': RGBColor;
+  /** The ink that reads on an `--accent-9` fill, in both appearances. */
+  '--accent-contrast': RGBColor;
   /**
    * The two SEMANTIC colours the graph uses, as MEANINGS rather than as hues.
    *
@@ -144,6 +146,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   // Accent (indigo defaults)
   '--accent-3': [0.114, 0.118, 0.208], // Subtle accent background (indigo-3)
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
+  '--accent-contrast': [1, 1, 1],
   '--destructive-9': [0.898, 0.282, 0.302], // #e5484d — v1's --red-9
   '--success-9': [0.188, 0.643, 0.424], // #30a46c — v1's --green-9
 
@@ -311,6 +314,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Accent
     '--accent-3': getCSSVarRGB(styles, '--accent-3', FALLBACK_TOKENS['--accent-3']),
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
+    '--accent-contrast': getCSSVarRGB(styles, '--accent-contrast', FALLBACK_TOKENS['--accent-contrast']),
     '--destructive-9': getCSSVarRGB(styles, '--destructive-9', FALLBACK_TOKENS['--destructive-9']),
     '--success-9': getCSSVarRGB(styles, '--success-9', FALLBACK_TOKENS['--success-9']),
 
