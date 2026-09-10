@@ -1036,6 +1036,14 @@ export interface KookieFlowProps {
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
   /** Default entity width when entity.width is not specified. Default: 240 */
+  /**
+   * Alignment guides while dragging: the lines that appear when a node's edge or centre lines up
+   * with another's, and the small snap that goes with them. Default: true.
+   *
+   * Ignored while `snapToGrid` is on — two things deciding where a node lands fight, and the grid
+   * was asked for explicitly.
+   */
+  helperLines?: boolean;
   defaultEntityWidth?: number;
   /** Width reserved for socket labels before widget starts. Default: 96 */
   socketLabelWidth?: number;

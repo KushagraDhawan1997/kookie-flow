@@ -179,6 +179,9 @@ function params() {
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
+    // Alignment guides snap a drag to its neighbours, which is right for a person and wrong
+    // for a law measuring drag arithmetic. Off unless a law asks.
+    helperLines: q.get('helperLines') === '1',
     scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types' | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
@@ -1289,6 +1292,7 @@ function App() {
           ? { onEvaluate: fixtureEvaluate, onStatusChange: fixtureStatus, entityTypes: EVALUATION_TYPES }
           : {})}
         {...(p.scene === 'types' ? { entityTypes: TYPE_TABLE } : {})}
+        helperLines={p.helperLines}
         showMinimap={false}
         {...(p.entityRadius ? { radius: p.entityRadius } : {})}
       >

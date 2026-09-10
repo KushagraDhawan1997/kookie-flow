@@ -4145,6 +4145,102 @@ await withPage('scene=widgets&widgets=1&grid=0', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- guides and auto-pan
+/**
+ * Two things a canvas does while you are dragging: line the node up with its neighbours, and
+ * bring the world to meet the pointer when it reaches an edge.
+ */
+await withPage('scene=graph&count=3&seed=7&grid=0&explicitSize=1&helperLines=1&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(400);
+
+  const layout = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    // Two nodes, put deliberately out of line: one is dragged onto the other's left edge.
+    const [a, b, c] = s.entities.slice(0, 3).map((e) => e.id);
+    s.updateEntityPositions([
+      { id: a, position: { x: 200, y: 120 } },
+      { id: b, position: { x: 213, y: 420 } },
+    ]);
+    return { a, b, c, zoom: s.viewport.zoom };
+  });
+
+  const toScreen = (wx, wy) =>
+    page.evaluate(([x, y]) => {
+      const v = window.__harness.store.getState().viewport;
+      return { x: Math.round(x * v.zoom + v.x), y: Math.round(y * v.zoom + v.y) };
+    }, [wx, wy]);
+
+  // Grab node b by its middle and move it a couple of pixels: its left edge is 13 world px from
+  // a's, so the drag should be caught and pulled onto it.
+  const grab = await toScreen(213 + 40, 420 + 20);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x - 9, grab.y, { steps: 5 });
+  await page.waitForTimeout(120);
+
+  const snapped = await page.evaluate((ids) => {
+    const s = window.__harness.store.getState();
+    return {
+      bx: s.entityMap.get(ids.b).position.x,
+      ax: s.entityMap.get(ids.a).position.x,
+      guides: s.helperLinesX.slice(),
+    };
+  }, layout);
+  check(
+    'a node dragged near another lines up with it exactly',
+    snapped.bx === snapped.ax,
+    `b at ${snapped.bx}, a at ${snapped.ax}`
+  );
+  check(
+    'and a guide is drawn where they meet',
+    snapped.guides.length > 0 && Math.abs(snapped.guides[0] - snapped.ax) < 0.51,
+    JSON.stringify(snapped.guides)
+  );
+
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const afterRelease = await page.evaluate(() => window.__harness.store.getState().helperLinesX.length);
+  check('the guide goes with the gesture that produced it', afterRelease === 0, String(afterRelease));
+
+  // ---- auto-pan while wiring ----
+  // A wire dragged to the edge brings the world with it. Measured on the viewport, because that
+  // is the thing that has to move: the pointer is standing still.
+  // A socket on the entity NOTHING here moved: the socket index follows a real drag's commit
+  // rather than a direct position write, so a socket on a node this test relocated is not where
+  // the index says it is.
+  const socket = await page.evaluate((id) => {
+    const s = window.__harness.indexedSockets().find(
+      (k) => k.entityId === id && !k.isInput && k.x > 40 && k.y > 40
+    );
+    return s ? { x: s.x, y: s.y } : null;
+  }, layout.c);
+  if (socket) {
+    const from = await toScreen(socket.x, socket.y);
+    const viewportBefore = await page.evaluate(() => ({ ...window.__harness.store.getState().viewport }));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    // Into the left edge band and hold: the loop runs on animation frames, not on moves.
+    await page.mouse.move(12, from.y, { steps: 8 });
+    await page.waitForTimeout(400);
+    const viewportDuring = await page.evaluate(() => ({ ...window.__harness.store.getState().viewport }));
+    const draftDuring = await page.evaluate(() => !!window.__harness.store.getState().connectionDraft);
+    check('INSTRUMENT: the wire is actually in flight', draftDuring, `socket ${JSON.stringify(socket)}`);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    const viewportAfter = await page.evaluate(() => ({ ...window.__harness.store.getState().viewport }));
+    check(
+      'a wire dragged to the edge brings the world with it',
+      viewportDuring.x > viewportBefore.x + 20,
+      `${viewportBefore.x} -> ${viewportDuring.x}`
+    );
+    check(
+      'and it stops when the wire is let go',
+      Math.abs(viewportAfter.x - viewportDuring.x) < 40,
+      `${viewportDuring.x} -> ${viewportAfter.x}`
+    );
+  }
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

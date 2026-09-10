@@ -44,6 +44,7 @@ import {
 } from '../utils/grouping';
 import * as graphEngine from './graph';
 import { toFlowObject } from './serialize';
+import { sameGuides } from '../utils/alignment';
 import {
   createEntityTypeCache,
   resolveEntities,
@@ -82,6 +83,17 @@ export interface FlowState {
   viewport: Viewport;
   /** Currently connecting from (legacy) */
   connectionStart: { entityId: string; socketId: string } | null;
+  /**
+   * The alignment guides to draw, in world coordinates: vertical lines by x, horizontal by y.
+   *
+   * Written during a drag, so the arrays are OWNED BY THE CALLER and reused — a fresh pair every
+   * frame would allocate in the hottest path there is. `helperLinesVersion` is what a renderer
+   * watches; the store bumps it only when the contents actually changed.
+   */
+  helperLinesX: number[];
+  helperLinesY: number[];
+  helperLinesVersion: number;
+
   /** Currently hovered entity */
   hoveredEntityId: string | null;
   /** Currently hovered socket */
@@ -251,6 +263,8 @@ export interface FlowState {
   setEntityTypes: (entityTypes: Record<string, EntityTypeDefinition>) => void;
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
+  /** Publish the guides for this frame. Deduped by value; the arrays are not copied. */
+  setHelperLines: (x: number[], y: number[]) => void;
   setSocketLayout: (layout: ResolvedSocketLayout) => void;
   setHoveredEntityId: (id: string | null) => void;
   setHoveredSocketId: (socket: SocketHandle | null) => void;
@@ -874,6 +888,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Initial state - use extracted values to ensure they're set correctly
       entities: initialEntities,
       entityTypes: entityTypesRef,
+      helperLinesX: [],
+      helperLinesY: [],
+      helperLinesVersion: 0,
       edges: initialEdges,
       viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
       connectionStart: null,
@@ -1028,6 +1045,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({ socketLayout: layout, ...derived });
       },
       setViewport: (viewport) => set({ viewport }),
+      setHelperLines: (x, y) => {
+        const state = get();
+        if (sameGuides(state.helperLinesX, x) && sameGuides(state.helperLinesY, y)) return;
+        set({
+          helperLinesX: x,
+          helperLinesY: y,
+          helperLinesVersion: state.helperLinesVersion + 1,
+        });
+      },
       setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
       /**
        * Deduped by VALUE. The hit test runs on every pointermove and mints a fresh handle object

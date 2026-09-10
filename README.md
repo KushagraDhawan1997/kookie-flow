@@ -290,6 +290,11 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Guides and auto-pan.** Dragging a node past another lines it up: when an edge or a centre comes
+within a few screen pixels of another's, the drag lands on it and a line says why. `helperLines={false}`
+turns it off, and `snapToGrid` supersedes it. Dragging a node — or a wire — to the edge of the
+canvas brings the world to meet it.
+
 **Undo.** `useGraph({ history: true })` returns `undo`, `redo`, `canUndo`, `canRedo`, and binds
 Cmd/Ctrl+Z while the graph has focus — scoped to the graph, so a page embedding a canvas keeps
 undo in its own fields. A drag is one step however many frames it took; a selection is not a step

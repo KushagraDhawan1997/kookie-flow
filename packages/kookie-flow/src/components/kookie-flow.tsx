@@ -24,6 +24,7 @@ import { ImageEntities } from './image-entities';
 import { VideoEntities } from './video-entities';
 import { MeshEntities } from './mesh-entities';
 import { PreviewEntities } from './preview-entities';
+import { HelperLines } from './helper-lines';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -72,6 +73,7 @@ import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLin
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { findAlignment, type AlignRect } from '../utils/alignment';
 import {
   hitVideoControls,
   isMeshDragStrip,
@@ -192,6 +194,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     ThemeComponent,
     defaultEntityWidth,
     socketLabelWidth,
+    helperLines = true,
     // Evaluation (Phase 8.5)
     onEvaluate,
     onStatusChange,
@@ -257,6 +260,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             ThemeComponent={ThemeComponent}
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
+            helperLines={helperLines}
             maxImageTextureSize={maxImageTextureSize}
           >
             {children}
@@ -310,6 +314,7 @@ interface ThemedFlowContainerProps {
   ThemeComponent?: KookieFlowProps['ThemeComponent'];
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
+  helperLines?: boolean;
   maxImageTextureSize?: number;
   // Evaluation (Phase 8.5)
   onEvaluate?: KookieFlowProps['onEvaluate'];
@@ -357,6 +362,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       ThemeComponent,
       defaultEntityWidth,
       socketLabelWidth,
+      helperLines,
       maxImageTextureSize,
       onEvaluate,
       onStatusChange,
@@ -445,6 +451,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             ariaLabel={ariaLabel}
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
+            helperLines={helperLines}
             minZoom={minZoom}
             maxZoom={maxZoom}
             snapToGrid={snapToGrid}
@@ -676,6 +683,8 @@ interface InputHandlerProps {
   widgetTypes?: KookieFlowProps['widgetTypes'];
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
+  /** See KookieFlowProps.helperLines. */
+  helperLines?: boolean;
   /** The accessible name of the graph. See KookieFlowProps.ariaLabel. */
   ariaLabel?: string;
   children: React.ReactNode;
@@ -761,6 +770,7 @@ function InputHandler({
   ariaLabel = 'Flow graph',
   defaultEntityWidth,
   socketLabelWidth,
+  helperLines = true,
 }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
@@ -807,6 +817,17 @@ function InputHandler({
    * pinch-zoom ran at the same time, and lifting either finger ended the drag while the other was
    * still down. A gesture belongs to the pointer that began it.
    */
+  /**
+   * Scratch for the alignment pass, allocated once.
+   *
+   * This runs on every pointermove of every drag; a fresh rect and two fresh arrays per frame is
+   * exactly the garbage the performance rules in CLAUDE.md exist to forbid.
+   */
+  const alignMoving = useMemo<AlignRect>(() => ({ id: '', x: 0, y: 0, width: 0, height: 0 }), []);
+  const alignCandidates = useMemo<AlignRect[]>(() => [], []);
+  const alignVertical = useMemo<number[]>(() => [], []);
+  const alignHorizontal = useMemo<number[]>(() => [], []);
+
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
   /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
   const videoScrubRef = useRef<{ entityId: string; width: number } | null>(null);
@@ -1076,13 +1097,27 @@ function InputHandler({
     // hands the pointermove handler a fresh closure — which is why this reads as an intermittent
     // failure rather than a dead feature: it bites when the threshold crossing, the entry into the
     // edge band and the pointer stopping all land on one event.
-    if (!dragState.current || !autoScrollRef.current.lastScreenPos) {
+    /**
+     * Two gestures reach the edge of the canvas: dragging entities, and dragging a WIRE.
+     *
+     * The second is the one that needs it most — you wire to a node that is off screen far more
+     * often than you drag one there — and it was the one that did not have it. Both are handled
+     * here rather than in two loops, because "the pointer is near an edge, so move the world" is
+     * one behaviour, and a second copy would drift.
+     */
+    const draft = store.getState().connectionDraft;
+    if ((!dragState.current && !draft) || !autoScrollRef.current.lastScreenPos) {
       autoScrollRef.current.active = false;
       return;
     }
 
     const { x: screenX, y: screenY } = autoScrollRef.current.lastScreenPos;
-    const { width, height } = dragState.current.containerRect;
+    const rectSource = dragState.current?.containerRect ?? containerRef.current?.getBoundingClientRect();
+    if (!rectSource) {
+      autoScrollRef.current.active = false;
+      return;
+    }
+    const { width, height } = rectSource;
 
     // Calculate proximity to each edge (0 = not near, 1 = at edge)
     const leftProximity = Math.max(0, 1 - screenX / AUTO_SCROLL_EDGE_THRESHOLD);
@@ -1113,6 +1148,23 @@ function InputHandler({
       y: viewport.y - scrollY,
       zoom: viewport.zoom,
     });
+
+    /**
+     * A wire's loose end follows the world rather than the pointer.
+     *
+     * The pointer is standing still against the screen while the canvas moves under it, so the
+     * world position it corresponds to changes every frame — and the draft is stored in world
+     * space, because that is the space the edge is drawn in.
+     */
+    if (!dragState.current) {
+      store.getState().updateConnectionDraft(
+        screenToWorld({ x: screenX, y: screenY }, store.getState().viewport),
+        store.getState().connectionDraft?.isValid
+      );
+      autoScrollRef.current.active = true;
+      autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+      return;
+    }
 
     // 2. Update entity positions based on new viewport
     // Use cursor offset approach (same as main drag handler)
@@ -1837,6 +1889,20 @@ function InputHandler({
 
         // Update connection draft position and validity (for visual feedback)
         store.getState().updateConnectionDraft(worldPos, isTypeCompatible);
+
+        // Near an edge, the world comes to meet the wire — the same auto-pan a node drag gets.
+        const rectNow = cachedRectRef.current;
+        const edgeX = e.clientX - rectNow.left;
+        const edgeY = e.clientY - rectNow.top;
+        if (autoScrollRef.current.lastScreenPos) {
+          autoScrollRef.current.lastScreenPos.x = edgeX;
+          autoScrollRef.current.lastScreenPos.y = edgeY;
+        } else {
+          autoScrollRef.current.lastScreenPos = { x: edgeX, y: edgeY };
+        }
+        if (!autoScrollRef.current.active && autoScrollRef.current.rafId === 0) {
+          autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+        }
         return;
       }
 
@@ -2095,6 +2161,61 @@ function InputHandler({
         if (snapToGrid) {
           primaryX = Math.round(primaryX / snapGrid[0]) * snapGrid[0];
           primaryY = Math.round(primaryY / snapGrid[1]) * snapGrid[1];
+        }
+
+        /**
+         * ALIGNMENT. The node being dragged is measured against everything else on the board, and
+         * if one of its edges or its centre comes within a few screen pixels of another's, the
+         * drag lands on it and a line says why.
+         *
+         * Skipped while snapping to a grid: two things that both decide where a node goes end up
+         * fighting, and the grid was asked for explicitly.
+         */
+        if (!snapToGrid && helperLines) {
+          const s = store.getState();
+          const primary = s.entityMap.get(dragState.current.entityIds[0]);
+          if (primary) {
+            const layout = getEntitySocketLayout(primary, socketLayout);
+            alignMoving.id = primary.id;
+            alignMoving.x = primaryX;
+            alignMoving.y = primaryY;
+            alignMoving.width = primary.width ?? defaultEntityWidth ?? DEFAULT_ENTITY_WIDTH;
+            alignMoving.height = primary.height ?? layout.computedHeight;
+
+            // Everything that is NOT being dragged, and is on screen: a guide to a node a
+            // kilometre away is a line to nowhere, and measuring against a thousand of them
+            // every frame is the kind of O(n) this codebase does not do.
+            alignCandidates.length = 0;
+            const pad = 200;
+            const vLeft = -s.viewport.x / s.viewport.zoom - pad;
+            const vTop = -s.viewport.y / s.viewport.zoom - pad;
+            const vRight = (rect.width - s.viewport.x) / s.viewport.zoom + pad;
+            const vBottom = (rect.height - s.viewport.y) / s.viewport.zoom + pad;
+            for (const candidate of s.entities) {
+              if (dragState.current.entityIds.includes(candidate.id)) continue;
+              if (s.hiddenEntityIds.has(candidate.id)) continue;
+              const cw = candidate.width ?? defaultEntityWidth ?? DEFAULT_ENTITY_WIDTH;
+              const ch = candidate.height ?? getEntitySocketLayout(candidate, socketLayout).computedHeight;
+              if (
+                candidate.position.x > vRight || candidate.position.x + cw < vLeft ||
+                candidate.position.y > vBottom || candidate.position.y + ch < vTop
+              ) continue;
+              alignCandidates.push({
+                id: candidate.id,
+                x: candidate.position.x,
+                y: candidate.position.y,
+                width: cw,
+                height: ch,
+              });
+            }
+
+            const snapped = findAlignment(
+              alignMoving, alignCandidates, s.viewport.zoom, alignVertical, alignHorizontal
+            );
+            primaryX += snapped.dx;
+            primaryY += snapped.dy;
+            s.setHelperLines(alignVertical, alignHorizontal);
+          }
         }
 
         // Calculate delta from primary entity's start position
@@ -2398,6 +2519,14 @@ function InputHandler({
           });
         }
 
+        // The wire is gone, so the world stops coming to meet it.
+        if (autoScrollRef.current.rafId) {
+          cancelAnimationFrame(autoScrollRef.current.rafId);
+          autoScrollRef.current.rafId = 0;
+        }
+        autoScrollRef.current.active = false;
+        autoScrollRef.current.lastScreenPos = null;
+
         // Cancel the draft
         store.getState().cancelConnectionDraft();
         setIsConnecting(false);
@@ -2452,6 +2581,10 @@ function InputHandler({
         }
         autoScrollRef.current.active = false;
         autoScrollRef.current.lastScreenPos = null;
+        // The guides went with the gesture that produced them.
+        alignVertical.length = 0;
+        alignHorizontal.length = 0;
+        store.getState().setHelperLines(alignVertical, alignHorizontal);
 
         // Emit position changes to external callback so controlled state stays in sync
         if (onEntitiesChange) {
@@ -3449,6 +3582,7 @@ function FlowCanvas({
         <VideoEntities onEntitiesChange={onEntitiesChange} />
         <MeshEntities onEntitiesChange={onEntitiesChange} />
         <PreviewEntities />
+        <HelperLines />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />
         {showWidgets && (
