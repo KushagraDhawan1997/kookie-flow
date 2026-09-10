@@ -619,15 +619,19 @@ export type ToolbarConfig =
 export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   /** Entity type identifier */
   type: string;
-  /** Display label */
+  /** The header text for nodes of this type that carry no `data.label` of their own. */
   label?: string;
-  /** Default dimensions */
+  /** The size nodes of this type open at, unless the node states its own. */
   defaultWidth?: number;
   defaultHeight?: number;
-  /** Input sockets */
-  inputs?: Omit<Socket, 'id'>[];
-  /** Output sockets */
-  outputs?: Omit<Socket, 'id'>[];
+  /**
+   * The sockets every node of this type has, unless the node states its own.
+   *
+   * Ids are required and are the app's: an edge names the socket it lands on, so a socket the
+   * table invented an id for could never be wired to anything the app saved.
+   */
+  inputs?: Socket[];
+  outputs?: Socket[];
   /** Preview configuration */
   preview?: {
     type: 'image' | 'mesh' | 'custom';

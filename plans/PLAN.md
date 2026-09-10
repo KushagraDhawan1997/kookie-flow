@@ -86,9 +86,12 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 
 ## Next Immediate Tasks
 
-1. **Phase 16: Entity Type Customization** — rows, widgets and preview slot from a declaration
+1. **Preview slot** — a picture or mesh inside a node body, fed by one of its output sockets
 2. **Media chrome** — video controls and mesh orbit, on by default; paste-to-create
-3. **Undo/redo, auto-pan, helper lines, subflows** — see `plans/migration/decisions.md` D16–D17 and the README roadmap
+3. **Undo/redo, auto-pan, helper lines, subflows** — see `plans/migration/decisions.md` D16–D18 and the README roadmap
+
+Entity types themselves are done: `entityTypes` fills in sockets, size and label for nodes that
+state none (D18).
 
 ---
 

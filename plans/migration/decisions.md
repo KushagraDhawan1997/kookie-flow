@@ -1015,3 +1015,45 @@ which is one less clock to reason about. A consumer who only sets `data.status =
 run to anchor to, so that case keeps the clock's phase. The law runs the same quiet work twice, a
 hold apart, and reads two border points at the same moment into each: a clock-driven arc cannot
 land twice alike, and under sabotage it does not. 533 unit tests, 215 laws.
+
+
+## D18 — the type table fills in what a node leaves unsaid
+
+**Date:** 2026-09-11
+
+`EntityTypeDefinition` had offered `inputs`, `outputs`, `defaultWidth`, `defaultHeight`, `label`,
+`preview` and `component` since the beginning, and the library read none of them — only `toolbar`
+and `evaluation`. Autocomplete offered a socket list; writing one did nothing. That is the worst
+shape a public type can take, because the app author's next move is to doubt their own code.
+
+Two ways out. Finish the fields, or delete them and let each app write its own factory —
+`makeAdd()` returning a complete node, which is what Rete, LiteGraph, ComfyUI, Blender and
+Node-RED all do; React Flow's `nodeTypes` doesn't even go that far, mapping a type only to the
+component that draws it. The factory costs the library nothing, and the argument for it is real:
+the app is always the one creating nodes, so it can fill them in on the way.
+
+Finished them anyway, because the honest version of the table is not a hole. Two rules make it
+safe. THE NODE WINS: the table fills gaps and never overrules, and an empty socket list is a
+statement rather than a gap, so `inputs: []` stays empty. And the library ONLY COPIES: it still
+has no idea what Add is; every value came from the app.
+
+Resolution happens at ONE place — where entities enter the store, all four doors: the initial
+state, the prop sync, `addElements`, and an `add` change. That was the design decision that made
+the rest cheap. The alternative, resolving where sockets are read, would have touched the
+hundred-odd sites that read `entity.inputs` and left a permanent trap for the next one. Because
+the store resolves, the socket quadtree is built from filled sockets, so a socket the node never
+mentioned is clickable on the first frame rather than drawn and dead.
+
+What it costs: a `WeakMap` keyed on the consumer's entity object, so the prop sync that runs on
+every consumer render resolves nothing it has seen. A second `WeakMap` remembers which entity the
+consumer actually handed over, so a table that arrives late — or is swapped — fills the gaps it
+filled last time rather than reading back its own work. And a table compared by entry identity,
+because an app writing `entityTypes={{...}}` inline in JSX hands over a new object every render,
+and re-resolving every node plus both quadtrees for that would be a full rebuild per keystroke.
+The README says to hoist it.
+
+The evaluation demo now declares its five nodes this way, which is how the feature was checked
+for being worth having. The laws use a scene of two nodes that state a type, a position and
+almost nothing else: the sockets answer a press, the sockets are drawn, the header text is on
+screen, and the card is as wide as the table said. Sabotaging the prop sync's resolve fails five
+of them. 563 unit tests, 221 laws.

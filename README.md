@@ -288,6 +288,27 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Entity types.** A board with fifty Add nodes should not repeat Add's sockets fifty times.
+`entityTypes` is a table of what each type looks like, and a node that states nothing gets it:
+
+```tsx
+const entityTypes = {                  // hoist it out of render — a new object each render is a
+  'math/add': {                        // new table, and the library has to check whether it changed
+    type: 'math/add',
+    label: 'Add',
+    defaultWidth: 240,
+    inputs: [{ id: 'a', name: 'A', type: 'float' }, { id: 'b', name: 'B', type: 'float' }],
+    outputs: [{ id: 'sum', name: 'Sum', type: 'float' }],
+  },
+};
+
+<KookieFlow entityTypes={entityTypes} entities={[{ id: 'n1', type: 'math/add', position, data: {} }]} />
+```
+
+The node always wins: anything it states itself is kept, and an empty list (`inputs: []`) is a
+statement, not a gap. Filling happens once, where entities enter the store, so what you passed
+stays yours and every socket is drawn and clickable on the first frame.
+
 **Evaluation.** The library orchestrates and never computes. You give it one function; it
 decides when to call it, with what, and what to do with the answer.
 
@@ -629,7 +650,7 @@ useKeyboardShortcuts({
 | `snapToGrid` | `boolean` | `false` | Snap entities to grid when dragging |
 | `snapGrid` | `[number, number]` | `[20, 20]` | Grid snap size [x, y] |
 | `socketTypes` | `Record<string, SocketType>` | - | Custom socket type definitions |
-| `entityTypes` | `Record<string, EntityTypeDefinition>` | - | Custom entity type definitions |
+| `entityTypes` | `Record<string, EntityTypeDefinition>` | - | Per-type sockets, size, label, toolbar and evaluation mode |
 | `widgetTypes` | `Record<string, Component>` | - | Custom widget components |
 | `defaultEntityWidth` | `number` | `240` | Default entity width when not specified |
 | `socketLabelWidth` | `number` | `96` | Width reserved for socket labels |

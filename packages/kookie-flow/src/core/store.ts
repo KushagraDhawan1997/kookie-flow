@@ -43,6 +43,13 @@ import {
   type Bounds,
 } from '../utils/grouping';
 import * as graphEngine from './graph';
+import {
+  createEntityTypeCache,
+  resolveEntities,
+  resolveEntity,
+  sameTypeTable,
+  sourceEntity,
+} from './entity-types';
 import type { AdjacencyIndex, CachedAnalysis } from './graph';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
 import { widgetKey, type WidgetOverride } from '../utils/widget-values';
@@ -55,10 +62,21 @@ const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
 
 
 export interface FlowState {
-  /** Entities in the graph */
+  /**
+   * Entities in the graph, RESOLVED against `entityTypes`.
+   *
+   * What the consumer handed over is theirs and untouched; this is that array with anything a
+   * node left unsaid filled in from its type. Everything downstream — hit testing, layout, the
+   * engine, the renderers — reads these, so none of them needs to know a type table exists.
+   */
   entities: Entity[];
   /** Edges in the graph */
   edges: Edge[];
+  /**
+   * The app's table of node types. Fills in sockets, size and label for nodes that state none,
+   * and says which types wait to be asked rather than running on every change.
+   */
+  entityTypes: Record<string, EntityTypeDefinition>;
   /** Current viewport */
   viewport: Viewport;
   /** Currently connecting from (legacy) */
@@ -225,6 +243,11 @@ export interface FlowState {
   /** Entity ids moved by the last updateEntityPositions call. Per store, not global. */
   getMovedEntityIds: () => ReadonlySet<string>;
   setEntities: (entities: Entity[]) => void;
+  /**
+   * Swap the type table. Every entity is resolved again against it, because a table that arrives
+   * after the first sync — or changes — must reach the nodes already on the board.
+   */
+  setEntityTypes: (entityTypes: Record<string, EntityTypeDefinition>) => void;
   setEdges: (edges: Edge[]) => void;
   setViewport: (viewport: Viewport) => void;
   setSocketLayout: (layout: ResolvedSocketLayout) => void;
@@ -253,14 +276,11 @@ export interface FlowState {
   // ========================================
 
   /**
-   * Hand the engine the consumer's callbacks and the entity type table. Called from the component
-   * whenever any of the three changes; the engine keeps its records across the call.
+   * Hand the engine the consumer's callbacks. Called from the component whenever either changes;
+   * the engine keeps its records across the call. The type table arrives by `setEntityTypes`,
+   * because it decides more than evaluation.
    */
-  setEvaluationHandlers: (
-    onEvaluate?: OnEvaluate,
-    onStatusChange?: OnStatusChange,
-    entityTypes?: Record<string, EntityTypeDefinition>
-  ) => void;
+  setEvaluationHandlers: (onEvaluate?: OnEvaluate, onStatusChange?: OnStatusChange) => void;
   /** Inputs changed on these entities. Marks them and their downstream stale; schedules a pass. */
   markDirty: (ids: string | readonly string[]) => void;
   /** Run one entity now, whatever its mode, then cascade. The manual trigger. */
@@ -713,7 +733,17 @@ function isValueBag(value: unknown): value is Record<string, unknown> {
 
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial entities and edges
-  const initialEntities = initialState?.entities ?? [];
+  /**
+   * The type table and the cache that keeps resolution off the hot path.
+   *
+   * `let`, not state, because resolution happens INSIDE `setEntities` — the store cannot read its
+   * own next state while computing it. The state field mirrors this for anyone outside.
+   */
+  let entityTypesRef: Record<string, EntityTypeDefinition> = initialState?.entityTypes ?? {};
+  let entityTypeCache = createEntityTypeCache();
+  const resolve = (entities: Entity[]) => resolveEntities(entities, entityTypesRef, entityTypeCache);
+  const resolveOne = (entity: Entity) => resolveEntity(entity, entityTypesRef, entityTypeCache);
+  const initialEntities = resolve(initialState?.entities ?? []);
   const initialEdges = initialState?.edges ?? [];
   /**
    * The resolved socket layout, when the caller already knows it — and <KookieFlow> does, because
@@ -811,7 +841,6 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
    * renders. `evaluationVersion` is what renderers watch. `get`/`set` do not exist until
    * `create` runs, so the host reads through references bound at the top of the initialiser.
    */
-  let entityTypesRef: Record<string, EntityTypeDefinition> = {};
   let getState: (() => FlowState) | null = null;
   let setState: ((partial: Partial<FlowState>) => void) | null = null;
   const evaluationHost: EvaluationHost = {
@@ -843,6 +872,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
     subscribeWithSelector((set, get) => ((getState = get), (setState = set), {
       // Initial state - use extracted values to ensure they're set correctly
       entities: initialEntities,
+      entityTypes: entityTypesRef,
       edges: initialEdges,
       viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
       connectionStart: null,
@@ -896,8 +926,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Setters - rebuild derived state when entities change
       getMovedEntityIds: () => movedEntityIds,
 
-      setEntities: (entities) => {
+      setEntities: (rawEntities) => {
         const state = get();
+        const entities = resolve(rawEntities);
         // An entity whose `data.values` object was REPLACED has new inputs — an undo, a preset,
         // a consumer write. Reference compare: this runs on every prop sync, and the consumer's
         // immutable update is what produces a new reference. Skipped where a local widget write
@@ -932,6 +963,35 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             : {}),
         });
         if (changedInputs.length > 0) evaluator.markDirty(changedInputs);
+      },
+      setEntityTypes: (entityTypes) => {
+        if (sameTypeTable(entityTypesRef, entityTypes)) {
+          // Same table, new object — an app writing it inline in JSX. Adopt the reference and
+          // stop: re-resolving every node and rebuilding both quadtrees for this would be a
+          // full rebuild on every consumer render.
+          entityTypesRef = entityTypes;
+          set({ entityTypes });
+          return;
+        }
+        entityTypesRef = entityTypes;
+        // Every resolved entity was built against the OLD table, so the cache is worthless for
+        // resolving — but its `source` half is exactly what says what each node originally stated.
+        const previousCache = entityTypeCache;
+        entityTypeCache = createEntityTypeCache();
+        const state = get();
+        // Re-resolve from what the consumer handed over, not from the resolved copies: filling a
+        // gap once must not stop the next table from filling it differently.
+        const entities = resolveEntities(
+          state.entities.map((e) => sourceEntity(e, previousCache)),
+          entityTypes,
+          entityTypeCache
+        );
+        set({
+          entityTypes,
+          entities,
+          ...rebuildDerivedState(entities, state.collapsedGroupIds, state.socketLayout),
+          topologyVersion: state.topologyVersion + 1,
+        });
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
@@ -1084,8 +1144,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       // ---- Phase 8.5: Evaluation ----
-      setEvaluationHandlers: (onEvaluate, onStatusChange, entityTypes) => {
-        entityTypesRef = entityTypes ?? {};
+      setEvaluationHandlers: (onEvaluate, onStatusChange) => {
         evaluator.setHandlers(onEvaluate, onStatusChange);
       },
       markDirty: (ids) => evaluator.markDirty(ids),
@@ -1197,11 +1256,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               break;
             }
             case 'add': {
-              idToIndex.set(change.entity.id, nextEntities.length);
-              nextEntities.push(change.entity);
+              const added = resolveOne(change.entity);
+              idToIndex.set(added.id, nextEntities.length);
+              nextEntities.push(added);
               topologyChanged = true;
               // A new entity arrives on top: it is the thing the person just made.
-              get().stackOrder.set(change.entity.id, ++stackCounter);
+              get().stackOrder.set(added.id, ++stackCounter);
               // If adding a collapsed group, add to collapsed set
               if (change.entity.type === 'frame' && change.entity.collapsed) {
                 nextCollapsed.add(change.entity.id);
@@ -1754,7 +1814,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       addElements: (batch) => {
         const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout, stackOrder, stackVersion } = get();
-        const { entities: newEntities = [], edges: newEdges = [] } = batch;
+        // Resolved on the way in, like the prop sync: a node added by a plugin or a paste gets
+        // its type's sockets the same way one that arrived as a prop does.
+        const newEntities = resolve(batch.entities ?? []);
+        const newEdges = batch.edges ?? [];
         // A new entity has never run, and a new wire changes what its target reads. Marked now
         // against the pre-add index; the pass itself runs in a microtask, after the set below,
         // and finds the new entities in place.

@@ -412,6 +412,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
           initialState={{
             entities,
             edges,
+            entityTypes,
             viewport: defaultViewport,
             socketLayout: containerSocketLayout,
           }}
@@ -510,12 +511,21 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
     { containerRef, minZoom, maxZoom, onEvaluate, onStatusChange, entityTypes }, ref) {
     const store = useFlowStoreApi();
 
-    // The engine keeps its records across handler changes; only the callbacks and the type table
-    // are replaced. Disposal is separate and unconditional: every run in flight is aborted and
-    // every success-hold timer dropped when the flow unmounts.
+    // The engine keeps its records across handler changes; only the callbacks are replaced.
+    // Disposal is separate and unconditional: every run in flight is aborted and every
+    // success-hold timer dropped when the flow unmounts.
     useEffect(() => {
-      store.getState().setEvaluationHandlers(onEvaluate, onStatusChange, entityTypes);
-    }, [store, onEvaluate, onStatusChange, entityTypes]);
+      store.getState().setEvaluationHandlers(onEvaluate, onStatusChange);
+    }, [store, onEvaluate, onStatusChange]);
+    /**
+     * The type table reaches the store separately, because it decides more than evaluation: it
+     * fills in the sockets, size and label of every node that states none. This effect runs
+     * before the entity sync below it, and the store is built with the table in hand anyway, so
+     * the first frame is already resolved.
+     */
+    useEffect(() => {
+      store.getState().setEntityTypes(entityTypes ?? NO_ENTITY_TYPES);
+    }, [store, entityTypes]);
     useEffect(() => () => { store.getState().disposeEvaluation(); }, [store]);
 
     useImperativeHandle(

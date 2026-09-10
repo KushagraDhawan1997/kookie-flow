@@ -15,7 +15,7 @@
  * implementations disagree.
  */
 
-import type { Entity, Edge, Socket } from '../../src/types';
+import type { Entity, Edge, EntityTypeDefinition, Socket } from '../../src/types';
 
 /** mulberry32 — small, fast, and stable across engines. */
 function rng(seed: number): () => number {
@@ -538,6 +538,37 @@ export function makeEvaluation(): Fixture {
       { id: 'e2', source: 'double', sourceSocket: 'out', target: 'gen', targetSocket: 'in' },
       { id: 'e3', source: 'gen', sourceSocket: 'out', target: 'post', targetSocket: 'in' },
     ],
+  };
+}
+
+/**
+ * Two nodes that state almost nothing, and a table that states the rest.
+ *
+ * Everything a law reads here — the sockets, the header text, the width — was written in
+ * `TYPE_TABLE` and never on the entities. If resolution stopped happening, this scene draws two
+ * empty rectangles.
+ */
+export const TYPE_TABLE: Record<string, EntityTypeDefinition> = {
+  sum: {
+    type: 'sum',
+    label: 'Summation',
+    defaultWidth: 200,
+    inputs: [
+      { id: 'a', name: 'A', type: 'float' },
+      { id: 'b', name: 'B', type: 'float' },
+    ],
+    outputs: [{ id: 'out', name: 'Out', type: 'float' }],
+  },
+};
+
+export function makeTypes(): Fixture {
+  return {
+    entities: [
+      { id: 'bare', type: 'sum', position: { x: 120, y: 120 }, data: {} },
+      // Stated for itself, and so kept: the table must not overrule a node that has spoken.
+      { id: 'stated', type: 'sum', position: { x: 460, y: 120 }, width: 320, data: { label: 'Mine' } },
+    ],
+    edges: [],
   };
 }
 

@@ -33,24 +33,68 @@ import {
 const X = [40, 340, 640, 940, 1240];
 const Y = 140;
 
-function node(id: string, x: number, label: string, type: string, inputs: Entity['inputs'], outputs: Entity['outputs'], values?: Record<string, unknown>): Entity {
-  return {
-    id,
-    type,
-    position: { x, y: Y },
-    width: 240,
-    data: values ? { label, values } : { label },
-    inputs,
-    outputs,
-  };
+/**
+ * Every node's shape, written once.
+ *
+ * The nodes below say what they are and where they sit; the sockets, the header text and the
+ * width come from here. `evaluation: 'manual'` is the one decision about running: Generate waits
+ * to be asked, everything else answers a change on its own.
+ */
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  number: {
+    type: 'number',
+    label: 'Number',
+    defaultWidth: 240,
+    inputs: [{ id: 'value', name: 'Value', type: 'float', min: 0, max: 10, step: 0.1 }],
+    outputs: [{ id: 'out', name: 'Out', type: 'float' }],
+  },
+  'math/add': {
+    type: 'math/add',
+    label: 'Add',
+    defaultWidth: 240,
+    inputs: [
+      { id: 'a', name: 'A', type: 'float' },
+      { id: 'b', name: 'B', type: 'float', min: 0, max: 10, step: 0.1 },
+    ],
+    outputs: [{ id: 'sum', name: 'Sum', type: 'float' }],
+  },
+  'math/multiply': {
+    type: 'math/multiply',
+    label: 'Multiply',
+    defaultWidth: 240,
+    inputs: [
+      { id: 'a', name: 'A', type: 'float' },
+      { id: 'by', name: 'By', type: 'float', min: 0, max: 10, step: 0.1 },
+    ],
+    outputs: [{ id: 'product', name: 'Product', type: 'float' }],
+  },
+  'ai/generate': {
+    type: 'ai/generate',
+    label: 'Generate',
+    defaultWidth: 240,
+    evaluation: 'manual',
+    inputs: [{ id: 'seed', name: 'Seed', type: 'float' }],
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+  'image/upscale': {
+    type: 'image/upscale',
+    label: 'Upscale',
+    defaultWidth: 240,
+    inputs: [{ id: 'image', name: 'Image', type: 'image' }],
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+};
+
+function node(id: string, x: number, type: string, values?: Record<string, unknown>): Entity {
+  return { id, type, position: { x, y: Y }, data: values ? { values } : {} };
 }
 
 const initialEntities: Entity[] = [
-  node('number', X[0], 'Number', 'number', [{ id: 'value', name: 'Value', type: 'float', min: 0, max: 10, step: 0.1 }], [{ id: 'out', name: 'Out', type: 'float' }], { value: 2 }),
-  node('add', X[1], 'Add', 'math/add', [{ id: 'a', name: 'A', type: 'float' }, { id: 'b', name: 'B', type: 'float', min: 0, max: 10, step: 0.1 }], [{ id: 'sum', name: 'Sum', type: 'float' }], { b: 3 }),
-  node('multiply', X[2], 'Multiply', 'math/multiply', [{ id: 'a', name: 'A', type: 'float' }, { id: 'by', name: 'By', type: 'float', min: 0, max: 10, step: 0.1 }], [{ id: 'product', name: 'Product', type: 'float' }], { by: 2 }),
-  node('generate', X[3], 'Generate', 'ai/generate', [{ id: 'seed', name: 'Seed', type: 'float' }], [{ id: 'image', name: 'Image', type: 'image' }]),
-  node('upscale', X[4], 'Upscale', 'image/upscale', [{ id: 'image', name: 'Image', type: 'image' }], [{ id: 'image', name: 'Image', type: 'image' }]),
+  node('number', X[0], 'number', { value: 2 }),
+  node('add', X[1], 'math/add', { b: 3 }),
+  node('multiply', X[2], 'math/multiply', { by: 2 }),
+  node('generate', X[3], 'ai/generate'),
+  node('upscale', X[4], 'image/upscale'),
 ];
 
 const initialEdges: Edge[] = [
@@ -59,11 +103,6 @@ const initialEdges: Edge[] = [
   { id: 'e3', source: 'multiply', sourceSocket: 'product', target: 'generate', targetSocket: 'seed' },
   { id: 'e4', source: 'generate', sourceSocket: 'image', target: 'upscale', targetSocket: 'image' },
 ];
-
-/** The one decision the app makes about evaluation: which types wait to be asked. */
-const entityTypes: Record<string, EntityTypeDefinition> = {
-  'ai/generate': { type: 'ai/generate', evaluation: 'manual' },
-};
 
 /** What a model call actually costs, so the demo shows the wait rather than skipping it. */
 const GENERATE_MS = 20_000;

@@ -176,11 +176,8 @@ describe('what the engine reads through the store', () => {
       edges: [edge('a', 'out', 'g', 'in')],
     });
     const ran: string[] = [];
-    store.getState().setEvaluationHandlers(
-      (id) => { ran.push(id); return { out: 1 }; },
-      undefined,
-      { gate: { type: 'gate', evaluation: 'manual' } }
-    );
+    store.getState().setEntityTypes({ gate: { type: 'gate', evaluation: 'manual' } });
+    store.getState().setEvaluationHandlers((id) => { ran.push(id); return { out: 1 }; });
     store.getState().setWidgetValue('a', 'in', 2);
     await tick(); await tick();
     expect(ran).toEqual(['a']);

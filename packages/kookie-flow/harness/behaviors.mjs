@@ -3715,6 +3715,105 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
 
 });
 
+// ---------------------------------------------------------------- entity types
+/**
+ * The type table fills in what a node leaves unsaid.
+ *
+ * The two nodes in this scene state a type, a position and almost nothing else. Every socket,
+ * the header text and the width of the first one live in `TYPE_TABLE`. So these laws are not
+ * about a lookup succeeding — they are about the filled-in values reaching the parts of the
+ * library that were built before the table existed: the socket index that answers presses, the
+ * glyph layer that draws the header, the shader that gets the box.
+ */
+await withPage('scene=types&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(600);
+
+  const stated = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('bare');
+    return {
+      inputs: (e.inputs ?? []).map((i) => i.id),
+      outputs: (e.outputs ?? []).map((o) => o.id),
+      width: e.width,
+      label: e.data?.label,
+      ownWidth: s.entityMap.get('stated').width,
+      ownLabel: s.entityMap.get('stated').data?.label,
+    };
+  });
+  check(
+    'INSTRUMENT: a node that stated nothing carries the table\'s sockets, width and label',
+    stated.inputs.join(',') === 'a,b' && stated.outputs.join(',') === 'out' &&
+      stated.width === 200 && stated.label === 'Summation',
+    JSON.stringify(stated)
+  );
+  check(
+    'and a node that stated its own keeps them',
+    stated.ownWidth === 320 && stated.ownLabel === 'Mine',
+    JSON.stringify(stated)
+  );
+
+  // The press side. The socket index is built from `entity.inputs`; a resolution that happened
+  // any later than the store would leave these sockets drawn and dead.
+  const indexed = await page.evaluate(() =>
+    window.__harness.indexedSockets().filter((s) => s.entityId === 'bare').map((s) => s.socketId)
+  );
+  check(
+    'the sockets it never mentioned answer a press',
+    indexed.sort().join(',') === 'a,b,out',
+    JSON.stringify(indexed)
+  );
+
+  // The paint side. Sockets are instanced quads; three of them belong to this node.
+  const painted = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('bare');
+    return window.__harness.drawnInstances().filter(
+      (i) => i.kind === 'sockets' &&
+        i.x > e.position.x - 40 && i.x < e.position.x + (e.width ?? 0) + 40 &&
+        i.y > e.position.y - 40 && i.y < e.position.y + 200
+    ).length;
+  });
+  check(
+    'and they are drawn',
+    painted === 3,
+    `${painted} socket instances around the node`
+  );
+
+  /**
+   * The text. `glyphs()` is one batch per glyph MESH, not per label — a batch's position is where
+   * its FIRST glyph sits, so filtering batches by position and summing counts measures nothing.
+   * The whole scene's glyph count is the honest reading, and in a scene this small it is exact:
+   * two headers and two sets of socket labels, and everything but the word "Mine" came from the
+   * table. Drop the table's label and this is five short; drop its sockets and it is ten.
+   */
+  const SCENE_TEXT = 'Summation' + 'Mine' + ('A' + 'B' + 'Out').repeat(2);
+  const glyphTotal = await page.evaluate(() =>
+    window.__harness.glyphs().reduce((n, g) => n + g.count, 0)
+  );
+  check(
+    'the label and the socket names the nodes never carried are the text on screen',
+    glyphTotal === SCENE_TEXT.length,
+    `${glyphTotal} glyphs where the scene's words have ${SCENE_TEXT.length}`
+  );
+
+  // The box. A width that only the table knows has to reach the shader, so the card's right edge
+  // stands where the table put it and one pixel further out is background.
+  const edge = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('bare');
+    const { x, y, zoom } = s.viewport;
+    const py = Math.round((e.position.y + 10) * zoom + y);
+    const at = (dx) => window.__harness.readPixel(Math.round((e.position.x + dx) * zoom + x), py);
+    return { inside: at(190), outside: at(215) };
+  });
+  const differ = (a, c) => Math.abs(a[0] - c[0]) > 20 || Math.abs(a[1] - c[1]) > 20 || Math.abs(a[2] - c[2]) > 20;
+  check(
+    'the card is as wide as the table said',
+    differ(edge.inside, edge.outside),
+    `inside=${JSON.stringify(edge.inside)} outside=${JSON.stringify(edge.outside)}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(
