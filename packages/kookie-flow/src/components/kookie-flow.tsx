@@ -58,6 +58,9 @@ import {
   MIN_MESH_WIDTH,
   MIN_MESH_HEIGHT,
   DEFAULT_TEXT_WIDTH,
+  DEFAULT_VIDEO_WIDTH,
+  DEFAULT_VIDEO_HEIGHT,
+  DEFAULT_MESH_HEIGHT,
   DEFAULT_TEXT_HEIGHT,
   MIN_ZOOM,
   MAX_ZOOM,
@@ -67,8 +70,16 @@ import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
-import type { TextEntityData } from '../types';
+import type { MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import {
+  hitVideoControls,
+  isMeshDragStrip,
+  orbitFromDrag,
+  seekPositionAt,
+  type OrbitAngles,
+} from '../utils/media-chrome';
+import { getOrbit, setOrbit, videoOps } from '../utils/media-runtime';
 import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { isPointInWidget } from '../utils/widget-geometry';
 import {
@@ -797,6 +808,15 @@ function InputHandler({
    * still down. A gesture belongs to the pointer that began it.
    */
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
+  /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
+  const videoScrubRef = useRef<{ entityId: string; width: number } | null>(null);
+  /** A turn in progress on a model: where it started, and the angles it started from. */
+  const orbitDragRef = useRef<{
+    entityId: string;
+    start: OrbitAngles;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const [widgetEdit, setWidgetEdit] = useState<WidgetHit | null>(null);
 
   /**
@@ -1492,6 +1512,64 @@ function InputHandler({
           }
         }
 
+        /**
+         * MEDIA CHROME takes the press before the entity does, for the same reason a widget does:
+         * the control is drawn on the entity, so the entity is what the quadtree found.
+         *
+         * A video's bar plays, pauses and scrubs. A model's body TURNS, and the strip along its
+         * top is what moves it — so on a model the branch below is inverted: the press is a drag
+         * of the node only where the strip is, and everything else starts an orbit.
+         */
+        if (clickedEntity && clickedEntity.type === 'video') {
+          const data = clickedEntity.data as VideoEntityData;
+          const vw = clickedEntity.width ?? DEFAULT_VIDEO_WIDTH;
+          const vh = clickedEntity.height ?? DEFAULT_VIDEO_HEIGHT;
+          const hit = (data.controls ?? true)
+            ? hitVideoControls(
+                worldPos.x - clickedEntity.position.x,
+                worldPos.y - clickedEntity.position.y,
+                vw, vh
+              )
+            : null;
+          if (hit) {
+            e.preventDefault();
+            pointerDownPos.current = null;
+            store.getState().bringToFront(clickedEntity.id);
+            store.getState().setFocusedEntityId(clickedEntity.id);
+            const ops = videoOps(store);
+            if (hit.kind === 'play') {
+              ops?.toggle(clickedEntity.id);
+            } else {
+              ops?.seek(clickedEntity.id, hit.t);
+              // Held: scrubbing is a drag, and letting go of the track mid-gesture would be a
+              // control that answers the press and then stops listening.
+              videoScrubRef.current = { entityId: clickedEntity.id, width: vw };
+              containerRef.current?.setPointerCapture(e.pointerId);
+            }
+            return;
+          }
+        }
+
+        if (clickedEntity && clickedEntity.type === 'mesh') {
+          const data = clickedEntity.data as MeshEntityData;
+          const mh = clickedEntity.height ?? DEFAULT_MESH_HEIGHT;
+          const onStrip = isMeshDragStrip(worldPos.y - clickedEntity.position.y, mh);
+          if ((data.orbit ?? true) && !onStrip) {
+            e.preventDefault();
+            pointerDownPos.current = null;
+            store.getState().bringToFront(clickedEntity.id);
+            store.getState().setFocusedEntityId(clickedEntity.id);
+            orbitDragRef.current = {
+              entityId: clickedEntity.id,
+              start: getOrbit(store, clickedEntity.id),
+              originX: worldPos.x,
+              originY: worldPos.y,
+            };
+            containerRef.current?.setPointerCapture(e.pointerId);
+            return;
+          }
+        }
+
         if (clickedEntity) {
           const editingId = store.getState().editingEntityId;
 
@@ -1579,6 +1657,45 @@ function InputHandler({
        * No React state, by design: this runs on every pointermove for the length of the gesture,
        * and the value goes straight out through the consumer's callback.
        */
+      /**
+       * Media chrome, alongside the slider and for the same reason: a gesture that started on a
+       * control belongs to that control until the button comes up. Both check the button is still
+       * down, because a `pointercancel` leaves the ref set and every later move would answer to a
+       * gesture that ended.
+       */
+      const scrub = videoScrubRef.current;
+      if (scrub) {
+        if ((e.buttons & 1) === 0) {
+          videoScrubRef.current = null;
+        } else {
+          const rect = cachedRectRef.current;
+          const { viewport, entityMap } = store.getState();
+          const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, viewport);
+          const entity = entityMap.get(scrub.entityId);
+          if (entity) {
+            videoOps(store)?.seek(scrub.entityId, seekPositionAt(world.x - entity.position.x, scrub.width));
+          }
+          return;
+        }
+      }
+
+      const orbitDrag = orbitDragRef.current;
+      if (orbitDrag) {
+        if ((e.buttons & 1) === 0) {
+          orbitDragRef.current = null;
+        } else {
+          const rect = cachedRectRef.current;
+          const { viewport } = store.getState();
+          const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, viewport);
+          setOrbit(
+            store,
+            orbitDrag.entityId,
+            orbitFromDrag(orbitDrag.start, world.x - orbitDrag.originX, world.y - orbitDrag.originY)
+          );
+          return;
+        }
+      }
+
       const widgetDrag = widgetDragRef.current;
       if (widgetDrag && widgetDrag.pointerId === e.pointerId) {
         /**
@@ -2145,6 +2262,19 @@ function InputHandler({
       // and released capture for that one too — so on a touch device, lifting a second finger
       // ended a slider drag the first finger was still holding, and handed the release to a
       // pointer the container had never captured.
+      // Media gestures end the same way, and before the selection logic below for the same
+      // reason: a scrub or a turn is not a click on the entity.
+      if (videoScrubRef.current) {
+        videoScrubRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+      if (orbitDragRef.current) {
+        orbitDragRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
       if (widgetDragRef.current && widgetDragRef.current.pointerId === e.pointerId) {
         const releasedDrag = widgetDragRef.current;
         widgetDragRef.current = null;

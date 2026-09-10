@@ -3940,6 +3940,152 @@ await withPage('scene=preview&grid=0&preserveBuffer=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- media chrome
+/**
+ * The controls a piece of media carries.
+ *
+ * A video you cannot pause is not a video, so the bar is ON by default and appears under the
+ * pointer. A model needs its whole body for turning, so the drag that MOVES it lives in a strip
+ * along the top — and these laws pin exactly that inversion, because it is the surprising half.
+ */
+await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(2500);
+
+  const toScreen = (wx, wy) =>
+    page.evaluate(([x, y]) => {
+      const v = window.__harness.store.getState().viewport;
+      return { x: Math.round(x * v.zoom + v.x), y: Math.round(y * v.zoom + v.y) };
+    }, [wx, wy]);
+
+  const pixelAtWorld = (wx, wy) =>
+    page.evaluate(([x, y]) => {
+      const v = window.__harness.store.getState().viewport;
+      return window.__harness.readPixel(Math.round(x * v.zoom + v.x), Math.round(y * v.zoom + v.y));
+    }, [wx, wy]);
+
+  const differ = (a, b) => a && b && (Math.abs(a[0] - b[0]) > 18 || Math.abs(a[1] - b[1]) > 18 || Math.abs(a[2] - b[2]) > 18);
+
+  const video = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-video');
+    return { x: e.position.x, y: e.position.y, w: e.width, h: e.height };
+  });
+  // The bar's own coordinates, from the same constants the shader and the hit test read.
+  const barY = video.y + video.h - 8 - 14;
+  const buttonX = video.x + 8 + 10;
+  // Left of centre: a plain node overlaps this clip's bottom-right corner on purpose (it is
+  // what proved video had to be a GL quad), and a sample there would read the node, not the bar.
+  const trackX = video.x + 60;
+
+  // Away from the video: no chrome anywhere.
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(300);
+  const barCold = await pixelAtWorld(trackX, barY);
+
+  const over = await toScreen(video.x + video.w / 2, video.y + video.h / 2);
+  await page.mouse.move(over.x, over.y);
+  await page.waitForTimeout(400);
+  const barWarm = await pixelAtWorld(trackX, barY);
+
+  check(
+    'a video shows its controls under the pointer, and not otherwise',
+    differ(barCold, barWarm),
+    `cold=${JSON.stringify(barCold)} warm=${JSON.stringify(barWarm)}`
+  );
+
+  // Pressing play pauses a clip that was playing: the frames stop moving.
+  const buttonScreen = await toScreen(buttonX, barY);
+  await page.mouse.move(buttonScreen.x, buttonScreen.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  // Several points, like the decoding law above: parts of the test pattern are deliberately
+  // static, and one unlucky sample would make this flaky rather than false.
+  const framePoints = [[0.2, 0.85], [0.5, 0.85], [0.35, 0.2], [0.6, 0.3]];
+  const frameSample = async () => {
+    const out = [];
+    for (const [fx, fy] of framePoints) {
+      out.push(await pixelAtWorld(video.x + video.w * fx, video.y + video.h * fy));
+    }
+    return JSON.stringify(out);
+  };
+  const paused1 = await frameSample();
+  await page.waitForTimeout(500);
+  const paused2 = await frameSample();
+  check(
+    'pressing play pauses a clip that was playing, and the frames stop',
+    paused1 === paused2,
+    `${paused1} then ${paused2}`
+  );
+
+  // And pressing it again starts them.
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const playing1 = await frameSample();
+  await page.waitForTimeout(500);
+  const playing2 = await frameSample();
+  check(
+    'and pressing it again starts them again',
+    playing1 !== playing2,
+    `${playing1} then ${playing2}`
+  );
+
+  // A press on the controls is not a press on the entity: the clip did not move.
+  const movedByControls = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-video');
+    return { x: e.position.x, y: e.position.y };
+  });
+  check(
+    'and a press on the bar never moved the entity underneath it',
+    movedByControls.x === video.x && movedByControls.y === video.y,
+    JSON.stringify(movedByControls)
+  );
+
+  // ---- a model turns where it is dragged, and moves only by its strip ----
+  const mesh = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-mesh');
+    return { x: e.position.x, y: e.position.y, w: e.width, h: e.height };
+  });
+  const bodyBefore = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  const bodyStart = await toScreen(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.6);
+  await page.mouse.move(bodyStart.x, bodyStart.y);
+  await page.mouse.down();
+  await page.mouse.move(bodyStart.x + 60, bodyStart.y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const bodyAfter = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  const meshAfterTurn = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-mesh');
+    return { x: e.position.x, y: e.position.y };
+  });
+  check(
+    'dragging a model turns it',
+    differ(bodyBefore, bodyAfter),
+    `before=${JSON.stringify(bodyBefore)} after=${JSON.stringify(bodyAfter)}`
+  );
+  check(
+    'and turning it does not move it',
+    meshAfterTurn.x === mesh.x && meshAfterTurn.y === mesh.y,
+    JSON.stringify(meshAfterTurn)
+  );
+
+  const stripStart = await toScreen(mesh.x + mesh.w * 0.5, mesh.y + 8);
+  await page.mouse.move(stripStart.x, stripStart.y);
+  await page.mouse.down();
+  await page.mouse.move(stripStart.x + 40, stripStart.y + 20, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const meshAfterDrag = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-mesh');
+    return { x: e.position.x, y: e.position.y };
+  });
+  check(
+    'and the strip along its top is what moves it',
+    Math.abs(meshAfterDrag.x - mesh.x) > 20 && Math.abs(meshAfterDrag.y - mesh.y) > 10,
+    `from ${JSON.stringify(mesh)} to ${JSON.stringify(meshAfterDrag)}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

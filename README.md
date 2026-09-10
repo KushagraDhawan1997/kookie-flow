@@ -314,6 +314,11 @@ The node always wins: anything it states itself is kept, and an empty list (`inp
 statement, not a gap. Filling happens once, where entities enter the store, so what you passed
 stays yours and every socket is drawn and clickable on the first frame.
 
+**Media chrome.** A video carries play, pause and scrub, drawn on the clip under the pointer;
+`data.controls: false` turns them off. A model turns when you drag it, and the strip along its top
+is what moves it — the way a window's title bar is; `data.orbit: false` gives the body back to
+dragging. Both are on by default, because a video you cannot pause is not a video.
+
 **Preview.** A node can show what it produced, inside its own body:
 
 ```tsx

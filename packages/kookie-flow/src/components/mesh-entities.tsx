@@ -39,7 +39,29 @@ import {
   createPlaceholderMaterial,
   createMediaMaterial,
   setMediaBox,
+  setMediaChrome,
 } from '../utils/media-quad';
+import { isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
+import { getOrbit, hasOrbit, subscribeOrbit } from '../utils/media-runtime';
+
+/** Same fade the video controls use; see video-entities.tsx. */
+const CHROME_FADE_RATE = 12;
+
+function easeStripPresence(
+  presences: Map<string, number>,
+  id: string,
+  wanted: boolean,
+  delta: number
+): number {
+  const target = wanted ? 1 : 0;
+  const from = presences.get(id) ?? 0;
+  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
+  const next = from + (target - from) * alpha;
+  const settled = Math.abs(target - next) < 0.004 ? target : next;
+  if (settled === 0) presences.delete(id);
+  else presences.set(id, settled);
+  return settled;
+}
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -92,6 +114,9 @@ interface MeshTarget {
   lastSeen: number;
   /** Accumulated auto-rotation, in radians. */
   angle: number;
+  /** The turn the target's picture was taken at, so a new one is noticed. */
+  yaw: number;
+  pitch: number;
 }
 
 interface MeshEntitiesProps {
@@ -135,6 +160,9 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
    * up to date on the frame the truth about it changes.
    */
   const hasRotatingRef = useRef(false);
+  /** How faded in each model's drag strip is. Same easing the video controls use. */
+  const chromePresenceRef = useRef<Map<string, number>>(new Map());
+  const chromeFadingRef = useRef(false);
 
   /** Scratch vectors, reused so the render pass allocates nothing. */
   const dirRef = useRef(new THREE.Vector3());
@@ -196,6 +224,10 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markFullDirty);
     const unsubStack = store.subscribe((s) => s.stackVersion, markFullDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markFullDirty);
+    const unsubHovered = store.subscribe((s) => s.hoveredEntityId, markFullDirty);
+    // A drag that turns a model changes nothing in the store — by design, since it is sixty
+    // writes a second. It says so here instead.
+    const unsubOrbit = subscribeOrbit(store, markFullDirty);
 
     return () => {
       unsubTopology();
@@ -205,6 +237,8 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
       unsubSelection();
       unsubStack();
       unsubHidden();
+      unsubHovered();
+      unsubOrbit();
     };
   }, [store]);
 
@@ -256,10 +290,12 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
 
     // Auto-rotating entities invalidate themselves, so the pass must run for them on frames the
     // store published nothing on.
-    if (!fullDirtyRef.current && !hasRotatingRef.current) return;
+    if (!fullDirtyRef.current && !hasRotatingRef.current && !chromeFadingRef.current) return;
     let rotating = false;
+    let chromeFading = false;
 
-    const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder } = store.getState();
+    const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder, hoveredEntityId } =
+      store.getState();
     const ids = meshEntityIdsRef.current;
 
     const invZoom = 1 / viewport.zoom;
@@ -360,6 +396,8 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
           renderedSrc: null,
           lastSeen: frame,
           angle: 0,
+          yaw: 0,
+          pitch: 0,
         };
         targetsRef.current.set(entity.id, target);
       }
@@ -378,6 +416,13 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
       if (target.renderedSrc !== src) {
         target.dirty = true;
       }
+      // A turn is a camera change, and the target holds a picture taken from the old one.
+      const orbit = getOrbit(store, entity.id);
+      if (target.yaw !== orbit.yaw || target.pitch !== orbit.pitch) {
+        target.yaw = orbit.yaw;
+        target.pitch = orbit.pitch;
+        target.dirty = true;
+      }
 
       if (data.autoRotate) {
         target.angle += delta * (data.rotateSpeed ?? DEFAULT_ROTATE_SPEED);
@@ -394,8 +439,14 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         const cam = data.cameraPosition;
         // The configured direction is a DIRECTION, not a point: it is normalised and the distance
         // comes from the model's own radius, so a consumer picking an angle does not also have to
-        // know how big the model is.
-        dirRef.current.set(cam?.x ?? 0, cam?.y ?? 0.4, cam?.z ?? 1);
+        // know how big the model is. A model that has been TURNED takes its direction from the
+        // turn instead — the person's hand outranks the entity's stated view.
+        if (hasOrbit(store, entity.id)) {
+          const d = orbitDirection(getOrbit(store, entity.id));
+          dirRef.current.set(d.x, d.y, d.z);
+        } else {
+          dirRef.current.set(cam?.x ?? 0, cam?.y ?? 0.4, cam?.z ?? 1);
+        }
         if (target.angle !== 0) {
           const c = Math.cos(target.angle);
           const s = Math.sin(target.angle);
@@ -422,6 +473,18 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
       const mat = materialRefs.current.get(entity.id);
       if (mat) {
         setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+        /**
+         * The strip that moves the entity, shown under the pointer.
+         *
+         * Only where the body is doing something else with a drag: with `orbit: false` the whole
+         * body moves the entity as any other does, and a strip would be advertising a distinction
+         * that no longer exists.
+         */
+        const wantsStrip =
+          (data.orbit ?? true) && hoveredEntityId === entity.id && isMeshDragStrip(0, h);
+        const presence = easeStripPresence(chromePresenceRef.current, entity.id, wantsStrip, delta);
+        if (presence > 0.001) chromeFading = true;
+        setMediaChrome(mat, presence > 0.001 ? 2 : 0, 0, false, presence);
         if (mat.uniforms.map.value !== target.rt.texture) {
           mat.uniforms.map.value = target.rt.texture;
         }
@@ -436,6 +499,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
     }
 
     hasRotatingRef.current = rotating;
+    chromeFadingRef.current = chromeFading;
 
     if (topologyDirtyRef.current) {
       for (const [id] of materialRefs.current) {

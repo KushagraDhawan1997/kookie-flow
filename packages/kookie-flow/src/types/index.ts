@@ -322,6 +322,13 @@ export interface VideoEntityData extends EntityData {
   objectFit?: 'contain' | 'cover' | 'fill';
   /** Lock aspect ratio during resize (default true for video; Shift inverts) */
   aspectLocked?: boolean;
+  /**
+   * Play, pause and scrub, drawn on the clip under the pointer. Default: true.
+   *
+   * `false` for a video used as decoration — a background loop should not grow a control bar
+   * when the pointer crosses it. A clip too small for a bar never shows one either way.
+   */
+  controls?: boolean;
 }
 
 /** Data for 3D mesh entities */
@@ -348,6 +355,14 @@ export interface MeshEntityData extends EntityData {
   rotateSpeed?: number;
   /** Lock aspect ratio during resize (default true for mesh; Shift inverts) */
   aspectLocked?: boolean;
+  /**
+   * Turn the model by dragging it. Default: true.
+   *
+   * The whole body turns, so the drag that MOVES the entity lives in a strip along the top —
+   * shown under the pointer, the way a window's title bar is the part you move it by. `false`
+   * gives the body back to dragging and leaves the model at its stated camera.
+   */
+  orbit?: boolean;
 }
 
 /** Draw entity type */

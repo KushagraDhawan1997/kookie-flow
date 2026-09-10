@@ -28,13 +28,45 @@ import { DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT, MIN_VIDEO_HEIGHT } from '../
 import { VideoTextureManager } from '../utils/video-loader';
 import type { VideoEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
+import { fitsControls } from '../utils/media-chrome';
+import { registerVideoOps } from '../utils/media-runtime';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
   createMediaMaterial,
   applyObjectFitUV,
   setMediaBox,
+  setMediaChrome,
 } from '../utils/media-quad';
+
+/**
+ * How fast chrome fades in and out, as a share of the remaining distance per second. Fast enough
+ * to feel attached to the pointer, slow enough not to flicker when it crosses a corner.
+ */
+const CHROME_FADE_RATE = 12;
+
+/**
+ * Move a fade toward where it should be and return where it now is.
+ *
+ * Frame-rate independent, the same way the progress ring's sweep is: the same share of what is
+ * left is covered per second at any refresh rate.
+ */
+function easePresence(
+  presences: Map<string, number>,
+  id: string,
+  wanted: boolean,
+  delta: number
+): number {
+  const target = wanted ? 1 : 0;
+  const from = presences.get(id) ?? 0;
+  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
+  const next = from + (target - from) * alpha;
+  // Snap the last sliver, so a fade actually ends and the pass can stop running for it.
+  const settled = Math.abs(target - next) < 0.004 ? target : next;
+  if (settled === 0) presences.delete(id);
+  else presences.set(id, settled);
+  return settled;
+}
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -88,6 +120,24 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
    * pile of transitions each caller has to get right.
    */
   const wantPlayingRef = useRef<Set<string>>(new Set());
+  /**
+   * How faded in each entity's controls are, 0..1.
+   *
+   * Eased rather than switched, so the bar arrives under the pointer instead of blinking, and
+   * kept in a ref because it changes every frame of a fade and must never reach React.
+   */
+  const chromePresenceRef = useRef<Map<string, number>>(new Map());
+  /** Whether any chrome is on screen or on its way there, and the pass must therefore run. */
+  const chromeFadingRef = useRef(false);
+  /**
+   * What the PERSON asked for, per entity, by pressing play or pause.
+   *
+   * It outranks `autoplay`, and has to: without it the next pass reconciled playback from the
+   * entity's data and started the clip again, so the pause button worked for one frame. Cleared
+   * when the consumer states `playing` explicitly, because then the app is driving and the app's
+   * word is the newer one.
+   */
+  const userPlaybackRef = useRef<Map<string, boolean>>(new Map());
 
   const texManager = useMemo(
     () => new VideoTextureManager(() => { fullDirtyRef.current = true; }),
@@ -151,6 +201,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
     const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markFullDirty);
     const unsubStack = store.subscribe((s) => s.stackVersion, markFullDirty);
+    const unsubHovered = store.subscribe((s) => s.hoveredEntityId, markFullDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, () => {
       // A hidden video must also stop decoding, and only the full pass computes playback.
       hiddenDirtyRef.current = true;
@@ -165,8 +216,38 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       unsubSelection();
       unsubStack();
       unsubHidden();
+      unsubHovered();
     };
   }, [store]);
+
+  /**
+   * What a press on a video's controls acts on.
+   *
+   * The pointer handler knows an entity was pressed; the element that has to play or seek is
+   * loaded here. Registered against the store, which is what identifies one flow.
+   */
+  useEffect(() => {
+    registerVideoOps(store, {
+      toggle: (entityId) => {
+        const src = (store.getState().entityMap.get(entityId)?.data as VideoEntityData | undefined)?.src;
+        if (!src) return;
+        const next = !texManager.isPlaying(src);
+        userPlaybackRef.current.set(entityId, next);
+        texManager.setPlaying(src, next);
+        fullDirtyRef.current = true;
+      },
+      seek: (entityId, t) => {
+        const src = (store.getState().entityMap.get(entityId)?.data as VideoEntityData | undefined)?.src;
+        if (!src) return;
+        const entry = texManager.getEntry(src);
+        const duration = entry?.element.duration;
+        if (!entry || !duration || !Number.isFinite(duration)) return;
+        entry.element.currentTime = Math.min(Math.max(t, 0), 1) * duration;
+        fullDirtyRef.current = true;
+      },
+    });
+    return () => registerVideoOps(store, null);
+  }, [store, texManager]);
 
   function getRefCallback(id: string): (mesh: THREE.Mesh | null) => void {
     let cb = refCallbacksRef.current.get(id);
@@ -186,10 +267,14 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
     return cb;
   }
 
-  useFrame(({ size }) => {
-    if (!fullDirtyRef.current && !hiddenDirtyRef.current) return;
+  useFrame(({ size }, delta) => {
+    // Controls fading in or standing open keep the pass alive: the bar's own progress line moves
+    // with the clip, and nothing in the store changes while a video plays.
+    if (!fullDirtyRef.current && !hiddenDirtyRef.current && !chromeFadingRef.current) return;
+    let chromeFading = false;
 
-    const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder } = store.getState();
+    const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder, hoveredEntityId } =
+      store.getState();
     const ids = videoEntityIdsRef.current;
 
     const invZoom = 1 / viewport.zoom;
@@ -255,17 +340,46 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       // Reaching here means visible and on screen, so this is the only place playback is asked
       // for. `playing` is the explicit switch a consumer drives; `autoplay` is the standing wish
       // for a preview that should run whenever it can be seen.
-      if (src && (data.playing ?? data.autoplay ?? false)) {
-        wantPlaying.add(src);
+      const asked = userPlaybackRef.current.get(entity.id);
+      // The consumer stating `playing` is a newer instruction than a press was, so it wins and
+      // the press is forgotten. Otherwise the press stands, and `autoplay` is only the opening
+      // position.
+      if (data.playing !== undefined && asked !== undefined) {
+        userPlaybackRef.current.delete(entity.id);
       }
+      const wants = data.playing !== undefined
+        ? data.playing
+        : asked ?? data.autoplay ?? false;
+      if (src && wants) wantPlaying.add(src);
 
       const entry = src ? texManager.getEntry(src) : undefined;
       const texture = src ? texManager.getTexture(src) : null;
+
+      /**
+       * The controls, on by default and drawn only under the pointer.
+       *
+       * `controls: false` turns them off — a video used as decoration on a board should not grow
+       * a play bar when the pointer crosses it. A clip too small for a bar never shows one, since
+       * a control strip in a thumbnail is a smudge rather than an affordance.
+       */
+      const wantsChrome =
+        (data.controls ?? true) && hoveredEntityId === entity.id && fitsControls(w, h);
+      const presence = easePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
+      if (presence > 0.001) chromeFading = true;
 
       if (texture) {
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
           setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+          const element = entry?.element;
+          const duration = element?.duration;
+          const played = element && duration && Number.isFinite(duration) && duration > 0
+            ? element.currentTime / duration
+            : 0;
+          setMediaChrome(mat, presence > 0.001 ? 1 : 0, played, src ? texManager.isPlaying(src) : false, presence);
+          // A clip that is running redraws its own frames anyway; one that is paused still has to
+          // repaint while its bar fades, and while it is showing, so the played line keeps up.
+          if (presence > 0.001) chromeFading = true;
           const u = mat.uniforms;
           if (u.map.value !== texture) u.map.value = texture;
           u.opacity.value = 1;
@@ -334,6 +448,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       topologyDirtyRef.current = false;
     }
 
+    chromeFadingRef.current = chromeFading;
     fullDirtyRef.current = false;
     hiddenDirtyRef.current = false;
   });

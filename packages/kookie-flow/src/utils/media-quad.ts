@@ -23,6 +23,13 @@
 
 import * as THREE from 'three';
 import { squircleBoxSDF, CORNER_K } from './corner-shader';
+import {
+  CONTROL_BAR_HEIGHT,
+  CONTROL_BAR_INSET,
+  CONTROL_BUTTON_SIZE,
+  CONTROL_GAP,
+  MESH_DRAG_STRIP_HEIGHT,
+} from './media-chrome';
 
 /** Shared unit quad geometry — reused by every media mesh (never disposed) */
 export const sharedGeometry = (() => {
@@ -65,6 +72,17 @@ varying vec2 vUv;
 uniform vec2 uSize;
 uniform float uCornerRadius;
 
+/**
+ * The chrome, in one vector so a still picture pays for nothing.
+ *
+ *   x  0 = none, 1 = a video's play bar, 2 = a model's drag strip
+ *   y  how far through the clip, 0..1
+ *   z  1 while playing, 0 while paused
+ *   w  how present the chrome is, 0..1 — it fades in under the pointer
+ */
+uniform vec4 uChrome;
+uniform vec3 uChromeColor;
+
 ${squircleBoxSDF}
 
 void main() {
@@ -97,7 +115,64 @@ void main() {
     if (a < 0.01) discard;
   }
 
-  gl_FragColor = vec4(texColor.rgb, a);
+  vec3 rgb = texColor.rgb;
+
+  /**
+   * The chrome is drawn ON the media rather than over it in another mesh: it is part of the same
+   * quad, so it costs no draw call, cannot be ordered wrongly against the picture, and is clipped
+   * by the same squircle. Everything below is in the entity's own pixels, which uSize carries.
+   */
+  if (uChrome.w > 0.001) {
+    vec2 px = vec2(vUv.x * uSize.x, (1.0 - vUv.y) * uSize.y); // top-left origin, like the layout
+    float present = uChrome.w;
+
+    if (uChrome.x > 0.5 && uChrome.x < 1.5) {
+      float barTop = uSize.y - ${CONTROL_BAR_INSET.toFixed(1)} - ${CONTROL_BAR_HEIGHT.toFixed(1)};
+      float barBottom = uSize.y - ${CONTROL_BAR_INSET.toFixed(1)};
+      float barLeft = ${CONTROL_BAR_INSET.toFixed(1)};
+      float barRight = uSize.x - ${CONTROL_BAR_INSET.toFixed(1)};
+
+      if (px.y > barTop && px.y < barBottom && px.x > barLeft && px.x < barRight) {
+        // A scrim under the whole bar, so white controls survive a white frame.
+        rgb = mix(rgb, vec3(0.0), 0.35 * present);
+
+        float midY = (barTop + barBottom) * 0.5;
+        float buttonCx = barLeft + ${(CONTROL_BUTTON_SIZE / 2).toFixed(1)};
+        vec2 b = px - vec2(buttonCx, midY);
+
+        if (uChrome.z > 0.5) {
+          // Pause: two uprights.
+          float bar = step(abs(abs(b.x) - 3.0), 1.5) * step(abs(b.y), 6.0);
+          rgb = mix(rgb, uChromeColor, bar * present);
+        } else {
+          // Play: a triangle, drawn as a half-plane cut by two edges.
+          float inTri = step(b.x, 5.0) * step(-5.0, b.x) *
+                        step(abs(b.y), (5.0 - b.x) * 0.7);
+          rgb = mix(rgb, uChromeColor, inTri * present);
+        }
+
+        float trackLeft = barLeft + ${(CONTROL_BUTTON_SIZE + CONTROL_GAP).toFixed(1)};
+        if (px.x > trackLeft) {
+          float onTrack = step(abs(px.y - midY), 1.5);
+          float played = step(px.x, mix(trackLeft, barRight, clamp(uChrome.y, 0.0, 1.0)));
+          // The whole track at a quarter strength, the played part at full: one line, two weights,
+          // which is all a progress track has ever needed to say.
+          rgb = mix(rgb, uChromeColor, onTrack * present * mix(0.25, 1.0, played));
+        }
+      }
+    } else if (uChrome.x > 1.5) {
+      // A model's drag strip: a scrim and a grip line, so the one place that moves the node
+      // rather than turning it is visible before it is tried.
+      if (px.y < ${MESH_DRAG_STRIP_HEIGHT.toFixed(1)}) {
+        rgb = mix(rgb, vec3(0.0), 0.25 * present);
+        float grip = step(abs(px.y - ${(MESH_DRAG_STRIP_HEIGHT / 2).toFixed(1)}), 1.0) *
+                     step(abs(px.x - uSize.x * 0.5), 14.0);
+        rgb = mix(rgb, uChromeColor, grip * present * 0.8);
+      }
+    }
+  }
+
+  gl_FragColor = vec4(rgb, a);
 
   #include <colorspace_fragment>
 }`;
@@ -175,6 +250,9 @@ export function createMediaMaterial(): THREE.ShaderMaterial {
       uvScale: { value: new THREE.Vector2(1, 1) },
       uSize: { value: new THREE.Vector2(1, 1) },
       uCornerRadius: { value: 0 },
+      // See the shader: kind, progress, playing, presence. All zero is a bare picture.
+      uChrome: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uChromeColor: { value: new THREE.Color(1, 1, 1) },
     },
     vertexShader: MEDIA_VERTEX_SHADER,
     fragmentShader: MEDIA_FRAGMENT_SHADER,
@@ -191,6 +269,23 @@ export function createMediaMaterial(): THREE.ShaderMaterial {
  * Mutates the existing Vector2 rather than assigning a new one: this runs once per visible media
  * entity per frame, and a fresh Vector2 there is the hot-path allocation this project forbids.
  */
+/**
+ * Tell a media material what chrome to draw. See `uChrome` in the shader.
+ *
+ * `presence` is how faded in the chrome is; the renderers ease it under the pointer so controls
+ * arrive rather than blink.
+ */
+export function setMediaChrome(
+  material: THREE.ShaderMaterial,
+  kind: 0 | 1 | 2,
+  progress: number,
+  playing: boolean,
+  presence: number
+): void {
+  const v = material.uniforms.uChrome.value as THREE.Vector4;
+  v.set(kind, progress, playing ? 1 : 0, presence);
+}
+
 export function setMediaBox(
   material: THREE.ShaderMaterial,
   width: number,
