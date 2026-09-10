@@ -43,6 +43,7 @@ import {
   type Bounds,
 } from '../utils/grouping';
 import * as graphEngine from './graph';
+import { toFlowObject } from './serialize';
 import {
   createEntityTypeCache,
   resolveEntities,
@@ -2075,7 +2076,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
        */
       toObject: (): FlowObject => {
         const { entities, edges, viewport, widgetValues } = get();
-        if (widgetValues.size === 0) return { entities, edges, viewport };
+        if (widgetValues.size === 0) return toFlowObject(entities, edges, viewport);
 
         const folded = entities.map((entity) => {
           let pending: Record<string, unknown> | null = null;
@@ -2099,7 +2100,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             },
           };
         });
-        return { entities: folded, edges, viewport };
+        return toFlowObject(folded, edges, viewport);
       },
 
       getSelectedEntities: (): Entity[] => {

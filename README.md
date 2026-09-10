@@ -288,6 +288,11 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Saving.** `flowRef.current.toObject()` returns `{ entities, edges, viewport }` — the graph as
+data, ready for `JSON.stringify`. It is what `<KookieFlow entities edges>` takes back in. Pending
+widget edits are folded in, so a save holds what the person can see; selection and drag state are
+left out, because they describe the moment rather than the graph.
+
 **Entity types.** A board with fifty Add nodes should not repeat Add's sockets fifty times.
 `entityTypes` is a table of what each type looks like, and a node that states nothing gets it:
 

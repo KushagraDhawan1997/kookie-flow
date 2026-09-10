@@ -697,7 +697,10 @@ export interface DeleteElementsBatch {
   edgeIds?: string[];
 }
 
-/** Serialized flow state */
+/**
+ * A whole graph as data: what `toObject()` hands you and what `<KookieFlow entities edges>` takes
+ * back. Selection and drag state are not in it — they describe the moment, not the graph.
+ */
 export interface FlowObject {
   entities: Entity[];
   edges: Edge[];
@@ -1064,6 +1067,13 @@ export interface KookieFlowInstance {
   getSelectedEdges: () => Edge[];
   /** Center the viewport on a specific position */
   setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
+  /**
+   * The whole graph as data you can save: entities, edges and the viewport.
+   *
+   * What comes out is what `<KookieFlow entities edges>` takes back in. Selection and drag state
+   * are left out — they describe this moment, not the graph.
+   */
+  toObject: () => FlowObject;
 
   // ============================================================================
   // Evaluation API (Phase 8.5)

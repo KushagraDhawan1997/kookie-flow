@@ -572,6 +572,9 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
           return store.getState().edges;
         },
 
+        /** The graph as data, ready to save. See `FlowObject`. */
+        toObject: () => store.getState().toObject(),
+
         getSelectedEntities: () => {
           const state = store.getState();
           return state.entities.filter((n) => state.selectedEntityIds.has(n.id));
