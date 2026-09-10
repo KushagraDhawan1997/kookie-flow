@@ -50,7 +50,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
   resolved: {
     padding: 12,
     headerHeight: 40, // --space-7 default
-    headerBackground: [0.133, 0.133, 0.133], // --gray-3 default
+    headerBackground: [-1, -1, -1], // no accent band until the provider resolves one
     headerPosition: 0, // none
     borderRadius: 12,
     borderWidth: 1,
@@ -62,6 +62,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     shadowBlur: 0,
     shadowOffsetY: 0,
     shadowOpacity: 0,
+    topLightAlpha: 0,
     selectedBorderColor: [0.392, 0.404, 0.961],
     fontSize: 14,
     socketSize: 10,

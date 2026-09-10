@@ -102,10 +102,12 @@ export const MIN_IMAGE_HEIGHT = 40;
 export const DEFAULT_MAX_IMAGE_TEXTURE_SIZE = 2048;
 
 /** Selection outline + resize handle settings (screen pixels) */
+// The HIT size, and the instance quad. The drawn dot is smaller (r 3, entity-selection.tsx) so
+// that the affordance stays reachable without looking like a DOM inspector.
 export const RESIZE_HANDLE_SIZE = 8;
 export const RESIZE_HANDLE_HIT_TOLERANCE = 4;
-export const SELECTION_OUTLINE_WIDTH = 1.5;
-export const SELECTION_OUTLINE_PADDING = 0.75; // Half of outline width — stroke straddles entity edge
+export const SELECTION_OUTLINE_WIDTH = 1.0;
+export const SELECTION_OUTLINE_PADDING = 0.5; // Half of outline width — stroke straddles entity edge
 export const HOVER_OUTLINE_WIDTH = 1.0;
 
 /** Auto-scroll settings */

@@ -93,34 +93,39 @@ interface VariantConfig {
   borderColorHover: ColorTokenRef | 'transparent';
   /** Border width in pixels */
   borderWidth: number;
-  /** Shadow token or 'none' */
-  shadow: keyof ThemeTokens | 'none';
+  /** Shadow token, 'none', or 'node' — the card's own float (NODE_SHADOW) */
+  shadow: keyof ThemeTokens | 'none' | 'node';
 }
 
+/**
+ * The card body is a PAIR because the canvas is: dark puts the card one step above the floor
+ * (`--neutral-1` canvas, `--neutral-3` body), light puts it one step below (`--neutral-2` canvas,
+ * `--neutral-1` body). Same language, inverted. The hairline is the one token that reads on both.
+ */
 export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
   surface: {
-    background: '--neutral-1',
+    background: { light: '--neutral-1', dark: '--neutral-3' },
     backgroundHover: '--neutral-2',
-    borderColor: '--neutral-6',
-    borderColorHover: '--neutral-7',
+    borderColor: '--neutral-5',
+    borderColorHover: '--neutral-6',
     borderWidth: 1,
-    shadow: 'none',
+    shadow: 'node',
   },
   outline: {
     background: 'transparent',
     backgroundHover: '--neutral-2',
-    borderColor: '--neutral-6',
-    borderColorHover: '--neutral-7',
+    borderColor: '--neutral-5',
+    borderColorHover: '--neutral-6',
     borderWidth: 1,
     shadow: 'none',
   },
   soft: {
-    background: '--neutral-2',
+    background: { light: '--neutral-2', dark: '--neutral-3' },
     backgroundHover: '--neutral-3',
     borderColor: 'transparent',
     borderColorHover: 'transparent',
     borderWidth: 0,
-    shadow: 'none',
+    shadow: 'node',
   },
   classic: {
     background: '--color-surface',
@@ -139,6 +144,27 @@ export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
     shadow: 'none',
   },
 };
+
+/**
+ * The card's float. Not a --shadow-N token: those top out at blur 16 and are tuned for DOM cards
+ * sitting on a page, where the shadow is read against white. A node sits on the canvas floor in
+ * both appearances, so the opacity is a pair and the tail (quadratic, in the shader) is long.
+ */
+export const NODE_SHADOW = {
+  blur: 20,
+  offsetY: 8,
+  opacity: { dark: 0.4, light: 0.1 },
+} as const;
+
+/**
+ * A 1.5px lighter band just inside the top edge. Light is where the card is lit from; in the light
+ * appearance the card is already the brightest thing on the canvas and the band would read as a
+ * second hairline, so it is off there.
+ */
+export const NODE_TOP_LIGHT = { dark: 0.07, light: 0.0 } as const;
+
+/** `headerBackground` with no accent to show: the shader reads a negative red as "draw nothing". */
+const NO_HEADER_ACCENT: RGBColor = [-1, -1, -1];
 
 // ============================================================================
 // Radius Map
@@ -165,7 +191,11 @@ export interface ResolvedEntityStyle {
   headerHeight: number;
 
   // Header styling
-  /** Header background color (gray or accent tint) */
+  /**
+   * The global accent band colour (`--accent-9` when `accentHeader` is set), or `[-1, -1, -1]`
+   * for none. The header block itself is gone — the header is typographic — so the shader reads
+   * this only as the hue of the top-light band. Kept in the public shape.
+   */
   headerBackground: RGBColor;
   /** Header position: 0=none, 1=inside, 2=outside */
   headerPosition: 0 | 1 | 2;
@@ -182,10 +212,12 @@ export interface ResolvedEntityStyle {
   /** 0 for transparent variants (ghost, outline), 1 otherwise */
   backgroundAlpha: number;
 
-  // Shadow (for classic variant)
+  // Shadow: the card's float (NODE_SHADOW) or a --shadow-N token for classic/overrides
   shadowBlur: number;
   shadowOffsetY: number;
   shadowOpacity: number;
+  /** Alpha of the white band inside the top edge (NODE_TOP_LIGHT), per appearance */
+  topLightAlpha: number;
 
   // Selection state (uses accent color)
   selectedBorderColor: RGBColor;
@@ -318,6 +350,12 @@ export function resolveEntityStyle(
       const shadowKey = `--shadow-${overrides.shadow}` as keyof ThemeTokens;
       shadow = resolveTokenShadow(shadowKey, tokens);
     }
+  } else if (variantConfig.shadow === 'node') {
+    shadow = {
+      blur: NODE_SHADOW.blur,
+      offsetY: NODE_SHADOW.offsetY,
+      opacity: NODE_SHADOW.opacity[tokens.appearance],
+    };
   } else {
     shadow = resolveTokenShadow(variantConfig.shadow, tokens);
   }
@@ -328,8 +366,8 @@ export function resolveEntityStyle(
   // Header styling
   const headerPosition = HEADER_POSITION_MAP[header];
   const headerBackground = accentHeader
-    ? resolveTokenColor('--accent-3', tokens)
-    : resolveTokenColor('--neutral-3', tokens);
+    ? resolveTokenColor('--accent-9', tokens)
+    : NO_HEADER_ACCENT;
 
   // Header height uses fixed row height token (--space-7 = 40px)
   // This ensures header aligns with socket rows for widget layout
@@ -353,6 +391,7 @@ export function resolveEntityStyle(
     shadowBlur: shadow.blur,
     shadowOffsetY: shadow.offsetY,
     shadowOpacity: shadow.opacity,
+    topLightAlpha: NODE_TOP_LIGHT[tokens.appearance],
     selectedBorderColor,
     fontSize,
     socketSize: sizeConfig.socketSize,

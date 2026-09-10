@@ -21,17 +21,29 @@ const tempScale = new THREE.Vector3();
 
 // Buffer sizes
 const OUTLINE_MIN_CAPACITY = 64;
-const HANDLE_MIN_CAPACITY = 64; // 8 handles * 8 entities
+const HANDLE_MIN_CAPACITY = 4; // the four corners of the one selected entity under the pointer
 const BUFFER_GROWTH_FACTOR = 1.5;
+
+/**
+ * The selection halo: accent light falling OUTSIDE the ring, never inside the card. Screen px,
+ * so it is divided by zoom where `uZoom` is written. The alpha is a pair because the same light
+ * on a dark floor reads twice as bright as on a light one.
+ */
+const SELECTION_GLOW_PX = 12;
+const SELECTION_GLOW_ALPHA = { dark: 0.18, light: 0.12 } as const;
+
+/** Drawn radius of a resize handle, in screen px. The quad and the hit test stay RESIZE_HANDLE_SIZE. */
+const HANDLE_DOT_RADIUS_PX = 3;
 
 /**
  * Universal selection outline + resize handle renderer.
  *
  * Renders:
- * 1. Selection outlines: accent-colored outlines on selected entities,
- *    gray outlines on hovered entities. Constant screen-space thickness.
- * 2. Resize handles: small squares at corners/edges of selected entities.
- *    Hidden during drag/connect/box-select operations.
+ * 1. Selection outlines: a 1px accent hairline plus a soft halo outside it on selected entities,
+ *    a gray hairline on hovered entities. Constant screen-space thickness.
+ * 2. Resize handles: four accent corner dots, drawn only while the selected entity is also the
+ *    hovered one. The mid-edge handles are still hit-testable (kookie-flow.tsx) and the cursor
+ *    is their affordance. Hidden during drag/connect/box-select operations.
  */
 export function EntitySelection() {
   const store = useFlowStoreApi();
@@ -64,19 +76,28 @@ export function EntitySelection() {
   const selectedColor = tokens[THEME_COLORS.entitySelection.selected];
   const hoverColor = tokens[THEME_COLORS.entitySelection.hover];
 
+  const glowAlpha = SELECTION_GLOW_ALPHA[tokens.appearance];
+
   const outlineMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
         uSelectedColor: { value: new THREE.Color(selectedColor[0], selectedColor[1], selectedColor[2]) },
         uHoverColor: { value: new THREE.Color(hoverColor[0], hoverColor[1], hoverColor[2]) },
-        uCornerRadius: { value: 0 },
+        // The card radius, so the ring and its halo follow the corners. This was left at 0 and
+        // never written: every selection and hover outline drew square around a rounded card.
+        uCornerRadius: { value: resolvedStyle.borderRadius },
         uZoom: { value: 1.0 },
+        // The halo's reach in world units (SELECTION_GLOW_PX / zoom), written beside uZoom.
+        uGlow: { value: SELECTION_GLOW_PX },
+        uGlowAlpha: { value: glowAlpha },
       },
       vertexShader: /* glsl */ `
         attribute vec2 aSize;
         attribute float aType; // 0 = hover, 1 = selected
         attribute float aOutlineWidth; // screen-space width (pre-divided by zoom)
         attribute float aPadding; // screen-space padding (pre-divided by zoom)
+
+        uniform float uGlow;
 
         varying vec2 vUv;
         varying vec2 vSize;
@@ -92,8 +113,9 @@ export function EntitySelection() {
           vOutlineWidth = aOutlineWidth;
           vPadding = aPadding;
 
-          // Expand geometry to include outline + padding
-          float expand = aPadding + aOutlineWidth;
+          // Expand geometry to include outline + padding, and the halo for selected only:
+          // hover is a hairline and pays for no halo fragments.
+          float expand = aPadding + aOutlineWidth + uGlow * aType;
           vec2 expandedSize = aSize + vec2(expand * 2.0);
           vExpandedSize = expandedSize;
 
@@ -111,6 +133,8 @@ export function EntitySelection() {
         uniform vec3 uHoverColor;
         uniform float uCornerRadius;
         uniform float uZoom;
+        uniform float uGlow;
+        uniform float uGlowAlpha;
 
         varying vec2 vUv;
         varying vec2 vSize;
@@ -150,17 +174,23 @@ export function EntitySelection() {
           float innerMask = 1.0 - smoothstep(-aa, aa, innerD);
           float outlineMask = outerMask - innerMask;
 
-          if (outlineMask < 0.01) discard;
+          // The halo: quadratic falloff from the ring outward, outside only, selected only. It
+          // lands on neighbours (no depth test, order 7) — that is what a halo does.
+          float glow = 1.0 - smoothstep(0.0, uGlow, outerD);
+          glow = glow * glow * step(0.0, outerD) * uGlowAlpha * vType;
+
+          float a = max(outlineMask, glow);
+          if (a < 0.004) discard;
 
           vec3 color = mix(uHoverColor, uSelectedColor, vType);
-          gl_FragColor = vec4(color, outlineMask);
+          gl_FragColor = vec4(color, a);
         }
       `,
       transparent: true,
       depthWrite: false,
       depthTest: false,
     });
-  }, [selectedColor, hoverColor, resolvedStyle.borderRadius]);
+  }, [selectedColor, hoverColor, glowAlpha, resolvedStyle.borderRadius]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { outlineMaterial.dispose(); }, [outlineMaterial]);
@@ -254,25 +284,14 @@ export function EntitySelection() {
 
         varying vec2 vUv;
 
-        float roundedBoxSDF(vec2 p, vec2 b, float r) {
-          // A rounded box is only defined for r <= min(b.x, b.y). Past that every fragment
-          // lands outside the shape and the early-discard erases the box entirely — which is
-          // exactly what --radius-full (9999px) did: measured, node body ink fell from
-          // 170/170 sampled pixels to 3/170. Clamp here rather than at the call sites: the
-          // three callers pass different radii (uCornerRadius, +vPadding, -vOutlineWidth) and
-          // a repeated clamp would drift.
-          r = min(r, min(b.x, b.y));
-          vec2 q = abs(p) - b + r;
-          return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-        }
-
         void main() {
+          // The quad is the hit size; the dot sits inside it, a 6px accent disc ringed in the
+          // card's own body colour so it reads on the hairline it straddles.
           float halfSize = uHandleSize * 0.5 / uZoom;
           vec2 p = (vUv - 0.5) * vec2(halfSize * 2.0);
-          float radius = 1.5 / uZoom;
           float borderWidth = 1.0 / uZoom;
 
-          float d = roundedBoxSDF(p, vec2(halfSize), radius);
+          float d = length(p) - ${HANDLE_DOT_RADIUS_PX.toFixed(1)} / uZoom;
 
           float aa = fwidth(d) * 1.5;
           float fillMask = 1.0 - smoothstep(-aa, aa, d);
@@ -482,8 +501,9 @@ export function EntitySelection() {
         outlineBuffers.paddingAttr.needsUpdate = true;
       }
 
-      // Update zoom uniform
+      // Update zoom uniforms; the halo is a screen-px reach, so it scales with the inverse.
       outlineMaterial.uniforms.uZoom.value = viewport.zoom;
+      outlineMaterial.uniforms.uGlow.value = SELECTION_GLOW_PX / viewport.zoom;
 
       outlineMesh.count = Math.min(outlineCount, outlineCapacity);
       outlineDirtyRef.current = false;
@@ -494,15 +514,18 @@ export function EntitySelection() {
       const {
         viewport,
         selectedEntityIds,
+        hoveredEntityId,
         hiddenEntityIds,
         connectionDraft,
         selectionBox,
         entityMap,
       } = store.getState();
 
-      // Hide handles during drag/connect/box-select
+      // Hide handles during drag/connect/box-select, and unless the pointer is on a selected
+      // entity: the corners are drawn for the one card being looked at, not the whole selection.
       const mode = getInteractionMode();
-      const showHandles = mode === 'idle' && !connectionDraft && !selectionBox && selectedEntityIds.size > 0;
+      const showHandles = mode === 'idle' && !connectionDraft && !selectionBox &&
+        hoveredEntityId !== null && selectedEntityIds.has(hoveredEntityId);
 
       if (!showHandles) {
         handleMesh.count = 0;
@@ -520,8 +543,9 @@ export function EntitySelection() {
       const halfHandle = RESIZE_HANDLE_SIZE / (2 * viewport.zoom);
       let handleCount = 0;
 
-      // Pre-grow buffer to fit all selected entities in one step
-      const neededCapacity = selectedEntityIds.size * 8;
+      // Four corners of one entity: the buffer never needs more than HANDLE_MIN_CAPACITY, and the
+      // grow path is kept only so a changed constant cannot silently truncate.
+      const neededCapacity = 4;
       if (neededCapacity > handleCapacity) {
         setHandleCapacity(Math.ceil(neededCapacity * BUFFER_GROWTH_FACTOR));
         // Continue rendering what fits this frame; next frame will have full capacity
@@ -529,7 +553,8 @@ export function EntitySelection() {
       const maxHandles = handleCapacity;
 
       for (const entityId of selectedEntityIds) {
-        if (handleCount + 8 > maxHandles) break;
+        if (entityId !== hoveredEntityId) continue;
+        if (handleCount + 4 > maxHandles) break;
 
         const entity = entityMap.get(entityId);
         if (!entity || hiddenEntityIds.has(entity.id)) continue;
@@ -560,11 +585,9 @@ export function EntitySelection() {
           (typeof resizable === 'object' && resizable.height !== false);
 
         // Write handle instances inline — no intermediate array allocation.
-        // 8 handle positions: NW, N, NE, E, SE, S, SW, W
-        // Handles are placed centered on the selection outline stroke
+        // Corners only: NW, NE, SE, SW, centred on the selection outline stroke. The mid-edge
+        // handles keep their hit test in kookie-flow.tsx; the resize cursor is their affordance.
         const pad = (SELECTION_OUTLINE_PADDING - SELECTION_OUTLINE_WIDTH / 2) * invZoom;
-        const halfW = width / 2;
-        const halfH = height / 2;
         tempScale.set(halfHandle * 2, halfHandle * 2, 1);
 
         const writeHandle = (hx: number, hy: number) => {
@@ -582,20 +605,11 @@ export function EntitySelection() {
           writeHandle(x + width + pad, y + height + pad);   // SE
           writeHandle(x - pad, y + height + pad);           // SW
         }
-        if (canResizeH) {
-          writeHandle(x + halfW, y - pad);            // N
-          writeHandle(x + halfW, y + height + pad);   // S
-        }
-        if (canResizeW) {
-          writeHandle(x + width + pad, y + halfH);    // E
-          writeHandle(x - pad, y + halfH);            // W
-        }
+        // One entity is ever hovered, so this is the whole loop.
+        break;
       }
 
-      // Same reason as the outline mesh above: the handle buffer is grown to
-      // selectedEntityIds.size * 8 * 1.5 and never shrinks, so a thousand-node select-all left a
-      // 750 KiB instanceMatrix being re-uploaded on every frame of a pan to draw the eight handles
-      // per node still on screen. `handleMesh.count` clamps the draw to what was written.
+      // `handleMesh.count` clamps the draw to what was written; the range keeps the upload to it.
       handleMesh.instanceMatrix.addUpdateRange(0, handleCount * 16);
       handleMesh.instanceMatrix.needsUpdate = true;
 

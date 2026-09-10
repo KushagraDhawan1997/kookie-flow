@@ -183,14 +183,16 @@ export function Entities() {
         uCornerRadius: { value: resolvedStyle.borderRadius },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
-        // Header styling
-        uHeaderColor: { value: new THREE.Color(...resolvedStyle.headerBackground) },
+        // Header: the global accent band hue (r < 0 = none) and the separator's row height.
+        // A Vector3 rather than a Color so the resolver's negative sentinel is not a colour.
+        uHeaderColor: { value: new THREE.Vector3(...resolvedStyle.headerBackground) },
         uHeaderHeight: { value: resolvedStyle.headerHeight },
         uHeaderPosition: { value: resolvedStyle.headerPosition },
-        // Shadow styling (classic variant)
+        // The card's float and its top light; both per appearance, both from the resolver.
         uShadowBlur: { value: resolvedStyle.shadowBlur },
         uShadowOffsetY: { value: resolvedStyle.shadowOffsetY },
         uShadowOpacity: { value: resolvedStyle.shadowOpacity },
+        uTopLight: { value: resolvedStyle.topLightAlpha },
         // Status rendering
         uTime: { value: 0 },
         uStatusErrorColor: { value: new THREE.Color(0.93, 0.28, 0.26) },   // red-9
@@ -239,7 +241,7 @@ export function Entities() {
         uniform float uBorderWidth;
         uniform float uBackgroundAlpha;
         // Header uniforms
-        uniform vec3 uHeaderColor;
+        uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
         uniform float uHeaderHeight;
         uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
         uniform float uPass;
@@ -247,6 +249,7 @@ export function Entities() {
         uniform float uShadowBlur;
         uniform float uShadowOffsetY;
         uniform float uShadowOpacity;
+        uniform float uTopLight;
         // Status uniforms
         uniform float uTime;
         uniform vec3 uStatusErrorColor;
@@ -283,8 +286,10 @@ export function Entities() {
             // Offset shadow position (Y is negated because WebGL Y-up vs our Y-down)
             vec2 shadowP = p + vec2(0.0, uShadowOffsetY);
             float shadowD = roundedBoxSDF(shadowP, b, uCornerRadius);
-            // Soft shadow using blur as the falloff distance
-            shadowAlpha = uShadowOpacity * (1.0 - smoothstep(-uShadowBlur, uShadowBlur * 0.5, shadowD));
+            // Full inside a short way under the edge, then a quadratic tail out to the blur:
+            // no knee where the halo meets the body, and the card lands rather than floats.
+            float s = 1.0 - smoothstep(-uShadowBlur * 0.25, uShadowBlur, shadowD);
+            shadowAlpha = uShadowOpacity * s * s;
           }
 
           float d = roundedBoxSDF(p, b, uCornerRadius);
@@ -295,23 +300,6 @@ export function Entities() {
 
           // Background color (selection/hover handled by EntitySelection layer)
           vec3 bgColor = uBackgroundColor;
-
-          // Resolve header color: per-entity override if r >= 0, else global uniform
-          // For per-entity colors, create a subtle tint by mixing with background (like --accent-3)
-          // Global uHeaderColor is already a subtle tint (--accent-3 or --gray-3)
-          vec3 resolvedHeaderColor = vAccentColor.r < 0.0
-            ? uHeaderColor
-            : mix(bgColor, vAccentColor, 0.15); // 15% tint to match subtle -3 variants
-
-          // Header region check (top of entity) - only for "inside" mode (1.0)
-          // "outside" mode (2.0) has no colored header - just floating text above
-          if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
-            float halfHeight = b.y;
-            float headerBottom = halfHeight - uHeaderHeight;
-            // Smoothstep for anti-aliased edge between header and body
-            float headerMask = smoothstep(headerBottom - 0.5, headerBottom + 0.5, p.y);
-            bgColor = mix(bgColor, resolvedHeaderColor, headerMask);
-          }
 
           // Border color (selection/hover handled by EntitySelection layer)
           vec3 borderColor = uBorderColor;
@@ -358,6 +346,29 @@ export function Entities() {
 
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
+
+          // Separator under an inside header: the header is typographic, the line is all that
+          // is left of the block. Inset 12 world px from each side so it reads as a rule, not a
+          // seam.
+          if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
+            float hb = b.y - uHeaderHeight;
+            float sep = (1.0 - smoothstep(0.5, 1.0, abs(p.y - hb))) * step(12.0, b.x - abs(p.x)) * fillMask;
+            color = mix(color, uBorderColor, sep);
+          }
+          // Top light: the 1.5px just inside the shape, weighted to the top edge, dying through
+          // the corners. An accent (per-entity, else the global accentHeader) is the same band in
+          // its hue, near-solid: one thin line of colour is the whole statement.
+          // d runs negative inward: the band is d in [-1.5, 0], softened over the next 1.5px so
+          // it reads as light and not as a second hairline. (Written the other way round, this
+          // lit the whole top-radius zone of every card: a 12px accent bar, not a 1.5px line.)
+          float rim = smoothstep(-3.0, -1.5, d) * fillMask;
+          // max(): smoothstep is undefined when its edges coincide, and radius="none" is legal.
+          float up = smoothstep(b.y - max(uCornerRadius, 1.0), b.y, p.y);
+          bool accented = vAccentColor.r >= 0.0;
+          bool globalAccent = uHeaderColor.r >= 0.0;
+          vec3 lightColor = accented ? vAccentColor : (globalAccent ? uHeaderColor : vec3(1.0));
+          float lightAlpha = (accented || globalAccent) ? 0.9 : uTopLight;
+          color = mix(color, lightColor, rim * up * lightAlpha);
 
           // For transparent backgrounds, only show border
           if (uBackgroundAlpha < 0.01) {
