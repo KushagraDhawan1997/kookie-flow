@@ -732,3 +732,83 @@ argued loudest for are the two the skeptics killed. 180 laws pass unchanged.
 - The checkbox mark (18) and slider track (4) are still shader literals where `--mark-N` and
   `--slider-track-N` exist.
 - `--scale` is a public v2 lever and every fallback literal in the reader pins it to 1.
+
+---
+
+## D13. The node body is a real squircle. GL has no fallback branch to be stuck in.
+
+**Owner ruling (2026-09-10): "We use squircle shape there, and so the radius feels lesser than it
+is; in the non-squircle branch like for safari the radius on surfaces like cards and dialog is too
+much, and we seem to have copied that. Since this is all shaders, can we not achieve squircle?"**
+
+Yes, and it is nine lines.
+
+### What v2 actually ships
+
+```css
+.kui-surface { border-radius: calc(var(--kui-sf-radius) * var(--kui-corner-k, 1)) }
+@supports (corner-shape: squircle) {
+  .kui-surface, .kui-shell:after { --kui-corner-k: 1.613; corner-shape: squircle }
+  .kui-surface.kui-floating-rows { --kui-corner-k: 1.75 }
+}
+```
+
+Two branches with the same intent and different results. A superellipse hugs the corner far closer
+than a circular arc of the same radius, so v2 multiplies by `--kui-corner-k` = 1.613 where it can
+draw one. Only Chrome has `corner-shape` today; Safari and Firefox fall through to `k = 1` and get
+a CIRCLE at the raw token — the rounder of the two, and the one this package copied when it took
+`--radius-surface-N` and drew an arc with it. **The node bodies were the Safari fallback, not the
+design.** That is the owner's observation, and the stylesheet confirms it exactly.
+
+`corner-shape` appears on `.kui-surface` and nowhere else. `.kui-control` is a plain
+`border-radius: var(--kui-ct-radius)`, so widget wells stay circular — a deliberate distinction,
+not an omission, and they are untouched here.
+
+### The shape
+
+`corner-shape: squircle` is `superellipse(2)`, and CSS defines `superellipse(k)` as
+|x|^n + |y|^n = 1 with n = 2^k — so a squircle is the **L4 norm** where a circle is L2. The whole
+change is swapping the norm in the rounded-box SDF, in `src/utils/corner-shader.ts` so the profile
+is defined once and the body, its shadow and the selection ring cannot drift apart:
+
+```glsl
+vec2 m = max(q, 0.0);
+vec2 m2 = m * m;
+return min(max(q.x, q.y), 0.0) + sqrt(sqrt(dot(m2, m2))) - r;
+```
+
+No `pow`: `(x⁴ + y⁴)^(1/4)` is `sqrt(sqrt(dot(m², m²)))`, two multiplies and two square roots
+against two transcendental calls, per fragment on the body, the shadow halo and the ring.
+
+It is not a Euclidean distance field for n ≠ 2 — the gradient is not unit length off the axes — but
+every consumer antialiases with `fwidth(d)`, which measures the real screen-space rate of change
+and self-corrects. That is what makes the substitution safe rather than merely convenient.
+
+### Measured, because the shape is the claim
+
+Painted radius on the harness fixture at `radius="large"`: `--radius-surface-3` = 40 × 1.613 = 64.52.
+Walking the 45° diagonal in from the node's bounding-box corner to the first opaque pixel:
+
+| | diagonal gap |
+|---|---|
+| a circle of that radius predicts | 18.90 px |
+| a squircle of that radius predicts | 10.27 px |
+| **measured** | **10.50 px** |
+
+The circle is rejected by 8px. The 0.23px residual is the 0.25px sampling step and the antialiased
+edge.
+
+### What this is worth beyond parity
+
+The DOM has to feature-detect and degrade; a fragment shader does not. Every browser gets the
+intended profile, so the canvas is strictly closer to the design than the DOM chrome beside it is
+on Safari — one of the few places this renderer can beat the thing it is matching rather than
+merely equal it.
+
+### The same defect is still live in v2 itself
+
+Not fixed here, because it is another repository: v2's non-squircle branch leaves `k = 1`, so
+Safari and Firefox draw cards and dialogs at the raw token as circles and they read too round. The
+fix there is a fallback `k` that compensates in the other direction — a circle of radius `r/1.613`
+matches a squircle of `r` at the same perceived roundness — or accepting the difference explicitly
+rather than by omission.

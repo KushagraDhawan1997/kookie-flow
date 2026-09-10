@@ -5,6 +5,7 @@ import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
 import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
@@ -183,7 +184,7 @@ export function Entities() {
         uPass: { value: 1 },
         uBackgroundColor: { value: new THREE.Color(...resolvedStyle.background) },
         uBorderColor: { value: new THREE.Color(...resolvedStyle.borderColor) },
-        uCornerRadius: { value: resolvedStyle.borderRadius },
+        uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
         // Header: the global accent band hue (r < 0 = none) and the separator's row height.
@@ -266,17 +267,7 @@ export function Entities() {
         varying vec3 vAccentColor; // Per-entity accent color override (-1 = use global)
         varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success
 
-        float roundedBoxSDF(vec2 p, vec2 b, float r) {
-          // A rounded box is only defined for r <= min(b.x, b.y). Past that every fragment
-          // lands outside the shape and the early-discard erases the box entirely — which is
-          // exactly what --radius-full (9999px) did: measured, node body ink fell from
-          // 170/170 sampled pixels to 3/170. Clamp here rather than at the call sites: the
-          // three callers pass different radii (uCornerRadius, +vPadding, -vOutlineWidth) and
-          // a repeated clamp would drift.
-          r = min(r, min(b.x, b.y));
-          vec2 q = abs(p) - b + r;
-          return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-        }
+        ${squircleBoxSDF}
 
         void main() {
           // Map UV to expanded coordinate space, then use entity size for SDF

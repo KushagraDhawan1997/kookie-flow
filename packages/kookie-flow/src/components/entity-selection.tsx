@@ -6,6 +6,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
 import {
   DEFAULT_ENTITY_WIDTH,
   SELECTION_OUTLINE_WIDTH,
@@ -85,7 +86,7 @@ export function EntitySelection() {
         uHoverColor: { value: new THREE.Color(hoverColor[0], hoverColor[1], hoverColor[2]) },
         // The card radius, so the ring and its halo follow the corners. This was left at 0 and
         // never written: every selection and hover outline drew square around a rounded card.
-        uCornerRadius: { value: resolvedStyle.borderRadius },
+        uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
         uZoom: { value: 1.0 },
         // The halo's reach in world units (SELECTION_GLOW_PX / zoom), written beside uZoom.
         uGlow: { value: SELECTION_GLOW_PX },
@@ -143,17 +144,7 @@ export function EntitySelection() {
         varying float vPadding;
         varying vec2 vExpandedSize;
 
-        float roundedBoxSDF(vec2 p, vec2 b, float r) {
-          // A rounded box is only defined for r <= min(b.x, b.y). Past that every fragment
-          // lands outside the shape and the early-discard erases the box entirely — which is
-          // exactly what --radius-full (9999px) did: measured, node body ink fell from
-          // 170/170 sampled pixels to 3/170. Clamp here rather than at the call sites: the
-          // three callers pass different radii (uCornerRadius, +vPadding, -vOutlineWidth) and
-          // a repeated clamp would drift.
-          r = min(r, min(b.x, b.y));
-          vec2 q = abs(p) - b + r;
-          return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-        }
+        ${squircleBoxSDF}
 
         void main() {
           // Map UV to expanded coordinate space
