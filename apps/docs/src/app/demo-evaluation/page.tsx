@@ -6,9 +6,11 @@
  *   Number ──▶ Add ──▶ Multiply ──▶ Generate [manual] ──▶ Upscale
  *
  * Drag the slider and watch Add and Multiply re-run. Generate is a gate: it goes stale and waits
- * for Run. Run it and it reports progress along its bottom edge for a second, then Upscale runs
- * behind it. Tick "Generate fails" to see an error land on the node with its message underneath,
- * and the chain hold there rather than run Upscale on stale output.
+ * for Run. Run it and its outline sweeps for twenty seconds — the length of a real model call, so
+ * the ring is worth watching and cancelling it is worth trying — then Upscale runs behind it. Move
+ * the slider mid-run to see the run abandoned and started again. Tick "Generate fails" to see an
+ * error land on the node with its message underneath, and the chain hold there rather than run
+ * Upscale on stale output.
  *
  * The library never learns what any of these nodes compute. `onEvaluate` below is the whole of
  * the application's logic; everything else — what is stale, what runs, in what order, what is
@@ -63,6 +65,10 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
   'ai/generate': { type: 'ai/generate', evaluation: 'manual' },
 };
 
+/** What a model call actually costs, so the demo shows the wait rather than skipping it. */
+const GENERATE_MS = 20_000;
+const GENERATE_TICKS = 200;
+
 const num = (v: unknown) => (typeof v === 'number' ? v : Number(v) || 0);
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -95,10 +101,11 @@ export default function DemoEvaluationPage() {
       case 'math/multiply':
         return { product: num(inputs.a) * num(inputs.by) };
       case 'ai/generate': {
-        // A pretend model: a second of work, progress reported in tenths, honouring the signal.
-        for (let i = 1; i <= 10; i++) {
-          await sleep(100, ctx.signal);
-          ctx.progress(i / 10);
+        // A pretend model at the length of a real one: twenty seconds, reported every tenth of a
+        // second, honouring the signal so a changed input abandons the run rather than finishing it.
+        for (let i = 1; i <= GENERATE_TICKS; i++) {
+          await sleep(GENERATE_MS / GENERATE_TICKS, ctx.signal);
+          ctx.progress(i / GENERATE_TICKS);
         }
         if (failRef.current) throw new Error(`seed ${num(inputs.seed)} was refused by the model`);
         return { image: `image(seed=${num(inputs.seed)})` };
