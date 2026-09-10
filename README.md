@@ -323,6 +323,8 @@ bottom edge when `ctx.progress` is reported, and the thrown message under a fail
 entities pass inputs through to outputs. Computed values live in the
 engine, not on entity data, and are not part of the graph you serialise.
 
+Live: `apps/docs` → `/demo-evaluation`.
+
 **Media entities.** `image`, `video` and `mesh` are all one textured quad, so they share the
 stacking order, frustum culling, selection and resize handling every other entity has — a node can
 sit in front of a playing clip, which is why none of the three is a DOM element over the canvas.
