@@ -25,22 +25,99 @@
  * draws from, so the borrowed input lands exactly on the thing it replaces and there is no visual
  * jump on either edge of the edit.
  *
- * THIS OVERLAY IS THE FOCUS STATE, and that is why the GL layer draws none for the kinds that
- * reach here. It is sized to exactly the widget's box and painted with an OPAQUE fill and an
- * accent border, so it covers the well completely: a focus ring drawn underneath it in GL would
- * be invisible by construction, and the accent border is already the thing a ring would be
- * saying. Nothing else on a node can hold focus — a canvas has no focusable children, so there is
- * no keyboard focus model in GL to ring. For the two kinds that never borrow anything, checkbox
- * and slider, the only state with any duration is being PRESSED, which widgets-gl draws through
- * the hover attribute for as long as the gesture lasts.
+ * ONE PAINTER. This element is TRANSPARENT, for every kind. The GL layer draws the well, the
+ * hairline, the inner shade and — keyed on `editingWidgetKey`, which opening an edit sets — the
+ * focus ring (`aHover = 2` in widgets-gl.tsx). The DOM contributes only what GL cannot: the
+ * glyphs being typed, the caret, the platform's list and the platform's colour picker. The text
+ * layer already stops printing the value under an open edit (text-renderer.tsx), so the DOM glyphs
+ * stand exactly where the MSDF glyphs stood: same font, same size, same inset.
+ *
+ * It USED TO PAINT — an opaque fill and an accent border, on the argument that a ring drawn under
+ * an opaque box is invisible by construction. Measured, that argument produced the defect the
+ * owner named: `font: inherit` resolved to the canvas container's UA serif, the 4px radius sat
+ * under a pill well, `border 1px + padding 6px` put the glyph one pixel right of where GL had it,
+ * and the accent border invented a focus state GL never drew. A second painter can only ever
+ * approximate the first. Nothing else on a node can hold focus — a canvas has no focusable
+ * children — so the one ring GL draws is the whole focus model. For the two kinds that never
+ * borrow anything, checkbox and slider, the only state with any duration is being PRESSED, which
+ * widgets-gl draws through the same attribute for as long as the gesture lasts.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { useFlowStoreApi } from './context';
-import { resolveTokenColor } from '../utils/style-resolver';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { useSocketLayout } from '../contexts/StyleContext';
+import { THEME_COLORS, resolveColor, type ColorTokenRef } from '../core/theme-colors';
+import { themeRoot } from '../utils/theme-root';
+import { PAD, WIDGET_RADIUS } from '../utils/widget-text';
 import type { WidgetHit } from '../utils/widget-hit';
+
+/**
+ * The face the MSDF atlas was built from. It leads the stack whatever the theme says, because the
+ * glyphs this element replaces ARE that face; the theme's family is the fallback where the page
+ * has not loaded it, and `system-ui` is the fallback for a page with no Theme at all.
+ */
+const ATLAS_FONT = '"Google Sans"';
+const SYSTEM_FONT = 'system-ui, sans-serif';
+
+/**
+ * The theme's body family, read off the theme root — or '' where there is none to read.
+ *
+ * `--font-body` first: KookieUI v2 declares the family as that variable on the Theme element and
+ * does NOT set `font-family` on the element itself, so the element's computed family is whatever
+ * it inherited — on a bare page the UA serif, which is exactly the face the defect showed. The
+ * computed family is taken only when it is not a UA default.
+ */
+function themeFontFamily(): string {
+  const root = themeRoot();
+  if (!root) return '';
+  const styles = getComputedStyle(root);
+  const body = styles.getPropertyValue('--font-body').trim();
+  if (body) return body;
+  const inherited = styles.fontFamily;
+  return /^(serif|"?Times)/i.test(inherited) ? '' : inherited;
+}
+
+/**
+ * A number input's spin buttons cannot be reached from an inline style — they are a pseudo-element
+ * — so the one rule that hides them is injected once, on the first mount, keyed on a data
+ * attribute this element carries. Same shape as widgets/NumberWidget.tsx, for the same reason.
+ * GL draws no stepper, and a stepper appearing only while the field is open is a second painter.
+ */
+const OVERLAY_ATTR = 'data-kookie-flow-widget-edit';
+const OVERLAY_STYLE_ID = 'kookie-flow-widget-edit-style';
+const OVERLAY_CSS = `
+[${OVERLAY_ATTR}]::-webkit-inner-spin-button,
+[${OVERLAY_ATTR}]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+`;
+
+/**
+ * Vertical nudge on the borrowed element, in px. GL centres the value at `box.y + h/2 - 7`; the
+ * DOM centres by line-height. MEASURED, not guessed: with the atlas face loaded, at DPR 2, the DOM
+ * glyph bounds of "one" and "name" sit exactly one device pixel (0.5 CSS px) ABOVE the MSDF
+ * glyphs, x identical, row profile identical. `1` flips that to one device pixel below; `0.5`
+ * snaps to 0 on an input and to 1 on a select. Neither integer is nearer than the other, so this
+ * stays 0 — the one that adds no fractional layout.
+ */
+const OVERLAY_PADDING_TOP = 0;
+
+function useOverlayStylesheet(): void {
+  useInsertionEffect(() => {
+    if (document.getElementById(OVERLAY_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = OVERLAY_STYLE_ID;
+    style.textContent = OVERLAY_CSS;
+    document.head.appendChild(style);
+  }, []);
+}
 
 export interface WidgetEditOverlayProps {
   /** The widget being edited, or null when nothing is. */
@@ -89,7 +166,17 @@ function openPicker(el: HTMLSelectElement): void {
 export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  const socketLayout = useSocketLayout();
   const elRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
+  useOverlayStylesheet();
+
+  // Read once per mount. `font: inherit` was the defect: it inherits from the canvas container,
+  // which inherits nothing from the Theme, so the UA serif came through. The theme root is where
+  // the family actually lives.
+  const themeFont = useMemo(() => {
+    const theme = themeFontFamily();
+    return theme ? `${ATLAS_FONT}, ${theme}` : `${ATLAS_FONT}, ${SYSTEM_FONT}`;
+  }, []);
 
   const hitRef = useRef(hit);
   hitRef.current = hit;
@@ -192,45 +279,51 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
    * mounted, looked right, and swallowed every keystroke. Measured as `activeElement` staying on
    * the canvas container through the whole gesture.
    */
-  const rgb = (key: Parameters<typeof resolveTokenColor>[0]) =>
-    `rgb(${resolveTokenColor(key, tokens).map((v) => Math.round(v * 255)).join(',')})`;
+  const rgb = (key: ColorTokenRef) =>
+    `rgb(${resolveColor(key, tokens).map((v) => Math.round(v * 255)).join(',')})`;
+  // GL centres the value on the FIRST row of a multi-row widget (text-renderer.tsx), so the line
+  // box is one row tall, not the whole box — a three-row textarea reads from its top line.
+  const rowHeight = Math.min(hit.box.height, socketLayout.widgetHeight);
   const style: CSSProperties = {
     position: 'absolute',
     top: 0,
     left: 0,
     transformOrigin: '0 0',
-    // Matches the GL chrome underneath, so the borrowed element reads as the same control rather
-    // than as a box that appeared on top of one.
-    background: rgb(THEME_COLORS.widget.fill),
-    color: rgb(THEME_COLORS.text.primary),
-    border: `1px solid ${rgb(THEME_COLORS.widget.active)}`,
-    borderRadius: '4px',
-    padding: '0 6px',
-    font: 'inherit',
-    fontSize: '12px',
-    outline: 'none',
     boxSizing: 'border-box',
+    // The glyphs GL was printing a frame ago: same family, same size, same left inset (PAD is
+    // the number widget-text.ts places the value at). Zero border, so the inset is PAD and not
+    // PAD + 1. Nothing here paints a well, a hairline or a ring — that is GL's, see the top.
+    fontFamily: themeFont,
+    fontSize: '12px',
+    fontWeight: 400,
+    letterSpacing: 0,
+    lineHeight: `${rowHeight}px`,
+    padding: `${OVERLAY_PADDING_TOP}px ${PAD}px 0`,
+    border: 0,
+    outline: 'none',
+    boxShadow: 'none',
+    background: 'transparent',
+    // Clips the caret and the selection highlight to the well's own shape.
+    borderRadius: `${WIDGET_RADIUS}px`,
+    color: rgb(THEME_COLORS.text.primary),
+    caretColor: rgb(THEME_COLORS.widget.active),
     resize: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    MozAppearance: 'textfield',
   };
 
   const kind = inputTypeFor(hit.config.type);
 
-  // A select paints TRANSPARENT over its own GL chrome, where a field replaces it. The well and
-  // the chevron underneath are already the right control at the right size and the text layer
-  // already stops printing the option while an edit is open, so the borrowed element has only to
-  // contribute the option text and the platform's list — drawing a second well and a second
-  // chevron on top of the first would be the visible cost of not saying so.
-  const selectStyle: CSSProperties =
+  // A select keeps clear of the GL chevron, which the shader draws inset from the trailing edge;
+  // its own arrow is gone with `appearance: none`. A colour input has no glyphs and no caret to
+  // contribute — the swatch is GL's — so it is fully invisible and exists to open the picker.
+  const kindStyle: CSSProperties =
     kind === 'select'
-      ? {
-          ...style,
-          background: 'transparent',
-          appearance: 'none',
-          WebkitAppearance: 'none',
-          // Clears the GL chevron, which the shader draws inset from the trailing edge.
-          paddingRight: '20px',
-        }
-      : style;
+      ? { ...style, paddingRight: '20px', textIndent: 0 }
+      : kind === 'color'
+        ? { ...style, opacity: 0 }
+        : style;
 
   const commit = (raw: string) => {
     setDraft(raw);
@@ -271,8 +364,9 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
 
   const common = {
     ref: elRef as React.Ref<never>,
-    style,
+    style: kindStyle,
     value: draft,
+    [OVERLAY_ATTR]: '',
     // The socket's NAME, not its id. This announced 'label' or 'w0' — the consumer's internal
     // key — while the GL layer painted 'Label' next to it, so the field a screen reader described
     // and the field on screen were not obviously the same thing. It also has to agree with the
@@ -298,7 +392,6 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     return (
       <select
         {...common}
-        style={selectStyle}
         value={matched ? draft : ''}
         onChange={onSelectChange}
         onKeyUp={onSelectKeyUp}

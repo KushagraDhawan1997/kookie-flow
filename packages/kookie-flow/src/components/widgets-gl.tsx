@@ -32,15 +32,15 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSocketLayout, useResolvedStyle } from '../contexts/StyleContext';
+import { useSocketLayout } from '../contexts/StyleContext';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { WIDGET_RADIUS } from '../utils/widget-text';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
-import { THEME_COLORS } from '../core/theme-colors';
-import { resolveTokenColor } from '../utils/style-resolver';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types';
 
@@ -71,6 +71,24 @@ const MIN_WIDGET_ZOOM = HIT_MIN_WIDGET_ZOOM;
  */
 const RENDER_ORDER_BG = 3;
 const RENDER_ORDER_FG = 5;
+
+/** The well's corner radius; declared beside PAD in widget-text.ts, see there for why. */
+export { WIDGET_RADIUS };
+
+/**
+ * Room around the box for the focus ring, in world px each side of the quad. The hit box, the
+ * instance matrix and every row metric are untouched — the quad alone grows, so a ring drawn
+ * just outside the hairline has somewhere to land instead of being cut at the box edge.
+ */
+export const WIDGET_GLOW_PAD = 4;
+
+/**
+ * The inner top shade on a well, and the focus ring's peak. Per appearance, chosen when the
+ * material is built and never per frame. Dark wells are punched through to the canvas, so the
+ * shade only has to say "recessed"; a light well is a step below white and needs less still.
+ */
+const WELL_INSET_ALPHA = { dark: 0.12, light: 0.05 } as const;
+const FOCUS_RING_ALPHA = { dark: 0.24, light: 0.18 } as const;
 
 /**
  * What the shader draws. Ordered by nothing in particular; the numbers are private to this file
@@ -196,7 +214,8 @@ const vertexShader = /* glsl */ `
     vTint = aTint;
     vRadius = aRadius;
     vHover = aHover;
-    vec3 pos = vec3(position.xy * aSize, position.z);
+    // The quad is WIDGET_GLOW_PAD wider than the box on every side: the focus ring lives there.
+    vec3 pos = vec3(position.xy * (aSize + ${(2 * WIDGET_GLOW_PAD).toFixed(1)}), position.z);
     gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
   }
 `;
@@ -210,7 +229,13 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uActive;
   uniform vec3 uActiveContrast;
   uniform vec3 uThumb;
+  uniform vec3 uThumbRing;
+  uniform vec3 uChevron;
   uniform float uBorderWidth;
+  // The inner top shade's depth and the focus ring's peak, per appearance (see the constants
+  // beside the render orders).
+  uniform float uInset;
+  uniform float uFocusAlpha;
 
   // The hover dress, as UNIFORMS rather than attributes: WHICH widget is hovered varies per
   // instance, what hover LOOKS like does not. One float per instance carries the first; three
@@ -236,15 +261,22 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 p = (vUv - 0.5) * vSize;
+    // The quad is padded by WIDGET_GLOW_PAD on every side (vertex shader), so p runs past the
+    // box: the shape's own SDFs are still measured against the unpadded halfSize.
+    vec2 p = (vUv - 0.5) * (vSize + ${(2 * WIDGET_GLOW_PAD).toFixed(1)});
     vec2 halfSize = vSize * 0.5;
 
-    // The three state colours, resolved once. vHover is 0 or 1, so this is the rest colour or the
+    // vHover is 0 at rest, 1 under the pointer, 2 focused or pressed. Two steps rather than a
+    // branch on a varying: hover is +1 step on the chrome, focus is the accent ring on top of it.
+    float hov = step(0.5, vHover);
+    float foc = step(1.5, vHover);
+
+    // The three state colours, resolved once. hov is 0 or 1, so this is the rest colour or the
     // hover colour and never a blend — but it is a mix rather than a branch, because a branch on a
     // varying costs a divergent path and this costs three lerps of a constant.
-    vec3 fill = mix(uFill, uFillHover, vHover);
-    vec3 track = mix(uTrack, uTrackHover, vHover);
-    vec3 border = mix(uBorder, uBorderHover, vHover);
+    vec3 fill = mix(uFill, uFillHover, hov);
+    vec3 track = mix(uTrack, uTrackHover, hov);
+    vec3 border = mix(uBorder, uBorderHover, hov);
 
     vec3 color = fill;
     float alpha = 0.0;
@@ -259,10 +291,10 @@ const fragmentShader = /* glsl */ `
       float d = roundedBoxSDF(cp, b, min(4.0, side * 0.25));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float on = step(1.5, vKind);
-      vec3 boxFill = mix(track, uActive, on);
+      // Pressed is the gesture, and it reads as the box going a shade darker under the finger.
+      vec3 boxFill = mix(mix(track, uActive, on), vec3(0.0), 0.12 * foc);
       float ring = 1.0 - smoothstep(-aa, aa, d + uBorderWidth);
       color = mix(border, boxFill, ring);
-      alpha = inside;
 
       // The tick, drawn as two thick segments rather than a glyph: it is five lines of SDF and
       // needs no atlas, no second draw call and no font to have loaded.
@@ -276,6 +308,15 @@ const fragmentShader = /* glsl */ `
                          seg2 * (1.0 - smoothstep(0.0, 0.055, arm2)));
         color = mix(color, uActiveContrast, tick * inside);
       }
+
+      // A 3px accent ring outside the box: full strength while pressed, six tenths when a ticked
+      // box is hovered, nothing on a hovered empty one — the hairline step already says that.
+      float cg = clamp(d / 3.0, 0.0, 1.0);
+      float cbHalo = (1.0 - cg) * (1.0 - cg) * step(0.0, d) * max(foc, hov * on * 0.6) * uFocusAlpha;
+      // Outside the shape the fragment IS the ring, so it takes the accent outright; its weight
+      // is in the alpha. Mixing by the alpha as well would leave a ring three parts well colour.
+      color = mix(color, uActive, 1.0 - inside);
+      alpha = max(inside, cbHalo);
     } else if (vKind > 2.5 && vKind < 3.5) {
       // ---- slider: a channel, a filled portion, and a grip ----
       float trackH = min(4.0, vSize.y * 0.25);
@@ -285,55 +326,70 @@ const fragmentShader = /* glsl */ `
       color = mix(uActive, track, step(fillEdge, p.x));
 
       // The grip rides the fill edge, inset by its own radius so it never leaves the channel —
-      // the same wall rule a segmented control's thumb obeys.
-      // It also grows under the pointer, the gesture the socket dot already makes with its own
-      // 1.0 + aHovered * 0.3. The clamp below is written in terms of gr, so the bigger grip still
-      // cannot leave the channel.
-      float gr = min(vSize.y * 0.5, 8.0) * (1.0 + vHover * 0.15);
+      // the same wall rule a segmented control's thumb obeys. It no longer grows under the
+      // pointer: motion in geometry reads as jitter, so hover moves its ring to the accent and
+      // a press puts a halo around it instead.
+      float gr = 7.0;
       float gx = clamp(fillEdge, -halfSize.x + gr, halfSize.x - gr);
       float gd = length(p - vec2(gx, 0.0)) - gr;
       float grip = 1.0 - smoothstep(-aa, aa, gd);
       float gripRing = 1.0 - smoothstep(-aa, aa, gd + uBorderWidth);
-      color = mix(color, mix(border, uThumb, gripRing), grip);
-      alpha = max(alpha, grip);
+      vec3 thumbRing = mix(uThumbRing, uActive, hov);
+      color = mix(color, mix(thumbRing, uThumb, gripRing), grip);
+
+      // Pressed: 4px accent halo around the thumb. On bare card it is the accent at the halo's
+      // alpha; where it crosses the channel it is a tint on the channel, since that already has
+      // an alpha of its own.
+      float gh = clamp(gd / 4.0, 0.0, 1.0);
+      float thumbHalo = (1.0 - gh) * (1.0 - gh) * step(0.0, gd) * foc * uFocusAlpha;
+      float onChrome = max(alpha, grip);
+      color = mix(color, uActive, (1.0 - grip) * mix(1.0, thumbHalo, onChrome));
+      alpha = max(alpha, max(grip, thumbHalo));
     } else {
       // ---- field, select, colour: a well with a hairline ----
-      float d = roundedBoxSDF(p, halfSize, min(aaRadius(), min(halfSize.x, halfSize.y)));
+      float d = roundedBoxSDF(p, halfSize, min(vRadius, min(halfSize.x, halfSize.y)));
       float inside = 1.0 - smoothstep(-aa, aa, d);
       float ring = 1.0 - smoothstep(-aa, aa, d + uBorderWidth);
-      // A colour widget's fill IS its value; everything else takes the field well. Which also
-      // means hover cannot touch a colour widget's middle — it reads on the hairline alone, the
-      // only part of that widget that is chrome rather than content.
-      vec3 base = vKind > 4.5 ? vTint : fill;
-      color = mix(border, base, ring);
-      alpha = inside;
+      // A colour widget's value is a swatch sitting INSIDE the well with 3px of well showing
+      // around it — a swatch in a well, not a lozenge — so the hairline, the shade and the ring
+      // are the same chrome as any other well's.
+      float swatch = (1.0 - smoothstep(-aa, aa, d + 3.0)) * step(4.5, vKind);
+      vec3 base = mix(fill, vTint, swatch);
+      // Focus turns the hairline itself to the accent; the ring outside it is the soft half.
+      vec3 hair = mix(border, uActive, foc);
+      color = mix(hair, base, ring);
+
+      // The inner top shade: 3px of black just under the top hairline, which is what makes a
+      // well read as recessed rather than as a lighter or darker rectangle. p.y is up on screen.
+      float inset = (1.0 - smoothstep(0.0, 3.0, halfSize.y - p.y - uBorderWidth)) * ring;
+      color = mix(color, vec3(0.0), inset * uInset);
+
+      // The focus ring: 3px outside the shape, quadratic, peaking at uFocusAlpha at the edge.
+      float g = clamp(d / 3.0, 0.0, 1.0);
+      float halo = (1.0 - g) * (1.0 - g) * step(0.0, d) * foc * uFocusAlpha;
+      alpha = max(inside, halo);
+      // Same rule as the checkbox: outside the shape the colour is the accent, the alpha is the
+      // ring's weight.
+      color = mix(color, uActive, 1.0 - inside);
 
       if (vKind > 3.5 && vKind < 4.5) {
-        // The select's chevron, at the trailing edge. Two segments, same construction as the tick.
+        // The select's chevron, at the trailing edge. Two segments, same construction as the tick;
+        // 8 wide, 4 tall, a ~1.25px stroke in its own ink rather than the hairline's.
         vec2 c = p - vec2(halfSize.x - 10.0, 0.0);
         float a1 = abs(dot(c - vec2(-2.0, -1.0), normalize(vec2(1.0, 1.0))));
         float s1 = step(-4.0, c.x) * step(c.x, 0.0);
         float a2 = abs(dot(c - vec2(2.0, -1.0), normalize(vec2(1.0, -1.0))));
         float s2 = step(0.0, c.x) * step(c.x, 4.0);
-        float chev = max(s1 * (1.0 - smoothstep(0.0, 1.1, a1)),
-                         s2 * (1.0 - smoothstep(0.0, 1.1, a2)));
-        color = mix(color, border, chev * inside);
+        float chev = max(s1 * (1.0 - smoothstep(0.0, 1.25, a1)),
+                         s2 * (1.0 - smoothstep(0.0, 1.25, a2)));
+        color = mix(color, uChevron, chev * inside);
       }
     }
 
     if (alpha < 0.01) discard;
     gl_FragColor = vec4(color, alpha);
   }
-`
-  // `aaRadius` is written as a call so the radius stays one expression; GLSL has no default
-  // arguments, so it is substituted here rather than passed as a seventh attribute.
-  //
-  // IT SUBSTITUTES TO A VARYING, NOT TO THE ATTRIBUTE. This used to write `aRadiusV`, which
-  // was the instanced attribute's name — and an attribute does not exist in a fragment shader
-  // at all, so the program failed to link with "'aRadiusV' : undeclared identifier" and every
-  // field, select and colour widget drew nothing. The radius has to be carried across the
-  // stage boundary by the vertex shader, which is what `vRadius` is.
-  .replace(/aaRadius\(\)/g, 'vRadius');
+`;
 
 function createBuffers(capacity: number) {
   return {
@@ -343,8 +399,8 @@ function createBuffers(capacity: number) {
     value: new Float32Array(capacity),
     tint: new Float32Array(capacity * 3),
     /**
-     * Is the pointer on this one. A SIXTH attribute, because there was no spare room in the five
-     * above it: `aValue` is the slider fraction, `aTint` the colour widget's value, `aRadius` the
+     * The widget's state: 0 at rest, 1 under the pointer, 2 focused (its edit is open) or
+     * pressed. A SIXTH attribute, because there was no spare room in the five above it: `aValue` is the slider fraction, `aTint` the colour widget's value, `aRadius` the
      * corner radius, and every one of them is load-bearing for some kind. (The migration notes
      * claimed the shader already had the attributes for hover. It did not.) Four bytes an
      * instance, 80KB a mesh at MAX_CAPACITY, allocated with the capacity step and never in a frame.
@@ -368,7 +424,6 @@ export function WidgetsGL({
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
-  const resolved = useResolvedStyle();
 
   const bgMeshRef = useRef<THREE.InstancedMesh>(null);
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -378,8 +433,11 @@ export function WidgetsGL({
 
   const c = THEME_COLORS.widget;
   const material = useMemo(() => {
+    // `resolveColor` rather than `resolveTokenColor`: several of these are appearance PAIRS
+    // (the well is punched through to the canvas in dark and a step below the card in light),
+    // and the pair collapses to one token here, at material build, never per frame.
     const rgb = (key: (typeof THEME_COLORS)['widget'][keyof (typeof THEME_COLORS)['widget']]) => {
-      const v = resolveTokenColor(key, tokens);
+      const v = resolveColor(key, tokens);
       return new THREE.Color(v[0], v[1], v[2]);
     };
     return new THREE.ShaderMaterial({
@@ -390,10 +448,14 @@ export function WidgetsGL({
         uActive: { value: rgb(c.active) },
         uActiveContrast: { value: rgb(c.activeContrast) },
         uThumb: { value: rgb(c.thumb) },
+        uThumbRing: { value: rgb(c.thumbRing) },
+        uChevron: { value: rgb(c.chevron) },
         uFillHover: { value: rgb(c.fillHover) },
         uTrackHover: { value: rgb(c.trackHover) },
         uBorderHover: { value: rgb(c.borderHover) },
         uBorderWidth: { value: 1 },
+        uInset: { value: WELL_INSET_ALPHA[tokens.appearance] },
+        uFocusAlpha: { value: FOCUS_RING_ALPHA[tokens.appearance] },
       },
       vertexShader,
       fragmentShader,
@@ -471,6 +533,9 @@ export function WidgetsGL({
       // `hoveredSocketId`, and without it a pointer resting on a slider would repaint the whole
       // layer sixty times a second.
       store.subscribe((s) => s.hoveredWidget, markDirty),
+      // The focused widget wears the ring, and the ring is drawn HERE — the borrowed input over it
+      // paints nothing (widget-edit-overlay.tsx). Fires twice per edit: on open and on close.
+      store.subscribe((s) => s.editingWidgetKey, markDirty),
     ];
     return () => { for (const u of unsubs) u(); };
   }, [store]);
@@ -483,7 +548,7 @@ export function WidgetsGL({
 
     const {
       entities, viewport, connectedSockets, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder,
-      hoveredWidget,
+      hoveredWidget, editingWidgetKey,
     } = store.getState();
     if (viewport.zoom < minWidgetZoom) {
       bgMesh.count = 0;
@@ -561,14 +626,12 @@ export function WidgetsGL({
         // its state. What the person has set and the consumer has not yet echoed back overrides
         // it, by the DOM widgets' own rule (utils/widget-values.ts).
         const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
-        const value = readWidgetValue(
-          widgetValues,
-          widgetKey(entity.id, socket.id),
-          values?.[socket.id] ?? config.defaultValue
-        );
+        const key = widgetKey(entity.id, socket.id);
+        const value = readWidgetValue(widgetValues, key, values?.[socket.id] ?? config.defaultValue);
         buffers.size[n * 2] = box.width;
         buffers.size[n * 2 + 1] = box.height;
-        buffers.radius[n] = Math.min(resolved.borderRadius, box.height * 0.5);
+        // The checkbox's radius is computed in-shader from its own side; this is the well's.
+        buffers.radius[n] = WIDGET_RADIUS;
         buffers.kind[n] = kindFor(config.type, value);
         buffers.value[n] = config.type === 'slider' ? sliderFraction(value, config) : 0;
         if (config.type === 'color') {
@@ -578,16 +641,20 @@ export function WidgetsGL({
           buffers.tint[n * 3 + 1] = 0;
           buffers.tint[n * 3 + 2] = 0;
         }
-        // Two string compares against a handle that is null for all but one widget in the graph.
-        // Written unconditionally rather than only when hovered, because these buffers are reused
-        // across frames and instance `n` is a different widget from one frame to the next — a
-        // conditional write would leave the previous occupant's 1 behind and light the wrong well.
+        // 0 rest, 1 under the pointer, 2 focused — the widget whose edit is open, which is the
+        // one wearing the ring. One key compare and two string compares against handles that are
+        // null for all but one widget in the graph. Written unconditionally rather than only when
+        // lit, because these buffers are reused across frames and instance `n` is a different
+        // widget from one frame to the next — a conditional write would leave the previous
+        // occupant's value behind and light the wrong well.
         buffers.hover[n] =
-          hoveredWidget !== null &&
-          hoveredWidget.entityId === entity.id &&
-          hoveredWidget.socketId === socket.id
-            ? 1
-            : 0;
+          key === editingWidgetKey
+            ? 2
+            : hoveredWidget !== null &&
+                hoveredWidget.entityId === entity.id &&
+                hoveredWidget.socketId === socket.id
+              ? 1
+              : 0;
 
         tempMatrix.identity();
         tempMatrix.setPosition(box.x + box.width / 2, -(box.y + box.height / 2), z);
