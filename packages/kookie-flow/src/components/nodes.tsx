@@ -10,6 +10,7 @@ import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-col
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
 import type { RGBColor } from '../utils/color';
+import { isSelfDrawn } from '../utils/entity-kind';
 import { entityDepth } from '../utils/entity-depth';
 
 // Status enum encoding for GPU (matches aStatus attribute)
@@ -567,7 +568,7 @@ export function Entities() {
       const entity = entities[i];
 
       // Skip special entity types (handled by separate renderers)
-      if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text' || entity.type === 'image') continue;
+      if (isSelfDrawn(entity.type)) continue;
 
       // Skip entities inside collapsed frames - O(1) lookup
       if (hiddenEntityIds.has(entity.id)) continue;

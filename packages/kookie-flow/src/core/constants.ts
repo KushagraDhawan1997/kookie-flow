@@ -101,6 +101,20 @@ export const MIN_IMAGE_HEIGHT = 40;
 /** Default maximum texture dimension for full-res LOD tier (configurable via maxImageTextureSize prop) */
 export const DEFAULT_MAX_IMAGE_TEXTURE_SIZE = 2048;
 
+// Video entities. Wider default than an image because clips are overwhelmingly landscape, and the
+// entity is reshaped to the real frame aspect the moment metadata arrives anyway.
+export const DEFAULT_VIDEO_WIDTH = 320;
+export const DEFAULT_VIDEO_HEIGHT = 180;
+export const MIN_VIDEO_WIDTH = 60;
+export const MIN_VIDEO_HEIGHT = 40;
+
+// Mesh entities. Square by default: a model is framed by its own bounding sphere, so a square box
+// wastes the least of the preview whatever shape the model turns out to be.
+export const DEFAULT_MESH_WIDTH = 240;
+export const DEFAULT_MESH_HEIGHT = 240;
+export const MIN_MESH_WIDTH = 80;
+export const MIN_MESH_HEIGHT = 80;
+
 /** Selection outline + resize handle settings (screen pixels) */
 // The HIT size, and the instance quad. The drawn dot is smaller (r 3, entity-selection.tsx) so
 // that the affordance stays reachable without looking like a DOM inspector.

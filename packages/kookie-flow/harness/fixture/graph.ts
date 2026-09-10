@@ -325,6 +325,68 @@ export function makeComments(): Fixture {
   };
 }
 
+/**
+ * One of each media entity, so the three quad-backed renderers can be seen at once.
+ *
+ * The sources are served by the harness's own static server rather than fetched from anywhere:
+ * a law that depends on the network is a law that fails for a reason that has nothing to do with
+ * the code. The image is a data URL, the clip and the model are files beside the fixture.
+ *
+ * `autoplay` is on for the video because a paused clip and a broken clip look identical in a
+ * screenshot — the point of this scene is that frames are actually arriving.
+ */
+export function makeMedia(): Fixture {
+  return {
+    entities: [
+      {
+        id: 'media-image',
+        type: 'image',
+        position: { x: 60, y: 60 },
+        width: 240,
+        height: 160,
+        data: { src: SWATCH_PNG, objectFit: 'cover' },
+      },
+      {
+        id: 'media-video',
+        type: 'video',
+        position: { x: 340, y: 60 },
+        width: 320,
+        height: 180,
+        data: { src: 'media/test.mp4', autoplay: true, loop: true, objectFit: 'contain' },
+      },
+      {
+        id: 'media-mesh',
+        type: 'mesh',
+        position: { x: 700, y: 60 },
+        width: 240,
+        height: 240,
+        data: { src: 'media/test.glb' },
+      },
+      // A plain node behind the video, overlapping it. This is the case that decided video would
+      // be a GL quad rather than a DOM element: with a `<video>` in the DOM overlay the clip would
+      // cover this node however the stack is ordered, because the overlay is one layer above the
+      // whole canvas.
+      {
+        id: 'media-neighbour',
+        type: 'default',
+        position: { x: 500, y: 180 },
+        width: 220,
+        data: {},
+        inputs: [{ id: 'n-in', name: 'In', type: 'image' }],
+        outputs: [{ id: 'n-out', name: 'Out', type: 'image' }],
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}
+
+/**
+ * A 2x2 checkerboard as a data URL — four pixels, no network, and every corner a different colour
+ * so an accidental UV flip is visible rather than plausible.
+ */
+const SWATCH_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg==';
+
 /** A parent/child pair for the collapse and hidden-entity paths. */
 export function makeGroup(): Fixture {
   const entities: Entity[] = [

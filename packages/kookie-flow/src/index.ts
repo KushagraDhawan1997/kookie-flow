@@ -205,6 +205,8 @@ export {
   isRerouteEntity,
   isTextEntity,
   isImageEntity,
+  isVideoEntity,
+  isMeshEntity,
 } from './types';
 
 // Text entity utilities

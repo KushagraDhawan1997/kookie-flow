@@ -296,18 +296,53 @@ export interface VideoEntityData extends EntityData {
   src?: string;
   /** Poster frame URL */
   poster?: string;
-  /** Whether to autoplay */
+  /**
+   * Play whenever the entity is on screen. Default: false.
+   *
+   * "Whenever it can be seen" rather than "from mount": a video off the viewport is paused, so
+   * this is a standing wish rather than a one-shot. Playback is always muted — every browser's
+   * autoplay policy refuses an unmuted `play()` without a user gesture.
+   */
   autoplay?: boolean;
-  /** Whether to loop */
+  /**
+   * Explicit play/pause, overriding `autoplay` when set.
+   *
+   * Still subject to the concurrent-decoder cap: asking more videos to play than the platform can
+   * decode leaves the surplus on their poster frame rather than failing.
+   */
+  playing?: boolean;
+  /** Whether to loop. Default: true */
   loop?: boolean;
+  /** Object fit mode. Default: 'contain' — a clip letterboxes rather than crops. */
+  objectFit?: 'contain' | 'cover' | 'fill';
+  /** Lock aspect ratio during resize (default true for video; Shift inverts) */
+  aspectLocked?: boolean;
 }
 
 /** Data for 3D mesh entities */
 export interface MeshEntityData extends EntityData {
   /** URL to glTF/GLB file */
   src?: string;
-  /** Camera position for the 3D viewport */
+  /**
+   * Which way the camera looks at the model, as a DIRECTION from its centre — not a world point.
+   *
+   * The distance is derived from the model's own bounding sphere, so the preview frames correctly
+   * whatever the model's scale, and a consumer choosing an angle does not have to know how big the
+   * file it just loaded is. Default: { x: 0, y: 0.4, z: 1 }, slightly above and in front.
+   */
   cameraPosition?: { x: number; y: number; z: number };
+  /**
+   * Turn the model continuously. Default: false.
+   *
+   * Off by default because it is the one thing that makes a preview cost something every frame: a
+   * still model's render target is drawn once and then sampled for free. An entity that opts in
+   * pays for itself and for nothing else on the board.
+   */
+  autoRotate?: boolean;
+  /** Radians per second when `autoRotate` is on. Default: 0.6 */
+  rotateSpeed?: number;
+  /** Lock aspect ratio during resize (default true for mesh; Shift inverts) */
+  aspectLocked?: boolean;
 }
 
 /** Draw entity type */
@@ -375,6 +410,16 @@ export function isTextEntity(entity: Entity): entity is TextEntity {
 /** Helper type guard for image entities */
 export function isImageEntity(entity: Entity): entity is ImageEntity {
   return entity.type === 'image';
+}
+
+/** Type guard for video entities */
+export function isVideoEntity(entity: Entity): entity is VideoEntity {
+  return entity.type === 'video';
+}
+
+/** Type guard for 3D mesh entities */
+export function isMeshEntity(entity: Entity): entity is MeshEntity {
+  return entity.type === 'mesh';
 }
 
 /** Entity in the graph */

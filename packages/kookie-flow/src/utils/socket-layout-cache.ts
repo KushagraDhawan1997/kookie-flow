@@ -184,7 +184,7 @@ function computeSocketPosition(
 }
 
 /** Entity types that have no header and should center sockets vertically */
-const HEADERLESS_TYPES = new Set(['text', 'comment', 'reroute', 'image']);
+const HEADERLESS_TYPES = new Set(['text', 'comment', 'reroute', 'image', 'video', 'mesh']);
 
 /**
  * Compute the full socket layout for an entity.

@@ -44,6 +44,7 @@ import { widgetValueText, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
 import { measureText } from '../utils/text-layout';
 import type { EdgeType, EdgeLabelConfig, SocketType } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
+import { isSelfDrawn } from '../utils/entity-kind';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
 // Stable empty maps to avoid re-creating on every render when font isn't loaded
@@ -560,7 +561,7 @@ export function MultiWeightTextRenderer({
 
       // Entity headers (semibold) — skip types that render their own content
       for (const entity of entities) {
-        if (entity.type === 'comment' || entity.type === 'reroute' || entity.type === 'text' || entity.type === 'image') continue;
+        if (isSelfDrawn(entity.type)) continue;
 
         // Collapsing a frame hides everything inside it, and this layer was the one place that
         // never asked. nodes.tsx, widgets-gl.tsx, sockets.tsx, image-entities.tsx, text-entities.tsx

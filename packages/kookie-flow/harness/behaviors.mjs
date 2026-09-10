@@ -28,7 +28,16 @@ if (!existsSync(join(dist, 'app.js'))) {
   process.exit(2);
 }
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+// mp4 and glb are served, not inlined: esbuild has no loader for either, and a media law that
+// reached the network would fail for reasons unrelated to the renderer under test.
+const MIME = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.mp4': 'video/mp4',
+  '.glb': 'model/gltf-binary',
+  '.png': 'image/png',
+};
 const server = createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0];
   const file = join(dist, url === '/' ? 'index.html' : url.slice(1));
@@ -3123,6 +3132,163 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
     'releasing away from the widget puts it out',
     (await hovered()) === null,
     JSON.stringify(await hovered())
+  );
+});
+
+
+/**
+ * The three media entities are one textured quad each, and they are IN the scene rather than over
+ * it.
+ *
+ * This is the law that pins the design decision. A video is the obvious candidate for a DOM
+ * `<video>` positioned over the canvas, and that build fails one specific way: the DOM overlay is
+ * a single sibling above the whole canvas, so a clip paints over EVERY entity no matter where it
+ * sits in the stack — which is precisely the defect `entity-depth.ts` exists to remove. The scene
+ * therefore overlaps a plain node with the video, and the last check below reads the pixel where
+ * they cross. If video ever moves to the DOM, that check goes red and nothing else does.
+ *
+ * Pixels rather than scene-graph introspection, because "a mesh exists at the right coordinates"
+ * is what the previous version of every one of these layers reported while drawing nothing.
+ */
+await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
+  // Frames have to arrive and a glTF has to parse; neither is instant.
+  await page.waitForTimeout(2500);
+
+  const ids = await page.evaluate(() =>
+    window.__harness.store.getState().entities.map((e) => `${e.type}:${e.id}`)
+  );
+  check(
+    'INSTRUMENT: the media scene has an image, a video, a mesh and a node',
+    ['image:media-image', 'video:media-video', 'mesh:media-mesh', 'default:media-neighbour'].every(
+      (k) => ids.includes(k)
+    ),
+    JSON.stringify(ids)
+  );
+
+  /**
+   * Read a pixel at a FRACTION of an entity's box, resolved through the live viewport.
+   *
+   * Hardcoded screen coordinates were the first version of this and they were wrong: they assumed
+   * an identity viewport and a layout that the fixture is free to change. Asking the store where
+   * the entity actually is makes each check say what it means — "inside the video" — instead of
+   * encoding an arithmetic result that silently rots.
+   */
+  const pxAt = (id, fx, fy) =>
+    page.evaluate(
+      ([entityId, ax, ay]) => {
+        const s = window.__harness.store.getState();
+        const e = s.entityMap.get(entityId);
+        if (!e || e.width === undefined || e.height === undefined) return null;
+        const w = e.width;
+        const h = e.height;
+        const { x, y, zoom } = s.viewport;
+        return window.__harness.readPixel(
+          Math.round((e.position.x + w * ax) * zoom + x),
+          Math.round((e.position.y + h * ay) * zoom + y)
+        );
+      },
+      [id, fx, fy]
+    );
+
+  /**
+   * Read a pixel at a world OFFSET from an entity's origin.
+   *
+   * For the plain node, whose height is computed from its socket layout rather than stated, so
+   * there is no box to take a fraction of.
+   */
+  const pxOffset = (id, dx, dy) =>
+    page.evaluate(
+      ([entityId, ox, oy]) => {
+        const s = window.__harness.store.getState();
+        const e = s.entityMap.get(entityId);
+        if (!e) return null;
+        const { x, y, zoom } = s.viewport;
+        return window.__harness.readPixel(
+          Math.round((e.position.x + ox) * zoom + x),
+          Math.round((e.position.y + oy) * zoom + y)
+        );
+      },
+      [id, dx, dy]
+    );
+
+  /** Distance from the canvas background. */
+  const brightness = (p) => (p ? p[0] + p[1] + p[2] : 0);
+
+  // ---- image ----
+  // The shared quad flips its V coordinate to match the ImageBitmap origin, so a swatch with four
+  // different corners is the cheapest possible check that the flip is right: a missing flip swaps
+  // top for bottom and reads as a plausible picture rather than as an error.
+  const topLeft = await pxAt('media-image', 0.25, 0.25);
+  const topRight = await pxAt('media-image', 0.75, 0.25);
+  const bottomLeft = await pxAt('media-image', 0.25, 0.75);
+  check(
+    'an image draws its own pixels, the right way up and the right way round',
+    topLeft !== null && topLeft[0] > topLeft[2] &&
+      topRight !== null && topRight[2] > topRight[0] &&
+      bottomLeft !== null && bottomLeft[0] > bottomLeft[2] && bottomLeft[1] > bottomLeft[2],
+    `tl=${JSON.stringify(topLeft)} tr=${JSON.stringify(topRight)} bl=${JSON.stringify(bottomLeft)}`
+  );
+
+  // ---- video ----
+  const videoPx = await pxAt('media-video', 0.2, 0.3);
+  check(
+    'a video paints frames rather than its placeholder',
+    brightness(videoPx) > 120,
+    JSON.stringify(videoPx)
+  );
+
+  // The clip is a moving test pattern, so two samples a few frames apart differ ONLY if frames are
+  // still being decoded and uploaded. A poster frame stuck on screen passes the check above and
+  // fails this one. Several points, because parts of the pattern are deliberately static and a
+  // single unlucky sample would make this flaky rather than false.
+  const probes = [[0.2, 0.85], [0.5, 0.85], [0.35, 0.2], [0.6, 0.3]];
+  const sample = async () => {
+    const out = [];
+    for (const [fx, fy] of probes) out.push(await pxAt('media-video', fx, fy));
+    return out;
+  };
+  const first = await sample();
+  await page.waitForTimeout(600);
+  const second = await sample();
+  check(
+    'and keeps decoding: the picture moves between two samples',
+    JSON.stringify(first) !== JSON.stringify(second),
+    `${JSON.stringify(first)} vs ${JSON.stringify(second)}`
+  );
+
+  // ---- mesh ----
+  // The model is rendered into a target by a pass at priority -1 and sampled by the quad. Anything
+  // in that chain missing — the loader, the target, the pass ordering — leaves the placeholder.
+  const meshPx = await pxAt('media-mesh', 0.5, 0.45);
+  check(
+    'a 3D model renders into its entity',
+    brightness(meshPx) > 200,
+    JSON.stringify(meshPx)
+  );
+
+  // ---- the depth law ----
+  // The node was added last, so it is top of the stack and must win where it crosses the video.
+  // A DOM `<video>` cannot lose here, whatever the stack says — which is what makes this the check
+  // that would catch a move back to the DOM.
+  //
+  // Both probes are placed in EMPTY body: the first attempt sampled 40px down from the node's top
+  // and landed on the title's glyphs, which are dark in the light theme and read exactly like the
+  // video's black bar underneath. (33, 15) is above the title band; (120, 110) is below it, and
+  // also below the video's bottom edge, which is what makes it the control.
+  const overlap = await pxOffset('media-neighbour', 33, 15);
+  const bodyOnly = await pxOffset('media-neighbour', 120, 110);
+  // The WITNESS: just outside the node's left edge, still inside the video. Without it this law
+  // passes when there is no video at all — two points of node body trivially match each other —
+  // and a check that survives the feature being deleted is not a check. Verified by deleting the
+  // renderer: the witness goes transparent and this goes red.
+  const beside = await pxOffset('media-neighbour', -25, 15);
+  const near = (a, b, tol) =>
+    a !== null && b !== null &&
+    Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol && Math.abs(a[2] - b[2]) <= tol;
+  check(
+    'a node in front of a video covers it, because the video is in the scene and not over it',
+    near(overlap, bodyOnly, 12) && beside !== null && beside[3] > 200 && !near(beside, bodyOnly, 12),
+    `overlap=${JSON.stringify(overlap)} bodyOnly=${JSON.stringify(bodyOnly)} beside=${JSON.stringify(beside)}`
   );
 });
 

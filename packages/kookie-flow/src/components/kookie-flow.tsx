@@ -21,6 +21,8 @@ import { Sockets } from './sockets';
 import { RerouteNodes } from './reroute-nodes';
 import { TextEntities } from './text-entities';
 import { ImageEntities } from './image-entities';
+import { VideoEntities } from './video-entities';
+import { MeshEntities } from './mesh-entities';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -50,6 +52,10 @@ import {
   MIN_TEXT_HEIGHT,
   MIN_IMAGE_WIDTH,
   MIN_IMAGE_HEIGHT,
+  MIN_VIDEO_WIDTH,
+  MIN_VIDEO_HEIGHT,
+  MIN_MESH_WIDTH,
+  MIN_MESH_HEIGHT,
   DEFAULT_TEXT_WIDTH,
   DEFAULT_TEXT_HEIGHT,
   MIN_ZOOM,
@@ -94,6 +100,7 @@ import type {
 } from '../types';
 import * as THREE from 'three';
 import { topmostEntityId } from '../utils/entity-depth';
+import { locksAspectByDefault } from '../utils/entity-kind';
 
 /**
  * The defaults for the three props whose IDENTITY is a dependency downstream.
@@ -1180,6 +1187,10 @@ function InputHandler({
         return { minWidth: MIN_TEXT_WIDTH, minHeight: MIN_TEXT_HEIGHT };
       case 'image':
         return { minWidth: MIN_IMAGE_WIDTH, minHeight: MIN_IMAGE_HEIGHT };
+      case 'video':
+        return { minWidth: MIN_VIDEO_WIDTH, minHeight: MIN_VIDEO_HEIGHT };
+      case 'mesh':
+        return { minWidth: MIN_MESH_WIDTH, minHeight: MIN_MESH_HEIGHT };
       default: {
         // Default entities: min height from socket layout
         const layout = getEntitySocketLayout(entity, socketLayout);
@@ -1700,12 +1711,10 @@ function InputHandler({
         if (h === 'n' || h === 'ne' || h === 'nw') { newH = rs.initialBounds.height - dy; newY = rs.initialBounds.y + dy; }
 
         // Aspect ratio lock:
-        // - Images: locked by default (Shift to unlock)
+        // - Media (image, video, mesh): locked by default (Shift to unlock)
         // - Others: unlocked by default (Shift to lock)
         const resizedEnt = store.getState().entityMap.get(rs.entityId);
-        const isImageLocked = resizedEnt?.type === 'image' &&
-          (resizedEnt.data as { aspectLocked?: boolean }).aspectLocked !== false;
-        const lockAspect = isImageLocked ? !e.shiftKey : e.shiftKey;
+        const lockAspect = locksAspectByDefault(resizedEnt) ? !e.shiftKey : e.shiftKey;
 
         if (lockAspect) {
           const ar = rs.aspectRatio;
@@ -3208,6 +3217,8 @@ function FlowCanvas({
         {showGrid && <Grid />}
         <TextEntities onEntitiesChange={onEntitiesChange} />
         <ImageEntities maxImageTextureSize={maxImageTextureSize} onEntitiesChange={onEntitiesChange} />
+        <VideoEntities onEntitiesChange={onEntitiesChange} />
+        <MeshEntities onEntitiesChange={onEntitiesChange} />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />
         {showWidgets && (

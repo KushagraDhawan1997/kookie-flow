@@ -288,6 +288,41 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Media entities.** `image`, `video` and `mesh` are all one textured quad, so they share the
+stacking order, frustum culling, selection and resize handling every other entity has — a node can
+sit in front of a playing clip, which is why none of the three is a DOM element over the canvas.
+Each is reshaped to its content's own aspect ratio once that is known, and holds it on resize
+unless `aspectLocked: false` says otherwise.
+
+```tsx
+const media = [
+  { id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { src: '/out.png', objectFit: 'cover' } },
+
+  // Plays only while on screen, and only if the platform has a decoder free — see below.
+  { id: 'v', type: 'video', position: { x: 300, y: 0 }, data: { src: '/clip.mp4', autoplay: true } },
+
+  // `cameraPosition` is a DIRECTION from the model's centre, not a world point: the distance comes
+  // from the model's own bounding sphere, so framing works whatever scale the file is in.
+  {
+    id: 'm',
+    type: 'mesh',
+    position: { x: 640, y: 0 },
+    data: { src: '/model.glb', cameraPosition: { x: 0, y: 0.4, z: 1 }, autoRotate: false },
+  },
+];
+```
+
+What each costs, because the answers differ:
+
+- An **image** is decoded off-thread and uploaded once, at one of two LOD tiers.
+- A **video** uploads a frame per frame *while playing*. Playback is driven by the viewport — a clip
+  scrolled off screen pauses — and at most four decode at once, because browsers cap concurrent
+  hardware decoders and past that limit playback fails silently rather than degrading. Playback is
+  always muted; autoplay policies refuse an unmuted `play()` without a user gesture.
+- A **mesh** renders into a target only when something invalidates it: the model loading, the box
+  changing size, the camera moving. A board of still previews therefore costs nothing per frame.
+  `autoRotate` opts one entity into per-frame work and does not affect the others.
+
 ```tsx
 // Frame entity with children
 const entities = [
@@ -609,8 +644,9 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Text entities (MSDF rendering, word wrap, auto-height)
 - [x] WebGL-native text editing (hidden textarea, cursor, selection)
 - [x] Text sizing modes (auto-width, auto-height, fixed) with toolbar widget
-- [ ] Image entities (texture previews)
-- [ ] 3D mesh entity previews
+- [x] Image entities (texture previews, LOD tiers, worker decode)
+- [x] Video entities (GL video textures, viewport-driven playback)
+- [x] 3D mesh entity previews (glTF into a render target)
 - [ ] Hybrid entity portals
 
 ## Development

@@ -1,6 +1,9 @@
 /**
  * ImageEntities — Renders image entities as WebGL textured quads.
- * Phase 11: Image entity support.
+ *
+ * The quad, the object-fit shader and the placeholder material live in utils/media-quad.ts, which
+ * video-entities.tsx draws on too. What stays here is what is specific to a still picture: the LOD
+ * tiers, the upload queue, and auto-sizing to the natural aspect on first decode.
  *
  * Each image entity is a separate mesh (different textures can't share InstancedMesh).
  * Positions update via refs in useFrame — zero React re-renders during pan/zoom/drag.
@@ -25,6 +28,13 @@ import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../
 import { ImageTextureManager } from '../utils/image-loader';
 import type { ImageEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
+import {
+  sharedGeometry,
+  createPlaceholderMaterial,
+  applyObjectFitUV,
+  MEDIA_VERTEX_SHADER,
+  MEDIA_FRAGMENT_SHADER,
+} from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -76,121 +86,6 @@ function colorizeMipLevels(
   }
 }
 // ---- End debug ----
-
-/** Shared unit quad geometry — reused by all image meshes (never disposed) */
-const sharedGeometry = (() => {
-  const geo = new THREE.PlaneGeometry(1, 1);
-  // Flip V coordinate so UV (0,0) = top-left (matches ImageBitmap origin).
-  // This compensates for tex.flipY = false on our ImageBitmap textures.
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < uv.count; i++) {
-    uv.setY(i, 1 - uv.getY(i));
-  }
-  return geo;
-})();
-
-/** Placeholder material for images that haven't loaded yet */
-function createPlaceholderMaterial(color: string): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color: new THREE.Color(color),
-    transparent: true,
-    opacity: 0.15,
-    depthWrite: false,
-    depthTest: true,
-    side: THREE.DoubleSide,
-  });
-}
-
-// ---- Object-fit: custom ShaderMaterial with per-entity UV offset/scale ----
-
-const IMAGE_VERTEX_SHADER = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`;
-
-const IMAGE_FRAGMENT_SHADER = /* glsl */ `
-uniform sampler2D map;
-uniform float opacity;
-uniform vec2 uvOffset;
-uniform vec2 uvScale;
-varying vec2 vUv;
-
-void main() {
-  vec2 sampledUV = vUv * uvScale + uvOffset;
-
-  // Discard pixels outside texture bounds (contain mode letterbox)
-  if (sampledUV.x < 0.0 || sampledUV.x > 1.0 || sampledUV.y < 0.0 || sampledUV.y > 1.0) {
-    discard;
-  }
-
-  vec4 texColor = texture2D(map, sampledUV);
-  float a = texColor.a * opacity;
-
-  // The quad writes depth (see the material), and a fragment that is not drawn writes none.
-  // Without this discard a PNG's transparent background stamped the image's whole bounding
-  // rectangle into the depth buffer, and anything behind it — a node body at a higher stack
-  // index, another image — was clipped by an invisible box the shape of the quad. Every other
-  // layer that shares this depth buffer already follows the convention; nodes.tsx does the same
-  // thing for the same reason, and its shadow pass was split into its own mesh over it.
-  if (a < 0.01) discard;
-
-  gl_FragColor = vec4(texColor.rgb, a);
-
-  #include <colorspace_fragment>
-}`;
-
-/**
- * Compute UV offset/scale for object-fit modes, writing directly into
- * the uniform Vector2s to avoid allocations in the render loop.
- */
-function applyObjectFitUV(
-  uvOffset: THREE.Vector2,
-  uvScale: THREE.Vector2,
-  objectFit: 'fill' | 'cover' | 'contain',
-  entityW: number,
-  entityH: number,
-  naturalW: number,
-  naturalH: number,
-): void {
-  if (objectFit === 'fill' || naturalW <= 0 || naturalH <= 0) {
-    uvOffset.set(0, 0);
-    uvScale.set(1, 1);
-    return;
-  }
-
-  const imageAR = naturalW / naturalH;
-  const entityAR = entityW / entityH;
-
-  if (objectFit === 'cover') {
-    if (imageAR > entityAR) {
-      // Image wider → crop sides
-      const r = entityAR / imageAR;
-      uvOffset.set((1 - r) / 2, 0);
-      uvScale.set(r, 1);
-    } else {
-      // Image taller → crop top/bottom
-      const r = imageAR / entityAR;
-      uvOffset.set(0, (1 - r) / 2);
-      uvScale.set(1, r);
-    }
-    return;
-  }
-
-  // contain
-  if (imageAR > entityAR) {
-    // Image wider → bars top/bottom
-    const r = imageAR / entityAR;
-    uvOffset.set(0, -(r - 1) / 2);
-    uvScale.set(1, r);
-  } else {
-    // Image taller → bars left/right
-    const r = entityAR / imageAR;
-    uvOffset.set(-(r - 1) / 2, 0);
-    uvScale.set(r, 1);
-  }
-}
 
 interface ImageEntitiesProps {
   maxImageTextureSize?: number;
@@ -390,8 +285,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
                 uvOffset: { value: new THREE.Vector2(0, 0) },
                 uvScale: { value: new THREE.Vector2(1, 1) },
               },
-              vertexShader: IMAGE_VERTEX_SHADER,
-              fragmentShader: IMAGE_FRAGMENT_SHADER,
+              vertexShader: MEDIA_VERTEX_SHADER,
+              fragmentShader: MEDIA_FRAGMENT_SHADER,
               transparent: true,
               depthWrite: true,
               depthTest: true,

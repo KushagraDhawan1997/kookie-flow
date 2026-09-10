@@ -871,3 +871,47 @@ already knew the family and only lacked the TTFs.
   face rather than falling through to `system-ui` on focus.
 
 446 unit tests and 181 laws pass.
+
+## D16 — video and mesh are quads in the scene, not elements over it
+
+`'video'` and `'mesh'` had been in `BuiltInEntityType` with no renderer behind either of them.
+Both now render, and the decision worth recording is where their pixels live.
+
+**The obvious build for video is a positioned `<video>` in the DOM overlay, and it is wrong here.**
+Entities in this renderer are ordered by a real depth buffer — `entity-depth.ts` exists because
+every layer once painted with `depthTest: false` and two overlapping nodes interleaved, the back
+one's slider over the front one's body. The DOM overlay is a single sibling above the whole canvas.
+A `<video>` in it paints over EVERY entity regardless of stack order, which is that same defect
+returned in a form the depth buffer cannot fix. A clip that can never go behind a node is not a
+canvas object; it is a thing floating over the canvas.
+
+So all three media types are one textured quad — `utils/media-quad.ts`, extracted from
+image-entities.tsx, which had owned the geometry and the object-fit shader alone. They differ only
+in where the texture comes from: a decoded ImageBitmap, a video frame, or a render target.
+
+**What each costs.** This is the part that decided the shapes of the two new managers.
+
+- A video uploads a frame per frame WHILE PLAYING. `VideoTextureManager.reconcilePlayback` takes a
+  set of what should be playing, computed fresh by the culling pass, and makes reality match it —
+  so an entity scrolled off screen pauses and stops uploading. The set exists rather than
+  per-entity `setPlaying` calls because a culled entity is no longer iterated and cannot ask to be
+  paused, and a source shared by two entities must keep playing while either can see it.
+- At most four videos decode at once. Not a GPU budget: browsers cap concurrent hardware decoders,
+  the cap is small on mobile, and past it playback fails SILENTLY — black rectangles, no error.
+- A mesh renders into a `WebGLRenderTarget` only when the target is dirty. A still model in a still
+  box produces the same pixels every frame, so a board of static previews costs nothing per frame
+  beyond the quads. `autoRotate` is opt-in for exactly this reason.
+- The mesh pass runs at `useFrame` priority **-1**, and the sign is load-bearing: r3f disables its
+  own render as soon as any subscriber has `priority > 0`, so a positive priority would hand this
+  file responsibility for drawing the whole graph. Negative keeps r3f rendering and merely orders
+  the pass first.
+
+**The duplicated list is gone.** `nodes.tsx` and `text-renderer.tsx` each carried their own
+`type === 'comment' || … || 'image'` chain saying "this type draws itself". Two copies of one list
+is how a node body ends up painted under a playing video, so both now call `utils/entity-kind.ts`,
+which also owns the aspect-lock default the resize handler had inlined for images only.
+
+474 unit tests and 187 laws pass, and the laws include the one that pins the decision: a plain node
+overlaps the video, and the pixel where they cross must be the node's. It has a witness pixel
+beside it, because without one the check passes when there is no video at all — verified by
+deleting the renderer and watching it go red.
