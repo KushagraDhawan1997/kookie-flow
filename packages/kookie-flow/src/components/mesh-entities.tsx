@@ -27,6 +27,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useResolvedStyle } from '../contexts';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_MESH_WIDTH, DEFAULT_MESH_HEIGHT } from '../core/constants';
@@ -36,8 +37,8 @@ import { entityDepth } from '../utils/entity-depth';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
-  MEDIA_VERTEX_SHADER,
-  MEDIA_FRAGMENT_SHADER,
+  createMediaMaterial,
+  setMediaBox,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 1;
@@ -100,6 +101,8 @@ interface MeshEntitiesProps {
 export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  // A media entity is a surface, so it takes the theme's surface corner like a node body does.
+  const resolvedStyle = useResolvedStyle();
 
   const [meshEntityIds, setMeshEntityIds] = useState<string[]>(() =>
     store.getState().entities.filter((e) => e.type === 'mesh').map((e) => e.id)
@@ -212,22 +215,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, new THREE.ShaderMaterial({
-              uniforms: {
-                map: { value: null },
-                opacity: { value: 1.0 },
-                // A render target is already framed to the entity's box, so there is no letterbox
-                // to compute — the identity transform is correct and stays correct.
-                uvOffset: { value: new THREE.Vector2(0, 0) },
-                uvScale: { value: new THREE.Vector2(1, 1) },
-              },
-              vertexShader: MEDIA_VERTEX_SHADER,
-              fragmentShader: MEDIA_FRAGMENT_SHADER,
-              transparent: true,
-              depthWrite: true,
-              depthTest: true,
-              side: THREE.DoubleSide,
-            }));
+            materialRefs.current.set(id, createMediaMaterial());
           }
         } else {
           meshRefs.current.delete(id);
@@ -433,6 +421,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
 
       const mat = materialRefs.current.get(entity.id);
       if (mat) {
+        setMediaBox(mat, w, h, resolvedStyle.borderRadius);
         if (mat.uniforms.map.value !== target.rt.texture) {
           mat.uniforms.map.value = target.rt.texture;
         }

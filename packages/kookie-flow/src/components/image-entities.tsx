@@ -22,6 +22,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useResolvedStyle } from '../contexts';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../core/constants';
@@ -31,9 +32,9 @@ import { entityDepth } from '../utils/entity-depth';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
+  createMediaMaterial,
   applyObjectFitUV,
-  MEDIA_VERTEX_SHADER,
-  MEDIA_FRAGMENT_SHADER,
+  setMediaBox,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 1;
@@ -95,6 +96,8 @@ interface ImageEntitiesProps {
 export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  // A media entity is a surface, so it takes the theme's surface corner like a node body does.
+  const resolvedStyle = useResolvedStyle();
 
   // Track which image entity IDs exist (React re-renders only when this set changes)
   const [imageEntityIds, setImageEntityIds] = useState<string[]>(() => {
@@ -278,20 +281,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
           meshRefs.current.set(id, mesh);
           // Pre-create ShaderMaterial so useFrame only updates uniforms, never allocates
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, new THREE.ShaderMaterial({
-              uniforms: {
-                map: { value: null },
-                opacity: { value: 1.0 },
-                uvOffset: { value: new THREE.Vector2(0, 0) },
-                uvScale: { value: new THREE.Vector2(1, 1) },
-              },
-              vertexShader: MEDIA_VERTEX_SHADER,
-              fragmentShader: MEDIA_FRAGMENT_SHADER,
-              transparent: true,
-              depthWrite: true,
-              depthTest: true,
-              side: THREE.DoubleSide,
-            }));
+            materialRefs.current.set(id, createMediaMaterial());
           }
         } else {
           meshRefs.current.delete(id);
@@ -418,6 +408,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
         // ShaderMaterial pre-created in ref callback — update uniforms only
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
+          setMediaBox(mat, w, h, resolvedStyle.borderRadius);
           const u = mat.uniforms;
           if (u.map.value !== texture) {
             u.map.value = texture;

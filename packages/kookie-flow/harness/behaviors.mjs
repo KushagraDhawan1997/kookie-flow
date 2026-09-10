@@ -3292,6 +3292,57 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
   );
 });
 
+
+/**
+ * A media entity is a SURFACE, so it takes the same squircle corner as a node body.
+ *
+ * It did not, for as long as image entities have existed: the quad in media-quad.ts was a plain
+ * rectangle, so a board of Flora-style previews had one hard-cornered rectangle among a set of
+ * rounded cards and nothing said why. The corner is now masked into alpha in the same shader, from
+ * the same `corner-shader.ts` profile, at the theme's own surface radius.
+ *
+ * Two loads rather than one, because the only honest check is that the corner FOLLOWS the theme.
+ * A single load asserting "the corner is transparent" would also pass if the mask were hardcoded,
+ * which is the bug one level up from the one being fixed.
+ */
+await withPage('scene=media&grid=0&entityRadius=full&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(1200);
+  const corner = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('media-image');
+    const { x, y, zoom } = s.viewport;
+    // Four world units in from the box's top-left: inside a square corner, outside a large round
+    // one. Not the exact corner pixel, which is on the antialias ramp either way.
+    return window.__harness.readPixel(
+      Math.round((e.position.x + 4) * zoom + x),
+      Math.round((e.position.y + 4) * zoom + y)
+    );
+  });
+  check(
+    'a media entity is cut to the surface corner, not left square',
+    corner !== null && corner[3] < 40,
+    JSON.stringify(corner)
+  );
+});
+
+await withPage('scene=media&grid=0&entityRadius=none&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(1200);
+  const corner = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('media-image');
+    const { x, y, zoom } = s.viewport;
+    return window.__harness.readPixel(
+      Math.round((e.position.x + 4) * zoom + x),
+      Math.round((e.position.y + 4) * zoom + y)
+    );
+  });
+  check(
+    'and follows the radius level: at none the same pixel is the picture',
+    corner !== null && corner[3] > 200,
+    JSON.stringify(corner)
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

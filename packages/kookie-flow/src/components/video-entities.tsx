@@ -21,6 +21,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useResolvedStyle } from '../contexts';
 import { THEME_COLORS } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT, MIN_VIDEO_HEIGHT } from '../core/constants';
@@ -30,9 +31,9 @@ import { entityDepth } from '../utils/entity-depth';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
+  createMediaMaterial,
   applyObjectFitUV,
-  MEDIA_VERTEX_SHADER,
-  MEDIA_FRAGMENT_SHADER,
+  setMediaBox,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 1;
@@ -53,6 +54,8 @@ interface VideoEntitiesProps {
 export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
+  // A media entity is a surface, so it takes the theme's surface corner like a node body does.
+  const resolvedStyle = useResolvedStyle();
 
   const [videoEntityIds, setVideoEntityIds] = useState<string[]>(() =>
     store.getState().entities.filter((e) => e.type === 'video').map((e) => e.id)
@@ -172,20 +175,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, new THREE.ShaderMaterial({
-              uniforms: {
-                map: { value: null },
-                opacity: { value: 1.0 },
-                uvOffset: { value: new THREE.Vector2(0, 0) },
-                uvScale: { value: new THREE.Vector2(1, 1) },
-              },
-              vertexShader: MEDIA_VERTEX_SHADER,
-              fragmentShader: MEDIA_FRAGMENT_SHADER,
-              transparent: true,
-              depthWrite: true,
-              depthTest: true,
-              side: THREE.DoubleSide,
-            }));
+            materialRefs.current.set(id, createMediaMaterial());
           }
         } else {
           meshRefs.current.delete(id);
@@ -275,6 +265,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       if (texture) {
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
+          setMediaBox(mat, w, h, resolvedStyle.borderRadius);
           const u = mat.uniforms;
           if (u.map.value !== texture) u.map.value = texture;
           u.opacity.value = 1;

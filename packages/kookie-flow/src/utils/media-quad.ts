@@ -12,9 +12,17 @@
  * for an ImageBitmap AND for an HTMLVideoElement, and the quad's own UVs are flipped once, here,
  * to match. Any texture handed to this material must therefore also set `flipY = false` — a
  * VideoTexture defaults to true and arrives upside down without it.
+ *
+ * THE CORNER. A media entity is a SURFACE, the same as a node body, so it takes the same squircle
+ * profile from corner-shader.ts rather than being the one hard-cornered rectangle on a board of
+ * rounded cards. It was exactly that until someone looked at a board and noticed. The mask is
+ * applied to alpha rather than by discarding, so the curve is antialiased by fwidth the way every
+ * other edge in this renderer is; a hard discard would leave a stair-stepped arc at the one place
+ * the eye is most likely to be looking.
  */
 
 import * as THREE from 'three';
+import { squircleBoxSDF, CORNER_K } from './corner-shader';
 
 /** Shared unit quad geometry — reused by every media mesh (never disposed) */
 export const sharedGeometry = (() => {
@@ -54,6 +62,11 @@ uniform vec2 uvOffset;
 uniform vec2 uvScale;
 varying vec2 vUv;
 
+uniform vec2 uSize;
+uniform float uCornerRadius;
+
+${squircleBoxSDF}
+
 void main() {
   vec2 sampledUV = vUv * uvScale + uvOffset;
 
@@ -72,6 +85,17 @@ void main() {
   // layer that shares this depth buffer already follows the convention; nodes.tsx does the same
   // thing for the same reason, and its shadow pass was split into its own mesh over it.
   if (a < 0.01) discard;
+
+  // The squircle corner, in the box's own world units. uSize is the entity's width and height,
+  // so this is resolution-independent: the same curve at every zoom, antialiased against the
+  // screen-space rate of change rather than against a guessed pixel size.
+  if (uCornerRadius > 0.0) {
+    vec2 p = (vUv - 0.5) * uSize;
+    vec2 b = uSize * 0.5;
+    float d = roundedBoxSDF(p, b, uCornerRadius);
+    a *= 1.0 - smoothstep(-fwidth(d), fwidth(d), d);
+    if (a < 0.01) discard;
+  }
 
   gl_FragColor = vec4(texColor.rgb, a);
 
@@ -127,4 +151,52 @@ export function applyObjectFitUV(
     uvOffset.set(-(r - 1) / 2, 0);
     uvScale.set(r, 1);
   }
+}
+
+/**
+ * The material every media quad uses.
+ *
+ * One factory rather than three copies of the same uniform block, which is what the three
+ * renderers had: a uniform added for one of them and forgotten in the others is a silent
+ * difference between an image, a clip and a model that are supposed to be the same rectangle.
+ *
+ * `uSize` and `uCornerRadius` are written per frame by the caller, because both depend on the box
+ * the user resized. The radius arrives pre-multiplied by CORNER_K — v2's compensation for a
+ * squircle reading tighter than a circular arc at the same number.
+ */
+export function createMediaMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: null },
+      opacity: { value: 1.0 },
+      // A render target is already framed to its entity's box, so the mesh renderer leaves these
+      // at the identity; the image and video renderers write them for object-fit.
+      uvOffset: { value: new THREE.Vector2(0, 0) },
+      uvScale: { value: new THREE.Vector2(1, 1) },
+      uSize: { value: new THREE.Vector2(1, 1) },
+      uCornerRadius: { value: 0 },
+    },
+    vertexShader: MEDIA_VERTEX_SHADER,
+    fragmentShader: MEDIA_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: true,
+    depthTest: true,
+    side: THREE.DoubleSide,
+  });
+}
+
+/**
+ * Write the per-frame box uniforms.
+ *
+ * Mutates the existing Vector2 rather than assigning a new one: this runs once per visible media
+ * entity per frame, and a fresh Vector2 there is the hot-path allocation this project forbids.
+ */
+export function setMediaBox(
+  material: THREE.ShaderMaterial,
+  width: number,
+  height: number,
+  borderRadius: number
+): void {
+  (material.uniforms.uSize.value as THREE.Vector2).set(width, height);
+  material.uniforms.uCornerRadius.value = borderRadius * CORNER_K;
 }
