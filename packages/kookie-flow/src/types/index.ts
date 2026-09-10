@@ -777,7 +777,10 @@ export type EntityVariant = 'surface' | 'outline' | 'soft' | 'classic' | 'ghost'
 /** Entity border radius style */
 export type EntityRadius = 'none' | 'small' | 'medium' | 'large' | 'full';
 
-/** Header position relative to entity body */
+/**
+ * Where an entity's title is drawn: `inside` the body in a band of its own, `outside` above the
+ * body, or `none` — no title at all.
+ */
 export type HeaderPosition = 'none' | 'inside' | 'outside';
 
 /** 26 Kookie UI accent colors */
@@ -956,7 +959,7 @@ export interface KookieFlowProps {
   variant?: EntityVariant;
   /** Entity border radius style. Default: 'medium' */
   radius?: EntityRadius;
-  /** Header position. Default: 'none' */
+  /** Where the entity title is drawn ('none' draws none). Default: 'inside' */
   header?: HeaderPosition;
   /**
    * Draw a thin `--accent-9` light along every entity's top edge, whatever `header` is. An

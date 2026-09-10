@@ -41,6 +41,12 @@ interface SizeConfig {
 export const SOCKET_ROW_HEIGHT_TOKEN: keyof ThemeTokens = '--space-7';
 
 /**
+ * The title's line box at its 12px size — the height the text layer gives one line of the node's
+ * name. Declared here because the band that holds it is resolved here, and the two must agree.
+ */
+export const TITLE_LINE_BOX = 14;
+
+/**
  * @deprecated The widget height is the row minus its own block inset (see `resolveSocketLayout`).
  * Kept because it is exported from the package index.
  */
@@ -533,6 +539,8 @@ export interface ResolvedSocketLayout {
   widgetHeight: number;
   /** Margin from top of node to first socket row */
   marginTop: number;
+  /** Height of the title's band inside the body; 0 when no title is drawn there */
+  titleBand: number;
   /** Socket circle radius in pixels */
   socketSize: number;
   /** Padding inside node (from size config) */
@@ -550,7 +558,7 @@ export interface ResolvedSocketLayout {
  *
  * Layout order: Header (if inside) → Output rows → Input rows
  *
- * @param hasTitleBand - Whether the title is drawn INSIDE the body and needs a row of its own
+ * @param hasTitleBand - Whether the title is drawn INSIDE the body and needs a band of its own
  * @param size - Entity size for padding and socket size
  * @param tokens - Theme tokens for resolving --space-N values
  */
@@ -585,23 +593,25 @@ export function resolveSocketLayout(
   const widgetHeight = Math.max(controlHeight, rowHeight - 2 * rowInset);
 
   /*
-   * A TITLE DRAWN IN THE BODY GETS A ROW OF ITS OWN, and `header="none"` was the case that did not.
+   * A TITLE DRAWN IN THE BODY GETS A BAND OF ITS OWN, and that band is TYPOGRAPHIC, not a row.
    *
-   * The label is drawn for every entity — it is the node's name — and its Y came from
-   * `(headerHeight - lineBox) / 2`, a centring inside a band that, at `header="none"`, the layout
-   * never reserved: `marginTop` was just `padding`, so the title and the FIRST SOCKET ROW shared
-   * one band. Measured on the widgets fixture: title ink at y+20, the first output label's ink at
-   * y+30, no separation and the title hard against the top edge — which a large corner then ate
-   * into.
+   * It used to be `rowHeight` — 40px reserved for a 14px line, on top of a 24px body padding, so
+   * the name floated 37px below the card's top edge with nothing in the gap. A socket row is that
+   * tall because it carries a control and because edge endpoints need clearance; a title carries
+   * neither. It takes the line box plus the row's own block inset, top and bottom, which is the
+   * air a control gets inside its row.
    *
-   * `outside` is the one position that needs no band, because the title is above the body.
+   * `none` and `outside` reserve nothing: one draws no title at all, the other draws it above the
+   * body.
    */
-  const marginTop = hasTitleBand ? rowHeight + padding : padding;
+  const titleBand = hasTitleBand ? TITLE_LINE_BOX + 2 * rowInset : 0;
+  const marginTop = padding + titleBand;
 
   return {
     rowHeight,
     widgetHeight,
     marginTop,
+    titleBand,
     socketSize: sizeConfig.socketSize,
     padding,
     borderWidth,

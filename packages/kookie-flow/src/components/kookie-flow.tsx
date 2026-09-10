@@ -170,7 +170,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     size = '2',
     variant = 'surface',
     radius,
-    header = 'none',
+    header = 'inside',
     accentHeader = false,
     entityStyle,
     // Widget props (Phase 7D)

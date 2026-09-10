@@ -37,6 +37,7 @@ import {
 } from '../utils/text-layout';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { TITLE_LINE_BOX } from '../utils/style-resolver';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
@@ -562,8 +563,10 @@ export function MultiWeightTextRenderer({
 
       const cullPadding = 100;
 
-      // Entity headers (semibold) — skip types that render their own content
+      // Entity headers (semibold) — skip types that render their own content.
+      // `header="none"` draws no title at all; the layout reserves no band for one either.
       for (const entity of entities) {
+        if (config.header === 'none') break;
         if (isSelfDrawn(entity.type)) continue;
 
         // Collapsing a frame hides everything inside it, and this layer was the one place that
@@ -594,17 +597,18 @@ export function MultiWeightTextRenderer({
          *
          * It used to be centred on `[0, headerHeight)` — measured from the body's outer edge — so
          * it sat `(headerHeight - lineBox) / 2` from the top however much the body was padded, and
-         * a node with a large corner had its name inside the curve. The band is
-         * `[contentInset, contentInset + headerHeight)` for a title drawn in the body, which is
-         * exactly the room `resolveSocketLayout` reserves above the first socket row.
+         * a node with a large corner had its name inside the curve. Inside the body the band is
+         * `[contentInset, contentInset + titleBand)`, the same band `resolveSocketLayout` reserves
+         * above the first socket row.
          *
          * `outside` is unchanged: the band is above the body, where no inset applies.
          */
-        const verticalOffset = (style.headerHeight - 14) / 2;
-        const labelY =
-          config.header === 'outside'
-            ? entity.position.y - style.headerHeight + verticalOffset
-            : entity.position.y + contentInset + verticalOffset;
+        const outside = config.header === 'outside';
+        const bandTop = outside
+          ? entity.position.y - style.headerHeight
+          : entity.position.y + contentInset;
+        const bandHeight = outside ? style.headerHeight : socketLayout.titleBand;
+        const labelY = bandTop + (bandHeight - TITLE_LINE_BOX) / 2;
         const entry: TextEntry = {
           text: label,
           position: [entity.position.x + contentInset, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],

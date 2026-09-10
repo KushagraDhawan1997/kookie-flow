@@ -205,16 +205,9 @@ export function Entities() {
         uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
-        // Header: the global accent band hue (r < 0 = none) and where the separator sits.
-        // A Vector3 rather than a Color so the resolver's negative sentinel is not a colour.
+        // The global accent band hue (r < 0 = none). A Vector3 rather than a Color so the
+        // resolver's negative sentinel is not a colour.
         uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
-        // The rule is the BOTTOM OF THE TITLE'S ROW, which is `marginTop` — the same number the
-        // layout uses to place the first socket row, so the line lands in the gap between them.
-        // It was `headerHeight` measured from the outer edge, while text-renderer centres the
-        // title in a band that STARTS at the content inset: with the inset about half the header
-        // height, the line came out through the middle of the title.
-        uHeaderBaseline: { value: socketLayout.marginTop },
-        uHeaderPosition: { value: resolvedStyle.headerPosition },
         // The card's float and its top light; both per appearance, both from the resolver.
         uShadowBlur: { value: resolvedStyle.shadowBlur },
         uShadowOffsetY: { value: resolvedStyle.shadowOffsetY },
@@ -273,8 +266,6 @@ export function Entities() {
         uniform float uBackgroundAlpha;
         // Header uniforms
         uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
-        uniform float uHeaderBaseline;
-        uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
         uniform float uPass;
         // Shadow uniforms
         uniform float uShadowBlur;
@@ -435,14 +426,6 @@ export function Entities() {
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
 
-          // Separator under an inside header: the header is typographic, the line is all that
-          // is left of the block. Inset 12 world px from each side so it reads as a rule, not a
-          // seam.
-          if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
-            float hb = b.y - uHeaderBaseline;
-            float sep = (1.0 - smoothstep(0.5, 1.0, abs(p.y - hb))) * step(12.0, b.x - abs(p.x)) * fillMask;
-            color = mix(color, uBorderColor, sep);
-          }
           // Top light: the 1.5px just inside the shape, weighted to the top edge, dying through
           // the corners. An accent (per-entity, else the global accentHeader) is the same band in
           // its hue, near-solid: one thin line of colour is the whole statement.
@@ -479,7 +462,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle, socketLayout, tokens]);
+  }, [resolvedStyle, tokens]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { material.dispose(); }, [material]);

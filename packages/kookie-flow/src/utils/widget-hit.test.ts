@@ -20,6 +20,7 @@ const layout: ResolvedSocketLayout = {
   rowHeight: 40,
   widgetHeight: 32,
   marginTop: 12,
+  titleBand: 0, // these fixtures are the no-title layout: marginTop === padding
   socketSize: 10,
   padding: 12,
   borderWidth: 1,

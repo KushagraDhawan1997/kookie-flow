@@ -39,7 +39,8 @@ const DEFAULT_CONFIG: StyleConfig = {
   size: '2',
   variant: 'surface',
   radius: undefined,
-  header: 'none',
+  // `inside`, because a node without its name is not a sensible default and `none` now means it.
+  header: 'inside',
   accentHeader: false,
   entityStyle: undefined,
 };
@@ -74,7 +75,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
   },
   // ONE source, not a second copy. These literals were the object eight unit fixtures were copied
   // from, so every one of them drifted the moment the real resolver moved.
-  socketLayout: resolveSocketLayout(false, '2', FALLBACK_TOKENS),
+  socketLayout: resolveSocketLayout(true, '2', FALLBACK_TOKENS),
   config: DEFAULT_CONFIG,
 };
 
@@ -148,9 +149,10 @@ export function StyleProvider({
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
     const resolved = resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, stableStyle);
-    // `none` draws the title in the body too, so it reserves the same band `inside` does; only
-    // `outside` puts it above and needs none.
-    const socketLayout = resolveSocketLayout(header !== 'outside', size, tokens);
+    // `none` means NO TITLE — not "a title with nothing behind it", which is what it used to be
+    // once the header's colour block was deleted and it became indistinguishable from `inside`.
+    // Only `inside` reserves a band in the body.
+    const socketLayout = resolveSocketLayout(header === 'inside', size, tokens);
     const config: StyleConfig = {
       size,
       variant,
