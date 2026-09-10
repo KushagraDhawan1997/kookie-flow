@@ -290,6 +290,11 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Ink.** `D` picks up the pen, a drag leaves a stroke, `Escape` or `D` again puts it down. One
+stroke is one entity — selectable, movable, deletable, undoable like anything else on the board.
+Strokes are simplified as they are made, so a scribble is the points a hand drew rather than every
+report of the mouse, and the consumer hears about it once, when it is finished.
+
 **Paste and drop.** Paste a screenshot, a picture, a clip or a `.glb` onto a focused canvas and
 it becomes an entity where the view is centred; drop one and it lands where you dropped it. A URL
 on the clipboard works the same way. Anything that is not media is left to the page, and a paste

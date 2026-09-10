@@ -26,6 +26,7 @@ import { MeshEntities } from './mesh-entities';
 import { PreviewEntities } from './preview-entities';
 import { HelperLines } from './helper-lines';
 import { CanvasCapture } from './canvas-capture';
+import { DrawEntities } from './draw-entities';
 import { TextEditCursor } from './text-edit-cursor';
 import { ConnectionLine } from './connection-line';
 import { DOMLayer } from './dom-layer';
@@ -72,10 +73,12 @@ import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
-import type { MeshEntityData, TextEntityData, VideoEntityData } from '../types';
+import type { DrawEntityData, MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { findAlignment, type AlignRect } from '../utils/alignment';
 import { mediaEntity, mediaKindOfFile, mediaKindOfUrl } from '../utils/media-paste';
+import { simplifyStroke, strokeBounds } from '../utils/stroke-geometry';
+import { DEFAULT_STROKE_WIDTH } from './draw-entities';
 import {
   hitVideoControls,
   isMeshDragStrip,
@@ -834,6 +837,18 @@ function InputHandler({
    * This runs on every pointermove of every drag; a fresh rect and two fresh arrays per frame is
    * exactly the garbage the performance rules in CLAUDE.md exist to forbid.
    */
+  /**
+   * The pen. `D` picks it up, `Escape` or another `D` puts it down.
+   *
+   * A ref rather than state for the same reason everything else in this handler is: the pointer
+   * handlers are registered once and read it live. The cursor is the only thing that needs to
+   * re-render when it changes, so that half IS state.
+   */
+  const penRef = useRef(false);
+  const [penActive, setPenActive] = useState(false);
+  /** The stroke being drawn: its entity, its origin, and the points so far. */
+  const strokeRef = useRef<{ id: string; originX: number; originY: number; points: number[] } | null>(null);
+
   const alignMoving = useMemo<AlignRect>(() => ({ id: '', x: 0, y: 0, width: 0, height: 0 }), []);
   const alignCandidates = useMemo<AlignRect[]>(() => [], []);
   const alignVertical = useMemo<number[]>(() => [], []);
@@ -1431,6 +1446,37 @@ function InputHandler({
         const { viewport, socketQuadtree } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
 
+        /**
+         * The pen takes the press before anything else does.
+         *
+         * Before sockets, before widgets, before the entity under the pointer: a mode means the
+         * gesture belongs to the tool, and a pen that only draws on empty canvas would be a pen
+         * you cannot draw over anything with.
+         */
+        if (penRef.current) {
+          e.preventDefault();
+          const id = newEntityId('draw');
+          strokeRef.current = {
+            id,
+            originX: worldPos.x,
+            originY: worldPos.y,
+            // The first point is the origin itself, in the entity's own coordinates.
+            points: [0, 0],
+          };
+          store.getState().addElements({
+            entities: [{
+              id,
+              type: 'draw',
+              position: { x: worldPos.x, y: worldPos.y },
+              data: { points: [0, 0] } as DrawEntityData,
+              // Ink is not resized by dragging a corner; it is drawn again.
+              resizable: false,
+            }],
+          });
+          containerRef.current?.setPointerCapture(e.pointerId);
+          return;
+        }
+
         // Check for socket click first — O(log n) via spatial index
         const socket = getSocketAtPositionFast(
           worldPos,
@@ -1726,6 +1772,40 @@ function InputHandler({
        * down, because a `pointercancel` leaves the ref set and every later move would answer to a
        * gesture that ended.
        */
+      /**
+       * A stroke in progress owns the pointer outright, like a slider drag.
+       *
+       * Points are appended in the ENTITY's coordinates and the entity is rewritten in place —
+       * `applyEntityChanges` rather than the consumer's callback, because a stroke reports itself
+       * once, when it is finished. A hundred `data` changes a second through a controlled
+       * consumer would re-render their whole tree for every millimetre of ink.
+       */
+      const stroke = strokeRef.current;
+      if (stroke) {
+        if ((e.buttons & 1) === 0) {
+          strokeRef.current = null;
+        } else {
+          const rect = cachedRectRef.current;
+          const { viewport } = store.getState();
+          const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, viewport);
+          const x = world.x - stroke.originX;
+          const y = world.y - stroke.originY;
+          const lastX = stroke.points[stroke.points.length - 2];
+          const lastY = stroke.points[stroke.points.length - 1];
+          // A point every world pixel or so. Closer than that is the mouse reporting, not the
+          // hand moving, and it is the difference between a stroke of 80 points and one of 800.
+          if (Math.abs(x - lastX) + Math.abs(y - lastY) >= 1 / viewport.zoom) {
+            stroke.points.push(x, y);
+            store.getState().applyEntityChanges([
+              // A NEW array each time: the renderer's dirty check is the points array's identity,
+              // and an array mutated in place would never look changed.
+              { type: 'data', id: stroke.id, data: { points: stroke.points.slice() } },
+            ]);
+          }
+          return;
+        }
+      }
+
       const scrub = videoScrubRef.current;
       if (scrub) {
         if ((e.buttons & 1) === 0) {
@@ -2394,6 +2474,39 @@ function InputHandler({
       // and released capture for that one too — so on a touch device, lifting a second finger
       // ended a slider drag the first finger was still holding, and handed the release to a
       // pointer the container had never captured.
+      /**
+       * A stroke ends here: simplified, given its real box, and reported to the consumer as ONE
+       * add. Everything up to now was the store's business alone.
+       */
+      if (strokeRef.current) {
+        const finished = strokeRef.current;
+        strokeRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        const simplified = simplifyStroke(finished.points);
+        const box = strokeBounds(simplified, DEFAULT_STROKE_WIDTH);
+        // The box is relative to the first point, so the entity moves to where the ink actually
+        // starts and the points move with it. Without this a stroke drawn upwards has its origin
+        // in the middle of its own bounding box, and every hit test is wrong.
+        const shifted: number[] = [];
+        for (let i = 0; i < simplified.length; i += 2) {
+          shifted.push(simplified[i] - box.x, simplified[i + 1] - box.y);
+        }
+        const entity: Entity = {
+          id: finished.id,
+          type: 'draw',
+          position: { x: finished.originX + box.x, y: finished.originY + box.y },
+          width: box.width,
+          height: box.height,
+          data: { points: shifted, strokeWidth: DEFAULT_STROKE_WIDTH } as DrawEntityData,
+          resizable: false,
+        };
+        store.getState().applyEntityChanges([{ type: 'remove', id: finished.id }]);
+        store.getState().applyEntityChanges([{ type: 'add', entity }]);
+        onEntitiesChangeRef.current?.([{ type: 'add', entity }]);
+        pointerDownPos.current = null;
+        return;
+      }
+
       // Media gestures end the same way, and before the selection logic below for the same
       // reason: a scrub or a turn is not a click on the entity.
       if (videoScrubRef.current) {
@@ -3200,6 +3313,12 @@ function InputHandler({
         // booleans this listener captured when it was registered. `handlePointerUp` already does
         // exactly this a few hundred lines up.
         const s = store.getState();
+        if (penRef.current) {
+          // The pen first: it is a mode, and Escape's job is to leave whatever mode you are in.
+          penRef.current = false;
+          setPenActive(false);
+          return;
+        }
         if (s.editingEntityId) {
           s.stopEditing();
         } else if (s.connectionDraft) {
@@ -3249,6 +3368,17 @@ function InputHandler({
 
         // Clear selection
         store.getState().deselectAll();
+      }
+
+      /**
+       * D picks up the pen and puts it down. Alone, like T for text: a canvas's tools are single
+       * keys, and every modifier combination here already belongs to something else.
+       */
+      if (e.code === 'KeyD' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        penRef.current = !penRef.current;
+        setPenActive(penRef.current);
+        return;
       }
 
       // T key: create text entity at viewport center
@@ -3422,7 +3552,11 @@ function InputHandler({
 
   // What the cursor is when no widget is under the pointer. Named rather than inlined so the
   // widget's imperative override has something to put back — see `setWidgetCursor`.
-  const baseCursor = isResizing
+  const baseCursor = penActive
+    // The pen is a mode, and a mode has to be visible before it is used: a canvas that silently
+    // draws instead of selecting is the worst kind of surprise.
+    ? 'crosshair'
+    : isResizing
     ? (resizeState.current ? RESIZE_CURSORS[resizeState.current.handle] : 'default')
     : isPanning || isDragging
       ? 'grabbing'
@@ -3690,6 +3824,7 @@ function FlowCanvas({
         <MeshEntities onEntitiesChange={onEntitiesChange} />
         <PreviewEntities />
         <HelperLines />
+        <DrawEntities />
         <CanvasCapture />
         <Edges defaultEdgeType={defaultEdgeType} socketTypes={socketTypes} />
         <Sockets socketTypes={socketTypes} />

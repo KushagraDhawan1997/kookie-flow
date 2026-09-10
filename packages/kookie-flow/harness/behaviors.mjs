@@ -4424,6 +4424,114 @@ await withPage('scene=graph&count=2&seed=3&grid=0', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- the pen
+/**
+ * Ink on the canvas.
+ *
+ * D picks up the pen, a drag leaves a stroke, and the stroke is an entity like any other — it can
+ * be selected, moved, deleted and undone. The laws that matter are the ones about MODE: a pen
+ * that quietly stays down would make every later click draw instead of select.
+ */
+await withPage('scene=graph&count=2&seed=5&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(300);
+  const before = await page.evaluate(() => window.__harness.counts().entities);
+
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('KeyD');
+  await page.waitForTimeout(80);
+
+  // A stroke across empty canvas, well below the two nodes.
+  const path = [[150, 520], [220, 560], [300, 540], [380, 590]];
+  await page.mouse.move(path[0][0], path[0][1]);
+  await page.mouse.down();
+  for (const [x, y] of path.slice(1)) await page.mouse.move(x, y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+
+  const drawn = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const ink = s.entities.filter((e) => e.type === 'draw');
+    const one = ink[0];
+    return {
+      count: ink.length,
+      points: one ? (one.data.points ?? []).length / 2 : 0,
+      width: one?.width ?? 0,
+      height: one?.height ?? 0,
+      consumerHasIt: one ? window.__harness.consumerEntities().some((e) => e.id === one.id) : false,
+      id: one?.id ?? null,
+    };
+  });
+
+  check('a drag with the pen down leaves one stroke', drawn.count === 1, JSON.stringify(drawn));
+  check(
+    'and the stroke is simplified rather than storing every report of the mouse',
+    drawn.points >= 3 && drawn.points < 40,
+    `${drawn.points} points`
+  );
+  check(
+    'and its box is the ink, not the gesture',
+    drawn.width > 100 && drawn.height > 20 && drawn.height < 200,
+    `${drawn.width} x ${drawn.height}`
+  );
+  check(
+    'and the consumer was told once, at the end',
+    drawn.consumerHasIt,
+    String(drawn.consumerHasIt)
+  );
+
+  // The ink is on screen: a pixel on the stroke differs from the empty canvas beside it.
+  const ink = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entities.find((x) => x.type === 'draw');
+    const { x, y, zoom } = s.viewport;
+    const pts = e.data.points;
+    // The middle point of the stroke, in world space, and a spot well away from it.
+    const mid = Math.floor(pts.length / 4) * 2;
+    return {
+      on: window.__harness.readPixel(
+        Math.round((e.position.x + pts[mid]) * zoom + x),
+        Math.round((e.position.y + pts[mid + 1]) * zoom + y)
+      ),
+      off: window.__harness.readPixel(
+        Math.round((e.position.x + pts[mid]) * zoom + x),
+        Math.round((e.position.y + pts[mid + 1] - 60) * zoom + y)
+      ),
+    };
+  });
+  const differs = (a, b) => Math.abs(a[0] - b[0]) > 20 || Math.abs(a[1] - b[1]) > 20 || Math.abs(a[2] - b[2]) > 20;
+  check(
+    'the ink is actually painted',
+    differs(ink.on, ink.off),
+    `on=${JSON.stringify(ink.on)} off=${JSON.stringify(ink.off)}`
+  );
+
+  // Escape puts the pen down, and a drag after that selects instead of drawing.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  await page.mouse.move(500, 520);
+  await page.mouse.down();
+  await page.mouse.move(600, 600, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const afterEscape = await page.evaluate(() => ({
+    ink: window.__harness.store.getState().entities.filter((e) => e.type === 'draw').length,
+    total: window.__harness.counts().entities,
+  }));
+  check(
+    'escape puts the pen down: the next drag is a selection again',
+    afterEscape.ink === 1 && afterEscape.total === before + 1,
+    JSON.stringify(afterEscape)
+  );
+
+  // And a stroke is an entity: deleting it takes the ink with it.
+  const gone = await page.evaluate((id) => {
+    window.__harness.store.getState().deleteElements({ entityIds: [id] });
+    // Read the state AFTER the delete: the snapshot taken to call it still holds the old array.
+    return window.__harness.store.getState().entities.filter((e) => e.type === 'draw').length;
+  }, drawn.id);
+  check('a stroke deletes like anything else on the board', gone === 0, String(gone));
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

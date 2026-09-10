@@ -27,7 +27,8 @@ const MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'mesh']);
  * Types that own their whole appearance, so the node renderers must leave them alone.
  *
  * Comments are DOM. Text is its own glyph layer. Reroutes are a dot. The media types are quads.
- * None of them wants a node body, a header band or a title drawn over it.
+ * Ink is a ribbon of triangles. None of them wants a node body, a header band or a title drawn
+ * over it.
  */
 const SELF_DRAWN_TYPES: ReadonlySet<string> = new Set([
   'comment',
@@ -36,6 +37,7 @@ const SELF_DRAWN_TYPES: ReadonlySet<string> = new Set([
   'image',
   'video',
   'mesh',
+  'draw',
 ]);
 
 /** Whether an entity is drawn by a renderer of its own rather than as a node body. */

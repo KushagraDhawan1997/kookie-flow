@@ -248,14 +248,24 @@ export interface RerouteEntityData extends EntityData {
   label?: string;
 }
 
-/** Data for draw entities (shapes, SVG paths, freeform drawing) */
+/**
+ * Data for draw entities — ink on the canvas.
+ *
+ * One entity is one stroke. Not one entity per drawing: a stroke is what a person makes in one
+ * gesture, and it is what they expect to be able to select, move, colour and undo on its own.
+ */
 export interface DrawEntityData extends EntityData {
-  /** Shapes contained in this draw entity */
-  shapes?: Array<{
-    type: 'rect' | 'ellipse' | 'path' | 'text';
-    /** Shape-specific properties */
-    [key: string]: unknown;
-  }>;
+  /**
+   * The stroke, flat and relative to the entity's own top-left: x, y, x, y.
+   *
+   * Relative so that moving the entity moves one position rather than rewriting the stroke, and
+   * flat so a thousand-point scribble is one array rather than a thousand objects.
+   */
+  points?: number[];
+  /** How thick the ink is, in world pixels. Default: 3. */
+  strokeWidth?: number;
+  /** The ink's colour. Defaults to the theme's primary text colour. */
+  strokeColor?: string;
 }
 
 /** Sizing mode for text entities (Figma parity) */
