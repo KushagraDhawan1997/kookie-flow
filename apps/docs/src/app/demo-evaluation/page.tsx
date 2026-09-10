@@ -125,8 +125,10 @@ export default function DemoEvaluationPage() {
     }
   }, []);
 
-  // Run the reactive part once on mount so the board opens with values rather than stale rings.
+  // Fit the pipeline to whatever width the page has, then run the reactive part once so the
+  // board opens with values rather than stale rings.
   useEffect(() => {
+    flowRef.current?.fitView();
     flowRef.current?.evaluateAll();
   }, []);
 
@@ -193,8 +195,9 @@ export default function DemoEvaluationPage() {
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 16,
-  // Right, not left: the pipeline starts at the left edge and a panel there sat on the Number node.
+  // Bottom right: the pipeline is one row across the top after fitView, and a panel at either
+  // top corner sat on an end of it.
+  bottom: 16,
   right: 16,
   zIndex: 10,
   width: 320,
