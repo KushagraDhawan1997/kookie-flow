@@ -989,4 +989,4 @@ rebuilding while a hold runs — bounded, because the engine ends the hold. Stal
 step and tints the hairline. One hue for all of it, the theme's accent; error keeps the graph's
 invalid red; warning stays the consumer's amber. The laws read the ring at both edge midpoints,
 so the clockwise direction is pinned, not just the fact; and the dissolve is pinned by two samples
-in the hold. 532 unit tests, 211 laws.
+in the hold. 522 unit tests, 211 laws.
