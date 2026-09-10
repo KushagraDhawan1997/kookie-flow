@@ -180,6 +180,9 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     ThemeComponent,
     defaultEntityWidth,
     socketLabelWidth,
+    // Evaluation (Phase 8.5)
+    onEvaluate,
+    onStatusChange,
   },
   ref
 ) {
@@ -232,6 +235,8 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             showSocketLabels={showSocketLabels}
             showEdgeLabels={showEdgeLabels}
             entityTypes={entityTypes}
+            onEvaluate={onEvaluate}
+            onStatusChange={onStatusChange}
             showMinimap={showMinimap}
             minimapProps={minimapProps}
             widgetTypes={widgetTypes}
@@ -294,6 +299,9 @@ interface ThemedFlowContainerProps {
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
   maxImageTextureSize?: number;
+  // Evaluation (Phase 8.5)
+  onEvaluate?: KookieFlowProps['onEvaluate'];
+  onStatusChange?: KookieFlowProps['onStatusChange'];
 }
 
 const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerProps>(
@@ -338,6 +346,8 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       defaultEntityWidth,
       socketLabelWidth,
       maxImageTextureSize,
+      onEvaluate,
+      onStatusChange,
     },
     ref
   ) {
@@ -411,6 +421,9 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             containerRef={containerRef}
             minZoom={minZoom}
             maxZoom={maxZoom}
+            onEvaluate={onEvaluate}
+            onStatusChange={onStatusChange}
+            entityTypes={entityTypes}
           />
           <InputHandler
             showWidgets={showWidgets}
@@ -485,11 +498,25 @@ interface FlowInstanceHandleProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   minZoom: number;
   maxZoom: number;
+  // Evaluation (Phase 8.5): handed to the store here because this is the component that
+  // already lives inside FlowProvider and owns the instance API the triggers hang off.
+  onEvaluate?: KookieFlowProps['onEvaluate'];
+  onStatusChange?: KookieFlowProps['onStatusChange'];
+  entityTypes?: KookieFlowProps['entityTypes'];
 }
 
 const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProps>(
-  function FlowInstanceHandle({ containerRef, minZoom, maxZoom }, ref) {
+  function FlowInstanceHandle(
+    { containerRef, minZoom, maxZoom, onEvaluate, onStatusChange, entityTypes }, ref) {
     const store = useFlowStoreApi();
+
+    // The engine keeps its records across handler changes; only the callbacks and the type table
+    // are replaced. Disposal is separate and unconditional: every run in flight is aborted and
+    // every success-hold timer dropped when the flow unmounts.
+    useEffect(() => {
+      store.getState().setEvaluationHandlers(onEvaluate, onStatusChange, entityTypes);
+    }, [store, onEvaluate, onStatusChange, entityTypes]);
+    useEffect(() => () => { store.getState().disposeEvaluation(); }, [store]);
 
     useImperativeHandle(
       ref,
@@ -558,6 +585,15 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
 
           state.setViewport({ x: offsetX, y: offsetY, zoom });
         },
+
+        // ---- Evaluation (Phase 8.5) ----
+        evaluate: (entityId) => store.getState().evaluate(entityId),
+        evaluateDirty: () => store.getState().evaluateDirty(),
+        evaluateAll: () => store.getState().evaluateAll(),
+        setSocketValue: (entityId, socketId, value) =>
+          store.getState().setSocketValue(entityId, socketId, value),
+        getSocketValue: (entityId, socketId) => store.getState().getSocketValue(entityId, socketId),
+        getEvaluationStatus: (entityId) => store.getState().getEvaluationStatus(entityId),
 
         // Grouping API (Phase 7C)
         getGroupChildren: (groupId) => {

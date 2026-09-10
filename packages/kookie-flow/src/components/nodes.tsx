@@ -19,6 +19,7 @@ const STATUS_ERROR = 1;
 const STATUS_WARNING = 2;
 const STATUS_RUNNING = 3;
 const STATUS_SUCCESS = 4;
+const STATUS_DIRTY = 5;
 
 function encodeStatus(status: EntityStatus | undefined): number {
   switch (status) {
@@ -26,6 +27,7 @@ function encodeStatus(status: EntityStatus | undefined): number {
     case 'warning': return STATUS_WARNING;
     case 'running': return STATUS_RUNNING;
     case 'success': return STATUS_SUCCESS;
+    case 'dirty': return STATUS_DIRTY;
     default: return STATUS_NONE;
   }
 }
@@ -328,14 +330,20 @@ export function Entities() {
               // Running: pulsing accent border (sine wave 0.4–1.0 opacity)
               float pulse = 0.7 + 0.3 * sin(uTime * 3.0);
               statusColor = mix(uBorderColor, uStatusRunningColor, pulse);
-            } else {
+            } else if (vStatus < 4.5) {
               // Success: green flash that fades out (uses fract of time as progress)
               // The CPU side encodes a countdown in the status; here we just show green
               float flash = 0.7 + 0.3 * sin(uTime * 4.0);
               statusColor = mix(uBorderColor, uStatusSuccessColor, flash);
+            } else {
+              // Dirty: inputs changed and nothing has answered. A stale indicator, not an
+              // alarm — the border steps toward the warning hue at a fraction, and stays
+              // hairline. Subtle by design: on a board mid-edit, most nodes are dirty.
+              statusColor = mix(uBorderColor, uStatusWarningColor, 0.45);
             }
             borderColor = statusColor;
-            statusBorderWidth = uBorderWidth + 0.5; // Slightly thicker for visibility
+            // Thicker for every alarm state; dirty keeps the resting hairline.
+            statusBorderWidth = vStatus < 4.5 ? uBorderWidth + 0.5 : uBorderWidth;
           }
 
           // Simplified AA - single fwidth call
@@ -476,6 +484,10 @@ export function Entities() {
       (state) => state.stackVersion,
       () => { dirtyRef.current = true; }
     );
+    const unsubEvaluation = store.subscribe(
+      (state) => state.evaluationVersion,
+      () => { dirtyRef.current = true; }
+    );
 
     return () => {
       unsubEntities();
@@ -483,6 +495,7 @@ export function Entities() {
       unsubHidden();
       unsubSelection();
       unsubStack();
+      unsubEvaluation();
     };
   }, [store, capacity]);
 
@@ -528,7 +541,7 @@ export function Entities() {
 
     if (!dirtyRef.current) return;
 
-    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder } = store.getState();
+    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus } = store.getState();
     if (entities.length === 0) {
       bgMesh.count = 0;
       fgMesh.count = 0;
@@ -626,9 +639,15 @@ export function Entities() {
       bufs.accentColor[idx * 3 + 1] = accentRGB[1];
       bufs.accentColor[idx * 3 + 2] = accentRGB[2];
 
-      const status = encodeStatus(entity.data?.status);
+      // The consumer's word wins where they have one; the engine fills in where they do not.
+      // Engine status cannot live on entity data — FlowSync replaces every entity on every prop
+      // change, which would erase it within a frame of the widget edit that started the run.
+      const engineStatus = getEvaluationStatus(entity.id);
+      const status = encodeStatus(
+        entity.data?.status ?? (engineStatus === 'idle' ? undefined : engineStatus)
+      );
       bufs.status[idx] = status;
-      if (status > 2.5) hasAnimated = true;
+      if (status > 2.5 && status < 4.5) hasAnimated = true;
 
       if (isSelected) fgCount++;
       else bgCount++;

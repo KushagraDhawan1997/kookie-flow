@@ -194,7 +194,12 @@ export interface WidgetHandle {
 }
 
 /** Entity status for visual feedback */
-export type EntityStatus = 'error' | 'warning' | 'running' | 'success';
+/**
+ * `dirty` is set by the evaluation engine when an entity's inputs have changed and nothing has
+ * answered yet. The others may be set by the consumer on `entity.data.status`, which always wins
+ * over what the engine reports.
+ */
+export type EntityStatus = 'dirty' | 'error' | 'warning' | 'running' | 'success';
 
 /** Base entity data */
 export interface EntityData {
@@ -632,6 +637,14 @@ export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   component?: React.ComponentType<EntityComponentProps<T>>;
   /** Toolbar configuration — controls shown when this entity type is selected */
   toolbar?: ToolbarConfig;
+  /**
+   * How entities of this type answer a change in their inputs. Default: 'reactive'.
+   *
+   * `reactive` re-runs as soon as its inputs settle. `manual` is a gate: the change marks it
+   * dirty and stops there until `evaluate(id)` opens it, after which reactive entities downstream
+   * cascade as normal. Anything expensive — a generation, a render — should be manual.
+   */
+  evaluation?: EvaluationMode;
 }
 
 /** Props passed to custom entity components */
@@ -715,6 +728,15 @@ export interface PasteFromInternalOptions<T extends EntityData = EntityData> {
 // Re-export FontMetrics from text-layout for public API
 export type { FontMetrics } from '../utils/text-layout';
 import type { FontMetrics } from '../utils/text-layout';
+export type {
+  EvaluationMode,
+  EvaluationStatus,
+  EvaluationRecord,
+  EvaluationContext,
+  OnEvaluate,
+  OnStatusChange,
+} from '../core/evaluation';
+import type { EvaluationMode, EvaluationStatus, OnEvaluate, OnStatusChange } from '../core/evaluation';
 
 /** Built-in font presets with pre-generated MSDF atlases */
 export type FontPreset = 'inter' | 'roboto' | 'source-serif' | 'system';
@@ -948,6 +970,20 @@ export interface KookieFlowProps {
   widgetTypes?: Record<string, React.ComponentType<WidgetProps>>;
   /** Callback when a widget value changes */
   onWidgetChange?: (entityId: string, socketId: string, value: unknown) => void;
+
+  // ============================================================================
+  // Evaluation (Phase 8.5)
+  // ============================================================================
+
+  /**
+   * The one function that computes. Given an entity and its resolved inputs — connected sockets
+   * read upstream, unconnected ones read their widget — return its outputs keyed by output socket
+   * id. The library decides WHEN to call this and what to do with the answer; it never decides
+   * what the answer means. Async is fine; `ctx.signal` aborts when inputs change mid-run.
+   */
+  onEvaluate?: OnEvaluate;
+  /** Every status transition the engine makes: dirty, running, success, error, idle. */
+  onStatusChange?: OnStatusChange;
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
   /** Default entity width when entity.width is not specified. Default: 240 */
@@ -1021,6 +1057,23 @@ export interface KookieFlowInstance {
   getSelectedEdges: () => Edge[];
   /** Center the viewport on a specific position */
   setCenter: (x: number, y: number, options?: { zoom?: number }) => void;
+
+  // ============================================================================
+  // Evaluation API (Phase 8.5)
+  // ============================================================================
+
+  /** Run one entity now, whatever its mode, then cascade downstream. The manual trigger. */
+  evaluate: (entityId: string) => Promise<void>;
+  /** Run every dirty entity, manual gates included, and resolve when the graph is quiet. */
+  evaluateDirty: () => Promise<void>;
+  /** Mark everything stale and run all of it. */
+  evaluateAll: () => Promise<void>;
+  /** Inject an output value. Downstream is marked stale; the entity itself is not re-run. */
+  setSocketValue: (entityId: string, socketId: string, value: unknown) => void;
+  /** Read a computed output value. */
+  getSocketValue: (entityId: string, socketId: string) => unknown;
+  /** The engine's status for an entity; `idle` if it has never been asked. */
+  getEvaluationStatus: (entityId: string) => EvaluationStatus;
 
   // ============================================================================
   // Grouping API

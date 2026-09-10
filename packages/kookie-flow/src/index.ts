@@ -84,6 +84,15 @@ export type { FlowState, FlowStore } from './core/store';
 
 // Graph engine
 export type { AdjacencyIndex, CachedAnalysis, GraphValidationIssue } from './core/graph';
+export type {
+  EvaluationMode,
+  EvaluationStatus,
+  EvaluationRecord,
+  EvaluationContext,
+  OnEvaluate,
+  OnStatusChange,
+} from './core/evaluation';
+export { SUCCESS_HOLD_MS, socketValueKey } from './core/evaluation';
 export {
   buildAdjacencyIndex,
   getIncomers,

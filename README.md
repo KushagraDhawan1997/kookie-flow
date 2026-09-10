@@ -288,6 +288,38 @@ const CustomSlider = ({ value, onChange, min, max }) => (
 | `video` | Video display | Optional |
 | `mesh` | 3D mesh viewer | Optional |
 
+**Evaluation.** The library orchestrates and never computes. You give it one function; it
+decides when to call it, with what, and what to do with the answer.
+
+```tsx
+<KookieFlow
+  entityTypes={{
+    'math/add':    { type: 'math/add' },                          // reactive (default)
+    'ai/generate': { type: 'ai/generate', evaluation: 'manual' }, // a gate: waits for a trigger
+  }}
+  onEvaluate={async (id, type, inputs, ctx) => {
+    // inputs: every input socket, resolved — connected reads upstream, unconnected reads its widget
+    // ctx.signal: aborted if the inputs change mid-run; ctx.progress(0..1)
+    switch (type) {
+      case 'math/add':    return { sum: inputs.a + inputs.b };
+      case 'ai/generate': return { image: await generate(inputs.prompt, { signal: ctx.signal }) };
+    }
+  }}
+  onStatusChange={(id, status, message) => { /* dirty | running | success | error | idle */ }}
+/>
+
+flowRef.current.evaluate('gen-1');     // open a manual gate; reactive nodes behind it cascade
+flowRef.current.evaluateDirty();       // run everything stale, gates included
+flowRef.current.setSocketValue('load-1', 'image', img); // inject a value; downstream goes stale
+```
+
+What the library does on its own: marks an entity and everything downstream stale when a widget
+moves, a wire lands or leaves, or an upstream result arrives; runs reactive entities as soon as
+their inputs settle, siblings in parallel; stops at manual gates; aborts a run whose inputs changed
+and discards its result; holds a chain at a failed node rather than running on stale output; draws
+the status on the node. Muted entities pass inputs through to outputs. Computed values live in the
+engine, not on entity data, and are not part of the graph you serialise.
+
 **Media entities.** `image`, `video` and `mesh` are all one textured quad, so they share the
 stacking order, frustum culling, selection and resize handling every other entity has — a node can
 sit in front of a playing clip, which is why none of the three is a DOM element over the canvas.

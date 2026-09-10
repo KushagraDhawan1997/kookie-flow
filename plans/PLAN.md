@@ -70,13 +70,13 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 | 7D | Socket Widgets | ✅ Complete |
 | 7E | Connection Events | ✅ Complete |
 | 8 | Graph Engine | ✅ Complete |
-| 8.5 | Data Flow & Evaluation | Planned |
+| 8.5 | Data Flow & Evaluation | ✅ Complete |
 | 9 | Entity Model Refactor | ✅ Complete |
 | 9.5 | Selection Box + Resize Handles | ✅ Complete |
 | 10 | Text Entity | ✅ Complete |
-| 11 | Image Entity | In Progress |
-| 12 | 3D Mesh Entity | Planned |
-| 13 | Video Entity | Planned |
+| 11 | Image Entity | ✅ Complete |
+| 12 | 3D Mesh Entity | ✅ Complete (no orbit yet) |
+| 13 | Video Entity | ✅ Complete (no controls yet) |
 | 14 | Draw Entity | Planned |
 | 15 | Preview System | Planned |
 | 16 | Entity Type Customization | Planned |
@@ -86,9 +86,10 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 
 ## Next Immediate Tasks
 
-1. **Phase 11: Image Entity** — paste from clipboard, resize with aspect ratio lock
-2. **Phase 8.5: Data Flow** — reactive evaluation plumbing, socket values store
+1. **Phase 16: Entity Type Customization** — rows, widgets and preview slot from a declaration
+2. **Media chrome** — video controls and mesh orbit, on by default; paste-to-create
+3. **Undo/redo, auto-pan, helper lines, subflows** — see `plans/migration/decisions.md` D16–D17 and the README roadmap
 
 ---
 
-_Last updated: February 2026_
+_Last updated: September 2026_

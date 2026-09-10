@@ -507,6 +507,38 @@ export function makeToolbarScene(): Fixture {
  * The graph fixtures elsewhere set no socket values at all, which is why nothing in the suite ever
  * exercised a widget: a widget with no value and no config renders nothing to press.
  */
+/**
+ * A four-node pipeline for the evaluation laws: a slider feeds a reactive doubler, which feeds a
+ * MANUAL gate, which feeds a reactive tail.
+ *
+ *   src(amount) -> double -> gen [manual] -> post
+ *
+ * Every claim the engine makes is visible on this shape: a widget change runs `double` and stops
+ * at `gen`; `post` stays stale until the gate is opened; opening it runs `post`. The fixture's
+ * `onEvaluate` doubles its input, so the value arriving at `post` is a number a law can predict.
+ */
+export function makeEvaluation(): Fixture {
+  const node = (id: string, x: number, label: string, type = 'default'): Entity => ({
+    id,
+    type,
+    position: { x, y: 120 },
+    width: 220,
+    data: { label },
+    inputs: [{ id: 'in', name: 'In', type: 'float', min: 0, max: 1, step: 0.01 }],
+    outputs: [{ id: 'out', name: 'Out', type: 'float' }],
+  });
+  const src = node('src', 60, 'Source');
+  src.data = { label: 'Source', values: { in: 0.25 } };
+  return {
+    entities: [src, node('double', 340, 'Double'), node('gen', 620, 'Generate', 'gate'), node('post', 900, 'Post')],
+    edges: [
+      { id: 'e1', source: 'src', sourceSocket: 'out', target: 'double', targetSocket: 'in' },
+      { id: 'e2', source: 'double', sourceSocket: 'out', target: 'gen', targetSocket: 'in' },
+      { id: 'e3', source: 'gen', sourceSocket: 'out', target: 'post', targetSocket: 'in' },
+    ],
+  };
+}
+
 export function makeWidgets(): Fixture {
   return {
     entities: [

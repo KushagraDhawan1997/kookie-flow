@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
+  EntityTypeDefinition,
   Entity,
   Edge,
   Viewport,
@@ -22,6 +23,15 @@ import type {
 } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
 import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM } from './constants';
+import {
+  Evaluator,
+  type EvaluationHost,
+  type EvaluationRecord,
+  type EvaluationStatus,
+  type OnEvaluate,
+  type OnStatusChange,
+} from './evaluation';
+import { readWidgetValue } from '../utils/widget-values';
 import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { Quadtree, SocketQuadtree, getEntityBounds } from './spatial';
 import {
@@ -85,6 +95,13 @@ export interface FlowState {
    */
   widgetValues: Map<string, WidgetOverride>;
   widgetValuesVersion: number;
+
+  /**
+   * Bumped by the evaluation engine on every status or output-value change. The engine's own
+   * maps are mutated in place (core/evaluation.ts), so this is the dirty flag beside them — the
+   * same arrangement as `widgetValues` / `widgetValuesVersion`, for the same reason.
+   */
+  evaluationVersion: number;
 
   /**
    * The widget whose value is currently being edited through a borrowed DOM input, as
@@ -230,6 +247,35 @@ export interface FlowState {
 
   /** Record what a person set on a widget, until the consumer echoes it into the entity. */
   setWidgetValue: (entityId: string, socketId: string, value: unknown) => void;
+
+  // ========================================
+  // Phase 8.5: Evaluation
+  // ========================================
+
+  /**
+   * Hand the engine the consumer's callbacks and the entity type table. Called from the component
+   * whenever any of the three changes; the engine keeps its records across the call.
+   */
+  setEvaluationHandlers: (
+    onEvaluate?: OnEvaluate,
+    onStatusChange?: OnStatusChange,
+    entityTypes?: Record<string, EntityTypeDefinition>
+  ) => void;
+  /** Inputs changed on these entities. Marks them and their downstream stale; schedules a pass. */
+  markDirty: (ids: string | readonly string[]) => void;
+  /** Run one entity now, whatever its mode, then cascade. The manual trigger. */
+  evaluate: (entityId: string) => Promise<void>;
+  /** Run every dirty entity, gates included; resolves when the graph is quiet. */
+  evaluateDirty: () => Promise<void>;
+  /** Mark everything stale and run it all. */
+  evaluateAll: () => Promise<void>;
+  /** Inject an output value; downstream is marked stale. */
+  setSocketValue: (entityId: string, socketId: string, value: unknown) => void;
+  getSocketValue: (entityId: string, socketId: string) => unknown;
+  getEvaluationStatus: (entityId: string) => EvaluationStatus;
+  getEvaluationRecord: (entityId: string) => EvaluationRecord | undefined;
+  /** Cancel every run in flight and drop the engine's timers. The component calls this on unmount. */
+  disposeEvaluation: () => void;
 
   /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
   setEditingWidgetKey: (key: string | null) => void;
@@ -568,6 +614,19 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
  * practice. Both ends of every edge are recorded: an output with an edge leaving it is as
  * connected as the input it arrives at, which is what `sockets.tsx` was already asking about.
  */
+/**
+ * Whether the person has a widget write on this entity the consumer has not answered yet.
+ * O(overrides), which is at most a handful: an override lives only between a pointer event and
+ * the consumer's echo.
+ */
+function hasLocalOverride(widgetValues: Map<string, WidgetOverride>, entityId: string): boolean {
+  const prefix = `${entityId}:`;
+  for (const key of widgetValues.keys()) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 function rebuildConnectedSockets(edges: Edge[], widgetValues?: Map<string, WidgetOverride>): Set<string> {
   const connected = new Set<string>();
   for (const edge of edges) {
@@ -746,8 +805,42 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Lazy cached analysis — closure-scoped, not in Zustand state (avoids re-render on compute)
   let cachedAnalysis: CachedAnalysis | null = null;
 
+  /**
+   * The evaluation engine, closure-scoped for the same reason as the cache: it holds an
+   * AbortController per run and two maps mutated in place, none of which is state anyone
+   * renders. `evaluationVersion` is what renderers watch. `get`/`set` do not exist until
+   * `create` runs, so the host reads through references bound at the top of the initialiser.
+   */
+  let entityTypesRef: Record<string, EntityTypeDefinition> = {};
+  let getState: (() => FlowState) | null = null;
+  let setState: ((partial: Partial<FlowState>) => void) | null = null;
+  const evaluationHost: EvaluationHost = {
+    getEntity: (id) => getState?.().entityMap.get(id),
+    entityIds: () => getState?.().entityMap.keys() ?? [],
+    index: () => (getState as () => FlowState)().adjacencyIndex,
+    isMuted: (id) => getState?.().mutedEntityIds.has(id) ?? false,
+    evaluationMode: (entity) => entityTypesRef[entity.type]?.evaluation ?? 'reactive',
+    readInputValue: (entity, socket) => {
+      // The same read widgets-gl.tsx makes for what to DRAW, so what runs is what is shown:
+      // the person's local write until the consumer echoes, then the entity's value, then the
+      // socket's default.
+      const state = (getState as () => FlowState)();
+      const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
+      return readWidgetValue(
+        state.widgetValues,
+        widgetKey(entity.id, socket.id),
+        values?.[socket.id] ?? socket.defaultValue
+      );
+    },
+    onChange: () => {
+      if (!getState || !setState) return;
+      setState({ evaluationVersion: getState().evaluationVersion + 1 });
+    },
+  };
+  const evaluator = new Evaluator(evaluationHost);
+
   return create<FlowState>()(
-    subscribeWithSelector((set, get) => ({
+    subscribeWithSelector((set, get) => ((getState = get), (setState = set), {
       // Initial state - use extracted values to ensure they're set correctly
       entities: initialEntities,
       edges: initialEdges,
@@ -760,6 +853,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       selectionBox: null,
       widgetValues: new Map<string, WidgetOverride>(),
       widgetValuesVersion: 0,
+      evaluationVersion: 0,
       editingWidgetKey: null,
       pressedWidgetKey: null,
       stackOrder: initialStackOrder,
@@ -803,12 +897,25 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       getMovedEntityIds: () => movedEntityIds,
 
       setEntities: (entities) => {
-        const derived = rebuildDerivedState(entities, undefined, get().socketLayout);
+        const state = get();
+        // An entity whose `data.values` object was REPLACED has new inputs — an undo, a preset,
+        // a consumer write. Reference compare: this runs on every prop sync, and the consumer's
+        // immutable update is what produces a new reference. Skipped where a local widget write
+        // is still pending for the entity, because then the echo IS the answer to a mark
+        // `setWidgetValue` already made, and marking again would abort the run that mark started.
+        const changedInputs: string[] = [];
+        for (const next of entities) {
+          const prev = state.entityMap.get(next.id);
+          if (!prev) continue;
+          const a = (prev.data as { values?: unknown } | undefined)?.values;
+          const b = (next.data as { values?: unknown } | undefined)?.values;
+          if (a !== b && !hasLocalOverride(state.widgetValues, next.id)) changedInputs.push(next.id);
+        }
+        const derived = rebuildDerivedState(entities, undefined, state.socketLayout);
         cachedAnalysis = null;
         rebuildIdToIndex(entities);
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
-        const state = get();
         reconcileStackOrder(state.stackOrder, entities);
         // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
         // a key left behind for an id that is no longer here comes back to life if that id does,
@@ -824,15 +931,27 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
             : {}),
         });
+        if (changedInputs.length > 0) evaluator.markDirty(changedInputs);
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
+        // A wire appearing or disappearing changes what its target reads. Diffed by id so a
+        // prop sync that changed nothing marks nothing.
+        const prevEdges = get().edges;
+        const nextIds = new Set<string>();
+        for (const e of edges) nextIds.add(e.id);
+        const prevIds = new Set<string>();
+        for (const e of prevEdges) prevIds.add(e.id);
+        const touched: string[] = [];
+        for (const e of edges) if (!prevIds.has(e.id)) touched.push(e.target);
+        for (const e of prevEdges) if (!nextIds.has(e.id)) touched.push(e.target);
         set({
           edges,
           connectedSockets: rebuildConnectedSockets(edges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
           topologyVersion: get().topologyVersion + 1,
         });
+        if (touched.length > 0) evaluator.markDirty(touched);
       },
       setSocketLayout: (layout) => {
         const prev = get().socketLayout;
@@ -949,6 +1068,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       setWidgetValue: (entityId, socketId, value) => {
         const { widgetValues, widgetValuesVersion, entityMap } = get();
+        // The person changed an input. Marked before the record below is written, and it does
+        // not matter: the run starts in a microtask and resolves its inputs then, through the
+        // same reader that draws them.
+        evaluator.markDirty(entityId);
         // The BASELINE — what the entity says right now — is recorded alongside the value,
         // because that is what tells us later whether the consumer has answered. See
         // utils/widget-values.ts: comparing the echo against the value the person SET means a
@@ -959,6 +1082,21 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         widgetValues.set(widgetKey(entityId, socketId), { value, baseline });
         set({ widgetValuesVersion: widgetValuesVersion + 1 });
       },
+
+      // ---- Phase 8.5: Evaluation ----
+      setEvaluationHandlers: (onEvaluate, onStatusChange, entityTypes) => {
+        entityTypesRef = entityTypes ?? {};
+        evaluator.setHandlers(onEvaluate, onStatusChange);
+      },
+      markDirty: (ids) => evaluator.markDirty(ids),
+      evaluate: (entityId) => evaluator.evaluate(entityId),
+      evaluateDirty: () => evaluator.evaluateDirty(),
+      evaluateAll: () => evaluator.evaluateAll(),
+      setSocketValue: (entityId, socketId, value) => evaluator.setSocketValue(entityId, socketId, value),
+      getSocketValue: (entityId, socketId) => evaluator.getSocketValue(entityId, socketId),
+      getEvaluationStatus: (entityId) => evaluator.status(entityId),
+      getEvaluationRecord: (entityId) => evaluator.record(entityId),
+      disposeEvaluation: () => evaluator.dispose(),
 
       setEditingWidgetKey: (editingWidgetKey) => set({ editingWidgetKey }),
 
@@ -1167,6 +1305,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         let topologyChanged = false;
+        // Every target whose wire is about to appear or disappear: its inputs change.
+        const touchedTargets: string[] = [];
         for (const change of changes) {
           switch (change.type) {
             case 'select': {
@@ -1177,6 +1317,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               break;
             }
             case 'remove': {
+              {
+                const removedIndex = idToIndex.get(change.id);
+                if (removedIndex !== undefined) touchedTargets.push(nextEdges[removedIndex].target);
+              }
               const index = idToIndex.get(change.id);
               if (index !== undefined) {
                 topologyChanged = true;
@@ -1191,6 +1335,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             }
             case 'add': {
               topologyChanged = true;
+              touchedTargets.push(change.edge.target);
               idToIndex.set(change.edge.id, nextEdges.length);
               nextEdges.push(change.edge);
               break;
@@ -1207,6 +1352,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             topologyVersion: get().topologyVersion + 1,
           } : {}),
         });
+        if (touchedTargets.length > 0) evaluator.markDirty(touchedTargets);
       },
 
       // Selection - O(1) operations using Sets
@@ -1609,6 +1755,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       addElements: (batch) => {
         const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout, stackOrder, stackVersion } = get();
         const { entities: newEntities = [], edges: newEdges = [] } = batch;
+        // A new entity has never run, and a new wire changes what its target reads. Marked now
+        // against the pre-add index; the pass itself runs in a microtask, after the set below,
+        // and finds the new entities in place.
+        const arrivedInputs: string[] = [];
+        for (const e of newEntities) arrivedInputs.push(e.id);
+        for (const e of newEdges) arrivedInputs.push(e.target);
+        if (arrivedInputs.length > 0) evaluator.markDirty(arrivedInputs);
 
         if (newEntities.length === 0 && newEdges.length === 0) return;
 
@@ -1676,6 +1829,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       deleteElements: (batch) => {
         const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree, stackOrder, stackVersion, widgetValues, widgetValuesVersion } = get();
+        // The target of every wire that goes with this delete loses an input. A deleted target
+        // is not marked: the engine forgets a dirty entity it can no longer find.
+        {
+          const goneEntities = new Set(batch.entityIds ?? []);
+          const goneEdges = new Set(batch.edgeIds ?? []);
+          const orphaned: string[] = [];
+          for (const e of edges) {
+            const goes = goneEdges.has(e.id) || goneEntities.has(e.source) || goneEntities.has(e.target);
+            if (goes && !goneEntities.has(e.target)) orphaned.push(e.target);
+          }
+          if (orphaned.length > 0) evaluator.markDirty(orphaned);
+        }
         const { entityIds = [], edgeIds = [] } = batch;
 
         if (entityIds.length === 0 && edgeIds.length === 0) return;
@@ -2162,6 +2327,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         next.add(entityId);
         cachedAnalysis = null;
         set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
+        evaluator.markDirty(entityId);
       },
 
       unmuteEntity: (entityId: string): void => {
@@ -2171,6 +2337,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         next.delete(entityId);
         cachedAnalysis = null;
         set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
+        evaluator.markDirty(entityId);
       },
 
       isMuted: (entityId: string): boolean => {

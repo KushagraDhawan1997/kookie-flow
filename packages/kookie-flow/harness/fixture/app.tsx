@@ -19,7 +19,7 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation } from './graph';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -75,6 +75,16 @@ export interface HarnessApi {
   mark(name: string): void;
   /** React commit counts, total and per window. */
   reactCommits(): { commits: number; marks: Record<string, number> };
+  /** Every status transition the engine reported, in order, since mount. */
+  evaluationLog(): Array<{ id: string; status: string; message?: string }>;
+  /** What `onEvaluate` was called with, in order. */
+  evaluationCalls(): Array<{ id: string; inputs: Record<string, unknown> }>;
+  /** The engine's status for one entity. */
+  evaluationStatus(id: string): string;
+  /** A computed output value. */
+  socketValue(entityId: string, socketId: string): unknown;
+  /** Open a manual gate. Resolves when the entity's own run settles. */
+  evaluate(id: string): Promise<void>;
   /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
   tokenCensus(): { present: string[]; missing: string[]; declared: number };
   /** Every MSDF glyph mesh: how many glyphs it draws and where its first one sits, in world space. */
@@ -161,7 +171,7 @@ function params() {
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -802,6 +812,32 @@ function resetGlCounters() {
 }
 
 /** Lives inside KookieFlow so it can reach the store's provider. */
+/**
+ * The evaluation scene's consumer function and its logs. Module-level so the Probe can expose
+ * them without threading props: there is one fixture per page.
+ */
+const evaluationLog: Array<{ id: string; status: string; message?: string }> = [];
+const evaluationCalls: Array<{ id: string; inputs: Record<string, unknown> }> = [];
+const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const } };
+async function fixtureEvaluate(
+  id: string,
+  _type: string,
+  inputs: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  evaluationCalls.push({ id, inputs: { ...inputs } });
+  const v = typeof inputs.in === 'number' ? inputs.in : Number(inputs.in) || 0;
+  // Latency FALLS as the input rises. A slider drag starts runs on small values first and large
+  // ones last, so with constant latency the newest run always resolved last and a stale result
+  // landing early was invisible — the final value overwrote it. Inverting the latency makes an
+  // early, superseded run resolve AFTER the final one; only real cancellation keeps the stored
+  // output honest. This is what lets the "superseded run never lands" law go red when it should.
+  await new Promise((r) => setTimeout(r, 20 + Math.round((1 - Math.min(1, Math.max(0, v))) * 180)));
+  return { out: v * 2 };
+}
+function fixtureStatus(id: string, status: string, message?: string): void {
+  evaluationLog.push(message === undefined ? { id, status } : { id, status, message });
+}
+
 function Probe() {
   const store = useFlowStoreApi();
   // The LIVE token object the GL layer is actually painting from — the flow's own ThemeContext,
@@ -827,6 +863,17 @@ function Probe() {
       counts() {
         const s = (store as { getState(): { entities?: unknown[]; edges?: unknown[] } }).getState();
         return { entities: s.entities?.length ?? 0, edges: s.edges?.length ?? 0 };
+      },
+      evaluationLog: () => evaluationLog.slice(),
+      evaluationCalls: () => evaluationCalls.slice(),
+      evaluationStatus(id: string) {
+        return (store as { getState(): { getEvaluationStatus(id: string): string } }).getState().getEvaluationStatus(id);
+      },
+      socketValue(entityId: string, socketId: string) {
+        return (store as { getState(): { getSocketValue(a: string, b: string): unknown } }).getState().getSocketValue(entityId, socketId);
+      },
+      evaluate(id: string) {
+        return (store as { getState(): { evaluate(id: string): Promise<void> } }).getState().evaluate(id);
       },
       viewport() {
         return (store as { getState(): { viewport?: unknown } }).getState().viewport ?? null;
@@ -1130,6 +1177,7 @@ function App() {
     if (p.scene === 'widgets') return makeWidgets();
     if (p.scene === 'comments') return makeComments();
     if (p.scene === 'media') return makeMedia();
+    if (p.scene === 'evaluation') return makeEvaluation();
     return makeGraph({
       count: p.count,
       seed: p.seed,
@@ -1188,6 +1236,9 @@ function App() {
         }}
         {...(p.toolbar ? { entityTypes: TOOLBAR_TYPES } : {})}
         showGrid={p.grid}
+        {...(p.scene === 'evaluation'
+          ? { onEvaluate: fixtureEvaluate, onStatusChange: fixtureStatus, entityTypes: EVALUATION_TYPES }
+          : {})}
         showMinimap={false}
         {...(p.entityRadius ? { radius: p.entityRadius } : {})}
       >

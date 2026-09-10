@@ -3343,6 +3343,159 @@ await withPage('scene=media&grid=0&entityRadius=none&preserveBuffer=1', async (p
   );
 });
 
+
+/**
+ * The evaluation engine, end to end: a widget drag on the canvas runs the consumer's function,
+ * the value travels the wire, a manual gate holds, opening it releases the tail — and none of it
+ * costs a React commit.
+ *
+ * Scene: src(slider) -> double -> gen[manual] -> post. `onEvaluate` doubles. The engine's every
+ * transition is logged by the fixture's `onStatusChange`, so the claims are about ORDER, read
+ * off that log, not about timing.
+ */
+await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page) => {
+  const log = () => page.evaluate(() => window.__harness.evaluationLog());
+  const calls = () => page.evaluate(() => window.__harness.evaluationCalls());
+  const status = (id) => page.evaluate((i) => window.__harness.evaluationStatus(i), id);
+  const settle = () => page.waitForTimeout(250);
+
+  // ---- mount ----
+  // Nothing has changed yet, so nothing runs: an engine that evaluated the whole graph on mount
+  // would be deciding, for every consumer, that their function is cheap enough to call unasked.
+  await settle();
+  check('INSTRUMENT: mounting an evaluation scene runs nothing', (await calls()).length === 0, JSON.stringify(await calls()));
+
+  // ---- a widget change ----
+  // Drag the slider on `src`, with the fixture's own answer for where it is. The first attempt
+  // computed a row from the layout and landed on the OUTPUT row — outputs sit above inputs — so
+  // it dragged the node, which is a position echo through the fixture and six React commits.
+  const sliderAt = await page.evaluate(() => window.__harness.widgetPoint('src', 'in'));
+  check('INSTRUMENT: the source slider has a place on screen', sliderAt !== null, JSON.stringify(sliderAt));
+  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  await page.mouse.move(sliderAt.x - 40, sliderAt.y);
+  await page.mouse.down();
+  await page.mouse.move(sliderAt.x + 50, sliderAt.y, { steps: 8 });
+  await page.mouse.up();
+  await settle();
+  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+
+  const afterDrag = await log();
+  const seq = (id) => afterDrag.filter((r) => r.id === id).map((r) => r.status);
+
+  // A drag is many input changes in a row. Each one supersedes the run before it, so `src` runs
+  // several times and the reactive node after it runs once per src result that LANDED — never on
+  // a stale one. The claims are therefore about the last of each, not the first.
+  {
+    const c = await calls();
+    const ids = c.map((x) => x.id);
+    const lastSrc = ids.lastIndexOf('src');
+    const lastDouble = ids.lastIndexOf('double');
+    check(
+      'a slider change runs the node, then the reactive node after it, and nothing behind the gate',
+      lastSrc >= 0 && lastDouble > lastSrc && !ids.includes('gen') && !ids.includes('post'),
+      JSON.stringify(ids)
+    );
+    const srcCall = c[lastSrc];
+    const dbl = c[lastDouble];
+    check(
+      'the doubled value travels the wire: double receives what src produced',
+      !!srcCall && !!dbl && typeof srcCall.inputs.in === 'number' && dbl.inputs.in === srcCall.inputs.in * 2,
+      JSON.stringify({ src: srcCall?.inputs, double: dbl?.inputs })
+    );
+  }
+  check(
+    'double starts dirty, ends running → success, and never errors',
+    (() => {
+      const q = seq('double');
+      return q[0] === 'dirty' && q.slice(-2).join(',') === 'running,success' && !q.includes('error');
+    })(),
+    JSON.stringify(seq('double'))
+  );
+  // Cancellation is real: with several runs superseded mid-flight, the stored output must be the
+  // one computed from the LAST input, not whichever promise happened to resolve last.
+  {
+    const srcOut = await page.evaluate(() => window.__harness.socketValue('src', 'out'));
+    const dblOut = await page.evaluate(() => window.__harness.socketValue('double', 'out'));
+    const c = await calls();
+    const lastSrcIn = c.filter((x) => x.id === 'src').at(-1)?.inputs.in;
+    check(
+      'a superseded run never lands: every stored output is from the final input',
+      typeof lastSrcIn === 'number' && srcOut === lastSrcIn * 2 && dblOut === srcOut * 2,
+      `src.in=${lastSrcIn} src.out=${srcOut} double.out=${dblOut}`
+    );
+  }
+  check(
+    'the manual gate is marked stale and holds: dirty, and nothing more',
+    seq('gen').join(',') === 'dirty' && (await status('gen')) === 'dirty',
+    JSON.stringify(seq('gen'))
+  );
+  check(
+    'and so does everything behind the gate',
+    seq('post').join(',') === 'dirty' && (await calls()).every((c) => c.id !== 'post'),
+    JSON.stringify(seq('post'))
+  );
+  // The drag's commits are the FIXTURE's: it is a controlled consumer and echoes every widget
+  // value through setState, which is its contract, not the library's cost. Recorded for the
+  // reader, not asserted; the engine's own cost is isolated below, on a trigger with no echo.
+  void commitsBefore; void commitsAfter;
+
+  // ---- the dirty indicator is drawn ----
+  // The gate's top border against an entity that is not dirty (`src` has succeeded and — after
+  // the hold — gone idle). The dirty ring steps toward the warning hue; the two rows must differ.
+  await page.waitForTimeout(1700);
+  const border = (id) =>
+    page.evaluate((entityId) => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get(entityId);
+      const { x, y, zoom } = s.viewport;
+      return window.__harness.readPixel(
+        Math.round((e.position.x + e.width / 2) * zoom + x),
+        Math.round(e.position.y * zoom + y)
+      );
+    }, id);
+  const dirtyBorder = await border('gen');
+  const idleBorder = await border('src');
+  check(
+    'a stale entity is drawn differently from a settled one',
+    dirtyBorder !== null && idleBorder !== null &&
+      (Math.abs(dirtyBorder[0] - idleBorder[0]) > 8 || Math.abs(dirtyBorder[1] - idleBorder[1]) > 8 || Math.abs(dirtyBorder[2] - idleBorder[2]) > 8),
+    `dirty=${JSON.stringify(dirtyBorder)} idle=${JSON.stringify(idleBorder)}`
+  );
+
+  // ---- opening the gate ----
+  // No widget moves here, so nothing echoes: every status transition the engine makes for gen
+  // and post — dirty, running, success, idle, twice over — is the engine's alone. Zero commits
+  // is the rule this project is built on, and this is the measurement of it.
+  const before = (await calls()).length;
+  const engineCommitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
+  await page.evaluate(() => window.__harness.evaluate('gen'));
+  await settle();
+  await page.waitForTimeout(1700); // through the success hold and back to idle
+  const engineCommitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
+  check(
+    'a full evaluation cascade costs no React commits',
+    engineCommitsAfter === engineCommitsBefore,
+    `commits ${engineCommitsBefore} -> ${engineCommitsAfter}`
+  );
+  const after = await calls();
+  check(
+    'evaluate(gate) runs the gate and then the reactive tail behind it',
+    after.slice(before).map((c) => c.id).join(',') === 'gen,post',
+    JSON.stringify(after.slice(before).map((c) => c.id))
+  );
+  {
+    // Four nodes, each doubling: src, double, gen, post. The input at the head times sixteen.
+    const srcCall = after.filter((c) => c.id === 'src').at(-1);
+    const postOut = await page.evaluate(() => window.__harness.socketValue('post', 'out'));
+    check(
+      'and the value at the end of the chain is the head input doubled by every node',
+      !!srcCall && typeof srcCall.inputs.in === 'number' && typeof postOut === 'number' &&
+        Math.abs(postOut - srcCall.inputs.in * 16) < 1e-9,
+      `src.in=${JSON.stringify(srcCall?.inputs.in)} post.out=${JSON.stringify(postOut)}`
+    );
+  }
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

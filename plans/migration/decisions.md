@@ -915,3 +915,46 @@ which also owns the aspect-lock default the resize handler had inlined for image
 overlaps the video, and the pixel where they cross must be the node's. It has a witness pixel
 beside it, because without one the check passes when there is no video at all — verified by
 deleting the renderer and watching it go red.
+
+
+## D17 — evaluation is orchestration in the store, computation in the consumer
+
+Phase 8.5 is built. The spec (`plans/phase-data-flow.md`) held; four things were decided in the
+building that it did not say.
+
+**Status lives in the engine, not on `entity.data.status`.** The spec said "auto-set on
+entities". It cannot: the component is controlled, and `FlowSync` replaces every entity on every
+prop change — which arrives within a frame of any widget edit, the very event that starts a run.
+A status written into entity data would be erased before it was drawn. So `core/evaluation.ts`
+keeps its own records and `nodes.tsx` reads `data.status ?? engine status`: the consumer's word
+wins where they have one, the engine fills in where they do not. `dirty` joined `EntityStatus` for
+the consumer's benefit; the engine also has `idle`, which the renderer maps to "no status".
+
+**The engine is a module with a host interface, not store code.** Every lifecycle claim — dirty,
+running, cancelled, error, gate, cascade — is an ordering claim, and ordering claims are what a
+unit test pins and a browser cannot. `Evaluator` takes an `EvaluationHost` of reads; the store is
+one host and `evaluation.test.ts` hands in a literal. The store owns the instance the way it owns
+`cachedAnalysis`: in the factory closure, exposed through actions, disposed on unmount.
+
+**Cancellation is by run identity, and it is what makes a slider drag safe.** Each run carries a
+monotonic id; a result whose run is no longer current is dropped whether it resolved or rejected.
+Combined with the invariant that downstream of a dirty entity is always dirty — so a repeat mark
+walks nothing — a drag marks once per pointermove at O(1) and the final stored output is always
+from the final input. The law "a superseded run never lands" was sabotaged to confirm it goes red.
+
+**An upstream error holds the chain.** The spec did not say what a downstream entity does when
+the node it reads from failed. Running it on the stale output produces a result that looks fine
+and is wrong; it stays `dirty` — visibly — until the failure is fixed, and then the chain resumes.
+
+**What the hooks are, because a missing one fails silently.** `setWidgetValue` (the person moved
+a widget); `setEntities` where an entity's `data.values` reference changed and no local widget
+write is pending for it (an undo, a preset — but not the echo of a mark already made, which would
+abort the run it started); `setEdges` and `applyEdgeChanges` for every target whose wire appeared
+or left; `addElements` for new entities and new wires' targets; `deleteElements` for the targets
+that lost a wire; mute and unmute. `store-evaluation.test.ts` asks one question per hook: after
+this mutation, is the right entity dirty?
+
+Measured: a full cascade through two nodes — dirty, running, success, idle, twice — costs zero
+React commits (law: "a full evaluation cascade costs no React commits"). The slider drag's own
+commits are the fixture's controlled-component echo, which is the consumer's contract, not the
+library's cost. 498 unit tests, 201 laws.

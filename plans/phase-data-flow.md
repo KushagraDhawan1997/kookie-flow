@@ -2,7 +2,7 @@
 
 > Back to [PLAN.md](./PLAN.md)
 
-**Status:** Planned
+**Status:** Complete (2026-09-11). Engine in `src/core/evaluation.ts`; hooks in `src/core/store.ts`; laws in `harness/behaviors.mjs` (scene=evaluation). See `plans/migration/decisions.md` D17 for what changed from this spec.
 
 ---
 
@@ -156,19 +156,19 @@ onStatusChange={(entityId, status, message) => {
 
 ## Tasks
 
-- [ ] Socket values store (`socketValues: Map<string, unknown>`, separate from entity data)
-- [ ] Value resolution logic (connected → upstream value, unconnected → widget/default value)
-- [ ] `evaluation` field on `EntityTypeDefinition` (`'reactive' | 'manual'`, default: `'reactive'`)
-- [ ] `onEvaluate` callback prop with `(entityId, entityType, inputs, ctx)` signature
-- [ ] Evaluation context: `AbortSignal` for cancellation, `progress()` for progress reporting
-- [ ] Reactive cascade: widget change → evaluate reactive entities → stop at manual gates
-- [ ] Manual trigger: `evaluate(entityId)`, `evaluateDirty()`, `evaluateAll()` on imperative API
-- [ ] Dirty tracking: automatic marking on input change, connection change, upstream output change
-- [ ] Value propagation: after evaluation, store outputs → feed downstream inputs
-- [ ] `dirty` status added to `EntityStatus` type, with GPU-rendered visual indicator
-- [ ] Status lifecycle: auto-set `dirty` → `running` → `success`/`error` during evaluation
-- [ ] `onStatusChange` callback for consumer-side status handling
-- [ ] Cancellation: abort in-flight evaluation when inputs change, re-evaluate with new values
-- [ ] `setSocketValue()`, `getSocketValue()` on imperative API
-- [ ] Muted entity bypass in evaluation (inputs pass through to outputs)
-- [ ] Tests for evaluation lifecycle, dirty propagation, reactive/manual hybrid, cancellation
+- [x] Socket values store (`socketValues: Map<string, unknown>`, separate from entity data)
+- [x] Value resolution logic (connected → upstream value, unconnected → widget/default value)
+- [x] `evaluation` field on `EntityTypeDefinition` (`'reactive' | 'manual'`, default: `'reactive'`)
+- [x] `onEvaluate` callback prop with `(entityId, entityType, inputs, ctx)` signature
+- [x] Evaluation context: `AbortSignal` for cancellation, `progress()` for progress reporting
+- [x] Reactive cascade: widget change → evaluate reactive entities → stop at manual gates
+- [x] Manual trigger: `evaluate(entityId)`, `evaluateDirty()`, `evaluateAll()` on imperative API
+- [x] Dirty tracking: automatic marking on input change, connection change, upstream output change
+- [x] Value propagation: after evaluation, store outputs → feed downstream inputs
+- [x] `dirty` status added to `EntityStatus` type, with GPU-rendered visual indicator
+- [x] Status lifecycle: auto-set `dirty` → `running` → `success`/`error` during evaluation
+- [x] `onStatusChange` callback for consumer-side status handling
+- [x] Cancellation: abort in-flight evaluation when inputs change, re-evaluate with new values
+- [x] `setSocketValue()`, `getSocketValue()` on imperative API
+- [x] Muted entity bypass in evaluation (inputs pass through to outputs)
+- [x] Tests for evaluation lifecycle, dirty propagation, reactive/manual hybrid, cancellation
