@@ -11,7 +11,7 @@ import {
 import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import type { Edge, Entity, SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
@@ -24,6 +24,17 @@ const MIN_CAPACITY = 512;
 // Render order constants for z-index layering across components
 const RENDER_ORDER_BG = 2; // Non-selected sockets (above non-selected entities)
 const RENDER_ORDER_FG = 5; // Selected sockets (above selected entities)
+
+/**
+ * The quad each socket is painted on, in world px. Not `SOCKET_RADIUS`.
+ *
+ * `SOCKET_RADIUS` (6) is the HIT radius — the quadtree, `geometry.ts` and every press answer with
+ * it, and the dot is still drawn at exactly that size. The quad is wider only to hold what sits
+ * around the dot: a 1.5px punch ring of canvas colour and a halo that dies at r 10. Ten is chosen
+ * against `SOCKET_OFFSET` (12): the halo runs out before it reaches the card edge, so nothing this
+ * shader paints ever lands on a body. Exported for the value law in sockets.test.ts.
+ */
+export const SOCKET_GL_RADIUS = 10;
 
 interface SocketBuffers {
   colors: Float32Array;
@@ -195,6 +206,10 @@ export function Sockets({
   const invalidColor = tokens[THEME_COLORS.socket.invalid];
   const validTargetColor = tokens[THEME_COLORS.socket.validTarget];
   const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
+  // The punch ring paints the canvas back over whatever the dot sits on, so it needs the canvas's
+  // own colour — a pair token, resolved per appearance at material build. Memoised on `tokens`
+  // because `resolveColor` returns a fresh tuple, and the materials memoise on this value.
+  const canvasColor = useMemo(() => resolveColor(THEME_COLORS.canvas.background, tokens), [tokens]);
 
   /**
    * Which sockets have an edge on them, indexed by entity and split by direction.
@@ -252,8 +267,8 @@ export function Sockets({
   }, [invalidColor, validTargetColor, fallbackSocketColor]);
 
   // Circle geometry — separate per mesh (attributes are per-geometry)
-  const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
-  const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_RADIUS, 16), []);
+  const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), []);
+  const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), []);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
@@ -289,8 +304,9 @@ export function Sockets({
       vInvalidHover = aInvalidHover;
       vUv = uv;
 
-      // Scale up when hovered
-      vec3 pos = position * (1.0 + aHovered * 0.3);
+      // No hover scale: a dot that grows reads as jitter, a halo reads as light. Hover is drawn
+      // in the fragment on the same quad.
+      vec3 pos = position;
 
       gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
     }
@@ -300,6 +316,7 @@ export function Sockets({
 
     uniform vec3 uInvalidColor;
     uniform vec3 uValidTargetColor;
+    uniform vec3 uCanvas;
 
     varying vec3 vColor;
     varying float vHovered;
@@ -309,31 +326,33 @@ export function Sockets({
     varying vec2 vUv;
 
     void main() {
-      // Distance from center for SDF circle
-      vec2 center = vec2(0.5, 0.5);
-      float dist = length(vUv - center) * 2.0;
+      // World px from the centre; the quad is SOCKET_GL_RADIUS (10) on a side, uv spans [0, 1].
+      float r  = length(vUv - 0.5) * ${(SOCKET_GL_RADIUS * 2).toFixed(1)};
+      float aa = fwidth(r);
 
-      // Anti-aliased circle
-      float aa = fwidth(dist) * 1.5;
-      float alpha = 1.0 - smoothstep(1.0 - aa, 1.0, dist);
+      // The dot is still SOCKET_RADIUS: the hit radius, the drawn radius. Unconnected sockets are
+      // hollow to r 4.5, a 1.5px ring, so the canvas shows through their centre.
+      float dot   = 1.0 - smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r);
+      float hole  = (1.0 - smoothstep(4.5 - aa, 4.5 + aa, r)) * (1.0 - vConnected);
+      // A 1.5px punch of canvas colour around the dot, always: an edge running under a socket
+      // stops short of it, so the dot reads over any ribbon rather than merging with it.
+      float punch = smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r) * (1.0 - smoothstep(7.5 - aa, 7.5 + aa, r));
+      // The halo outside the punch, quadratic, gone by the quad edge. Only lit by a state.
+      float halo  = smoothstep(7.5 - aa, 7.5 + aa, r) * (1.0 - smoothstep(7.5, 10.0, r));
+      halo *= halo;
+      float haloOn = max(vHovered, max(vValidTarget, vInvalidHover)) * 0.22;
 
-      // Base color: socket type color or invalid color if hovering invalid target
-      vec3 color = mix(vColor, uInvalidColor, vInvalidHover);
+      vec3  dotC  = mix(vColor, uInvalidColor, vInvalidHover);
+      vec3  haloC = mix(mix(vColor, uValidTargetColor, vValidTarget), uInvalidColor, vInvalidHover);
 
-      // Only apply hover/valid brightening if NOT invalid
-      float notInvalid = 1.0 - vInvalidHover;
-      color = mix(color, color * 1.4, vHovered * notInvalid);
-      color = mix(color, uValidTargetColor, vValidTarget * 0.6 * notInvalid);
-
-      // Inner hollow for disconnected sockets (thinner ring = more visible hollow)
-      float innerRadius = 0.65;
-      float innerMask = smoothstep(innerRadius - aa, innerRadius, dist);
-
-      // vConnected=1 (connected): solid fill
-      // vConnected=0 (disconnected): hollow ring (innerMask makes center transparent)
-      float fillAlpha = mix(innerMask, 1.0, vConnected);
-
-      gl_FragColor = vec4(color, alpha * fillAlpha);
+      // The three bands never overlap, so their alphas sum and the colour is the alpha-weighted
+      // average. Inside the dot that division is by exactly 1.0 and the hue is returned untouched,
+      // which the socket-placement law depends on: it flood-fills pixels of the exact frozen hue.
+      float dotA = dot - hole;
+      float a = dotA + punch + halo * haloOn;
+      vec3  c = (dotC * dotA + uCanvas * punch + haloC * halo * haloOn) / max(a, 1e-4);
+      if (a < 0.004) discard;
+      gl_FragColor = vec4(c, a);
     }
   `;
 
@@ -344,6 +363,7 @@ export function Sockets({
         uniforms: {
           uInvalidColor: { value: new THREE.Color(invalidColor[0], invalidColor[1], invalidColor[2]) },
           uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
+          uCanvas: { value: new THREE.Color(canvasColor[0], canvasColor[1], canvasColor[2]) },
           uMeshLayer: { value: 0.0 },
         },
         vertexShader,
@@ -352,7 +372,7 @@ export function Sockets({
         depthWrite: false,
         depthTest: true,
       }),
-    [invalidColor, validTargetColor]
+    [invalidColor, validTargetColor, canvasColor]
   );
   const fgMaterial = useMemo(
     () =>
@@ -360,6 +380,7 @@ export function Sockets({
         uniforms: {
           uInvalidColor: { value: new THREE.Color(invalidColor[0], invalidColor[1], invalidColor[2]) },
           uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
+          uCanvas: { value: new THREE.Color(canvasColor[0], canvasColor[1], canvasColor[2]) },
           uMeshLayer: { value: 1.0 },
         },
         vertexShader,
@@ -368,7 +389,7 @@ export function Sockets({
         depthWrite: false,
         depthTest: true,
       }),
-    [invalidColor, validTargetColor]
+    [invalidColor, validTargetColor, canvasColor]
   );
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */

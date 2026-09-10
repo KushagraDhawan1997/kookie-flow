@@ -10,38 +10,57 @@ import { rgbToHex } from '../utils/color';
 export interface GridProps {
   size?: number;
   color?: string;
+  /** @deprecated The grid is a dot lattice with no accent lines; the value is accepted and ignored. */
   colorAccent?: string;
 }
 
 /**
- * High-performance infinite grid rendered via shader.
+ * The lattice's alpha per appearance, applied at material build.
+ *
+ * `--neutral-7` is one token in both themes; what differs is how much of it a dot needs to be
+ * seen against its canvas. Light needs less: the canvas is a step below white and the dot is dark
+ * on it, where in dark the dot is a mid grey on near-black and wants a touch more.
+ */
+const GRID_DOT_ALPHA = { dark: 0.18, light: 0.14 } as const;
+
+/**
+ * Infinite dot lattice rendered via shader on one full-screen quad.
  * Key optimizations:
  * - Dirty flag to skip updates when viewport unchanged
- * - Simplified shader math for better Safari performance
+ * - Fades out below zoom 0.9 so a dense lattice never moirés; the quad discards instead of blending
  * - Reuses geometry and material
  */
 export function Grid({
   size = DEFAULT_GRID_SIZE,
   color,
-  colorAccent,
 }: GridProps) {
   const { camera } = useThree();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
   const dirtyRef = useRef(true);
-  const lastViewportRef = useRef({ x: 0, y: 0, zoom: 1 });
+  /**
+   * The last frustum the quad was fitted to, plus the zoom the fade was written at.
+   *
+   * This used to record the store's viewport, and that was the wrong thing to watch: the quad has
+   * to cover what the CAMERA sees, and the camera's frustum moves without the viewport moving —
+   * on the frame the canvas first gets a size, and on every resize after. A quad fitted while the
+   * canvas measured 0×0 was scaled to zero and stayed there until the user panned, which is why
+   * the harness had never once painted a grid at rest.
+   */
+  const lastRef = useRef({ left: 0, right: 0, top: 0, bottom: 0, zoom: 0 });
 
   // Use semantic theme colors
   const gridColor = color ?? rgbToHex(tokens[THEME_COLORS.grid.lines]);
-  const gridColorAccent = colorAccent ?? rgbToHex(tokens[THEME_COLORS.grid.linesAccent]);
+  const gridAlpha = GRID_DOT_ALPHA[tokens.appearance];
 
   const gridMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
         uGridSize: { value: size },
         uColor: { value: new THREE.Color(gridColor) },
-        uColorAccent: { value: new THREE.Color(gridColorAccent) },
+        uAlpha: { value: gridAlpha },
+        uZoom: { value: 1 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vWorldPos;
@@ -51,45 +70,40 @@ export function Grid({
           gl_Position = projectionMatrix * viewMatrix * worldPos;
         }
       `,
-      // Simplified fragment shader for better Safari performance
+      // highp on purpose: mediump `fract` on large world coordinates is visibly wrong far from the
+      // origin — the lattice drifts and doubles a few thousand px out.
       fragmentShader: /* glsl */ `
-        precision mediump float;
+        precision highp float;
 
         uniform float uGridSize;
+        uniform float uZoom;
+        uniform float uAlpha;
         uniform vec3 uColor;
-        uniform vec3 uColorAccent;
 
         varying vec2 vWorldPos;
 
         void main() {
           vec2 coord = vec2(vWorldPos.x, -vWorldPos.y);
 
-          // Grid lines - simplified calculation
-          vec2 grid = abs(fract(coord / uGridSize - 0.5) - 0.5);
-          vec2 gridWidth = fwidth(coord / uGridSize);
-          vec2 lineAA = smoothstep(gridWidth * 0.5, gridWidth * 1.5, grid);
-          float line = 1.0 - min(lineAA.x, lineAA.y);
+          // Offset from the nearest lattice point, in world units. The +0.5 puts the points on
+          // integer multiples of the cell — where snapping lands a node — not on half-cells.
+          vec2  g  = (fract(coord / uGridSize + 0.5) - 0.5) * uGridSize;
+          // One screen px in world units, so the dot stays ~1.2 screen px at every zoom.
+          float px = fwidth(coord.x);
+          float dot = 1.0 - smoothstep(0.6 * px, 1.6 * px, length(g));
 
-          // Accent lines every 5 grid units
-          vec2 gridAccent = abs(fract(coord / (uGridSize * 5.0) - 0.5) - 0.5);
-          vec2 accentWidth = fwidth(coord / (uGridSize * 5.0));
-          vec2 accentAA = smoothstep(accentWidth * 0.5, accentWidth * 1.5, gridAccent);
-          float lineAccent = 1.0 - min(accentAA.x, accentAA.y);
-
-          // Combine colors
-          float alpha = max(line * 0.35, lineAccent * 0.55);
-
+          // Gone below zoom 0.45, full from 0.9: a lattice denser than a few px moirés.
+          float alpha = dot * uAlpha * smoothstep(0.45, 0.9, uZoom);
           if (alpha < 0.01) discard;
 
-          vec3 finalColor = mix(uColor, uColorAccent, lineAccent);
-          gl_FragColor = vec4(finalColor, alpha);
+          gl_FragColor = vec4(uColor, alpha);
         }
       `,
       transparent: true,
       depthWrite: false,
       depthTest: false,
     });
-  }, [size, gridColor, gridColorAccent]);
+  }, [size, gridColor, gridAlpha]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { gridMaterial.dispose(); }, [gridMaterial]);
@@ -106,14 +120,18 @@ export function Grid({
   useFrame(() => {
     if (!meshRef.current || !(camera instanceof THREE.OrthographicCamera)) return;
 
-    const { viewport } = store.getState();
+    const { zoom } = store.getState().viewport;
+    const last = lastRef.current;
 
-    // Skip if viewport unchanged
+    // Skip if neither the frustum nor the zoom moved. CameraController's frame callback runs
+    // before this one (it is mounted first), so the frustum read here is this frame's.
     if (
       !dirtyRef.current &&
-      viewport.x === lastViewportRef.current.x &&
-      viewport.y === lastViewportRef.current.y &&
-      viewport.zoom === lastViewportRef.current.zoom
+      camera.left === last.left &&
+      camera.right === last.right &&
+      camera.top === last.top &&
+      camera.bottom === last.bottom &&
+      zoom === last.zoom
     ) {
       return;
     }
@@ -121,9 +139,14 @@ export function Grid({
     dirtyRef.current = false;
     // Mutated, not replaced: this ref is a private record of the last-seen values, never handed to
     // anyone, so a fresh object per frame buys nothing and allocates in the frame loop.
-    lastViewportRef.current.x = viewport.x;
-    lastViewportRef.current.y = viewport.y;
-    lastViewportRef.current.zoom = viewport.zoom;
+    last.left = camera.left;
+    last.right = camera.right;
+    last.top = camera.top;
+    last.bottom = camera.bottom;
+    last.zoom = zoom;
+    // The fade is a uniform, not a re-render: written here, in the branch that already runs only
+    // when something moved.
+    gridMaterial.uniforms.uZoom.value = zoom;
 
     // Position grid at the center of what the camera sees
     const centerX = (camera.left + camera.right) / 2;

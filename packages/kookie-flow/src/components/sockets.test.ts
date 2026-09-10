@@ -1,6 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { indexConnectedSockets } from './sockets';
+import { indexConnectedSockets, SOCKET_GL_RADIUS } from './sockets';
+import { SOCKET_OFFSET, SOCKET_RADIUS } from '../core/constants';
 import type { Edge } from '../types';
+
+/**
+ * The socket quad is wider than the socket, and it must stay inside the gap to the card.
+ *
+ * The dot is drawn at `SOCKET_RADIUS`, which is also the hit radius; the quad is `SOCKET_GL_RADIUS`
+ * so the punch ring and the halo have somewhere to be painted. A socket's centre sits
+ * `SOCKET_OFFSET` from the card edge, so a quad radius at or past that offset puts halo — and,
+ * worse, the opaque canvas-coloured punch — on the body of the node. The shader reads nothing
+ * about the card, so this arithmetic is the only thing keeping the two apart.
+ */
+describe('SOCKET_GL_RADIUS', () => {
+  it('holds the whole dot', () => {
+    expect(SOCKET_GL_RADIUS).toBeGreaterThanOrEqual(SOCKET_RADIUS);
+  });
+
+  it('runs out before the card edge', () => {
+    expect(SOCKET_GL_RADIUS).toBeLessThan(SOCKET_OFFSET);
+  });
+});
 
 /**
  * Which end of an edge lands in which map.
