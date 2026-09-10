@@ -148,8 +148,9 @@ export function StyleProvider({
   // Resolve styles once, memoized
   const value = useMemo<StyleContextValue>(() => {
     const resolved = resolveEntityStyle(size, variant, radius, header, accentHeader, tokens, stableStyle);
-    const hasHeaderInside = header === 'inside';
-    const socketLayout = resolveSocketLayout(hasHeaderInside, size, tokens);
+    // `none` draws the title in the body too, so it reserves the same band `inside` does; only
+    // `outside` puts it above and needs none.
+    const socketLayout = resolveSocketLayout(header !== 'outside', size, tokens);
     const config: StyleConfig = {
       size,
       variant,

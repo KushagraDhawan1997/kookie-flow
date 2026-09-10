@@ -532,12 +532,12 @@ export interface ResolvedSocketLayout {
  *
  * Layout order: Header (if inside) → Output rows → Input rows
  *
- * @param hasHeaderInside - Whether the entity has an inside header
+ * @param hasTitleBand - Whether the title is drawn INSIDE the body and needs a row of its own
  * @param size - Entity size for padding and socket size
  * @param tokens - Theme tokens for resolving --space-N values
  */
 export function resolveSocketLayout(
-  hasHeaderInside: boolean,
+  hasTitleBand: boolean,
   size: EntitySize = '2',
   tokens: ThemeTokens
 ): ResolvedSocketLayout {
@@ -566,10 +566,19 @@ export function resolveSocketLayout(
   // steps before, and it landed on the same 8px by luck.
   const widgetHeight = Math.max(controlHeight, rowHeight - 2 * rowInset);
 
-  // Margin from top depends on header position:
-  // - No header or outside header: marginTop = padding
-  // - Inside header: marginTop = rowHeight + padding (skip header row)
-  const marginTop = hasHeaderInside ? rowHeight + padding : padding;
+  /*
+   * A TITLE DRAWN IN THE BODY GETS A ROW OF ITS OWN, and `header="none"` was the case that did not.
+   *
+   * The label is drawn for every entity — it is the node's name — and its Y came from
+   * `(headerHeight - lineBox) / 2`, a centring inside a band that, at `header="none"`, the layout
+   * never reserved: `marginTop` was just `padding`, so the title and the FIRST SOCKET ROW shared
+   * one band. Measured on the widgets fixture: title ink at y+20, the first output label's ink at
+   * y+30, no separation and the title hard against the top edge — which a large corner then ate
+   * into.
+   *
+   * `outside` is the one position that needs no band, because the title is above the body.
+   */
+  const marginTop = hasTitleBand ? rowHeight + padding : padding;
 
   return {
     rowHeight,

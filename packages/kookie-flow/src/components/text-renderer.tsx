@@ -585,15 +585,22 @@ export function MultiWeightTextRenderer({
         }
 
         const label = entity.data.label ?? entity.type;
-        // Position label based on header mode:
-        // - 'none' or 'inside': inside entity at top
-        // - 'outside': floating above entity
-        // Vertically center text within header (fontSize=12, approximate line-height ~14)
+        /*
+         * The title is centred in its OWN BAND, and the band starts at the content inset.
+         *
+         * It used to be centred on `[0, headerHeight)` — measured from the body's outer edge — so
+         * it sat `(headerHeight - lineBox) / 2` from the top however much the body was padded, and
+         * a node with a large corner had its name inside the curve. The band is
+         * `[contentInset, contentInset + headerHeight)` for a title drawn in the body, which is
+         * exactly the room `resolveSocketLayout` reserves above the first socket row.
+         *
+         * `outside` is unchanged: the band is above the body, where no inset applies.
+         */
         const verticalOffset = (style.headerHeight - 14) / 2;
         const labelY =
           config.header === 'outside'
             ? entity.position.y - style.headerHeight + verticalOffset
-            : entity.position.y + verticalOffset;
+            : entity.position.y + contentInset + verticalOffset;
         const entry: TextEntry = {
           text: label,
           position: [entity.position.x + contentInset, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],

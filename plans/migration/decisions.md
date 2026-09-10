@@ -812,3 +812,34 @@ Safari and Firefox draw cards and dialogs at the raw token as circles and they r
 fix there is a fallback `k` that compensates in the other direction — a circle of radius `r/1.613`
 matches a squircle of `r` at the same perceived roundness — or accepting the difference explicitly
 rather than by omission.
+
+---
+
+## D14. A title drawn in the body gets a row of its own.
+
+**Owner ruling (2026-09-10): "The node header is too close to edge."**
+
+The label is drawn for every entity — it is the node's name — and its Y came from
+`(headerHeight - lineBox) / 2`, a centring inside a band measured from the body's OUTER edge. Two
+things followed.
+
+Its distance from the top was 13px however much the body was padded, so it never moved with
+`padding` the way the left inset did, and a large corner then curved into it.
+
+Worse, at `header="none"` — the default — the layout reserved no band at all: `marginTop` was
+`padding`, so the title and the FIRST SOCKET ROW occupied the same 40px. Measured on the widgets
+fixture before the fix: title ink at y+20, the first output label's ink at y+30. Ten pixels apart,
+sharing a row, with the title hard against the edge.
+
+`marginTop` now reserves the band whenever the title is drawn in the body — `header !== 'outside'`,
+not `header === 'inside'` — and the title centres in `[contentInset, contentInset + headerHeight)`.
+
+- `header="inside"` gains the correct inset at **no geometry cost**: `marginTop` was already
+  `rowHeight + padding`, so only the title moved, down by one padding.
+- `header="none"` grows by one `rowHeight` (40px at size 2), because it was drawing a title into
+  space it had not reserved. Every default node is 40px taller and its first socket row starts
+  40px lower.
+- `header="outside"` is untouched; the band is above the body, where no inset applies.
+
+180 laws pass — they re-derive socket Y from the live layout rather than restating it, which is
+what that suite exists for.
