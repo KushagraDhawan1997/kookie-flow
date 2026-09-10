@@ -2710,10 +2710,16 @@ function InputHandler({
    */
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   const onEdgesChangeRef = useRef(onEdgesChange);
+  /** The keyboard's move step reads these; same reason as the callbacks above. */
+  const snapRef = useRef<{ enabled: boolean; grid: [number, number] }>({
+    enabled: snapToGrid,
+    grid: snapGrid,
+  });
   useEffect(() => {
     onEntitiesChangeRef.current = onEntitiesChange;
     onEdgesChangeRef.current = onEdgesChange;
-  }, [onEntitiesChange, onEdgesChange]);
+    snapRef.current = { enabled: snapToGrid, grid: snapGrid };
+  }, [onEntitiesChange, onEdgesChange, snapToGrid, snapGrid]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2865,6 +2871,49 @@ function InputHandler({
        * for as long as one is focused. Do not widen that guard to `contains()` — the comment on
        * it records exactly why that was rejected.
        */
+      /**
+       * SHIFT + an arrow MOVES what is selected, rather than walking to the next node.
+       *
+       * The bare arrows are the cursor, and stay that way: this graph has one tab stop and the
+       * arrows are how a keyboard reaches a thousand nodes, which is the decision the a11y mirror
+       * is built on. Moving is the other thing a keyboard has to be able to do to a node, so it
+       * takes the modifier — one step, or ten with Alt, the same pair every canvas editor uses.
+       */
+      if (
+        e.shiftKey &&
+        (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight')
+      ) {
+        const s = store.getState();
+        const ids = s.selectedEntityIds.size > 0
+          ? Array.from(s.selectedEntityIds)
+          : s.focusedEntityId
+            ? [s.focusedEntityId]
+            : [];
+        if (ids.length === 0) return;
+        e.preventDefault();
+        // On a snapped board a step is a grid cell, so a keyboard move lands where a drag would.
+        const { enabled: snapping, grid } = snapRef.current;
+        const scale = e.altKey ? 10 : 1;
+        const stepX = scale * (snapping ? grid[0] : 1);
+        const stepY = scale * (snapping ? grid[1] : 1);
+        const dx = e.code === 'ArrowLeft' ? -stepX : e.code === 'ArrowRight' ? stepX : 0;
+        const dy = e.code === 'ArrowUp' ? -stepY : e.code === 'ArrowDown' ? stepY : 0;
+        const updates: Array<{ id: string; position: { x: number; y: number } }> = [];
+        for (const id of ids) {
+          const entity = s.entityMap.get(id);
+          if (!entity) continue;
+          updates.push({ id, position: { x: entity.position.x + dx, y: entity.position.y + dy } });
+        }
+        if (updates.length === 0) return;
+        s.updateEntityPositions(updates);
+        // Same report a drag makes, so a controlled consumer sees a keyboard move and a pointer
+        // move as the same kind of event.
+        onEntitiesChangeRef.current?.(
+          updates.map((u) => ({ type: 'position', id: u.id, position: u.position }))
+        );
+        return;
+      }
+
       if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
         e.preventDefault();
         moveEntityCursor(1);

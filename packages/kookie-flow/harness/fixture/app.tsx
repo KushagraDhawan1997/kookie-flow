@@ -43,6 +43,8 @@ export interface HarnessApi {
   store: unknown;
   /** Current entity/edge counts, as the store sees them. */
   counts(): { entities: number; edges: number };
+  /** The entities the FIXTURE holds — the consumer's own array, after applying every change. */
+  consumerEntities(): { id: string; position: { x: number; y: number } }[];
   /** Read the store's viewport (pan/zoom). */
   viewport(): unknown;
   /** Resolve a CSS custom property the way the GL layer does, to sRGB 0-1. */
@@ -830,6 +832,14 @@ const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const }
  * are what a real consumer function does — fail, and take time — and neither can be driven from
  * the canvas, so the laws set them directly.
  */
+/**
+ * The entity array the FIXTURE holds — the consumer's own copy, after every change has been
+ * applied to it. Module-level because the probe that publishes the harness API is a child of the
+ * flow rather than of the app, and a law asking "what did the consumer end up with" is asking
+ * about this array rather than about the store's.
+ */
+const consumerEntities: { current: Entity[] } = { current: [] };
+
 const evaluationHooks = { failPost: false, slowGen: false, quietGen: false };
 async function fixtureEvaluate(
   id: string,
@@ -895,6 +905,9 @@ function Probe() {
       setSocketValue(entityId: string, socketId: string, value: unknown) {
         (store as { getState(): { setSocketValue(a: string, b: string, v: unknown): void } })
           .getState().setSocketValue(entityId, socketId, value);
+      },
+      consumerEntities() {
+        return consumerEntities.current.map((e) => ({ id: e.id, position: { ...e.position } }));
       },
       socketValue(entityId: string, socketId: string) {
         return (store as { getState(): { getSocketValue(a: string, b: string): unknown } }).getState().getSocketValue(entityId, socketId);
@@ -1226,6 +1239,7 @@ function App() {
 
   const [entities, setEntities] = useState<Entity[]>(initial.entities);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);
+  consumerEntities.current = entities;
 
   // Applying changes keeps the fixture honest: a test that drags a node and then asserts on
   // `entities` is exercising the same controlled-component contract a consumer signs up for.

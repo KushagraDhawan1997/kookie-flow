@@ -4086,6 +4086,65 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- moving by keyboard
+/**
+ * The other thing a keyboard has to be able to do to a node.
+ *
+ * The bare arrows are the cursor — one tab stop, arrows to reach a thousand nodes — so MOVING
+ * takes Shift, and Alt makes the step ten. These laws also pin that a keyboard move is reported
+ * to the consumer exactly as a drag is, because a controlled board that hears about pointer moves
+ * and not keyboard ones would silently drift out of sync with what is on screen.
+ */
+await withPage('scene=widgets&widgets=1&grid=0', async (page) => {
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(200);
+
+  const at = () => page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get(s.focusedEntityId);
+    return { id: e.id, x: e.position.x, y: e.position.y };
+  });
+
+  const start = await at();
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.waitForTimeout(120);
+  const nudged = await at();
+  check(
+    'shift and an arrow moves the node under the cursor by one',
+    nudged.x - start.x === 1 && nudged.y === start.y,
+    `${JSON.stringify(start)} -> ${JSON.stringify(nudged)}`
+  );
+
+  await page.keyboard.press('Shift+Alt+ArrowDown');
+  await page.waitForTimeout(120);
+  const jumped = await at();
+  check(
+    'and with alt it moves by ten',
+    jumped.y - nudged.y === 10 && jumped.x === nudged.x,
+    `${JSON.stringify(nudged)} -> ${JSON.stringify(jumped)}`
+  );
+
+  const reported = await page.evaluate(() => window.__harness.consumerEntities().find((e) => e.id === 'w'));
+  check(
+    'and the consumer was told, the same way a drag tells it',
+    !!reported && reported.position.x === jumped.x && reported.position.y === jumped.y,
+    `${JSON.stringify(reported?.position)} vs ${JSON.stringify(jumped)}`
+  );
+
+  // The bare arrow still walks the cursor: moving must not have eaten navigation.
+  const before = await page.evaluate(() => window.__harness.store.getState().focusedEntityId);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(120);
+  const after = await page.evaluate(() => window.__harness.store.getState().focusedEntityId);
+  const movedAgain = await at();
+  check(
+    'a bare arrow still walks the cursor rather than moving anything',
+    movedAgain.x === jumped.x || after !== before,
+    `cursor ${before} -> ${after}`
+  );
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

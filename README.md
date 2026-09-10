@@ -159,7 +159,9 @@ flowRef.current?.fitView({
 - **Click to select** — Single entity selection
 - **Ctrl+click** — Add to selection
 - **Box select** — Drag on empty space to select multiple entities
-- **Keyboard shortcuts** — Ctrl+A select all, Escape deselect, T create text entity
+- **Keyboard** — one tab stop into the graph; arrows walk the cursor from node to node, Home/End
+  jump to the ends, Enter steps into a node's controls and Escape steps back out, Shift+arrows move
+  the selection (Alt for a ten-step), Ctrl+A selects all, Delete deletes, T creates a text entity
 - **Entity dragging** — Move selected entities with snap-to-grid support
 - **Double-click** — Enter inline editing on text entities
 - **Entity resizing** — 8-direction resize handles with min-size clamping
