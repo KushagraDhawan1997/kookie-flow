@@ -205,10 +205,15 @@ export function Entities() {
         uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
-        // Header: the global accent band hue (r < 0 = none) and the separator's row height.
+        // Header: the global accent band hue (r < 0 = none) and where the separator sits.
         // A Vector3 rather than a Color so the resolver's negative sentinel is not a colour.
         uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
-        uHeaderHeight: { value: resolvedStyle.headerHeight },
+        // The rule is the BOTTOM OF THE TITLE'S ROW, which is `marginTop` — the same number the
+        // layout uses to place the first socket row, so the line lands in the gap between them.
+        // It was `headerHeight` measured from the outer edge, while text-renderer centres the
+        // title in a band that STARTS at the content inset: with the inset about half the header
+        // height, the line came out through the middle of the title.
+        uHeaderBaseline: { value: socketLayout.marginTop },
         uHeaderPosition: { value: resolvedStyle.headerPosition },
         // The card's float and its top light; both per appearance, both from the resolver.
         uShadowBlur: { value: resolvedStyle.shadowBlur },
@@ -216,7 +221,6 @@ export function Entities() {
         uShadowOpacity: { value: resolvedStyle.shadowOpacity },
         uTopLight: { value: resolvedStyle.topLightAlpha },
         // Status rendering
-        uTime: { value: 0 },
         // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
         // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
         // the graph's own invalid red. Warning is the consumer's and keeps amber.
@@ -269,7 +273,7 @@ export function Entities() {
         uniform float uBackgroundAlpha;
         // Header uniforms
         uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
-        uniform float uHeaderHeight;
+        uniform float uHeaderBaseline;
         uniform float uHeaderPosition; // 0=none, 1=inside, 2=outside
         uniform float uPass;
         // Shadow uniforms
@@ -278,7 +282,6 @@ export function Entities() {
         uniform float uShadowOpacity;
         uniform float uTopLight;
         // Status uniforms
-        uniform float uTime;
         uniform vec3 uAccentColor;
         uniform vec3 uStatusErrorColor;
         uniform vec3 uStatusWarningColor;
@@ -393,7 +396,10 @@ export function Entities() {
                 swept = 1.0 - smoothstep(vProgress, vProgress + 0.008, t);
               } else {
                 // Indeterminate: a comet a fifth of the perimeter long, fading behind its head.
-                float head = fract(uTime * 0.3);
+                // Its phase is the RUN's age, not the clock's: every run starts its arc at
+                // top-centre, where a reported sweep starts, so a run that reports late does not
+                // flash its arc at wherever the clock happened to be before sweeping from zero.
+                float head = fract((-vProgress - 1.0) * 0.3);
                 float behind = fract(head - t);
                 swept = 1.0 - smoothstep(0.0, 0.2, behind);
               }
@@ -433,7 +439,7 @@ export function Entities() {
           // is left of the block. Inset 12 world px from each side so it reads as a rule, not a
           // seam.
           if (uHeaderPosition > 0.5 && uHeaderPosition < 1.5) {
-            float hb = b.y - uHeaderHeight;
+            float hb = b.y - uHeaderBaseline;
             float sep = (1.0 - smoothstep(0.5, 1.0, abs(p.y - hb))) * step(12.0, b.x - abs(p.x)) * fillMask;
             color = mix(color, uBorderColor, sep);
           }
@@ -473,7 +479,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle, tokens]);
+  }, [resolvedStyle, socketLayout, tokens]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { material.dispose(); }, [material]);
@@ -593,12 +599,10 @@ export function Entities() {
    */
   const accentCache = useMemo(() => new Map<AccentColor, RGBColor>(), [tokens]);
 
-  // Track whether any entity has an animated status (running/success)
-  const hasAnimatedStatusRef = useRef(false);
   /**
    * Whether any card is drawing a moving ring — a sweep in progress or a hold dissolving. Both
-   * are carried by `aProgress`, which only the rebuild writes (uTime alone cannot move it), so
-   * while either is true the rebuild is forced every frame. Bounded: the engine ends both.
+   * are carried by `aProgress`, which only a rebuild writes, so while either is true the rebuild
+   * is forced every frame. Bounded: the engine ends both.
    */
   const hasMovingRingRef = useRef(false);
   /**
@@ -611,22 +615,18 @@ export function Entities() {
   const progressDisplayRef = useRef(new Map<string, number>());
 
   // Use R3F's useFrame for RAF-synchronized updates
-  useFrame(({ size, clock }, delta) => {
+  useFrame(({ size }, delta) => {
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
 
     if (!bgMesh || !fgMesh || !initializedRef.current) return;
 
-    // Always update time uniform for animated statuses
-    if (hasAnimatedStatusRef.current) {
-      (material.uniforms.uTime as { value: number }).value = clock.elapsedTime;
-    }
     if (hasMovingRingRef.current) dirtyRef.current = true;
 
     if (!dirtyRef.current) return;
 
     const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus, getEvaluationRecord } = store.getState();
-    // One clock read per pass, for the dissolve; the engine stamps in the same clock.
+    // One clock read per pass, for the arc and the dissolve; the engine stamps in the same clock.
     const passNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
     // Frame-rate independent: the same fraction of the remaining gap is closed per second
     // whether the display runs at 60Hz or 120Hz.
@@ -665,7 +665,6 @@ export function Entities() {
 
     let bgCount = 0;
     let fgCount = 0;
-    let hasAnimated = false;
     let movingRing = false;
 
     for (let i = 0; i < entities.length; i++) {
@@ -738,17 +737,18 @@ export function Entities() {
         entity.data?.status ?? (engineStatus === 'idle' ? undefined : engineStatus)
       );
       bufs.status[idx] = status;
-      // Running animates its arc and done dissolves its ring, so both keep the pass alive.
-      if (status > 2.5 && status < 4.5) hasAnimated = true;
-      if (status > 3.5 && status < 4.5 && entity.data?.status === undefined) movingRing = true;
-      // What the ring does is the engine's alone: a consumer overriding status has said the run
-      // is not what is happening. `aProgress` carries the sweep while running and the fraction of
-      // the hold elapsed while done; -1 asks the shader for the indeterminate arc.
-      const consumerSilent = entity.data?.status === undefined;
+      /**
+       * What the ring does is the engine's alone: a consumer overriding status has said the run
+       * is not what is happening, so the engine's record is not read for that entity.
+       *
+       * `aProgress` carries two things in one attribute. Positive is the sweep, 0..1. Negative
+       * is a travelling arc, and how negative says how long it has been travelling — the shader
+       * takes its phase from that, so an arc always sets off from top-centre where a sweep does.
+       */
+      const record = entity.data?.status === undefined ? getEvaluationRecord(entity.id) : undefined;
       let progress = -1;
       let eased = false;
-      if (consumerSilent && engineStatus === 'running') {
-        const record = getEvaluationRecord(entity.id);
+      if (status === STATUS_RUNNING) {
         if (record?.progress !== undefined) {
           // Chase the reported number rather than snapping to it: a run that reports in tenths
           // then reads as one continuous sweep, and one that reports per frame is unchanged.
@@ -756,13 +756,17 @@ export function Entities() {
           progressDisplay.set(entity.id, next);
           progress = next;
           eased = true;
-          // The ease has to keep painting between reports, so the sweep owns the pass the way
-          // the dissolve does.
-          movingRing = true;
+        } else {
+          // A run anchors the arc to its own start. A consumer who has only said "running" has no
+          // start to anchor to, so the arc rides the clock the rest of the pass reads.
+          progress = -1 - Math.max(0, record ? passNow - record.since : passNow) / 1000;
         }
-      } else if (consumerSilent && engineStatus === 'success') {
-        const record = getEvaluationRecord(entity.id);
-        if (record) progress = Math.min(1, Math.max(0, (passNow - record.since) / SUCCESS_HOLD_MS));
+        // Between two reports nothing else would move the ring, so a run owns the pass the same
+        // way a dissolving hold does. Bounded: the engine ends every run.
+        movingRing = true;
+      } else if (status === STATUS_SUCCESS && record) {
+        progress = Math.min(1, Math.max(0, (passNow - record.since) / SUCCESS_HOLD_MS));
+        movingRing = true;
       }
       if (!eased) progressDisplay.delete(entity.id);
       bufs.progress[idx] = progress;
@@ -771,7 +775,6 @@ export function Entities() {
       else bgCount++;
     }
 
-    hasAnimatedStatusRef.current = hasAnimated;
     hasMovingRingRef.current = movingRing;
     // Culled and deleted entities are never visited, so their entries are dropped here rather
     // than one by one. Nothing is sweeping, so nothing is left to remember.

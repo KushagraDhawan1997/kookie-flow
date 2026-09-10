@@ -1001,4 +1001,17 @@ also means a run owns the render pass the way a hold does — nothing else would
 between reports. The law that pins it reads a point a quarter along the BOTTOM edge, which the
 sweep reaches late: just after a single 0.5 report it is plain, and later in that same unchanged
 report it is lit. Both halves were checked by sabotage — snapping to the report, and dropping the
-per-frame pass — and each fails only that law. 533 unit tests, 213 laws.
+per-frame pass — and each fails only that law.
+
+**Addendum (2026-09-11) — the arc's phase is the run's, not the clock's.** Starting a run showed
+the travelling arc somewhere arbitrary for an instant before the sweep began from zero: a run that
+reports nothing draws the arc, its head was `fract(uTime * 0.3)`, and `uTime` is the render clock,
+which knows nothing about when this run began. So the moment between a run starting and its first
+report flashed the arc at wherever the clock stood. `aProgress` now carries the run's AGE in its
+negative half — positive is the sweep, negative is an arc and how long it has been travelling —
+and the arc sets off from top-centre, where a sweep starts, every time. That retired `uTime`
+entirely: everything that moves on a card is carried by `aProgress` and drawn by the forced pass,
+which is one less clock to reason about. A consumer who only sets `data.status = 'running'` has no
+run to anchor to, so that case keeps the clock's phase. The law runs the same quiet work twice, a
+hold apart, and reads two border points at the same moment into each: a clock-driven arc cannot
+land twice alike, and under sabotage it does not. 533 unit tests, 215 laws.

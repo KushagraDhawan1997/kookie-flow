@@ -88,7 +88,7 @@ export interface HarnessApi {
   /** The engine's whole record for one entity: status, message, progress. */
   evaluationRecord(id: string): { status: string; message?: string; progress?: number } | undefined;
   /** Flip a fixture-side behaviour of `onEvaluate`. */
-  setEvaluationHook(name: 'failPost' | 'slowGen', on: boolean): void;
+  setEvaluationHook(name: 'failPost' | 'slowGen' | 'quietGen', on: boolean): void;
   /** Which of the tokens the GL layer reads are actually present in the mounted theme. */
   tokenCensus(): { present: string[]; missing: string[]; declared: number };
   /** Every MSDF glyph mesh: how many glyphs it draws and where its first one sits, in world space. */
@@ -828,7 +828,7 @@ const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const }
  * are what a real consumer function does — fail, and take time — and neither can be driven from
  * the canvas, so the laws set them directly.
  */
-const evaluationHooks = { failPost: false, slowGen: false };
+const evaluationHooks = { failPost: false, slowGen: false, quietGen: false };
 async function fixtureEvaluate(
   id: string,
   _type: string,
@@ -837,6 +837,10 @@ async function fixtureEvaluate(
 ): Promise<Record<string, unknown>> {
   evaluationCalls.push({ id, inputs: { ...inputs } });
   if (id === 'post' && evaluationHooks.failPost) throw new Error('post refused the input');
+  if (id === 'gen' && evaluationHooks.quietGen) {
+    // Work that reports nothing, long enough to watch: the travelling-arc laws read this one.
+    await new Promise((r) => setTimeout(r, 700));
+  }
   if (id === 'gen' && evaluationHooks.slowGen) {
     // Half way, held there: the progress law reads the bar mid-run.
     ctx.progress(0.5);

@@ -3605,6 +3605,51 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
     `rest=${JSON.stringify(restBottom)} early=${JSON.stringify(earlyBottom)} late=${JSON.stringify(lateBottom)}`
   );
 
+  // ---- and a run that reports nothing sets off from the same place ----
+  // The travelling arc used to take its phase from the render clock, so starting a run showed the
+  // arc at wherever the clock happened to be — a flash somewhere random before the sweep began.
+  // Its phase is the RUN's age now, so two runs of the same quiet work look alike at the same
+  // moment in: lit just behind top-centre, where the arc sets off, and nothing yet at the bottom.
+  const edgePixel = (fx, top) =>
+    page.evaluate(([fraction, atTop]) => {
+      const s = window.__harness.store.getState();
+      const e = s.entityMap.get('gen');
+      const { x, y, zoom } = s.viewport;
+      return window.__harness.readPixel(
+        Math.round((e.position.x + e.width * fraction) * zoom + x),
+        Math.round((e.position.y + (atTop ? 1 : e.height - 1)) * zoom + y)
+      );
+    }, [fx, top]);
+  await page.evaluate(() => window.__harness.setEvaluationHook('quietGen', true));
+  const quietSample = async () => {
+    const run = page.evaluate(() => window.__harness.evaluate('gen'));
+    await page.waitForTimeout(80);
+    const behindTop = await edgePixel(0.25, true);
+    const bottom = await edgePixel(0.5, false);
+    await run;
+    await page.waitForTimeout(1800); // the hold, and then idle again
+    return { behindTop, bottom };
+  };
+  const idleBehindTop = await edgePixel(0.25, true);
+  const idleBottom = await edgePixel(0.5, false);
+  const firstQuiet = await quietSample();
+  // Between the two runs the render clock has moved on by more than a second and a half, which
+  // is half the perimeter at the arc's speed: a clock-driven arc could not land twice alike.
+  const secondQuiet = await quietSample();
+  await page.evaluate(() => window.__harness.setEvaluationHook('quietGen', false));
+  const same = (a, c) => a && c && Math.abs(a[0] - c[0]) <= 8 && Math.abs(a[1] - c[1]) <= 8 && Math.abs(a[2] - c[2]) <= 8;
+  check(
+    'a run reporting nothing lights the border just behind top-centre, where the arc sets off',
+    far(idleBehindTop, firstQuiet.behindTop) && !far(idleBottom, firstQuiet.bottom),
+    `idle=${JSON.stringify(idleBehindTop)} run=${JSON.stringify(firstQuiet.behindTop)}; ` +
+      `bottom idle=${JSON.stringify(idleBottom)} run=${JSON.stringify(firstQuiet.bottom)}`
+  );
+  check(
+    'and the next run of the same work looks the same at the same moment in, whatever the clock says',
+    same(firstQuiet.behindTop, secondQuiet.behindTop) && same(firstQuiet.bottom, secondQuiet.bottom),
+    `first=${JSON.stringify(firstQuiet)} second=${JSON.stringify(secondQuiet)}`
+  );
+
   // ---- an error, and its message ----
   // `glyphs()` is one batch per glyph MESH, not per label, so the message is observed as the
   // number of glyphs the regular mesh draws: exactly the message's length appears with the
