@@ -1,6 +1,6 @@
 {
   "name": "@kushagradhawan/kookie-flow",
-  "version": "0.0.1-alpha.0",
+  "version": "0.1.0",
   "description": "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
   "author": "Kushagra Dhawan",
   "license": "MIT",

@@ -668,7 +668,7 @@ export type ToolbarConfig =
   | ToolbarRenderFn;
 
 /** Entity type definition for custom rendering */
-export interface EntityTypeDefinition<T extends EntityData = EntityData> {
+export interface EntityTypeDefinition {
   /** Entity type identifier */
   type: string;
   /** The header text for nodes of this type that carry no `data.label` of their own. */
@@ -687,7 +687,6 @@ export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   /** The preview band every node of this type has, unless the node states its own. */
   preview?: EntityPreview;
   /** Custom React component for hybrid mode */
-  component?: React.ComponentType<EntityComponentProps<T>>;
   /** Toolbar configuration — controls shown when this entity type is selected */
   toolbar?: ToolbarConfig;
   /**
@@ -700,13 +699,6 @@ export interface EntityTypeDefinition<T extends EntityData = EntityData> {
   evaluation?: EvaluationMode;
 }
 
-/** Props passed to custom entity components */
-export interface EntityComponentProps<T extends EntityData = EntityData> {
-  id: string;
-  data: T;
-  selected: boolean;
-  onChange: (data: Partial<T>) => void;
-}
 
 /** Options for cloning elements */
 export interface CloneElementsOptions<T extends EntityData = EntityData> {

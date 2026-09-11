@@ -152,7 +152,6 @@ export type {
   EntityChange,
   EdgeChange,
   EntityTypeDefinition,
-  EntityComponentProps,
   ToolbarRenderProps,
   ToolbarRenderFn,
   ToolbarConfig,

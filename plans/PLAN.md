@@ -86,12 +86,15 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 
 ## Next Immediate Tasks
 
-1. **Preview slot** — a picture or mesh inside a node body, fed by one of its output sockets
-2. **Media chrome** — video controls and mesh orbit, on by default; paste-to-create
-3. **Undo/redo, auto-pan, helper lines, subflows** — see `plans/migration/decisions.md` D16–D18 and the README roadmap
+Nothing is outstanding from the completeness inventory — every item on it landed on 2026-09-11.
+See `CHANGELOG.md` for 0.1.0 and `plans/migration/decisions.md` D18–D19 for the reasoning behind
+the last of it.
 
-Entity types themselves are done: `entityTypes` fills in sockets, size and label for nodes that
-state none (D18).
+What a future version would take up, none of it a hole in what exists:
+
+1. **Multi-select alignment** — align and distribute a selection, which the guides make obvious
+2. **Stroke styling** — colour and width for ink, once there is a toolbar to choose them from
+3. **A layered layout that routes edges**, rather than one that only places nodes
 
 ---
 
