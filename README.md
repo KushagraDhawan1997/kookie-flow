@@ -766,7 +766,23 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Image entities (texture previews, LOD tiers, worker decode)
 - [x] Video entities (GL video textures, viewport-driven playback)
 - [x] 3D mesh entity previews (glTF into a render target)
-- [ ] Hybrid entity portals
+- [x] Evaluation engine (`onEvaluate`, manual gates, cancellation, status on the node)
+- [x] Entity type table (sockets, size and label from a declaration)
+- [x] Preview band (a node shows what its output socket holds)
+- [x] Media chrome (video play/pause/scrub, model orbit)
+- [x] Paste and drop to create media entities
+- [x] Freehand ink (`D`, one stroke per entity)
+- [x] Undo/redo in `useGraph`
+- [x] Alignment guides and auto-pan
+- [x] `autoLayout()`, `toImage()`, `toObject()`, subflow collapse/expand
+- [x] Keyboard move (Shift+arrows), on top of the existing cursor and mirror
+- [x] `font="system"` (atlas built at runtime from the platform's font)
+
+Not planned, and here so nobody looks for it: **hybrid entity portals** — a React component
+mounted over a node in the DOM. Every layer here writes depth so a node in front covers what is
+behind it, and one DOM overlay cannot take part in that: it would sit above the whole canvas or
+below all of it. Widgets, text editing and the accessibility mirror all borrow DOM for the length
+of one edit, which is the shape that does work.
 
 ## Development
 
