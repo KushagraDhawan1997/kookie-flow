@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planEdgeUpdate, packEdgeFlags, unpackEdgeFlags, edgeHalfWidthAtZoom } from './edges';
+import { planEdgeUpdate, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom } from './edges';
 
 /**
  * The edge renderer's four dirty flags do not compose into four independent passes, and the
@@ -82,8 +82,19 @@ describe('packEdgeFlags', () => {
 
   it('keeps an arrow vertex at zero: side 0 packs to 0 whatever the flags', () => {
     // The vertex shader takes sign(uv2.y) for the side and abs(uv2.y) - 1 for the flags. A
-    // value of 0 has no sign and yields flags max(0, -1) = 0, the plain solid arrow.
-    expect(0 * (1 + packEdgeFlags(true, true, true))).toBe(0);
+    // value of 0 has no sign and yields flags max(0, -1) = 0, the plain solid arrow. Run through
+    // the packer the geometry builder itself calls, not through arithmetic written out here.
+    for (const animated of [false, true]) {
+      for (const selected of [false, true]) {
+        for (const invalid of [false, true]) {
+          const flags = packEdgeFlags(animated, selected, invalid);
+          expect(packVertexSide(0, flags)).toBe(0);
+          expect(Math.sign(packVertexSide(1, flags))).toBe(1);
+          expect(Math.sign(packVertexSide(-1, flags))).toBe(-1);
+          expect(unpackEdgeFlags(Math.abs(packVertexSide(-1, flags)) - 1)).toEqual({ animated, selected, invalid });
+        }
+      }
+    }
   });
 });
 

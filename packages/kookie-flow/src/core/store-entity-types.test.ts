@@ -22,6 +22,24 @@ const entityTypes = { add };
 const bare = (id = 'n1'): Entity => ({ id, type: 'add', position: { x: 0, y: 0 }, data: {} });
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
+describe('a table that changes what gates a run', () => {
+  it('turning a manual type reactive runs the entities it was holding', async () => {
+    const gated: EntityTypeDefinition = { ...add, evaluation: 'manual' };
+    const store = createFlowStore({ entities: [bare()], entityTypes: { add: gated } });
+    const ran: string[] = [];
+    // Handlers set ONCE, as a consumer with a hoisted onEvaluate does: nothing re-sets them later.
+    store.getState().setEvaluationHandlers((id) => { ran.push(id); return {}; });
+    store.getState().markDirty('n1');
+    await tick();
+    expect(ran).toEqual([]);
+
+    store.getState().setEntityTypes({ add: { ...add, evaluation: 'reactive' } });
+    await tick();
+    expect(ran).toEqual(['n1']);
+    store.getState().disposeEvaluation();
+  });
+});
+
 describe('every way a node gets in', () => {
   it('the initial state', () => {
     const store = createFlowStore({ entities: [bare()], entityTypes });

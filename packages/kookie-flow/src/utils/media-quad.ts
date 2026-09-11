@@ -123,7 +123,10 @@ void main() {
    * by the same squircle. Everything below is in the entity's own pixels, which uSize carries.
    */
   if (uChrome.w > 0.001) {
-    vec2 px = vec2(vUv.x * uSize.x, (1.0 - vUv.y) * uSize.y); // top-left origin, like the layout
+    // Top-left origin, like the layout. The shared geometry's V is already flipped so its top edge
+    // is v = 0; flipping it again here drew the play bar along the top and the mesh grip along
+    // the bottom, opposite the hit tests that act on them.
+    vec2 px = vUv * uSize;
     float present = uChrome.w;
 
     if (uChrome.x > 0.5 && uChrome.x < 1.5) {

@@ -55,6 +55,26 @@ describe('entityDepth', () => {
     );
   });
 
+  it('stays inside the camera range for a graph of any size', () => {
+    // Compaction renumbers to 1..n, so a graph of n entities holds index n. At 3000 the old ladder
+    // put the selected top entity past the near plane, and the node just clicked vanished.
+    for (const n of [2000, 2500, 3000, 5000, 20000]) {
+      const order = new Map<string, number>();
+      for (let i = 1; i <= n; i++) order.set(`e${i}`, i);
+      const top = `e${n}`;
+      expect(entityDepth(top, order, new Set([top]), DEPTH_LAYER.label)).toBeLessThan(99.9);
+      expect(entityDepth('e1', order, none)).toBeGreaterThan(-900);
+      // Selected still clears everything unselected, and the stack still orders.
+      expect(entityDepth('e1', order, new Set(['e1']))).toBeGreaterThan(entityDepth(top, order, none, DEPTH_LAYER.label));
+      expect(entityDepth(top, order, none)).toBeGreaterThan(entityDepth(`e${n - 1}`, order, none, DEPTH_LAYER.label));
+    }
+  });
+
+  it('is unchanged below the compaction point', () => {
+    const order = new Map([['a', 3]]);
+    expect(entityDepth('a', order, none, DEPTH_LAYER.widget)).toBeCloseTo(-850 + 3 * STACK_STEP + DEPTH_LAYER.widget);
+  });
+
   it('stays inside the camera range up to the compaction point', () => {
     // Orthographic camera at z=100, near 0.1: anything at or past 99.9 is clipped.
     const order = new Map([['e', STACK_COMPACT_AT]]);

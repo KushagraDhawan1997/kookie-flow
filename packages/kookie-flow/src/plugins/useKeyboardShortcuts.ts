@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
+import { mediaKindOfUrl } from '../utils/media-paste';
 
 export type KeyHandler = (event: KeyboardEvent) => void;
 
@@ -7,7 +8,11 @@ export interface KeyBinding {
   key: string;
   /** Handler function */
   handler: KeyHandler;
-  /** Prevent default browser behavior. Default: true */
+  /**
+   * Prevent default browser behavior. Default: true.
+   *
+   * Ignored for a paste binding (`mod+v`), which never cancels the key: see `deferPaste`.
+   */
   preventDefault?: boolean;
 }
 
@@ -82,6 +87,39 @@ function matchesBinding(event: KeyboardEvent, binding: string): boolean {
   return false;
 }
 
+function isPasteBinding(binding: string): boolean {
+  const { modifiers, key } = parseKeyBinding(binding);
+  return key === 'v' && (modifiers.has('meta') || modifiers.has('ctrl')) &&
+    !modifiers.has('shift') && !modifiers.has('alt');
+}
+
+/**
+ * Run a paste binding once the browser has said what is on the clipboard.
+ *
+ * Cancelling Cmd/Ctrl+V's keydown stops the browser firing `paste` at all, and `paste` is the only
+ * way a screenshot or an image URL reaches the canvas. So the key is left alone, and the binding
+ * waits for the event: media on the clipboard belongs to the canvas, which turns it into an
+ * entity, and anything else runs the binding. A browser that fires no `paste` for a focus that is
+ * not editable still runs it, a task later.
+ */
+function deferPaste(handler: KeyHandler, event: KeyboardEvent): void {
+  let settled = false;
+  const finish = (run: boolean) => {
+    if (settled) return;
+    settled = true;
+    window.removeEventListener('paste', onPaste, true);
+    if (run) handler(event);
+  };
+  const onPaste = (e: ClipboardEvent) => {
+    const data = e.clipboardData;
+    const text = data?.getData('text/plain') ?? '';
+    const media = !!data && (data.files.length > 0 || (text !== '' && mediaKindOfUrl(text) !== null));
+    finish(!media);
+  };
+  window.addEventListener('paste', onPaste, true);
+  setTimeout(() => finish(true), 0);
+}
+
 /**
  * Hook for configurable keyboard shortcuts.
  *
@@ -154,6 +192,10 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       // Check each binding
       for (const binding of bindingsRef.current) {
         if (matchesBinding(event, binding.key)) {
+          if (isPasteBinding(binding.key)) {
+            deferPaste(binding.handler, event);
+            return;
+          }
           if (binding.preventDefault !== false) {
             event.preventDefault();
           }

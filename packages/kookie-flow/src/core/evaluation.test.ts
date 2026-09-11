@@ -616,21 +616,63 @@ describe('the shapes that break naive engines', () => {
     const w = world([ent('a', [sock('i', 1)])]);
     let firstCtx: { progress: (n: number) => void } | null = null;
     let n = 0;
+    // Collected, and asserted out here. An expect inside the handler throws into the engine's own
+    // catch, which records an error and carries on — the clamp could be deleted with this green.
+    const seen: Array<number | undefined> = [];
     const ev = new Evaluator(hostFor(w), async (id, _t, _in, ctx) => {
       n++;
-      if (n === 1) { firstCtx = ctx; ctx.progress(7); expect(ev.record(id)?.progress).toBe(1); return new Promise(() => {}); }
+      if (n === 1) { firstCtx = ctx; ctx.progress(7); seen.push(ev.record(id)?.progress); return new Promise(() => {}); }
+      ctx.progress(-3);
+      seen.push(ev.record(id)?.progress);
       ctx.progress(0.25);
-      expect(ev.record(id)?.progress).toBe(0.25);
+      seen.push(ev.record(id)?.progress);
       return {};
     });
     ev.markDirty('a');
     await tick();
+    expect(seen).toEqual([1]);
     w.widget.set('a:i', 2);
     ev.markDirty('a');
     await ev.settled();
+    expect(seen).toEqual([1, 0, 0.25]);
+    expect(ev.status('a')).not.toBe('error');
     // The superseded run reporting progress must not scribble on the record.
     (firstCtx as unknown as { progress: (n: number) => void }).progress(0.9);
     expect(ev.record('a')?.progress).toBeUndefined();
+    ev.dispose();
+  });
+});
+
+describe('what a run leaves behind', () => {
+  it('a forgotten entity leaves no record and no output referenced', async () => {
+    const w = world([ent('gen', [], [sock('img')])]);
+    const picture = { pixels: new Uint8Array(8) };
+    const ev = new Evaluator(hostFor(w), () => ({ img: picture }));
+    ev.markDirty('gen');
+    await ev.settled();
+    expect(ev.getSocketValue('gen', 'img')).toBe(picture);
+    ev.forget(['gen']);
+    expect(ev.getSocketValue('gen', 'img')).toBeUndefined();
+    expect(ev.record('gen')).toBeUndefined();
+    ev.dispose();
+  });
+
+  it('an input change during a run started by evaluate() marks what that run feeds', async () => {
+    const w = world([ent('a', [sock('i', 1)], [sock('o')]), ent('b', [sock('i')])], [edge('a', 'o', 'b', 'i')]);
+    let calls = 0;
+    const ev = new Evaluator(hostFor(w), (id) => {
+      if (id === 'a' && ++calls === 2) return new Promise<Record<string, unknown>>(() => {});
+      return {};
+    });
+    ev.markDirty('a');
+    await ev.settled();
+    expect(ev.status('b')).not.toBe('dirty');
+    void ev.evaluate('a');
+    await tick();
+    expect(ev.status('a')).toBe('running');
+    ev.markDirty('a');
+    // Before the fix the walk stopped at the running entity, whose subtree a manual run never marked.
+    expect(ev.status('b')).toBe('dirty');
     ev.dispose();
   });
 });

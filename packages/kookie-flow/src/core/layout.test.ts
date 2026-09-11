@@ -11,6 +11,18 @@ const node = (id: string, width = 200, height = 100): LayoutNode => ({ id, width
 const edge = (source: string, target: string): LayoutEdge => ({ source, target });
 
 describe('which column a node goes in', () => {
+  it('what hangs off a loop sits behind it, whatever order the nodes arrive in', () => {
+    const edges = [edge('r', 'a'), edge('a', 'b'), edge('b', 'a'), edge('b', 'c')];
+    for (const order of [['r', 'a', 'b', 'c'], ['r', 'c', 'b', 'a'], ['c', 'b', 'a', 'r']]) {
+      const rank = rankNodes(order.map((id) => node(id)), edges);
+      const at = (id: string) => rank.get(id) ?? -1;
+      expect(at('r')).toBe(0);
+      expect(at('a')).toBeGreaterThan(at('r'));
+      // c is fed by b. In array order it once landed in column 0, left of its own source.
+      expect(at('c')).toBeGreaterThan(at('b'));
+    }
+  });
+
   it('a chain marches one column at a time', () => {
     const rank = rankNodes([node('a'), node('b'), node('c')], [edge('a', 'b'), edge('b', 'c')]);
     expect([rank.get('a'), rank.get('b'), rank.get('c')]).toEqual([0, 1, 2]);

@@ -698,8 +698,8 @@ useKeyboardShortcuts({
 | `showWidgets` | `boolean` | `true` | Show widgets on unconnected inputs |
 | `size` | `'1' - '5'` | `'2'` | Entity size tier |
 | `variant` | `string` | `'surface'` | Entity visual variant |
-| `radius` | `string` | `'medium'` | Border radius style |
-| `header` | `'none' \| 'inside' \| 'outside'` | `'none'` | Header position |
+| `radius` | `string` | follows `size` | Border radius style. Unset, a node takes its size tier's surface radius (`'small'` at size `'2'`) |
+| `header` | `'none' \| 'inside' \| 'outside'` | `'inside'` | Where the title sits; `'none'` draws no title |
 | `accentHeader` | `boolean` | `false` | Tint header with accent color |
 | `minZoom` | `number` | `0.1` | Minimum zoom level |
 | `maxZoom` | `number` | `4` | Maximum zoom level |

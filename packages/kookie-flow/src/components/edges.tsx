@@ -67,6 +67,15 @@ export function packEdgeFlags(animated: boolean, selected: boolean, invalid: boo
   return (animated ? 1 : 0) + (selected ? 2 : 0) + (invalid ? 4 : 0);
 }
 
+/**
+ * The `uv2.y` a vertex carries: its ribbon side, with the state bits in the magnitude. An arrow
+ * vertex has side 0 and must come out 0 whatever the flags — the vertex shader reads a zero as the
+ * plain solid arrow, and any other value sends it down the flag-decoded path.
+ */
+export function packVertexSide(side: number, flags: number): number {
+  return side * (1 + flags);
+}
+
 /** What the fragment shader recovers from a packed `uv2.y` magnitude; the test's mirror of the GLSL. */
 export function unpackEdgeFlags(flags: number): { animated: boolean; selected: boolean; invalid: boolean } {
   const f = Math.floor(flags + 0.5);
@@ -749,7 +758,7 @@ export function Edges({
             const side = Math.sign(buffers.uvs[uvIdx + 1]);
             // An arrow vertex (side 0) is a solid marker in the target hue, not a graded one.
             const u = side === 0 ? 1 : buffers.uvs[uvIdx];
-            buffers.uvs[uvIdx + 1] = side * (1 + flags);
+            buffers.uvs[uvIdx + 1] = packVertexSide(side, flags);
             buffers.colors[colIdx] = cr + dr * u;
             buffers.colors[colIdx + 1] = cg + dg * u;
             buffers.colors[colIdx + 2] = cb + db * u;
@@ -1006,8 +1015,8 @@ export function Edges({
         const dg = tg - cg;
         const db = tb - cb;
         // uv2.y for the two ribbon sides, with the state bits in the magnitude.
-        const sideTop = 1 + flags;
-        const sideBottom = -(1 + flags);
+        const sideTop = packVertexSide(1, flags);
+        const sideBottom = packVertexSide(-1, flags);
 
         // Generate curve points into pre-allocated buffer (avoids GC)
         // points buffer stores [x0, y0, x1, y1, ...] as flat array

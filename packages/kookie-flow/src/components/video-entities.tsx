@@ -120,6 +120,9 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
    * pile of transitions each caller has to get right.
    */
   const wantPlayingRef = useRef<Set<string>>(new Set());
+  /** Sources some entity explicitly wants playing, and ones a consumer explicitly paused. Per pass. */
+  const explicitPlayRef = useRef<Set<string>>(new Set());
+  const explicitPauseRef = useRef<Set<string>>(new Set());
   /**
    * How faded in each entity's controls are, 0..1.
    *
@@ -232,7 +235,8 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         const src = (store.getState().entityMap.get(entityId)?.data as VideoEntityData | undefined)?.src;
         if (!src) return;
         const next = !texManager.isPlaying(src);
-        userPlaybackRef.current.set(entityId, next);
+        // By source: the element is per source, so a press on one copy of a clip is a press on all.
+        userPlaybackRef.current.set(src, next);
         texManager.setPlaying(src, next);
         fullDirtyRef.current = true;
       },
@@ -285,6 +289,10 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
 
     const wantPlaying = wantPlayingRef.current;
     wantPlaying.clear();
+    const explicitPlay = explicitPlayRef.current;
+    const explicitPause = explicitPauseRef.current;
+    explicitPlay.clear();
+    explicitPause.clear();
 
     for (let i = 0; i < ids.length; i++) {
       const entity = entityMap.get(ids[i]);
@@ -340,17 +348,26 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       // Reaching here means visible and on screen, so this is the only place playback is asked
       // for. `playing` is the explicit switch a consumer drives; `autoplay` is the standing wish
       // for a preview that should run whenever it can be seen.
-      const asked = userPlaybackRef.current.get(entity.id);
+      //
+      // Keyed by SOURCE, not by entity. Two entities showing one clip share one element, and keyed
+      // by entity a pause pressed on one was undone on the next frame by the other's autoplay.
+      const asked = src ? userPlaybackRef.current.get(src) : undefined;
       // The consumer stating `playing` is a newer instruction than a press was, so it wins and
       // the press is forgotten. Otherwise the press stands, and `autoplay` is only the opening
       // position.
-      if (data.playing !== undefined && asked !== undefined) {
-        userPlaybackRef.current.delete(entity.id);
+      if (src && data.playing !== undefined && asked !== undefined) {
+        userPlaybackRef.current.delete(src);
       }
       const wants = data.playing !== undefined
         ? data.playing
         : asked ?? data.autoplay ?? false;
-      if (src && wants) wantPlaying.add(src);
+      if (src) {
+        // A clip that failed to load is never asked to play. Its play() only rejects, and asked
+        // anyway it took a decoder slot ahead of a working clip on every pass.
+        if (wants && texManager.getEntry(src)?.state !== 'error') wantPlaying.add(src);
+        if (data.playing === true || asked === true) explicitPlay.add(src);
+        else if (data.playing === false) explicitPause.add(src);
+      }
 
       const entry = src ? texManager.getEntry(src) : undefined;
       const texture = src ? texManager.getTexture(src) : null;
@@ -413,6 +430,9 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
     // ONE pass over the manager's own view of what is decoding, not over the entities: a source
     // shared by two entities must stay playing while either wants it, and a source whose entity
     // has just been culled has no entity left to tell it to stop.
+    // A consumer's explicit pause on one entity outranks another entity's standing autoplay for the
+    // same clip; an explicit play outranks both.
+    for (const s of explicitPause) if (!explicitPlay.has(s)) wantPlaying.delete(s);
     texManager.reconcilePlayback(wantPlaying);
 
     if (pendingDimUpdatesRef.current.size > 0 && !dimFlushScheduledRef.current) {

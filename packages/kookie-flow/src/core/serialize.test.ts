@@ -76,6 +76,12 @@ describe('the round trip', () => {
     const saved = JSON.parse(JSON.stringify(toFlowObject(entities, edges, viewport)));
     const reloaded = toFlowObject(saved.entities, saved.edges, saved.viewport);
     expect(reloaded).toEqual(saved);
+    // And against what went in. The line above only says the save is lossy the same way twice: a
+    // save that dropped every wire's socket ids passed it.
+    expect(saved.edges).toEqual(edges);
+    expect(saved.viewport).toEqual(viewport);
+    const { selected: _selected, ...unselected } = entities[0];
+    expect(saved.entities).toEqual([unselected, entities[1]]);
   });
 });
 

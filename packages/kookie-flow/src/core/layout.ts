@@ -101,14 +101,41 @@ export function rankNodes(
 
   // Whatever is left is in a cycle, or downstream of one. It still needs a column: one past the
   // deepest thing that reaches it, which keeps the loop drawn as a loop rather than a pile.
-  for (const node of nodes) {
-    if (rank.has(node.id)) continue;
+  //
+  // Walked OUTWARD from what is already ranked, not in array order. In array order a node
+  // visited before anything feeding it had a rank found nothing to be behind and took column 0,
+  // left of its own source — so the picture depended on how the consumer's array was sorted.
+  const frontier: string[] = [];
+  const place = (id: string) => {
     let deepest = 0;
-    for (const from of incoming.get(node.id) ?? []) {
+    for (const from of incoming.get(id) ?? []) {
       const r = rank.get(from);
       if (r !== undefined) deepest = Math.max(deepest, r + 1);
     }
-    rank.set(node.id, deepest);
+    rank.set(id, deepest);
+    frontier.push(id);
+  };
+  let front = 0;
+  const spread = () => {
+    while (front < frontier.length) {
+      for (const next of outgoing.get(frontier[front++]) ?? []) {
+        if (!rank.has(next)) place(next);
+      }
+    }
+  };
+  // Entries into the cycles first: leftovers something ranked already feeds.
+  for (const node of nodes) {
+    if (rank.has(node.id)) continue;
+    if ((incoming.get(node.id) ?? []).some((from) => rank.has(from))) {
+      place(node.id);
+      spread();
+    }
+  }
+  // Then a cycle nothing outside it reaches, which has to start somewhere.
+  for (const node of nodes) {
+    if (rank.has(node.id)) continue;
+    place(node.id);
+    spread();
   }
 
   return rank;

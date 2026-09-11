@@ -622,7 +622,7 @@ export function WidgetsGL({
       const isSelected = selectedEntityIds.has(entity.id);
       const mesh = isSelected ? fgMesh : bgMesh;
       const buffers = isSelected ? fgBuffers : bgBuffers;
-      const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.widget;
+      const z = entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.widget);
 
       for (let i = 0; i < inputs.length; i++) {
         const socket = inputs[i];

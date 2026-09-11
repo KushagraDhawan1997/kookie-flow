@@ -14,7 +14,8 @@
  *   ONE SNAP PER AXIS. The closest candidate wins and the rest are ignored, so a node cannot be
  *   pulled two ways at once and left between them.
  *
- * Pure, and it writes its results into arrays the caller owns, so a drag allocates nothing.
+ * It writes its results into arrays the caller owns and returns one reused offset, so a drag
+ * allocates nothing.
  */
 
 export interface AlignRect {
@@ -53,6 +54,8 @@ const movingX: [number, number, number] = [0, 0, 0];
 const movingY: [number, number, number] = [0, 0, 0];
 const otherX: [number, number, number] = [0, 0, 0];
 const otherY: [number, number, number] = [0, 0, 0];
+/** Returned by every call, rewritten each time: read it before the next call. */
+const result: AlignResult = { dx: 0, dy: 0 };
 
 /**
  * Find what the dragged rect should line up with.
@@ -65,7 +68,9 @@ export function findAlignment(
   others: readonly AlignRect[],
   zoom: number,
   verticals: number[],
-  horizontals: number[]
+  horizontals: number[],
+  /** How many of `others` are live. A caller that pools its rects passes the pool and a count. */
+  count: number = others.length
 ): AlignResult {
   verticals.length = 0;
   horizontals.length = 0;
@@ -81,7 +86,8 @@ export function findAlignment(
   let snapX = 0;
   let snapY = 0;
 
-  for (const other of others) {
+  for (let k = 0; k < count; k++) {
+    const other = others[k];
     if (other.id === moving.id) continue;
     linesX(other, otherX);
     linesY(other, otherY);
@@ -108,7 +114,8 @@ export function findAlignment(
   // claim that these two things are aligned, so it may only be drawn where they now are.
   if (bestX < Infinity) {
     verticals.push(snapX);
-    for (const other of others) {
+    for (let k = 0; k < count; k++) {
+      const other = others[k];
       if (other.id === moving.id) continue;
       linesX(other, otherX);
       for (let j = 0; j < 3; j++) {
@@ -120,7 +127,8 @@ export function findAlignment(
   }
   if (bestY < Infinity) {
     horizontals.push(snapY);
-    for (const other of others) {
+    for (let k = 0; k < count; k++) {
+      const other = others[k];
       if (other.id === moving.id) continue;
       linesY(other, otherY);
       for (let j = 0; j < 3; j++) {
@@ -131,7 +139,9 @@ export function findAlignment(
     }
   }
 
-  return { dx: bestX < Infinity ? bestDx : 0, dy: bestY < Infinity ? bestDy : 0 };
+  result.dx = bestX < Infinity ? bestDx : 0;
+  result.dy = bestY < Infinity ? bestDy : 0;
+  return result;
 }
 
 /** Whether two guide sets are the same, so the store is not woken for a frame that changed none. */

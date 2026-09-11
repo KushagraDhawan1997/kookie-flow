@@ -212,10 +212,10 @@ export class Evaluator {
       if (status === 'dirty') continue; // subtree already marked — the invariant
       if (status === 'running') {
         // Inputs changed under a run: the result would be for values that no longer exist.
+        // Then on into its subtree like any other mark. A run started by `evaluate(id)` from a
+        // settled state was never dirty, so its subtree was never marked, and stopping here left
+        // downstream showing fresh on a stale input.
         this.abort(id);
-        this.setStatus(id, 'dirty');
-        changed = true;
-        continue; // it was dirty before it ran, so its subtree is already marked
       }
 
       this.setStatus(id, 'dirty');
@@ -303,6 +303,41 @@ export class Evaluator {
     const waiters = this.waiters;
     this.waiters = [];
     for (const w of waiters) w();
+  }
+
+  /**
+   * Entities that are gone: their runs stopped, their records and output values dropped. Kept, a
+   * node that produced a picture and was then deleted held that picture for the life of the store.
+   */
+  forget(ids: Iterable<string>): void {
+    const prefixes: string[] = [];
+    for (const id of ids) {
+      this.abort(id);
+      this.clearHold(id);
+      this.dirty.delete(id);
+      this.forced.delete(id);
+      this.records.delete(id);
+      prefixes.push(socketValueKey(id, ''));
+    }
+    if (prefixes.length === 0) return;
+    for (const key of this.socketValues.keys()) {
+      for (const prefix of prefixes) {
+        if (key.startsWith(prefix)) {
+          this.socketValues.delete(key);
+          break;
+        }
+      }
+    }
+    this.notifyIfQuiet();
+  }
+
+  /**
+   * A pass, though nothing new was marked. For a change to what GATES a pass rather than to what
+   * is stale: a type table that turned a manual type reactive has released entities that are
+   * already dirty, and marking them again is the no-op the invariant promises.
+   */
+  wake(): void {
+    this.schedule();
   }
 
   // ── Internals ────────────────────────────────────────────────────────

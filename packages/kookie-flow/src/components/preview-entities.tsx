@@ -84,6 +84,8 @@ interface PreviewTarget {
 /** What each band is currently holding on to, so it can be released when it stops. */
 interface PreviewHold {
   source: PreviewSource;
+  /** The socket value `source` was classified from, compared by identity. */
+  raw: unknown;
   /** A texture this file made itself, from a bitmap handed straight over. */
   ownTexture: THREE.Texture | null;
 }
@@ -213,21 +215,27 @@ export function PreviewEntities() {
     holdsRef.current.delete(id);
   }
 
-  function reclaimColdestTarget(exceptId: string): void {
+  /**
+   * Free the target least recently on screen. Never one on screen THIS frame: taking those rebuilt
+   * every framebuffer on every pass, as each visible entity took the last one's, and left one of
+   * them black. Returns whether anything was freed.
+   */
+  function reclaimColdestTarget(exceptId: string, frame: number): boolean {
     let coldestId: string | null = null;
     let coldest = Infinity;
     for (const [id, t] of targetsRef.current) {
-      if (id === exceptId) continue;
+      if (id === exceptId || t.lastSeen === frame) continue;
       if (t.lastSeen < coldest) {
         coldest = t.lastSeen;
         coldestId = id;
       }
     }
-    if (!coldestId) return;
+    if (!coldestId) return false;
     targetsRef.current.get(coldestId)?.rt.dispose();
     targetsRef.current.delete(coldestId);
     const mat = materialRefs.current.get(coldestId);
     if (mat) mat.uniforms.map.value = null;
+    return true;
   }
 
   useFrame(({ gl, size, viewport: glViewport }) => {
@@ -294,14 +302,18 @@ export function PreviewEntities() {
       quad.position.set(
         x + w / 2,
         -(y + h / 2),
-        entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.widget
+        entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.widget)
       );
       quad.scale.set(w, h, 1);
       quad.renderOrder = selectedEntityIds.has(entity.id) ? RENDER_ORDER_FG : RENDER_ORDER_BG;
 
       // ---- what the socket is holding ----
-      const source = classifyPreviewValue(getSocketValue(entity.id, preview.socket));
+      // Classified only when the value itself changed. This pass runs every frame a clip plays and
+      // every frame of a pan, and classifying builds strings and an object each time.
+      const raw = getSocketValue(entity.id, preview.socket);
       const hold = holdsRef.current.get(entity.id);
+      const source = hold && hold.raw === raw ? hold.source : classifyPreviewValue(raw);
+      if (hold) hold.raw = raw;
       if (!hold || !sameSource(hold.source, source)) {
         releaseHold(entity.id);
         let ownTexture: THREE.Texture | null = null;
@@ -318,7 +330,7 @@ export function PreviewEntities() {
           ownTexture.flipY = false;
           ownTexture.needsUpdate = true;
         }
-        holdsRef.current.set(entity.id, { source, ownTexture });
+        holdsRef.current.set(entity.id, { source, ownTexture, raw });
       }
 
       const mat = materialRefs.current.get(entity.id);
@@ -352,13 +364,16 @@ export function PreviewEntities() {
 
         let target = targetsRef.current.get(entity.id);
         if (!target) {
-          if (targetsRef.current.size >= MAX_PREVIEW_TARGETS) reclaimColdestTarget(entity.id);
+          // Every target is in use by something on screen: this one waits rather than taking one.
+          if (targetsRef.current.size >= MAX_PREVIEW_TARGETS && !reclaimColdestTarget(entity.id, frame)) {
+            quad.visible = false;
+            continue;
+          }
           const rt = new THREE.WebGLRenderTarget(rtW, rtH, { depthBuffer: true, stencilBuffer: false });
           rt.texture.colorSpace = THREE.SRGBColorSpace;
           rt.texture.minFilter = THREE.LinearFilter;
           rt.texture.magFilter = THREE.LinearFilter;
           rt.texture.generateMipmaps = false;
-          rt.texture.flipY = false;
           target = {
             rt,
             camera: new THREE.PerspectiveCamera(45, aspect, 0.1, 1000),
@@ -399,9 +414,11 @@ export function PreviewEntities() {
         }
 
         setMediaBox(mat, w, h, bandRadius);
-        // A target is already framed to the band, so object-fit is the identity here.
-        mat.uniforms.uvOffset.value.set(0, 0);
-        mat.uniforms.uvScale.value.set(1, 1);
+        // A target is already framed to the band, so object-fit does not apply. Its rows are
+        // bottom-up, as every framebuffer's are, while the shared quad's V runs top-down for image
+        // uploads; sampled with V flipped back, or every model draws upside down.
+        mat.uniforms.uvOffset.value.set(0, 1);
+        mat.uniforms.uvScale.value.set(1, -1);
         if (mat.uniforms.map.value !== target.rt.texture) mat.uniforms.map.value = target.rt.texture;
         mat.uniforms.opacity.value = 1;
         quad.material = mat;

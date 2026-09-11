@@ -50,6 +50,8 @@ export interface HarnessApi {
   toImage(pixelRatio?: number): string | null;
   /** The entities the FIXTURE holds — the consumer's own array, after applying every change. */
   consumerEntities(): { id: string; position: { x: number; y: number } }[];
+  /** Every onEntitiesChange batch the consumer received, as the ids each one touched. */
+  entityChangeBatches(): string[][];
   /** Read the store's viewport (pan/zoom). */
   viewport(): unknown;
   /** Resolve a CSS custom property the way the GL layer does, to sRGB 0-1. */
@@ -851,6 +853,7 @@ const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const }
  * about this array rather than about the store's.
  */
 const consumerEntities: { current: Entity[] } = { current: [] };
+const entityChangeBatches: { current: string[][] } = { current: [] };
 
 const evaluationHooks = { failPost: false, slowGen: false, quietGen: false };
 async function fixtureEvaluate(
@@ -924,6 +927,9 @@ function Probe() {
       },
       toImage(pixelRatio?: number) {
         return capture(store as object, { pixelRatio });
+      },
+      entityChangeBatches() {
+        return entityChangeBatches.current.map((batch) => batch.slice());
       },
       consumerEntities() {
         return consumerEntities.current.map((e) => ({ id: e.id, position: { ...e.position } }));
@@ -1263,6 +1269,7 @@ function App() {
   // Applying changes keeps the fixture honest: a test that drags a node and then asserts on
   // `entities` is exercising the same controlled-component contract a consumer signs up for.
   const onEntitiesChange = useCallback((changes: EntityChange[]) => {
+    entityChangeBatches.current.push(changes.map((c) => (c.type === 'add' ? c.entity.id : c.id)));
     setEntities((prev) => applyEntityChanges(prev, changes));
   }, []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {

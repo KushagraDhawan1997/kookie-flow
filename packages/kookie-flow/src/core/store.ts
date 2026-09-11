@@ -57,7 +57,8 @@ import type { AdjacencyIndex, CachedAnalysis } from './graph';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
 import { widgetKey, type WidgetOverride } from '../utils/widget-values';
 import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
-import { STACK_COMPACT_AT } from '../utils/entity-depth';
+import { stackCapacity } from '../utils/entity-depth';
+import { isEvaluated } from '../utils/entity-kind';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -266,6 +267,10 @@ export interface FlowState {
   setViewport: (viewport: Viewport) => void;
   /** Publish the guides for this frame. Deduped by value; the arrays are not copied. */
   setHelperLines: (x: number[], y: number[]) => void;
+  /** Bumped while a pen stroke grows, which is the only thing the ink layer needs to hear. */
+  strokeVersion: number;
+  /** Grow the stroke being drawn, without the whole-graph rebuild an entity change costs. */
+  setStrokePoints: (id: string, points: number[]) => void;
   setSocketLayout: (layout: ResolvedSocketLayout) => void;
   setHoveredEntityId: (id: string | null) => void;
   setHoveredSocketId: (socket: SocketHandle | null) => void;
@@ -899,6 +904,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       helperLinesX: [],
       helperLinesY: [],
       helperLinesVersion: 0,
+      strokeVersion: 0,
       edges: initialEdges,
       viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
       connectionStart: null,
@@ -974,6 +980,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
         reconcileStackOrder(state.stackOrder, entities);
+        // An entity the new array no longer holds is gone for the engine too: its run stopped, its
+        // outputs released.
+        const gone: string[] = [];
+        for (const id of state.entityMap.keys()) if (!derived.entityMap.has(id)) gone.push(id);
+        if (gone.length > 0) evaluator.forget(gone);
         // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
         // a key left behind for an id that is no longer here comes back to life if that id does,
         // and shows a value the restored entity never held.
@@ -1018,6 +1029,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           ...rebuildDerivedState(entities, state.collapsedGroupIds, state.socketLayout),
           topologyVersion: state.topologyVersion + 1,
         });
+        // The new table may have turned a manual type reactive, releasing gates on entities that
+        // are already dirty. Nothing new is stale, so nothing is marked; a pass is simply due.
+        evaluator.wake();
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
@@ -1056,11 +1070,32 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setHelperLines: (x, y) => {
         const state = get();
         if (sameGuides(state.helperLinesX, x) && sameGuides(state.helperLinesY, y)) return;
+        // Copied, not held. The caller refills its arrays in place on every move, so holding them
+        // made the next comparison an array against itself: the version stopped moving after the
+        // first guide, and that guide stayed drawn after the drag ended. A copy happens only when
+        // the guides change, which is a few times a drag.
         set({
-          helperLinesX: x,
-          helperLinesY: y,
+          helperLinesX: x.slice(),
+          helperLinesY: y.slice(),
           helperLinesVersion: state.helperLinesVersion + 1,
         });
+      },
+      setStrokePoints: (id, points) => {
+        const state = get();
+        const entity = state.entityMap.get(id);
+        if (!entity) return;
+        // Replaced in the map and in the array IN PLACE, and nothing else rebuilt. A stroke has no
+        // sockets and nothing lands on it mid-stroke, so the indexes wait for the commit on release,
+        // which goes through the ordinary door and rebuilds them once.
+        const next: Entity = { ...entity, data: { ...entity.data, points } };
+        state.entityMap.set(id, next);
+        let index = idToIndex.get(id);
+        if (index === undefined || state.entities[index]?.id !== id) {
+          index = state.entities.findIndex((e) => e.id === id);
+          if (index >= 0) idToIndex.set(id, index);
+        }
+        if (index >= 0) state.entities[index] = next;
+        set({ strokeVersion: state.strokeVersion + 1 });
       },
       setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
       /**
@@ -1227,7 +1262,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         }
 
         // Keep the depth range inside the camera: renumber 1..n by current order, rarely.
-        if (stackCounter > STACK_COMPACT_AT) {
+        if (stackCounter > stackCapacity(stackOrder.size)) {
           const sorted = [...stackOrder.entries()].sort((a, b) => a[1] - b[1]);
           stackCounter = 0;
           for (const [id] of sorted) stackOrder.set(id, ++stackCounter);
@@ -1274,6 +1309,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 nextEntities.splice(index, 1);
                 topologyChanged = true;
                 get().stackOrder.delete(change.id);
+                evaluator.forget([change.id]);
                 // The stack index was already cleaned up here; the widget overrides were not, and
                 // an id that returns must not inherit them.
                 if (dropWidgetValues(get().widgetValues, removed)) widgetValuesDropped = true;
@@ -1857,7 +1893,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // against the pre-add index; the pass itself runs in a microtask, after the set below,
         // and finds the new entities in place.
         const arrivedInputs: string[] = [];
-        for (const e of newEntities) arrivedInputs.push(e.id);
+        // Ink, pictures and text compute nothing. Marked, a consumer's `onEvaluate` that switches on
+        // node types was called for each — for the pen, on the stroke's first point — and recorded
+        // an error against it.
+        for (const e of newEntities) if (isEvaluated(e.type)) arrivedInputs.push(e.id);
         for (const e of newEdges) arrivedInputs.push(e.target);
         if (arrivedInputs.length > 0) evaluator.markDirty(arrivedInputs);
 
@@ -1985,6 +2024,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           stackOrder.delete(entityId);
         }
         quadtree.incrementalRemove(Array.from(entityIdsToDelete));
+        evaluator.forget(entityIdsToDelete);
 
         // Filter out deleted elements
         const nextEntities = entities.filter((n) => !entityIdsToDelete.has(n.id));

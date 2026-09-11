@@ -635,7 +635,7 @@ export function MultiWeightTextRenderer({
         const labelY = bandTop + (bandHeight - TITLE_LINE_BOX) / 2;
         const entry: TextEntry = {
           text: label,
-          position: [entity.position.x + contentInset, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+          position: [entity.position.x + contentInset, labelY, entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.label)],
           fontSize: 12,
           color: primaryTextColor,
           anchor: 'left',
@@ -689,7 +689,7 @@ export function MultiWeightTextRenderer({
                 position: [
                   entity.position.x + contentInset,
                   entity.position.y + height + 4,
-                  entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label,
+                  entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.label),
                 ],
                 fontSize: 11,
                 color: errorTextColor,
@@ -729,7 +729,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + width - contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+                position: [entity.position.x + width - contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.label)],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'right',
@@ -761,7 +761,7 @@ export function MultiWeightTextRenderer({
                   : socket.name;
               regular.push({
                 text: truncatedName,
-                position: [entity.position.x + contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label],
+                position: [entity.position.x + contentInset, textY, entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.label)],
                 fontSize: 12,
                 color: secondaryTextColor,
                 anchor: 'left',
@@ -817,7 +817,7 @@ export function MultiWeightTextRenderer({
           }
 
           const depth =
-            entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.label;
+            entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.label);
           const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
 
           for (let i = 0; i < inputs.length; i++) {
@@ -927,9 +927,9 @@ export function MultiWeightTextRenderer({
           // the nodes its edge is in front of and is covered by the ones it is behind.
           const labelDepth =
             Math.max(
-              entityDepth(edge.source, stackOrder, selectedEntityIds),
-              entityDepth(edge.target, stackOrder, selectedEntityIds)
-            ) + DEPTH_LAYER.label;
+              entityDepth(edge.source, stackOrder, selectedEntityIds, DEPTH_LAYER.label),
+              entityDepth(edge.target, stackOrder, selectedEntityIds, DEPTH_LAYER.label)
+            );
 
           regular.push({
             text: labelConfig.text,

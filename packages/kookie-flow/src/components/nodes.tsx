@@ -220,6 +220,7 @@ export function Entities() {
         uAccentColor: { value: new THREE.Color(...tokens[THEME_COLORS.node.borderSelected]) },
         uStatusErrorColor: { value: new THREE.Color(...tokens[THEME_COLORS.edge.invalid]) },
         uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },
+        uStatusSuccessColor: { value: new THREE.Color(0.19, 0.64, 0.33) },
       },
       vertexShader: /* glsl */ `
         attribute vec2 aSize;
@@ -276,6 +277,7 @@ export function Entities() {
         uniform vec3 uAccentColor;
         uniform vec3 uStatusErrorColor;
         uniform vec3 uStatusWarningColor;
+        uniform vec3 uStatusSuccessColor;
 
         varying vec2 vUv;
         varying vec2 vSize;
@@ -396,6 +398,12 @@ export function Entities() {
               }
               borderColor = mix(uBorderColor, uAccentColor, swept);
               statusBorderWidth = uBorderWidth + swept;
+            } else if (vStatus < 4.5 && vProgress < 0.0) {
+              // Done by the consumer's word: no run, so no hold to dissolve over. A steady ring in
+              // the success hue, like the consumer's error and warning rings. The accent held still
+              // is what selection looks like, which is what this drew before.
+              borderColor = uStatusSuccessColor;
+              statusBorderWidth = uBorderWidth + 1.0;
             } else if (vStatus < 4.5) {
               // Done: the ring completes, then dissolves over the hold — vProgress carries how far
               // into the hold this is. A full ring held still would read as SELECTED, which is the
@@ -751,6 +759,8 @@ export function Entities() {
         progress = Math.min(1, Math.max(0, (passNow - record.since) / SUCCESS_HOLD_MS));
         movingRing = true;
       }
+      // A consumer's own `status: 'success'` has no record and keeps -1, which the shader draws as
+      // a steady success ring rather than as an accent hold that never dissolves.
       if (!eased) progressDisplay.delete(entity.id);
       bufs.progress[idx] = progress;
 

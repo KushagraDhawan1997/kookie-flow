@@ -6,7 +6,12 @@ export { Minimap } from './components/minimap';
 export { Toolbar, type ToolbarProps } from './components/toolbar';
 
 // Hooks
-export { useGraph } from './hooks/use-graph';
+export {
+  useGraph,
+  type UseGraphOptions,
+  type UseGraphHistoryOptions,
+  type UseGraphReturn,
+} from './hooks/use-graph';
 export {
   useThemeTokens,
   FALLBACK_TOKENS,

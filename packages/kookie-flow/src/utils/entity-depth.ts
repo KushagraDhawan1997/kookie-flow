@@ -39,6 +39,14 @@
  *        BASE + span + boost + label < 99.9                    (-850 + 400 + 450 + 0.12)
  *        BASE > -900
  *
+ * PAST 2000 ENTITIES THE LADDER IS SQUEEZED, NOT EXTENDED. Compaction renumbers the stack to
+ * 1..n, so a graph of n entities holds indices up to n whatever the counter does, and the numbers
+ * above ran a 3000-node graph's selected entity past the near plane — the node you had just
+ * clicked vanished. Above the compaction point every step and layer offset is scaled by
+ * STACK_COMPACT_AT / capacity, so the whole graph stays inside the same 850 units. On 24-bit
+ * hardware the squeezed steps stay thousands of quanta apart; on 16-bit hardware past about 2000
+ * entities adjacent layers can round together, which is a z-tie rather than a vanished node.
+ *
  * All three are asserted in entity-depth.test.ts, and the harness asserts at mount that the
  * context has a depth buffer at all — the arithmetic here passed for a long time while
  * DEPTH_BITS was 0 and none of it was reaching the GPU.
@@ -59,6 +67,17 @@ const SELECTED_BOOST = 450;
 export const STACK_COMPACT_AT = 2000;
 
 /**
+ * Room above the entity count before the stack is compacted again. Without it a graph larger than
+ * STACK_COMPACT_AT sat above the threshold straight after compacting, and re-sorted on every press.
+ */
+export const STACK_SLACK = 500;
+
+/** The highest stack index the ladder holds for a graph of `count` entities. */
+export function stackCapacity(count: number): number {
+  return Math.max(STACK_COMPACT_AT, count + STACK_SLACK);
+}
+
+/**
  * Fixed offsets above the body, within one stack step. Order is the paint order.
  *
  * Spaced 0.04 apart — a little over two 16-bit quanta — and the highest (0.12) is well under one
@@ -71,15 +90,23 @@ export const DEPTH_LAYER = {
   label: 0.12,
 } as const;
 
-/** The depth of an entity's body plane. Add a `DEPTH_LAYER` for anything drawn on it. */
+/**
+ * The depth of one part of an entity: its body by default, or a `DEPTH_LAYER` drawn on it. The
+ * layer is passed in rather than added by the caller, because past the compaction point it is
+ * squeezed with the step it has to stay inside.
+ */
 export function entityDepth(
   id: string,
   stackOrder: ReadonlyMap<string, number>,
-  selectedEntityIds: ReadonlySet<string>
+  selectedEntityIds: ReadonlySet<string>,
+  layer: number = DEPTH_LAYER.body
 ): number {
+  const capacity = stackCapacity(stackOrder.size);
+  const scale = STACK_COMPACT_AT / capacity;
+  const index = Math.min(stackOrder.get(id) ?? 0, capacity);
   return (
     BASE_DEPTH +
-    (stackOrder.get(id) ?? 0) * STACK_STEP +
+    (index * STACK_STEP + layer) * scale +
     (selectedEntityIds.has(id) ? SELECTED_BOOST : 0)
   );
 }

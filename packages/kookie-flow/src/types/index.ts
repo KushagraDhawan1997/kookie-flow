@@ -686,7 +686,6 @@ export interface EntityTypeDefinition {
   outputs?: Socket[];
   /** The preview band every node of this type has, unless the node states its own. */
   preview?: EntityPreview;
-  /** Custom React component for hybrid mode */
   /** Toolbar configuration — controls shown when this entity type is selected */
   toolbar?: ToolbarConfig;
   /**
@@ -1003,7 +1002,10 @@ export interface KookieFlowProps {
   size?: EntitySize;
   /** Entity visual variant. Default: 'surface' */
   variant?: EntityVariant;
-  /** Entity border radius style. Default: 'medium' */
+  /**
+   * Entity border radius style. Default: follows `size` — that tier's surface radius, which is
+   * 'small' at size '2'.
+   */
   radius?: EntityRadius;
   /** Where the entity title is drawn ('none' draws none). Default: 'inside' */
   header?: HeaderPosition;
@@ -1039,7 +1041,6 @@ export interface KookieFlowProps {
   onStatusChange?: OnStatusChange;
   /** Show widgets on unconnected input sockets. Default: true */
   showWidgets?: boolean;
-  /** Default entity width when entity.width is not specified. Default: 240 */
   /**
    * Alignment guides while dragging: the lines that appear when a node's edge or centre lines up
    * with another's, and the small snap that goes with them. Default: true.
@@ -1048,6 +1049,7 @@ export interface KookieFlowProps {
    * was asked for explicitly.
    */
   helperLines?: boolean;
+  /** Default entity width when entity.width is not specified. Default: 240 */
   defaultEntityWidth?: number;
   /** Width reserved for socket labels before widget starts. Default: 96 */
   socketLabelWidth?: number;
@@ -1133,6 +1135,9 @@ export interface KookieFlowInstance {
   /**
    * Fold a set of entities into one group entity, with ports for every wire that crossed the
    * boundary. `expandSubgraph` puts them back.
+   *
+   * Both report what they changed through `onEntitiesChange` and `onEdgesChange`, as a drag does,
+   * so a controlled consumer's next render does not undo them.
    */
   collapseToSubgraph: (entityIds: string[], groupId: string) => void;
   expandSubgraph: (

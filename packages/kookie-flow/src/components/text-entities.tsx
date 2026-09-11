@@ -458,7 +458,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
         targetEntries.push({
           id: entity.id,
           lines: placeholderLines,
-          position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth) + DEPTH_LAYER.label],
+          position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth, DEPTH_LAYER.label)],
           fontSize,
           lineHeight,
           textAlign: 'left',
@@ -478,7 +478,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       targetEntries.push({
         id: entity.id,
         lines: measurement.lines,
-        position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth) + DEPTH_LAYER.label],
+        position: [entity.position.x + padding, entity.position.y + padding, entityDepth(entity.id, stackOrder, selectedForDepth, DEPTH_LAYER.label)],
         fontSize,
         lineHeight,
         textAlign,

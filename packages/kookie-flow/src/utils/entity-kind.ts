@@ -40,6 +40,17 @@ const SELF_DRAWN_TYPES: ReadonlySet<string> = new Set([
   'draw',
 ]);
 
+/**
+ * Types the evaluation engine never runs. They hold content and compute nothing, so a consumer's
+ * `onEvaluate` is never asked about them. Reroutes are absent on purpose: they carry values.
+ */
+const UNEVALUATED_TYPES: ReadonlySet<string> = new Set(['comment', 'text', 'image', 'video', 'mesh', 'draw']);
+
+/** Whether the evaluation engine runs entities of this type. */
+export function isEvaluated(type: string): boolean {
+  return !UNEVALUATED_TYPES.has(type);
+}
+
 /** Whether an entity is drawn by a renderer of its own rather than as a node body. */
 export function isSelfDrawn(type: string): boolean {
   return SELF_DRAWN_TYPES.has(type);

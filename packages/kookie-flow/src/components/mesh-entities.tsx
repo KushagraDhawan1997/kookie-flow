@@ -266,23 +266,29 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
    * Called only when the budget is full and a newly visible entity needs one, so the cost is paid
    * by the entity that just appeared rather than by every frame.
    */
-  function reclaimColdestTarget(exceptId: string): void {
+  /**
+   * Free the target least recently on screen. Never one on screen THIS frame: taking those rebuilt
+   * every framebuffer on every pass, as each visible entity took the last one's, and left one of
+   * them black. Returns whether anything was freed.
+   */
+  function reclaimColdestTarget(exceptId: string, frame: number): boolean {
     let coldestId: string | null = null;
     let coldest = Infinity;
     for (const [id, t] of targetsRef.current) {
-      if (id === exceptId) continue;
+      if (id === exceptId || t.lastSeen === frame) continue;
       if (t.lastSeen < coldest) {
         coldest = t.lastSeen;
         coldestId = id;
       }
     }
-    if (!coldestId) return;
+    if (!coldestId) return false;
     const target = targetsRef.current.get(coldestId);
     target?.rt.dispose();
     targetsRef.current.delete(coldestId);
     // Its quad is now pointing at a disposed framebuffer's texture.
     const mat = materialRefs.current.get(coldestId);
     if (mat) mat.uniforms.map.value = null;
+    return true;
   }
 
   useFrame(({ gl, size, viewport: glViewport }, delta) => {
@@ -377,7 +383,11 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
 
       let target = targetsRef.current.get(entity.id);
       if (!target) {
-        if (targetsRef.current.size >= MAX_MESH_TARGETS) reclaimColdestTarget(entity.id);
+        // Every target is in use by something on screen: this one waits rather than taking one.
+        if (targetsRef.current.size >= MAX_MESH_TARGETS && !reclaimColdestTarget(entity.id, frame)) {
+          quad.material = placeholderMat;
+          continue;
+        }
         const rt = new THREE.WebGLRenderTarget(rtW, rtH, {
           depthBuffer: true,
           stencilBuffer: false,
@@ -386,8 +396,6 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         rt.texture.minFilter = THREE.LinearFilter;
         rt.texture.magFilter = THREE.LinearFilter;
         rt.texture.generateMipmaps = false;
-        // The shared quad's UVs are flipped for ImageBitmap origin; a render target's are not.
-        rt.texture.flipY = false;
         target = {
           rt,
           camera: new THREE.PerspectiveCamera(45, aspect, 0.1, 1000),
@@ -473,6 +481,11 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
       const mat = materialRefs.current.get(entity.id);
       if (mat) {
         setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+        // A framebuffer's rows are bottom-up, and the shared quad's V runs top-down for image
+        // uploads. Sampled with V flipped back, or every model draws upside down. `flipY` cannot do
+        // this: nothing is uploaded from an image into a render target.
+        mat.uniforms.uvOffset.value.set(0, 1);
+        mat.uniforms.uvScale.value.set(1, -1);
         /**
          * The strip that moves the entity, shown under the pointer.
          *

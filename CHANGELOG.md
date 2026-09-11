@@ -3,6 +3,37 @@
 Dates are the day the work landed. Versions before 1.0 make no compatibility promise: the API is
 still moving, and a `!` on a heading means something that was there changed shape.
 
+## Unreleased
+
+### Fixed
+
+- An alignment guide no longer stays on the canvas after the drag that drew it.
+- Past about 2,500 entities nodes no longer vanish behind the camera: the depth ladder squeezes
+  instead of running off it.
+- `font="system"` text sits on its line rather than a line above it.
+- Video controls draw where they respond, and a model's move strip draws along its top.
+- Models and model previews render upright.
+- `collapseToSubgraph()` and `expandSubgraph()` report what they changed, so a controlled consumer
+  keeps the result.
+- Dropping a file makes an entity without `onFileDrop`, rather than the browser opening the file.
+- `toImage()` matches the screen: no washed-out colours, no darkened translucent edges.
+- A paste aimed at a rich-text editor inside the canvas is left to the editor.
+- A `mod+v` binding from `useKeyboardShortcuts` no longer stops a pasted picture from arriving.
+- Deleting a wired node is one undo step, not two.
+- Drawing no longer rebuilds the whole graph for every point of a stroke.
+- A deleted entity's evaluation outputs are released.
+- A type table that turns a manual type reactive runs the entities it was holding.
+- `autoLayout()` places what follows a loop behind it, whatever order the entities came in.
+- A consumer's own `status: 'success'` no longer looks like a selection.
+- Several model previews on screen no longer rebuild their framebuffers every pass or leave one
+  black.
+- Pausing one copy of a shared video pauses it, and a video that failed to load no longer keeps a
+  working one from playing.
+- Ink, pictures and text are no longer sent to `onEvaluate`.
+- An input change during a manual run marks what that run feeds.
+- Ink with no colour of its own follows a theme change.
+- `UseGraphOptions`, `UseGraphHistoryOptions` and `UseGraphReturn` are exported.
+
 ## 0.1.0 — 2026-09-11
 
 The release where the library stopped having holes in it. Everything below was either missing or
@@ -81,6 +112,12 @@ advertised-but-unimplemented before this version.
   require cannot fetch one. An ESM consumer gets the split; a CJS consumer gets a larger entry.
 - `EntityTypeDefinition.component` and the old `preview: { type, source }` shape are gone. Use
   `entity.preview` for a preview band.
+- **!** `'google-sans'` is gone from `FontPreset`, and the default `font` is `'inter'`. TypeScript
+  rejects the old name; plain JS gets a warning and Inter.
+- **!** `header` defaults to `'inside'`, and `'none'` now means no title at all.
+- **!** `EntityTypeDefinition` is no longer generic. Drop the type argument.
+- **!** Node corners and padding read KookieUI v2's surface tokens. Unset, `radius` follows the
+  size tier, which is the `'small'` surface radius at size `'2'`.
 
 ## 0.0.1-alpha.0 — 2026-09-10
 

@@ -10,7 +10,7 @@
  * them, not thousands — so a mesh apiece is the honest trade.
  */
 
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -23,13 +23,21 @@ import type { DrawEntityData } from '../types';
 
 const RENDER_ORDER = 3;
 export const DEFAULT_STROKE_WIDTH = 3;
+/** The fewest vertices a stroke's buffer is made for, so a short stroke never grows at all. */
+const MIN_STROKE_CAPACITY = 64;
 
 interface StrokeMesh {
   geometry: THREE.BufferGeometry;
   material: THREE.MeshBasicMaterial;
   mesh: THREE.Mesh;
-  /** The points array this geometry was built from — identity is the whole dirty check. */
+  /** The vertex buffer, written in place; replaced only when the stroke outgrows it. */
+  positions: Float32Array;
+  attribute: THREE.BufferAttribute | null;
+  /** How many vertices `positions` holds room for. */
+  capacity: number;
+  /** The points array this geometry was built from, and how long it was then. */
   builtFrom: number[] | null;
+  builtLength: number;
   builtWidth: number;
 }
 
@@ -38,9 +46,15 @@ export function DrawEntities() {
   const tokens = useTheme();
   const groupRef = useRef<THREE.Group>(null);
   const strokesRef = useRef<Map<string, StrokeMesh>>(new Map());
+  const seenRef = useRef<Set<string>>(new Set());
   const dirtyRef = useRef(true);
 
   const defaultColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
+  // Ink with no colour of its own takes the theme's text colour, so a theme flip repaints it. The
+  // layer is otherwise idle, and nothing in the store changes when the theme does.
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [defaultColor]);
 
   const [drawIds, setDrawIds] = useState<string[]>(() =>
     store.getState().entities.filter((e) => e.type === 'draw').map((e) => e.id)
@@ -61,6 +75,7 @@ export function DrawEntities() {
     });
     const unsubPositions = store.subscribe((s) => s.positionVersion, mark);
     const unsubEntities = store.subscribe((s) => s.entities, mark);
+    const unsubStroke = store.subscribe((s) => s.strokeVersion, mark);
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, mark);
     const unsubStack = store.subscribe((s) => s.stackVersion, mark);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, mark);
@@ -68,6 +83,7 @@ export function DrawEntities() {
       unsubTopology();
       unsubPositions();
       unsubEntities();
+      unsubStroke();
       unsubSelection();
       unsubStack();
       unsubHidden();
@@ -86,11 +102,6 @@ export function DrawEntities() {
     };
   }, []);
 
-  const scratch = useMemo<{ buffer: Float32Array<ArrayBuffer> }>(
-    () => ({ buffer: new Float32Array(0) }),
-    []
-  );
-
   useFrame(() => {
     const group = groupRef.current;
     if (!group || !dirtyRef.current) return;
@@ -98,7 +109,8 @@ export function DrawEntities() {
 
     const { entityMap, selectedEntityIds, hiddenEntityIds, stackOrder } = store.getState();
     const strokes = strokesRef.current;
-    const seen = new Set<string>();
+    const seen = seenRef.current;
+    seen.clear();
 
     for (const id of drawIdsRef.current) {
       const entity = entityMap.get(id);
@@ -123,23 +135,51 @@ export function DrawEntities() {
         mesh.frustumCulled = false;
         mesh.renderOrder = RENDER_ORDER;
         group.add(mesh);
-        stroke = { geometry, material, mesh, builtFrom: null, builtWidth: 0 };
+        stroke = {
+          geometry,
+          material,
+          mesh,
+          positions: new Float32Array(0),
+          attribute: null,
+          capacity: 0,
+          builtFrom: null,
+          builtLength: 0,
+          builtWidth: 0,
+        };
         strokes.set(id, stroke);
       }
 
-      if (stroke.builtFrom !== points || stroke.builtWidth !== width) {
-        const { vertices, count } = buildStrokeRibbon(points, width, scratch.buffer);
-        if (vertices !== scratch.buffer && vertices.length > scratch.buffer.length) {
-          scratch.buffer = new Float32Array(vertices.length);
+      // The stroke being drawn keeps ONE points array and grows it, so its length is part of the
+      // check; a finished stroke is a new array, so identity catches that.
+      if (
+        stroke.builtFrom !== points ||
+        stroke.builtLength !== points.length ||
+        stroke.builtWidth !== width
+      ) {
+        // Two vertices a point, or the four corners of a dot.
+        const needed = Math.max(4, points.length);
+        if (needed > stroke.capacity) {
+          // Grown with slack. A stroke being drawn adds a point a frame, and a buffer that only
+          // just fits reallocated — array, attribute and GL buffer — on every one of them.
+          const capacity = Math.max(MIN_STROKE_CAPACITY, needed * 2);
+          stroke.positions = new Float32Array(capacity * 3);
+          stroke.attribute = new THREE.BufferAttribute(stroke.positions, 3);
+          stroke.attribute.setUsage(THREE.DynamicDrawUsage);
+          stroke.geometry.setAttribute('position', stroke.attribute);
+          // Indexed for the whole capacity once; the draw range says how much of it is live.
+          stroke.geometry.setIndex(new THREE.BufferAttribute(strokeIndices(capacity), 1));
+          stroke.capacity = capacity;
         }
-        // Copied out of the scratch buffer: the attribute keeps its own memory, or the next
-        // stroke built this frame would overwrite the last one's vertices.
-        const owned = new Float32Array(count * 3);
-        owned.set(vertices.subarray(0, count * 3));
-        stroke.geometry.setAttribute('position', new THREE.BufferAttribute(owned, 3));
-        stroke.geometry.setIndex(new THREE.BufferAttribute(strokeIndices(count), 1));
-        stroke.geometry.computeBoundingSphere();
+        const { count } = buildStrokeRibbon(points, width, stroke.positions);
+        const attribute = stroke.attribute;
+        if (attribute) {
+          attribute.clearUpdateRanges();
+          attribute.addUpdateRange(0, count * 3);
+          attribute.needsUpdate = true;
+        }
+        stroke.geometry.setDrawRange(0, Math.max(0, (Math.floor(count / 2) - 1) * 6));
         stroke.builtFrom = points;
+        stroke.builtLength = points.length;
         stroke.builtWidth = width;
       }
 

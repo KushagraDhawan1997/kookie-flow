@@ -4017,6 +4017,25 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
     `${paused1} then ${paused2}`
   );
 
+  // The bar is DRAWN where it is clicked: along the bottom, and nothing along the top. Read on the
+  // paused clip, because on a playing one the frames change under both rows and anything differs.
+  // The shader once flipped V a second time and painted the bar at the top, over empty air, while
+  // the hit test listened at the bottom.
+  const topY = video.y + 8 + 14;
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(400);
+  const coldRows = { top: await pixelAtWorld(trackX, topY), bottom: await pixelAtWorld(trackX, barY) };
+  await page.mouse.move(over.x, over.y);
+  await page.waitForTimeout(400);
+  const warmRows = { top: await pixelAtWorld(trackX, topY), bottom: await pixelAtWorld(trackX, barY) };
+  check(
+    'and the bar is drawn along the bottom, where it is pressed, not along the top',
+    differ(coldRows.bottom, warmRows.bottom) && !differ(coldRows.top, warmRows.top),
+    `cold=${JSON.stringify(coldRows)} warm=${JSON.stringify(warmRows)}`
+  );
+  await page.mouse.move(buttonScreen.x, buttonScreen.y);
+  await page.waitForTimeout(300);
+
   // And pressing it again starts them.
   await page.mouse.down();
   await page.mouse.up();
@@ -4138,10 +4157,12 @@ await withPage('scene=widgets&widgets=1&grid=0', async (page) => {
   await page.waitForTimeout(120);
   const after = await page.evaluate(() => window.__harness.store.getState().focusedEntityId);
   const movedAgain = await at();
+  // Both axes, and not traded against focus moving: with one node the focus cannot move, and an
+  // x-only check passed a bare ArrowDown that moved the node down.
   check(
     'a bare arrow still walks the cursor rather than moving anything',
-    movedAgain.x === jumped.x || after !== before,
-    `cursor ${before} -> ${after}`
+    movedAgain.x === jumped.x && movedAgain.y === jumped.y && after !== null,
+    `cursor ${before} -> ${after}, ${JSON.stringify(jumped)} -> ${JSON.stringify(movedAgain)}`
   );
 });
 
@@ -4290,6 +4311,26 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
   );
 
   // ---- the picture ----
+  // Two pixels read BEFORE any capture — one on a node's body, one on empty canvas — to compare
+  // against after. A capture that left the renderer on its own target or clear colour changes both.
+  const probe = () => page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const { x, y, zoom } = s.viewport;
+    // A node that is actually on screen after the tidy above, sampled inside its body.
+    const visible = s.entities.find((e) => {
+      const sx = (e.position.x + 40) * zoom + x;
+      const sy = (e.position.y + 40) * zoom + y;
+      return sx > 0 && sy > 0 && sx < window.innerWidth && sy < window.innerHeight;
+    });
+    const onNode = visible
+      ? [Math.round((visible.position.x + 40) * zoom + x), Math.round((visible.position.y + 40) * zoom + y)]
+      : [0, 0];
+    return {
+      node: window.__harness.readPixel(onNode[0], onNode[1]),
+      empty: window.__harness.readPixel(5, window.innerHeight - 5),
+    };
+  });
+  const beforeCapture = await probe();
   const png = await page.evaluate(() => window.__harness.toImage(1));
   check(
     'the canvas exports a PNG data URL',
@@ -4313,16 +4354,14 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
     JSON.stringify(doubled)
   );
 
-  // A capture must leave the board exactly as it found it: same target, same clear colour.
-  const afterCapture = await page.evaluate(() => {
-    const { x, y, zoom } = window.__harness.store.getState().viewport;
-    return window.__harness.readPixel(Math.round(20 * zoom + x), Math.round(20 * zoom + y));
-  });
-  const stillDrawing = await page.evaluate(() => window.__harness.drawnInstances().length);
+  // A capture must leave the board exactly as it found it: same target, same clear colour, same size.
+  await page.waitForTimeout(150);
+  const afterCapture = await probe();
+  const same = (a, b) => Array.isArray(a) && Array.isArray(b) && a.every((v, i) => Math.abs(v - b[i]) <= 2);
   check(
     'and the board is untouched by having been photographed',
-    Array.isArray(afterCapture) && stillDrawing > 0,
-    `${stillDrawing} instances still drawn, pixel ${JSON.stringify(afterCapture)}`
+    same(beforeCapture.node, afterCapture.node) && same(beforeCapture.empty, afterCapture.empty),
+    `${JSON.stringify(beforeCapture)} -> ${JSON.stringify(afterCapture)}`
   );
 });
 
@@ -4442,13 +4481,19 @@ await withPage('scene=graph&count=2&seed=5&grid=0&preserveBuffer=1', async (page
 
   // A stroke across empty canvas, well below the two nodes.
   const path = [[150, 520], [220, 560], [300, 540], [380, 590]];
+  const batchesAtStart = await page.evaluate(() => window.__harness.entityChangeBatches().length);
   await page.mouse.move(path[0][0], path[0][1]);
   await page.mouse.down();
   for (const [x, y] of path.slice(1)) await page.mouse.move(x, y, { steps: 8 });
+  // Mid-stroke: the consumer must have heard nothing about the ink yet.
+  const midStroke = await page.evaluate((start) => {
+    const ink = window.__harness.store.getState().entities.find((e) => e.type === 'draw');
+    return ink ? window.__harness.entityChangeBatches().slice(start).filter((b) => b.includes(ink.id)).length : -1;
+  }, batchesAtStart);
   await page.mouse.up();
   await page.waitForTimeout(200);
 
-  const drawn = await page.evaluate(() => {
+  const drawn = await page.evaluate((start) => {
     const s = window.__harness.store.getState();
     const ink = s.entities.filter((e) => e.type === 'draw');
     const one = ink[0];
@@ -4458,9 +4503,10 @@ await withPage('scene=graph&count=2&seed=5&grid=0&preserveBuffer=1', async (page
       width: one?.width ?? 0,
       height: one?.height ?? 0,
       consumerHasIt: one ? window.__harness.consumerEntities().some((e) => e.id === one.id) : false,
+      reports: one ? window.__harness.entityChangeBatches().slice(start).filter((b) => b.includes(one.id)).length : 0,
       id: one?.id ?? null,
     };
-  });
+  }, batchesAtStart);
 
   check('a drag with the pen down leaves one stroke', drawn.count === 1, JSON.stringify(drawn));
   check(
@@ -4475,8 +4521,8 @@ await withPage('scene=graph&count=2&seed=5&grid=0&preserveBuffer=1', async (page
   );
   check(
     'and the consumer was told once, at the end',
-    drawn.consumerHasIt,
-    String(drawn.consumerHasIt)
+    drawn.consumerHasIt && midStroke === 0 && drawn.reports === 1,
+    `present ${drawn.consumerHasIt}, ${midStroke} reports mid-stroke, ${drawn.reports} in all`
   );
 
   // The ink is on screen: a pixel on the stroke differs from the empty canvas beside it.
@@ -4567,10 +4613,14 @@ await withPage('scene=widgets&widgets=1&grid=0&font=system&preserveBuffer=1', as
     );
     // Sweep the title's row and keep the darkest pixel: where exactly a glyph lands depends on
     // the platform's font, so the claim is "there is ink along this line", not "at this point".
+    // Over the title's whole band, not one row: the single row this read was tuned to was the one
+    // the system face covered while it drew a line too high, and correctly placed it misses it.
     let darkest = [255, 255, 255, 255];
-    for (let dx = 12; dx < 120; dx++) {
-      const px = at(dx, 20);
-      if (px[0] + px[1] + px[2] < darkest[0] + darkest[1] + darkest[2]) darkest = px;
+    for (let dy = 0; dy <= 44; dy += 2) {
+      for (let dx = 12; dx < 120; dx += 2) {
+        const px = at(dx, dy);
+        if (px[0] + px[1] + px[2] < darkest[0] + darkest[1] + darkest[2]) darkest = px;
+      }
     }
     return { darkest, background: at(200, 20) };
   });
@@ -4581,6 +4631,63 @@ await withPage('scene=widgets&widgets=1&grid=0&font=system&preserveBuffer=1', as
     `darkest=${JSON.stringify(contrast.darkest)} background=${JSON.stringify(contrast.background)}`
   );
 });
+
+/**
+ * And the system face sits on the SAME line as the bundled one. Its atlas once measured each
+ * glyph's offset from the baseline where layout reads it from the top of the line, so every
+ * system-font label drew a whole line too high — into the card's top padding — while the law
+ * above, which only looks for ink along a row, still found some.
+ */
+head('system font line');
+{
+  const inkCentre = (page) => page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    const e = s.entityMap.get('w');
+    const { x, y, zoom } = s.viewport;
+    const at = (dx, dy) => window.__harness.readPixel(
+      Math.round((e.position.x + dx) * zoom + x),
+      Math.round((e.position.y + dy) * zoom + y)
+    );
+    const background = at(200, 20);
+    // The title's band and nothing below it. The widget rows start where the band ends, and their
+    // boxes do not move with the font: counted, they swamped the centre and hid a whole-line shift.
+    const layout = s.socketLayout ?? {};
+    const bandBottom = Math.round((layout.padding ?? 12) + (layout.titleBand ?? 28));
+    let weight = 0;
+    let sum = 0;
+    // From below the card's hairline and clear of its corner, and only pixels as dark as text: the
+    // border row is a full-width line, and counted as ink it outweighed every glyph and pinned
+    // both faces to the card's edge whatever the text did.
+    for (let dy = 4; dy < bandBottom; dy++) {
+      let ink = 0;
+      for (let dx = 30; dx < 120; dx += 2) {
+        const px = at(dx, dy);
+        if (Math.abs(px[0] - background[0]) + Math.abs(px[1] - background[1]) + Math.abs(px[2] - background[2]) > 300) ink++;
+      }
+      weight += ink;
+      sum += ink * dy;
+    }
+    return weight > 0 ? sum / weight : null;
+  });
+  let bundled = null;
+  await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) => {
+    await page.waitForTimeout(600);
+    bundled = await inkCentre(page);
+  });
+  let system = null;
+  await withPage('scene=widgets&widgets=1&grid=0&font=system&preserveBuffer=1', async (page) => {
+    await page.waitForTimeout(1500);
+    system = await inkCentre(page);
+  });
+  if (!skipping()) console.log(`       ink centre: system ${system}, bundled ${bundled}`);
+  if (!skipping()) check(
+    'and the system face sits on the same line as the bundled one',
+    bundled !== null && system !== null && Math.abs(system - bundled) <= 4,
+    `ink centred at ${system} with font="system", ${bundled} with the bundled face`
+  );
+}
+
+head('density and rough edges');
 
 // ---------------------------------------------------------------- density
 /**
@@ -4648,18 +4755,27 @@ await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) =
   const title = await page.evaluate(async () => {
     const s = window.__harness.store.getState();
     const e = s.entities[0];
+    const oldLabel = e.data?.label ?? '';
     const before = window.__harness.glyphs().reduce((n, g) => n + g.count, 0);
     s.applyEntityChanges([
-      { type: 'data', id: e.id, data: { label: 'Denoise and upscale, very fast indeed, honestly' } },
+      { type: 'data', id: e.id, data: { label: 'Denoise, upscale and colour-grade the whole reel, very fast indeed, and honestly rather well' } },
     ]);
     await new Promise((r) => setTimeout(r, 250));
     const after = window.__harness.glyphs().reduce((n, g) => n + g.count, 0);
-    return { before, after, width: e.width ?? 0, name: 'Denoise and upscale, very fast indeed, honestly'.length };
+    // Glyphs, not characters: a space draws nothing. What the title would add untruncated is its
+    // inked characters less the old label's.
+    const inked = (text) => text.replace(/\s/g, '').length;
+    // Long enough that no card in this scene holds it: a name that fits is never cut, and a law
+    // about cutting learns nothing from it.
+    const name = 'Denoise, upscale and colour-grade the whole reel, very fast indeed, and honestly rather well';
+    return { before, after, width: e.width ?? 0, full: inked(name) - inked(String(oldLabel)) };
   });
+  // Strictly fewer than the whole name, and some: the old check allowed up to a whole name more
+  // than a truncated title can ever add, and passed with truncation deleted.
   check(
     'a long title is cut to the card rather than printed past it',
-    title.after - title.before < title.name,
-    `${title.after - title.before} glyphs added for a ${title.name}-character name`
+    title.after - title.before > 0 && title.after - title.before < title.full,
+    `${title.after - title.before} glyphs added, ${title.full} untruncated`
   );
 
   // A checkbox lights while it is held. Its gesture is instantaneous, so without this the only

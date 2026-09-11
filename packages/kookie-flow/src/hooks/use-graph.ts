@@ -104,6 +104,11 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
   const remember = useCallback(
     (changes: readonly (EntityChange | EdgeChange)[]) => {
       if (!historyOn || !isEdit(changes)) return;
+      // One gesture can arrive as two batches in one tick — a delete reports the wires, then the
+      // node — with no render between them, so both would record the same `before`. The second
+      // was an undo step that restored exactly what the first had.
+      const { past } = historyRef.current;
+      if (past.length > 0 && past[past.length - 1] === graphRef.current) return;
       historyRef.current = record(
         historyRef.current,
         graphRef.current,
@@ -201,6 +206,13 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
           case 'add': {
             idToIndex.set(change.entity.id, nextEntities.length);
             nextEntities.push(change.entity);
+            break;
+          }
+          case 'parent': {
+            const index = idToIndex.get(change.id);
+            if (index !== undefined) {
+              nextEntities[index] = { ...nextEntities[index], parentId: change.parentId ?? undefined };
+            }
             break;
           }
           case 'dimensions': {

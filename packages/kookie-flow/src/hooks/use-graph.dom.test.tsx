@@ -39,6 +39,30 @@ function mountGraph(): { api: () => UseGraphReturn; unmount: () => void } {
 }
 
 describe('undo through useGraph', () => {
+  it('deleting a wired node is one step, though the wire and the node arrive as two batches', () => {
+    const g = mountGraph();
+    act(() => {
+      g.api().onEntitiesChange([
+        { type: 'add', entity: { id: 'b', type: 'default', position: { x: 9, y: 9 }, data: {} } },
+      ]);
+    });
+    act(() => { g.api().onEdgesChange([{ type: 'add', edge: { id: 'e', source: 'a', target: 'b' } }]); });
+    // What the canvas does on Delete: the wires, then the node, in one tick with no render between.
+    act(() => {
+      g.api().onEdgesChange([{ type: 'remove', id: 'e' }]);
+      g.api().onEntitiesChange([{ type: 'remove', id: 'b' }]);
+    });
+    expect(g.api().entities).toHaveLength(1);
+
+    act(() => { g.api().undo(); });
+    expect(g.api().entities).toHaveLength(2);
+    expect(g.api().edges).toHaveLength(1);
+    // The next undo reaches the wire being added. It used to restore the pre-delete graph again.
+    act(() => { g.api().undo(); });
+    expect(g.api().edges).toHaveLength(0);
+    g.unmount();
+  });
+
   it('puts a moved node back where it was', () => {
     const g = mountGraph();
     act(() => {

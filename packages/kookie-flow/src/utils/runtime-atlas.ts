@@ -199,6 +199,17 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
   const baseline = Math.round(cellHeight * 0.72);
   const chars: GlyphMetrics[] = [];
 
+  // BMFont's `base` is the distance from the TOP of a line to its baseline, and a glyph's
+  // `yoffset` is measured from that same line top. Taken from the platform font's own ascent and
+  // descent, with the leading split above and below, so the runtime face sits in a line box where
+  // the bundled one does.
+  cellCtx.font = `${weight} ${ATLAS_FONT_SIZE}px ${family}`;
+  const reference = cellCtx.measureText('Hg');
+  const ascent = reference.fontBoundingBoxAscent || reference.actualBoundingBoxAscent || ATLAS_FONT_SIZE * 0.8;
+  const descent = reference.fontBoundingBoxDescent || reference.actualBoundingBoxDescent || ATLAS_FONT_SIZE * 0.2;
+  const lineHeight = Math.max(Math.round(ATLAS_FONT_SIZE * 1.25), Math.ceil(ascent + descent));
+  const base = Math.round(ascent + (lineHeight - ascent - descent) / 2);
+
   for (let i = 0; i < charset.length; i++) {
     const char = charset[i];
     cellCtx.clearRect(0, 0, cellWidth, cellHeight);
@@ -234,9 +245,11 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
       y,
       width: cellWidth,
       height: cellHeight,
-      // The cell was drawn with the pen at (pad, baseline), so the glyph's origin sits there.
+      // The cell was drawn with the pen at (pad, baseline). Its top is therefore `baseline` above
+      // the baseline, which is `base` below the line top. Measured from the baseline instead, as
+      // this first was, every system-font line drew a whole line too high.
       xoffset: -pad,
-      yoffset: -baseline,
+      yoffset: base - baseline,
       xadvance: metrics.width,
       page: 0,
       chnl: 15,
@@ -258,8 +271,8 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
     common: {
       // The two numbers text layout actually reads: where the baseline sits and how far apart
       // two lines are. Both are in the same units as `size`.
-      lineHeight: Math.round(ATLAS_FONT_SIZE * 1.25),
-      base: Math.round(ATLAS_FONT_SIZE * 0.8),
+      lineHeight,
+      base,
       scaleW: atlasWidth,
       scaleH: atlasHeight,
       pages: 1,

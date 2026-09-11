@@ -75,6 +75,7 @@ import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLin
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
 import type { DrawEntityData, MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
+import { diffGraph } from '../core/graph-diff';
 import { findAlignment, type AlignRect } from '../utils/alignment';
 import { mediaEntity, mediaKindOfFile, mediaKindOfUrl } from '../utils/media-paste';
 import { simplifyStroke, strokeBounds } from '../utils/stroke-geometry';
@@ -111,6 +112,7 @@ import type {
   FitViewOptions,
   Entity,
   Edge,
+  EdgeChange,
   EntityChange,
   SocketType,
   Connection,
@@ -144,6 +146,21 @@ const NO_SOCKET_TYPES: Record<string, SocketType> = {};
 const NO_ENTITY_TYPES: NonNullable<KookieFlowProps['entityTypes']> = {};
 const DEFAULT_SNAP_GRID: [number, number] = [20, 20];
 
+
+/**
+ * Report a wholesale rewrite the store made — a subgraph collapse or expand — as the changes a
+ * controlled consumer applies. See `diffGraph`.
+ */
+function reportRewrite(
+  before: { entities: Entity[]; edges: Edge[] },
+  after: { entities: Entity[]; edges: Edge[] },
+  onEntitiesChange: ((changes: EntityChange[]) => void) | undefined,
+  onEdgesChange: ((changes: EdgeChange[]) => void) | undefined
+): void {
+  const { entityChanges, edgeChanges } = diffGraph(before.entities, after.entities, before.edges, after.edges);
+  if (entityChanges.length > 0) onEntitiesChange?.(entityChanges);
+  if (edgeChanges.length > 0) onEdgesChange?.(edgeChanges);
+}
 /**
  * Main KookieFlow component.
  * Renders a WebGL canvas with an optional DOM overlay.
@@ -449,6 +466,8 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             onEvaluate={onEvaluate}
             onStatusChange={onStatusChange}
             entityTypes={entityTypes}
+            onEntitiesChange={onEntitiesChange}
+            onEdgesChange={onEdgesChange}
           />
           <InputHandler
             showWidgets={showWidgets}
@@ -529,12 +548,20 @@ interface FlowInstanceHandleProps {
   onEvaluate?: KookieFlowProps['onEvaluate'];
   onStatusChange?: KookieFlowProps['onStatusChange'];
   entityTypes?: KookieFlowProps['entityTypes'];
+  /** For the ref methods that rewrite the graph inside the store and must report it. */
+  onEntitiesChange?: KookieFlowProps['onEntitiesChange'];
+  onEdgesChange?: KookieFlowProps['onEdgesChange'];
 }
 
 const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProps>(
   function FlowInstanceHandle(
-    { containerRef, minZoom, maxZoom, onEvaluate, onStatusChange, entityTypes }, ref) {
+    { containerRef, minZoom, maxZoom, onEvaluate, onStatusChange, entityTypes, onEntitiesChange, onEdgesChange }, ref) {
     const store = useFlowStoreApi();
+    // Read through refs, so a consumer passing new callbacks each render does not rebuild the handle.
+    const onEntitiesChangeRef = useRef(onEntitiesChange);
+    const onEdgesChangeRef = useRef(onEdgesChange);
+    onEntitiesChangeRef.current = onEntitiesChange;
+    onEdgesChangeRef.current = onEdgesChange;
 
     // The engine keeps its records across handler changes; only the callbacks are replaced.
     // Disposal is separate and unconditional: every run in flight is aborted and every
@@ -603,10 +630,18 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
         autoLayout: (options) => store.getState().autoLayout(options),
         /** A PNG of what is on screen. Fit the view first for the whole graph. */
         toImage: (options) => capture(store, options),
-        collapseToSubgraph: (entityIds, groupId) =>
-          store.getState().collapseToSubgraph(entityIds, groupId),
-        expandSubgraph: (groupId, childEntities, internalEdges, portMapping) =>
-          store.getState().expandSubgraph(groupId, childEntities, internalEdges, portMapping),
+        // Both rewrite the graph inside the store, so both report the difference, as a drag does.
+        // Unreported, the consumer's next render put the old graph back.
+        collapseToSubgraph: (entityIds, groupId) => {
+          const before = store.getState();
+          before.collapseToSubgraph(entityIds, groupId);
+          reportRewrite(before, store.getState(), onEntitiesChangeRef.current, onEdgesChangeRef.current);
+        },
+        expandSubgraph: (groupId, childEntities, internalEdges, portMapping) => {
+          const before = store.getState();
+          before.expandSubgraph(groupId, childEntities, internalEdges, portMapping);
+          reportRewrite(before, store.getState(), onEntitiesChangeRef.current, onEdgesChangeRef.current);
+        },
 
         getSelectedEntities: () => {
           const state = store.getState();
@@ -853,6 +888,8 @@ function InputHandler({
   const alignCandidates = useMemo<AlignRect[]>(() => [], []);
   const alignVertical = useMemo<number[]>(() => [], []);
   const alignHorizontal = useMemo<number[]>(() => [], []);
+  /** The padded view the candidates are asked of the quadtree for, rewritten each move. */
+  const alignRange = useMemo(() => ({ x: 0, y: 0, width: 0, height: 0 }), []);
 
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
   /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
@@ -1015,6 +1052,8 @@ function InputHandler({
   const dragState = useRef<{
     entityIds: string[];
     startPositions: Map<string, { x: number; y: number }>;
+    /** The same ids as a set, built once at drag start for the per-move membership test. */
+    entityIdSet: Set<string>;
     cursorOffset: { x: number; y: number }; // Offset from cursor to primary entity position at click time
     containerRect: { width: number; height: number }; // Cached to avoid layout queries in RAF
   } | null>(null);
@@ -1789,9 +1828,9 @@ function InputHandler({
        * A stroke in progress owns the pointer outright, like a slider drag.
        *
        * Points are appended in the ENTITY's coordinates and the entity is rewritten in place —
-       * `applyEntityChanges` rather than the consumer's callback, because a stroke reports itself
-       * once, when it is finished. A hundred `data` changes a second through a controlled
-       * consumer would re-render their whole tree for every millimetre of ink.
+       * not through the consumer's callback, because a stroke reports itself once, when it is
+       * finished, and not through `applyEntityChanges` either, which rebuilds every index and both
+       * quadtrees and wakes every layer. The ink layer is the only one that has to hear it.
        */
       const stroke = strokeRef.current;
       if (stroke) {
@@ -1809,11 +1848,7 @@ function InputHandler({
           // hand moving, and it is the difference between a stroke of 80 points and one of 800.
           if (Math.abs(x - lastX) + Math.abs(y - lastY) >= 1 / viewport.zoom) {
             stroke.points.push(x, y);
-            store.getState().applyEntityChanges([
-              // A NEW array each time: the renderer's dirty check is the points array's identity,
-              // and an array mutated in place would never look changed.
-              { type: 'data', id: stroke.id, data: { points: stroke.points.slice() } },
-            ]);
+            store.getState().setStrokePoints(stroke.id, stroke.points);
           }
           return;
         }
@@ -2223,6 +2258,7 @@ function InputHandler({
             // Use cached rect (updated via ResizeObserver) - avoids layout thrashing
             dragState.current = {
               entityIds: dragEntityIds,
+              entityIdSet: new Set(dragEntityIds),
               startPositions,
               cursorOffset,
               containerRect: {
@@ -2287,34 +2323,34 @@ function InputHandler({
             alignMoving.height = primary.height ?? layout.computedHeight;
 
             // Everything that is NOT being dragged, and is on screen: a guide to a node a
-            // kilometre away is a line to nowhere, and measuring against a thousand of them
-            // every frame is the kind of O(n) this codebase does not do.
-            alignCandidates.length = 0;
+            // kilometre away is a line to nowhere. Asked of the quadtree rather than of every
+            // entity, which is what it is for, and written into rects pooled across moves.
             const pad = 200;
-            const vLeft = -s.viewport.x / s.viewport.zoom - pad;
-            const vTop = -s.viewport.y / s.viewport.zoom - pad;
-            const vRight = (rect.width - s.viewport.x) / s.viewport.zoom + pad;
-            const vBottom = (rect.height - s.viewport.y) / s.viewport.zoom + pad;
-            for (const candidate of s.entities) {
-              if (dragState.current.entityIds.includes(candidate.id)) continue;
-              if (s.hiddenEntityIds.has(candidate.id)) continue;
-              const cw = candidate.width ?? defaultEntityWidth ?? DEFAULT_ENTITY_WIDTH;
-              const ch = candidate.height ?? getEntitySocketLayout(candidate, socketLayout).computedHeight;
-              if (
-                candidate.position.x > vRight || candidate.position.x + cw < vLeft ||
-                candidate.position.y > vBottom || candidate.position.y + ch < vTop
-              ) continue;
-              alignCandidates.push({
-                id: candidate.id,
-                x: candidate.position.x,
-                y: candidate.position.y,
-                width: cw,
-                height: ch,
-              });
+            alignRange.x = -s.viewport.x / s.viewport.zoom - pad;
+            alignRange.y = -s.viewport.y / s.viewport.zoom - pad;
+            alignRange.width = rect.width / s.viewport.zoom + pad * 2;
+            alignRange.height = rect.height / s.viewport.zoom + pad * 2;
+            const dragged = dragState.current.entityIdSet;
+            let candidateCount = 0;
+            for (const id of s.quadtree.queryRange(alignRange)) {
+              if (dragged.has(id)) continue;
+              const candidate = s.entityMap.get(id);
+              if (!candidate) continue;
+              let slot = alignCandidates[candidateCount];
+              if (!slot) {
+                slot = { id: '', x: 0, y: 0, width: 0, height: 0 };
+                alignCandidates[candidateCount] = slot;
+              }
+              slot.id = candidate.id;
+              slot.x = candidate.position.x;
+              slot.y = candidate.position.y;
+              slot.width = candidate.width ?? defaultEntityWidth ?? DEFAULT_ENTITY_WIDTH;
+              slot.height = candidate.height ?? getEntitySocketLayout(candidate, socketLayout).computedHeight;
+              candidateCount++;
             }
 
             const snapped = findAlignment(
-              alignMoving, alignCandidates, s.viewport.zoom, alignVertical, alignHorizontal
+              alignMoving, alignCandidates, s.viewport.zoom, alignVertical, alignHorizontal, candidateCount
             );
             primaryX += snapped.dx;
             primaryY += snapped.dy;
@@ -3061,7 +3097,10 @@ function InputHandler({
     };
 
     const handleDragOver = (e: DragEvent) => {
-      if (!onFileDropRef.current || !inBounds(e)) return;
+      // Gated on there being files, not on `onFileDrop`: the browser fires `drop` only where
+      // `dragover` was cancelled, and the canvas makes the entity itself when there is no callback.
+      // Gated on the callback, a picture dropped on a canvas without one opened in the tab instead.
+      if (!inBounds(e) || !e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     };
@@ -3098,6 +3137,8 @@ function InputHandler({
       // page would put a node on the canvas when someone pastes into the host app's search box.
       if (!container || !active || !(active === container || container.contains(active))) return;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // A rich-text editor inside the canvas — a consumer panel, a DOM widget — owns its own paste.
+      if (active instanceof HTMLElement && active.isContentEditable) return;
       const data = e.clipboardData;
       if (!data) return;
 

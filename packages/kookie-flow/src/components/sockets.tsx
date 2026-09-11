@@ -569,7 +569,7 @@ export function Sockets({
     const entityLayout = getEntitySocketLayout(entity, socketLayout);
     // A socket sits in its entity's depth slice, above the body — see utils/entity-depth.ts.
     const { stackOrder, selectedEntityIds } = store.getState();
-    const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.socket;
+    const z = entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.socket);
 
     // Render input sockets
     if (entity.inputs) {
@@ -807,7 +807,7 @@ export function Sockets({
           // Both meshes share bgMesh's instanceMatrix
           const mesh = bgMesh;
           const entityLayout = getEntitySocketLayout(entity, socketLayout);
-          const z = entityDepth(entity.id, stackOrder, selectedEntityIds) + DEPTH_LAYER.socket;
+          const z = entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.socket);
 
           let instanceIdx = range.start;
 
