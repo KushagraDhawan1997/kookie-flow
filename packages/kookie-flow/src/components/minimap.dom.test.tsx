@@ -148,6 +148,16 @@ function mountMinimap(entities: Entity[]): Mounted {
   return { store, visible, layer };
 }
 
+describe('Minimap shape', () => {
+  it('takes a surface corner, not a control corner', () => {
+    // v2's default radius level is `full`, where every control radius (`--radius-1..5`) is 9999px.
+    // The minimap read `--radius-2` and came out a pill; a floating panel reads the surface family,
+    // which is bounded at every level.
+    const { visible } = mountMinimap(makeEntities());
+    expect(visible.parentElement?.style.borderRadius).toBe('var(--radius-surface-1)');
+  });
+});
+
 describe('Minimap entity layer caching', () => {
   it('paints every entity once on mount and blits the layer onto the visible canvas', () => {
     const { visible, layer } = mountMinimap(makeEntities());

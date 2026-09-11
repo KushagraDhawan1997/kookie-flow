@@ -849,7 +849,10 @@ export function Minimap({
     ...positionStyle,
     width,
     height,
-    borderRadius: 'var(--radius-2)',
+    // A floating panel, so the SURFACE family, as v2's own floating surfaces use. `--radius-2` is a
+    // control radius, and at v2's default `full` level every control radius is 9999px: the minimap
+    // came out a pill.
+    borderRadius: 'var(--radius-surface-1)',
     overflow: 'hidden',
     boxShadow: 'var(--shadow-2)',
     pointerEvents: interactive ? 'auto' : 'none',

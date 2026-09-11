@@ -33,7 +33,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
-import { getWidgetBox } from '../utils/widget-geometry';
+import { wellRadius, getWidgetBox } from '../utils/widget-geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
@@ -657,7 +657,7 @@ export function WidgetsGL({
         // in-shader from its own side, so this is the well's alone. The shader clamps it to half
         // the box, which is what turns the `full` level's 9999 into a pill rather than an
         // overflow — the same `calc(height / 2)` v2 gives a control at that level.
-        buffers.radius[n] = resolvedStyle.widgetRadius;
+        buffers.radius[n] = wellRadius(config.type, resolvedStyle.widgetRadius, socketLayout.widgetHeight);
         buffers.kind[n] = kindFor(config.type, value);
         buffers.value[n] = config.type === 'slider' ? sliderFraction(value, config) : 0;
         if (config.type === 'color') {

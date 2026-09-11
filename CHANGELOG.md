@@ -33,6 +33,8 @@ still moving, and a `!` on a heading means something that was there changed shap
 - An input change during a manual run marks what that run feeds.
 - Ink with no colour of its own follows a theme change.
 - `UseGraphOptions`, `UseGraphHistoryOptions` and `UseGraphReturn` are exported.
+- At KookieUI v2's default `full` radius the minimap is a rounded panel rather than a pill, and a
+  multi-row text area keeps a one-row corner, as v2's own text area does, rather than a stadium.
 
 ## 0.1.0 — 2026-09-11
 

@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getWidgetBox, readWidgetBoxInto, isPointInWidget, type WidgetBox } from './widget-geometry';
+import { getWidgetBox, readWidgetBoxInto, isPointInWidget, wellRadius, type WidgetBox } from './widget-geometry';
 import type { ResolvedSocketLayout } from './style-resolver';
 import type { Entity } from '../types';
 
@@ -87,5 +87,20 @@ describe('readWidgetBoxInto writes the same rectangle into the caller storage', 
     expect(isPointInWidget(box, box.x + box.width / 2, box.y + box.height / 2)).toBe(true);
     expect(isPointInWidget(box, box.x - 1, box.y + box.height / 2)).toBe(false);
     expect(isPointInWidget(box, box.x + box.width / 2, box.y + box.height + 1)).toBe(false);
+  });
+});
+
+describe('wellRadius', () => {
+  it('a text area at the pill level keeps one row\'s corner, as v2\'s does, not a stadium', () => {
+    expect(wellRadius('textarea', 9999, 32)).toBe(16);
+  });
+
+  it('a one-row field keeps the sentinel, which the shader clamps to half its own box', () => {
+    expect(wellRadius('text', 9999, 32)).toBe(9999);
+  });
+
+  it('below the pill level the corner is the token, whatever the kind', () => {
+    expect(wellRadius('textarea', 6, 32)).toBe(6);
+    expect(wellRadius('select', 6, 32)).toBe(6);
   });
 });

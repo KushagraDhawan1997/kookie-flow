@@ -97,3 +97,15 @@ export function readWidgetBoxInto(
 export function isPointInWidget(box: WidgetBox, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }
+
+/**
+ * The corner a widget's well is drawn with.
+ *
+ * At v2's `full` radius level a control's corner is `calc(var(--control-height-N) / 2)`: half ONE
+ * control's height. A text area is a control, so it keeps that one-row corner however many rows
+ * tall it is. Handed the pill sentinel and clamped to half its own box, a three-row text area came
+ * out a stadium. Every other kind is one row, where half its box and half a row are the same.
+ */
+export function wellRadius(type: string, widgetRadius: number, rowHeight: number): number {
+  return type === 'textarea' ? Math.min(widgetRadius, rowHeight / 2) : widgetRadius;
+}
