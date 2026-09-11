@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { themeRoot } from '../utils/theme-root';
-import { parseColorToRGB, parsePx, type RGBColor, withProbes } from '../utils/color';
+import { parseColorToRGB, parsePx, setProbeHost, type RGBColor, withProbes } from '../utils/color';
 
 /**
  * Simplified shadow for WebGL (single drop shadow, not multi-layer CSS).
@@ -386,6 +386,16 @@ function detectAppearance(root: Element): 'light' | 'dark' {
 function readTokensFromDOM(root: Element): ThemeTokens {
   const styles = getComputedStyle(root);
   const appearance = detectAppearance(root);
+  /**
+   * Measure inside the theme, not beside it.
+   *
+   * A v2 length is `calc(var(--scale) * 12px)`, and the computed value of a custom property is
+   * still a token stream — the `var()` is there when the probe is handed it. On the body, where
+   * the probe used to live, `--scale` resolves to nothing, the calc is invalid, and the value
+   * falls back: every `--scale` a product set was ignored and the graph stayed at 1 while the
+   * page scaled around it.
+   */
+  setProbeHost(root);
 
   /**
    * The space scale is OFF BY ONE INDEX from what this reader's names say, and the shift is
@@ -532,6 +542,21 @@ function readTokensFromDOM(root: Element): ThemeTokens {
 }
 
 /**
+ * Read the tokens, then put the probes back where they were.
+ *
+ * The host is a module-level pointer at whichever element the last read was rooted at, so it has
+ * to be cleared: a probe left pointing into a theme that has since unmounted would append itself
+ * to a detached element, and every measurement after that would come back zero.
+ */
+function readTokensAndRelease(root: Element): ThemeTokens {
+  try {
+    return readTokensFromDOM(root);
+  } finally {
+    setProbeHost(null);
+  }
+}
+
+/**
  * Check if tokens appear valid (not all zeros from failed CSS read).
  * During hydration, getComputedStyle may return empty/zero values briefly.
  */
@@ -568,7 +593,7 @@ export function useThemeTokens(): ThemeTokens {
   const [tokens, setTokens] = useState<ThemeTokens>(() => {
     if (typeof document === 'undefined') return FALLBACK_TOKENS;
     const root = themeRoot();
-    const domTokens = readTokensFromDOM(root);
+    const domTokens = readTokensAndRelease(root);
     return areTokensValid(domTokens) ? domTokens : FALLBACK_TOKENS;
   });
 
@@ -601,7 +626,7 @@ export function useThemeTokens(): ThemeTokens {
     };
 
     const tryRead = () => {
-      const newTokens = readTokensFromDOM(root);
+      const newTokens = readTokensAndRelease(root);
       if (areTokensValid(newTokens)) {
         // Only update if tokens actually changed
         setTokens((prev) => tokensEqual(prev, newTokens) ? prev : newTokens);

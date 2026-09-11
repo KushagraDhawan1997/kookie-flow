@@ -19,6 +19,8 @@ const SIZE_2: ResolvedSocketLayout = {
   socketSize: 10,
   padding: 12,
   borderWidth: 1,
+  markSize: 20,
+  trackHeight: 4,
 };
 
 const SIZE_4: ResolvedSocketLayout = {
@@ -29,6 +31,8 @@ const SIZE_4: ResolvedSocketLayout = {
   socketSize: 14,
   padding: 20,
   borderWidth: 1,
+  markSize: 20,
+  trackHeight: 4,
 };
 
 function entity(id = 'e1'): Entity {

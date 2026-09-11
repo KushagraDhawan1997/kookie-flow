@@ -189,6 +189,8 @@ function params() {
     helperLines: q.get('helperLines') === '1',
     /** Which font atlas to mount. `system` builds one at runtime from the platform's own font. */
     font: q.get('font'),
+    /** A v2 density lever, set on the Theme element the way a product sets it. */
+    scale: num('scale', 0),
     scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types' | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
@@ -1332,7 +1334,13 @@ function App() {
        `--control-px-pill-N` for their text inset. Both are the intended look, and the laws
        re-derive from live geometry rather than from a recorded corner.
     */
-    <Theme appearance={p.appearance} radius={p.radius ?? 'full'}>
+    <Theme
+      appearance={p.appearance}
+      radius={p.radius ?? 'full'}
+      // A product sets `--scale` on the Theme element, not on :root — which is exactly the case
+      // a probe attached to the body could not resolve.
+      {...(p.scale ? { style: { ['--scale' as string]: String(p.scale) } as React.CSSProperties } : {})}
+    >
       <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
         {flows}
       </div>

@@ -546,6 +546,15 @@ export interface ResolvedSocketLayout {
   /** Padding inside node (from size config) */
   padding: number;
   /**
+   * The checkbox's square, from `--mark-N`.
+   *
+   * v2 makes this byte-identical to `--line-height-N`, which is what lands a mark on its own
+   * label's line with no alignment rule at all. It was an 18 in the shader.
+   */
+  markSize: number;
+  /** The slider's rail, from `--slider-track-N`. Also a shader literal before. */
+  trackHeight: number;
+  /**
    * The body's border, which every content inset owes. `.kui-surface` is border-box and declares
    * its border in the same rule as its padding, so the distance from the outer edge to the first
    * glyph is `padding + borderWidth`, not `padding`.
@@ -615,6 +624,8 @@ export function resolveSocketLayout(
     socketSize: sizeConfig.socketSize,
     padding,
     borderWidth,
+    markSize: resolveTokenPx(atIndex('--mark', size), tokens),
+    trackHeight: resolveTokenPx(atIndex('--slider-track', size), tokens),
   };
 }
 

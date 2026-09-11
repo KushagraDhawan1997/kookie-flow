@@ -856,6 +856,8 @@ function InputHandler({
 
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
   /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
+  /** Whether a checkbox is being held down, so its release knows to put the light out. */
+  const checkboxPressRef = useRef(false);
   const videoScrubRef = useRef<{ entityId: string; width: number } | null>(null);
   /** A turn in progress on a model: where it started, and the angles it started from. */
   const orbitDragRef = useRef<{
@@ -1584,6 +1586,17 @@ function InputHandler({
             // after a click is the node that was clicked, not wherever the cursor was left.
             store.getState().setFocusedEntityId(clickedEntity.id);
             if (hit.config.type === 'checkbox') {
+              /**
+               * Lit for as long as the finger is down.
+               *
+               * A checkbox's whole gesture is instantaneous, so without this the only feedback is
+               * the value flipping — and a press that lands on a box whose value was already
+               * what you wanted looks like nothing happened at all. The shader path for this has
+               * existed since the widgets moved into GL; only the slider was driving it.
+               */
+              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+              checkboxPressRef.current = true;
+              containerRef.current?.setPointerCapture(e.pointerId);
               emitWidgetChange(hit.entityId, hit.socketId, !hit.value);
               return;
             }
@@ -2516,6 +2529,15 @@ function InputHandler({
       }
       if (orbitDragRef.current) {
         orbitDragRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
+      // A checkbox's press ends here: the value already changed on the way down, so all that is
+      // left is to stop lighting it.
+      if (checkboxPressRef.current) {
+        checkboxPressRef.current = false;
+        store.getState().setPressedWidgetKey(null);
         containerRef.current?.releasePointerCapture(e.pointerId);
         return;
       }

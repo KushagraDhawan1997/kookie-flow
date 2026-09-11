@@ -724,14 +724,7 @@ argued loudest for are the two the skeptics killed. 180 laws pass unchanged.
   graph wants its controls in a column so rows scan vertically. Kept, and now documented as a
   canvas decision with no token behind it.
 
-### Still open
-
-- The label gutter is a fixed 96 while `text-renderer` truncates against the CONSTANT and
-  `widget-geometry` lays out against the PROP, so a consumer who sets `socketLabelWidth` gets dead
-  gutter. Named, not fixed.
-- The checkbox mark (18) and slider track (4) are still shader literals where `--mark-N` and
-  `--slider-track-N` exist.
-- `--scale` is a public v2 lever and every fallback literal in the reader pins it to 1.
+### Still open — all four closed on 2026-09-11, see D19
 
 ---
 
@@ -1057,3 +1050,43 @@ for being worth having. The laws use a scene of two nodes that state a type, a p
 almost nothing else: the sockets answer a press, the sockets are drawn, the header text is on
 screen, and the card is as wide as the table said. Sabotaging the prop sync's resolve fails five
 of them. 563 unit tests, 221 laws.
+
+
+## D19 — the four rough edges the v2 pass named
+
+**Date:** 2026-09-11
+
+Each was small, each was visible, and each had been written down rather than fixed.
+
+**The label gutter.** `text-renderer` truncated against the CONSTANT while `widget-geometry` laid
+out against the PROP. A consumer who widened `socketLabelWidth` got their labels cut short in the
+middle of the space they had asked for; one who narrowed it got labels running under their own
+controls. It reads the prop now, at both sites.
+
+**The mark and the track.** The checkbox's square was an 18 in the shader and the slider's rail a
+4, while `--mark-N` and `--slider-track-N` sat in the token table unread. Both are resolved into
+`ResolvedSocketLayout` and passed as uniforms. v2 makes `--mark-N` byte-identical to
+`--line-height-N`, which is what lands a mark on its own label's line with no alignment rule at
+all — a fact the literal was throwing away.
+
+**`--scale`.** The lever worked for nothing. v2 writes every length as `calc(Npx * var(--scale))`,
+and the computed value of a custom property is a token stream with the `var()` still in it — so
+the probe that measures those lengths was being handed an expression it had to resolve in its own
+context, and it lived on the BODY. A product's `--scale`, set on the Theme element, did not reach
+it: the calc was invalid, the read fell back to the table, and the graph stayed at 1 while the
+page scaled around it. The probe is attached inside the theme root now, and released after the
+pass so it cannot point into a theme that has unmounted.
+
+Which numbers move is v2's decision and not this library's: the control families are declared on
+the theme element and scale, the space scale is declared on `:root` and does not. Both halves are
+pinned, because the surprising half is the second one.
+
+**Two things that were "deliberately not done" and are now done.** A title was the one string on a
+node that was never truncated, so a long name printed out through the card's right edge and over
+whatever was behind it — measured in SEMIBOLD, since that is the face it is drawn in. And a
+checkbox now lights while it is held: its gesture is instantaneous, so without it the only
+feedback is the value flipping, and pressing a box that already held what you wanted looked like
+nothing happening. The shader path had existed since the widgets moved into GL; only the slider
+was driving it.
+
+703 unit tests, 273 laws.

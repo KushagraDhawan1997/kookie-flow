@@ -4582,6 +4582,107 @@ await withPage('scene=widgets&widgets=1&grid=0&font=system&preserveBuffer=1', as
   );
 });
 
+// ---------------------------------------------------------------- density
+/**
+ * `--scale` is v2's density lever, and the graph ignored it.
+ *
+ * A v2 length is `calc(8px * var(--scale))`, and the computed value of a custom property still
+ * contains the `var()`. The probe that measures those lengths lived on the BODY, where a `--scale`
+ * set on the Theme element does not reach — so the calc was invalid, the read fell back to the
+ * table, and the graph stayed at 1 while the page scaled around it.
+ */
+await withPage('scene=widgets&widgets=1&grid=0', async (page) => {
+  await page.waitForTimeout(300);
+  const plain = await page.evaluate(() => {
+    const s = window.__harness.store.getState().socketLayout;
+    return { row: s.rowHeight, widget: s.widgetHeight, padding: s.padding };
+  });
+  check(
+    'INSTRUMENT: the resting layout is the one every other law is judged against',
+    plain.row === 40 && plain.widget === 32,
+    JSON.stringify(plain)
+  );
+
+  await withPage('scene=widgets&widgets=1&grid=0&scale=1.5', async (dense) => {
+    await dense.waitForTimeout(400);
+    const scaled = await dense.evaluate(() => {
+      const s = window.__harness.store.getState().socketLayout;
+      return { row: s.rowHeight, widget: s.widgetHeight, padding: s.padding };
+    });
+    check(
+      'a --scale on the theme reaches the graph',
+      scaled.row > plain.row && scaled.widget > plain.widget,
+      `${JSON.stringify(plain)} -> ${JSON.stringify(scaled)}`
+    );
+    /**
+     * WHICH numbers move is the design system's decision, not this library's.
+     *
+     * v2 writes every length as `calc(Npx * var(--scale))` but declares them in two places: the
+     * control families are scoped to the theme element, where a product's `--scale` applies, and
+     * the space scale sits on `:root`, where it does not. So a scaled board has taller rows and
+     * taller controls and the same body padding — v2's own behaviour, reproduced faithfully
+     * rather than a number chosen here.
+     */
+    check(
+      'the control families scale, because the theme is where they are declared',
+      Math.abs(scaled.widget - plain.widget * 1.5) < 8,
+      `${plain.widget} -> ${scaled.widget}`
+    );
+    check(
+      'and the space scale does not, because :root is where that one lives',
+      scaled.padding === plain.padding,
+      `${plain.padding} -> ${scaled.padding}`
+    );
+  });
+});
+
+// ---------------------------------------------------------------- the last rough edges
+/**
+ * Four things the v2 pass named and left. Each is small and each is visible.
+ */
+await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) => {
+  await page.waitForTimeout(400);
+
+  // A title runs as long as it likes, or it did: it was the one string on a node that was never
+  // truncated, so a long name printed straight out through the card's right edge.
+  const title = await page.evaluate(async () => {
+    const s = window.__harness.store.getState();
+    const e = s.entities[0];
+    const before = window.__harness.glyphs().reduce((n, g) => n + g.count, 0);
+    s.applyEntityChanges([
+      { type: 'data', id: e.id, data: { label: 'Denoise and upscale, very fast indeed, honestly' } },
+    ]);
+    await new Promise((r) => setTimeout(r, 250));
+    const after = window.__harness.glyphs().reduce((n, g) => n + g.count, 0);
+    return { before, after, width: e.width ?? 0, name: 'Denoise and upscale, very fast indeed, honestly'.length };
+  });
+  check(
+    'a long title is cut to the card rather than printed past it',
+    title.after - title.before < title.name,
+    `${title.after - title.before} glyphs added for a ${title.name}-character name`
+  );
+
+  // A checkbox lights while it is held. Its gesture is instantaneous, so without this the only
+  // feedback is the value flipping — and pressing a box that was already what you wanted looks
+  // like nothing happened.
+  const box = await page.evaluate(() => window.__harness.widgetPoint('w', 'flag'));
+  if (box) {
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    const held = await page.evaluate(() => window.__harness.store.getState().pressedWidgetKey);
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+    const released = await page.evaluate(() => window.__harness.store.getState().pressedWidgetKey);
+    check(
+      'a checkbox is lit while it is held down',
+      held === 'w:flag',
+      String(held)
+    );
+    check('and goes out when it is let go', released === null, String(released));
+  }
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log(

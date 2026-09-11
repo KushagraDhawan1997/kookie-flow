@@ -484,6 +484,10 @@ export function MultiWeightTextRenderer({
   // Glyph/kerning maps from FontContext (shared, built once)
   const regularGlyphMap = regularFont?.glyphMap ?? emptyGlyphMap;
   const regularKerningMap = regularFont?.kerningMap ?? emptyKerningMap;
+  // The title is drawn in semibold where there is one, so it must be MEASURED in semibold too:
+  // measuring a bold string against the regular face truncates it a character or two late.
+  const titleGlyphMap = semiboldFont?.glyphMap ?? regularGlyphMap;
+  const titleKerningMap = semiboldFont?.kerningMap ?? regularKerningMap;
 
   // Socket index map for edge label positioning
   const socketIndexMapRef = useRef<SocketIndexMap>(new Map());
@@ -591,7 +595,27 @@ export function MultiWeightTextRenderer({
           continue;
         }
 
-        const label = entity.data.label ?? entity.type;
+        const rawLabel = entity.data.label ?? entity.type;
+        /**
+         * A title is truncated to the card, like every other label here.
+         *
+         * It was the one string on a node that ran as long as it liked, so a node called
+         * "Denoise and upscale (fast)" printed its name straight out through its own right edge
+         * and over whatever was behind it. The width available is the body minus its insets, and
+         * minus the gutter a title shares with nothing — there is no second column on this row.
+         */
+        const titleWidth = (entity.width ?? DEFAULT_ENTITY_WIDTH) - contentInset * 2;
+        const label =
+          titleGlyphMap.size > 0
+            ? truncateText(
+                rawLabel,
+                titleWidth,
+                12,
+                (semiboldFont ?? regularFont)?.metrics.info.size ?? 12,
+                titleGlyphMap,
+                titleKerningMap
+              )
+            : rawLabel;
         /*
          * The title is centred in its OWN BAND, and the band starts at the content inset.
          *
@@ -687,7 +711,11 @@ export function MultiWeightTextRenderer({
               const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
               const textY = socketY - 7; // adjust for visual centering
               // Truncate output labels to fit available space (mirror of input label width)
-              const outputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
+              // The PROP, not the constant. Widget geometry lays the row out against the prop, so
+              // truncating against the constant left a consumer who widened the gutter with text
+              // cut short in the middle of the space they had asked for — and one who narrowed it
+              // with labels running under their own controls.
+              const outputLabelMaxWidth = socketLabelWidth - 12; // padding
               const truncatedName =
                 regularGlyphMap.size > 0
                   ? truncateText(
@@ -719,7 +747,7 @@ export function MultiWeightTextRenderer({
               const socketY = entity.position.y + (cachedPos?.labelY ?? socketLayout.marginTop + socketLayout.rowHeight / 2) + centerOffset;
               const textY = socketY - 7; // adjust for visual centering
               // Truncate input labels to fit before widget area
-              const inputLabelMaxWidth = SOCKET_LABEL_WIDTH - 12; // padding
+              const inputLabelMaxWidth = socketLabelWidth - 12; // padding, as above
               const truncatedName =
                 regularGlyphMap.size > 0
                   ? truncateText(

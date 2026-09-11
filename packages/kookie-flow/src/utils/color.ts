@@ -453,9 +453,31 @@ function getDimensionProbe(): HTMLDivElement | null {
     dimensionProbe = document.createElement('div');
     dimensionProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
   }
-  document.body.appendChild(dimensionProbe);
+  /**
+   * Inside the THEME ROOT where there is one, and only the body otherwise.
+   *
+   * A v2 length is written `calc(var(--scale) * 12px)`, and a custom property's computed value is
+   * the token stream after substitution — so what this probe is handed still contains a `var()`.
+   * On the body, `--scale` resolves to nothing, the calc is invalid, and the read falls back to
+   * the table: every `--scale` a product sets was silently ignored, and the graph stayed at 1
+   * while the rest of the page scaled around it.
+   */
+  const host = probeHost ?? document.body;
+  host.appendChild(dimensionProbe);
   dimensionProbeDepth++;
   return dimensionProbe;
+}
+
+/**
+ * Where probes are attached, so `var()` inside a token resolves in the theme's own context.
+ *
+ * Set by the token reader, which is the only thing that knows which element the design system's
+ * variables are declared on.
+ */
+let probeHost: Element | null = null;
+
+export function setProbeHost(host: Element | null): void {
+  probeHost = host;
 }
 
 /** Detach the dimension probe once the outermost caller is done with it. */

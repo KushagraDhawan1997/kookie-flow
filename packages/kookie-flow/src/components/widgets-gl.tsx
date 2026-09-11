@@ -234,6 +234,8 @@ const fragmentShader = /* glsl */ `
   // beside the render orders).
   uniform float uInset;
   uniform float uFocusAlpha;
+  uniform float uMarkSize;
+  uniform float uTrackHeight;
 
   // The hover dress, as UNIFORMS rather than attributes: WHICH widget is hovered varies per
   // instance, what hover LOOKS like does not. One float per instance carries the first; three
@@ -283,7 +285,9 @@ const fragmentShader = /* glsl */ `
 
     if (vKind < 2.5 && vKind > 0.5) {
       // ---- checkbox: a square mark at the left of the row, not the whole row ----
-      float side = min(vSize.y, 18.0);
+      // The mark's size is the design system's mark token, not a number chosen here: v2 makes it
+      // byte-identical to the line height, which is what lands a mark on its own label's line.
+      float side = min(vSize.y, uMarkSize);
       vec2 b = vec2(side * 0.5);
       vec2 cp = p - vec2(-halfSize.x + side * 0.5, 0.0);
       float d = roundedBoxSDF(cp, b, min(4.0, side * 0.25));
@@ -318,7 +322,8 @@ const fragmentShader = /* glsl */ `
       alpha = max(inside, cbHalo);
     } else if (vKind > 2.5 && vKind < 3.5) {
       // ---- slider: a channel, a filled portion, and a grip ----
-      float trackH = min(4.0, vSize.y * 0.25);
+      // The slider-track token, for the same reason the mark takes the mark token.
+      float trackH = min(uTrackHeight, vSize.y * 0.25);
       float d = roundedBoxSDF(p, vec2(halfSize.x, trackH * 0.5), trackH * 0.5);
       alpha = 1.0 - smoothstep(-aa, aa, d);
       float fillEdge = -halfSize.x + vSize.x * vValue;
@@ -461,6 +466,8 @@ export function WidgetsGL({
         uBorderWidth: { value: 1 },
         uInset: { value: WELL_INSET_ALPHA[tokens.appearance] },
         uFocusAlpha: { value: FOCUS_RING_ALPHA[tokens.appearance] },
+        uMarkSize: { value: socketLayout.markSize },
+        uTrackHeight: { value: socketLayout.trackHeight },
       },
       vertexShader,
       fragmentShader,
