@@ -92,8 +92,8 @@ the last of it.
 
 What a future version would take up, none of it a hole in what exists:
 
-1. **Multi-select alignment** — align and distribute a selection, which the guides make obvious
-2. **Stroke styling** — colour and width for ink, once there is a toolbar to choose them from
+1. ~~**Multi-select alignment**~~ — landed: `alignSelection`, `distributeSelection`, Alt shortcuts, `arrange` widget
+2. ~~**Stroke styling**~~ — landed: `strokeColor` / `strokeWidth` widgets and the `penStyle` prop
 3. **A layered layout that routes edges**, rather than one that only places nodes
 
 ---

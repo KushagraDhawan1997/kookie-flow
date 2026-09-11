@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
+import { restroke,
   buildStrokeRibbon,
   isPointOnStroke,
   simplifyStroke,
@@ -132,5 +132,29 @@ describe('what counts as touching a stroke', () => {
   it('and a dot can be hit', () => {
     expect(isPointOnStroke([10, 10], 10, 12, 12)).toBe(true);
     expect(isPointOnStroke([10, 10], 10, 40, 40)).toBe(false);
+  });
+});
+
+describe('restroke', () => {
+  it('keeps every point where it was in the world, and the box around the new width', () => {
+    // A stroke drawn at width 4: its box is padded by 2, so its first point sits at (2, 2).
+    const position = { x: 100, y: 50 };
+    const points = [2, 2, 42, 22];
+    const out = restroke(position, points, 4, 10);
+    for (let i = 0; i < points.length; i += 2) {
+      expect(out.position.x + out.points[i]).toBe(position.x + points[i]);
+      expect(out.position.y + out.points[i + 1]).toBe(position.y + points[i + 1]);
+    }
+    // 40 x 20 of ink, padded by the new width.
+    expect(out.width).toBe(50);
+    expect(out.height).toBe(30);
+    expect(strokeBounds(out.points, 10)).toEqual({ x: 0, y: 0, width: 50, height: 30 });
+  });
+
+  it('thinner shrinks the box the same way', () => {
+    const out = restroke({ x: 0, y: 0 }, [5, 5, 25, 5], 10, 2);
+    expect(out.position).toEqual({ x: 4, y: 4 });
+    expect(out.width).toBe(22);
+    expect(out.height).toBe(2);
   });
 });

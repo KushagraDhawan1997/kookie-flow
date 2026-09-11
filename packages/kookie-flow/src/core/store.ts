@@ -59,6 +59,8 @@ import { widgetKey, type WidgetOverride } from '../utils/widget-values';
 import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
 import { stackCapacity } from '../utils/entity-depth';
 import { isEvaluated } from '../utils/entity-kind';
+import { alignRects, distributeRects, type ArrangeMove, type ArrangeRect } from '../utils/arrange';
+import type { AlignEdge, DistributeAxis } from '../types';
 
 // Pre-allocated ID pool for efficient cloning
 let idCounter = 0;
@@ -339,6 +341,12 @@ export interface FlowState {
   /** Selection - O(1) operations */
   selectEntity: (id: string, additive?: boolean) => void;
   selectEntities: (ids: string[]) => void;
+  /** Add an entity to the selection, or take it out if it is already in. Shift- or Cmd-click. */
+  toggleEntitySelection: (id: string) => void;
+  /** Line the selection up. Moves it and returns what moved; reporting is the caller's. */
+  alignSelection: (edge: AlignEdge) => Array<{ id: string; position: XYPosition }>;
+  /** Space the selection evenly. Moves it and returns what moved; reporting is the caller's. */
+  distributeSelection: (axis: DistributeAxis) => Array<{ id: string; position: XYPosition }>;
   selectEdge: (id: string, additive?: boolean) => void;
   selectEdges: (ids: string[]) => void;
   selectAll: () => void;
@@ -580,6 +588,45 @@ function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
 // Helper to rebuild derived state from entities
 // collapsedGroupIds is used to filter children of collapsed groups from quadtrees
 // socketLayout is used for correct entity height in quadtree bounds
+/**
+ * The moves that line up or space out the current selection, planned by `plan` over its rects.
+ *
+ * An entity whose frame is also selected is left out: it moves WITH the frame, and planned on its
+ * own as well it would be moved twice and pulled out of its frame. A frame that moves carries its
+ * contents, the same way `moveGroup` does, since positions here are absolute.
+ */
+function arrangeSelectionUpdates(
+  state: FlowState,
+  plan: (rects: ArrangeRect[]) => ArrangeMove[]
+): Array<{ id: string; position: XYPosition }> {
+  const { selectedEntityIds, entityMap, hiddenEntityIds, entities, socketLayout } = state;
+  const rects: ArrangeRect[] = [];
+  for (const id of selectedEntityIds) {
+    const entity = entityMap.get(id);
+    if (!entity || hiddenEntityIds.has(id)) continue;
+    if (getParentChain(entity, entityMap).some((parent) => selectedEntityIds.has(parent.id))) continue;
+    const b = getEntityBounds(entity, socketLayout ?? undefined);
+    rects.push({ id, x: b.x, y: b.y, width: b.width, height: b.height });
+  }
+  const moves = plan(rects);
+  if (moves.length === 0) return [];
+
+  const parents = new Set<string>();
+  for (const e of entities) if (e.parentId !== undefined) parents.add(e.parentId);
+  const updates: Array<{ id: string; position: XYPosition }> = [];
+  for (const move of moves) {
+    const entity = entityMap.get(move.id);
+    if (!entity) continue;
+    updates.push({ id: move.id, position: { x: entity.position.x + move.dx, y: entity.position.y + move.dy } });
+    if (parents.has(move.id)) {
+      for (const [childId, position] of calculateDescendantPositions(entities, move.id, { x: move.dx, y: move.dy })) {
+        updates.push({ id: childId, position });
+      }
+    }
+  }
+  return updates;
+}
+
 function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>, socketLayout?: ResolvedSocketLayout | null) {
   const entityMap = new Map<string, Entity>();
   const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
@@ -1505,6 +1552,24 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       selectEntities: (ids) => {
         set({ selectedEntityIds: new Set(ids) });
+      },
+
+      toggleEntitySelection: (id) => {
+        const next = new Set(get().selectedEntityIds);
+        if (!next.delete(id)) next.add(id);
+        set({ selectedEntityIds: next });
+      },
+
+      alignSelection: (edge) => {
+        const updates = arrangeSelectionUpdates(get(), (rects) => alignRects(rects, edge));
+        if (updates.length > 0) get().updateEntityPositions(updates);
+        return updates;
+      },
+
+      distributeSelection: (axis) => {
+        const updates = arrangeSelectionUpdates(get(), (rects) => distributeRects(rects, axis));
+        if (updates.length > 0) get().updateEntityPositions(updates);
+        return updates;
       },
 
       selectEdge: (id, additive = false) => {

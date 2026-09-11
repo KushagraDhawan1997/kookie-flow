@@ -341,6 +341,16 @@ await withPage('count=12&seed=1', async (page) => {
     JSON.stringify(s.selected)
   );
 
+  // And takes one back out: without this, a node added by mistake meant starting the selection over.
+  await clickWith(page, n1.x + 40, n1.y + 30, 'Control');
+  await page.waitForTimeout(150);
+  s = await state(page);
+  check(
+    'ctrl-click on a selected node takes it back out',
+    s.selected.length === 1 && s.selected[0] === 'n0',
+    JSON.stringify(s.selected)
+  );
+
   await clickWith(page, n0.x + 40, n0.y + 30);
   await page.waitForTimeout(150);
   s = await state(page);
@@ -453,6 +463,59 @@ await withPage('count=12&seed=1', async (page) => {
   await page.waitForTimeout(250);
   const s = await state(page);
   check('box-select selects the enclosed nodes', s.selected.length > 0, JSON.stringify(s.selected));
+});
+
+// ---------------------------------------------------------------- align and distribute
+
+/**
+ * A selection lines up and spaces out from the keyboard, on the keys design tools use, and the
+ * consumer hears it the way it hears a drag — or its next render puts every node back.
+ */
+head('align and distribute');
+await withPage('count=12&seed=1&explicitSize=1', async (page) => {
+  const three = await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    // Three at distinct heights, so a vertical spread has somewhere to go.
+    const byY = [...s.entities].sort((a, b) => a.position.y - b.position.y);
+    const picked = [byY[0], byY[Math.floor(byY.length / 2)], byY[byY.length - 1]].map((e) => e.id);
+    s.selectEntities(picked);
+    return picked;
+  });
+  await page.evaluate(() => document.querySelector('[data-kookie-flow-container]').focus());
+
+  await page.keyboard.press('Alt+KeyA');
+  await page.waitForTimeout(200);
+  const aligned = await page.evaluate((ids) => {
+    const s = window.__harness.store.getState();
+    const consumer = window.__harness.consumerEntities();
+    return ids.map((id) => ({ store: s.entityMap.get(id).position.x, consumer: consumer.find((e) => e.id === id)?.position.x }));
+  }, three);
+  check(
+    'Alt+A lines the selection up on its leftmost edge',
+    new Set(aligned.map((a) => a.store)).size === 1,
+    JSON.stringify(aligned)
+  );
+  check(
+    'and the consumer was told, as a drag tells it',
+    aligned.every((a) => a.consumer === a.store),
+    JSON.stringify(aligned)
+  );
+
+  await page.keyboard.press('Alt+Shift+KeyV');
+  await page.waitForTimeout(200);
+  const gaps = await page.evaluate((ids) => {
+    const s = window.__harness.store.getState();
+    const boxes = ids.map((id) => s.entityMap.get(id)).sort((a, b) => a.position.y - b.position.y);
+    return [
+      boxes[1].position.y - (boxes[0].position.y + boxes[0].height),
+      boxes[2].position.y - (boxes[1].position.y + boxes[1].height),
+    ];
+  }, three);
+  check(
+    'Alt+Shift+V spaces them evenly, top to bottom',
+    Math.abs(gaps[0] - gaps[1]) < 0.5,
+    JSON.stringify(gaps)
+  );
 });
 
 // ---------------------------------------------------------------- drag under zoom

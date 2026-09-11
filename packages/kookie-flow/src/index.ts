@@ -165,6 +165,9 @@ export type {
   ImageToolbarWidget,
   CommentToolbarWidget,
   CommonToolbarWidget,
+  DrawToolbarWidget,
+  AlignEdge,
+  DistributeAxis,
   KookieFlowProps,
   // Styling types
   EntitySize,

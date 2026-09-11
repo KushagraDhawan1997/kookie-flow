@@ -247,3 +247,30 @@ export function strokeIndices(vertexCount: number): Uint32Array {
   }
   return indices;
 }
+
+/**
+ * A stroke at a new width, as the entity changes that keep its ink exactly where it is.
+ *
+ * The box is padded by half the width on every side and the points are stored relative to that
+ * box, so a new width is three changes, not one: the box grows by the difference, its corner moves
+ * out by half of it, and every point shifts in by the same half. Changing only `strokeWidth` left
+ * a thicker line spilling past a box that no longer held it — the selection ring cut through it and
+ * the edge of the ink could not be clicked.
+ */
+export function restroke(
+  position: { x: number; y: number },
+  points: readonly number[],
+  width: number,
+  newWidth: number
+): { position: { x: number; y: number }; width: number; height: number; points: number[] } {
+  const shift = (newWidth - width) / 2;
+  const shifted = new Array<number>(points.length);
+  for (let i = 0; i < points.length; i++) shifted[i] = points[i] + shift;
+  const box = strokeBounds(shifted, newWidth);
+  return {
+    position: { x: position.x - shift, y: position.y - shift },
+    width: box.width,
+    height: box.height,
+    points: shifted,
+  };
+}

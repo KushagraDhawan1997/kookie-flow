@@ -111,6 +111,7 @@ import type {
   KookieFlowInstance,
   FitViewOptions,
   Entity,
+  AlignEdge,
   Edge,
   EdgeChange,
   EntityChange,
@@ -161,6 +162,30 @@ function reportRewrite(
   if (entityChanges.length > 0) onEntitiesChange?.(entityChanges);
   if (edgeChanges.length > 0) onEdgesChange?.(edgeChanges);
 }
+
+/** Report position moves the store made outside a gesture — align, distribute — as a drag reports. */
+function reportMoves(
+  updates: Array<{ id: string; position: { x: number; y: number } }>,
+  onEntitiesChange: ((changes: EntityChange[]) => void) | undefined
+): Array<{ id: string; position: { x: number; y: number } }> {
+  if (updates.length > 0) {
+    onEntitiesChange?.(updates.map((u) => ({ type: 'position', id: u.id, position: u.position })));
+  }
+  return updates;
+}
+
+/**
+ * Figma's align keys, by physical key: on a Mac, Alt turns the letter into a symbol, so `e.key`
+ * for Alt+A is `å` and only `e.code` still says which key it was.
+ */
+const ALIGN_KEY_EDGES: ReadonlyMap<string, AlignEdge> = new Map([
+  ['KeyA', 'left'],
+  ['KeyD', 'right'],
+  ['KeyW', 'top'],
+  ['KeyS', 'bottom'],
+  ['KeyH', 'center'],
+  ['KeyV', 'middle'],
+]);
 /**
  * Main KookieFlow component.
  * Renders a WebGL canvas with an optional DOM overlay.
@@ -218,6 +243,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
     defaultEntityWidth,
     socketLabelWidth,
     helperLines = true,
+    penStyle,
     // Evaluation (Phase 8.5)
     onEvaluate,
     onStatusChange,
@@ -284,6 +310,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
             helperLines={helperLines}
+            penStyle={penStyle}
             maxImageTextureSize={maxImageTextureSize}
           >
             {children}
@@ -338,6 +365,7 @@ interface ThemedFlowContainerProps {
   defaultEntityWidth?: number;
   socketLabelWidth?: number;
   helperLines?: boolean;
+  penStyle?: KookieFlowProps['penStyle'];
   maxImageTextureSize?: number;
   // Evaluation (Phase 8.5)
   onEvaluate?: KookieFlowProps['onEvaluate'];
@@ -386,6 +414,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       defaultEntityWidth,
       socketLabelWidth,
       helperLines,
+      penStyle,
       maxImageTextureSize,
       onEvaluate,
       onStatusChange,
@@ -477,6 +506,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
             defaultEntityWidth={defaultEntityWidth}
             socketLabelWidth={socketLabelWidth}
             helperLines={helperLines}
+            penStyle={penStyle}
             minZoom={minZoom}
             maxZoom={maxZoom}
             snapToGrid={snapToGrid}
@@ -628,6 +658,10 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
         toObject: () => store.getState().toObject(),
 
         autoLayout: (options) => store.getState().autoLayout(options),
+        alignSelection: (edge) =>
+          reportMoves(store.getState().alignSelection(edge), onEntitiesChangeRef.current),
+        distributeSelection: (axis) =>
+          reportMoves(store.getState().distributeSelection(axis), onEntitiesChangeRef.current),
         /** A PNG of what is on screen. Fit the view first for the whole graph. */
         toImage: (options) => capture(store, options),
         // Both rewrite the graph inside the store, so both report the difference, as a drag does.
@@ -734,6 +768,8 @@ interface InputHandlerProps {
   socketLabelWidth?: number;
   /** See KookieFlowProps.helperLines. */
   helperLines?: boolean;
+  /** See KookieFlowProps.penStyle. */
+  penStyle?: KookieFlowProps['penStyle'];
   /** The accessible name of the graph. See KookieFlowProps.ariaLabel. */
   ariaLabel?: string;
   children: React.ReactNode;
@@ -820,9 +856,13 @@ function InputHandler({
   defaultEntityWidth,
   socketLabelWidth,
   helperLines = true,
+  penStyle,
 }: InputHandlerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const store = useFlowStoreApi();
+  // Read when a stroke starts and ends, so a new style reaches the next stroke without a re-render.
+  const penStyleRef = useRef(penStyle);
+  penStyleRef.current = penStyle;
 
   // Cached container rect - updated via ResizeObserver (avoids layout thrashing)
   // This prevents expensive getBoundingClientRect() calls in hot paths (pointer move handlers)
@@ -1509,7 +1549,11 @@ function InputHandler({
               id,
               type: 'draw',
               position: { x: worldPos.x, y: worldPos.y },
-              data: { points: [0, 0] } as DrawEntityData,
+              data: {
+                points: [0, 0],
+                strokeWidth: penStyleRef.current?.strokeWidth ?? DEFAULT_STROKE_WIDTH,
+                ...(penStyleRef.current?.strokeColor ? { strokeColor: penStyleRef.current.strokeColor } : {}),
+              } as DrawEntityData,
               // Ink is not resized by dragging a corner; it is drawn again.
               resizable: false,
             }],
@@ -2238,6 +2282,11 @@ function InputHandler({
                 clickedEntity.id,
                 ...[...selectedEntityIds].filter((id) => id !== clickedEntity.id),
               ];
+            } else if (e.ctrlKey || e.metaKey) {
+              // The multi-select modifier held: the entity joins the selection, and the whole selection moves with
+              // it — rather than the modifier being ignored and the selection thrown away.
+              store.getState().selectEntity(clickedEntity.id, true);
+              dragEntityIds = [clickedEntity.id, ...selectedEntityIds];
             } else {
               // Select and drag just this entity
               store.getState().selectEntity(clickedEntity.id);
@@ -2532,7 +2581,8 @@ function InputHandler({
         strokeRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
         const simplified = simplifyStroke(finished.points);
-        const box = strokeBounds(simplified, DEFAULT_STROKE_WIDTH);
+        const strokeWidth = penStyleRef.current?.strokeWidth ?? DEFAULT_STROKE_WIDTH;
+        const box = strokeBounds(simplified, strokeWidth);
         // The box is relative to the first point, so the entity moves to where the ink actually
         // starts and the points move with it. Without this a stroke drawn upwards has its origin
         // in the middle of its own bounding box, and every hit test is wrong.
@@ -2546,7 +2596,11 @@ function InputHandler({
           position: { x: finished.originX + box.x, y: finished.originY + box.y },
           width: box.width,
           height: box.height,
-          data: { points: shifted, strokeWidth: DEFAULT_STROKE_WIDTH } as DrawEntityData,
+          data: {
+            points: shifted,
+            strokeWidth,
+            ...(penStyleRef.current?.strokeColor ? { strokeColor: penStyleRef.current.strokeColor } : {}),
+          } as DrawEntityData,
           resizable: false,
         };
         store.getState().applyEntityChanges([{ type: 'remove', id: finished.id }]);
@@ -2942,9 +2996,14 @@ function InputHandler({
             clickCountRef.current = null;
           }
 
-          // Click on entity: select it
-          const additive = e.ctrlKey || e.metaKey;
-          store.getState().selectEntity(clickedEntity.id, additive);
+          // Click on entity: select it. Cmd/Ctrl toggles it in or out of the selection, so a stray node
+          // can be taken back out without starting over. Not Shift: Shift is aspect-lock on resize,
+          // and the selection law pins that choice.
+          if (e.ctrlKey || e.metaKey) {
+            store.getState().toggleEntitySelection(clickedEntity.id);
+          } else {
+            store.getState().selectEntity(clickedEntity.id);
+          }
           onEntityClick?.(clickedEntity);
         } else if (edgesSelectable) {
           // Check for edge click
@@ -3287,6 +3346,31 @@ function InputHandler({
        * for as long as one is focused. Do not widen that guard to `contains()` — the comment on
        * it records exactly why that was rejected.
        */
+      /**
+       * ALIGN AND DISTRIBUTE, on the keys design tools use: Alt with A, D, W or S for the four
+       * edges, H or V for the centre lines, and Alt+Shift with H or V to space the selection
+       * evenly. Only with two or more selected — with fewer there is nothing to line up, and the key
+       * is left to whatever else wants it.
+       */
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const s = store.getState();
+        if (s.selectedEntityIds.size >= 2) {
+          let updates: Array<{ id: string; position: { x: number; y: number } }> | null = null;
+          if (e.shiftKey) {
+            if (e.code === 'KeyH') updates = s.distributeSelection('horizontal');
+            else if (e.code === 'KeyV') updates = s.distributeSelection('vertical');
+          } else {
+            const edge = ALIGN_KEY_EDGES.get(e.code);
+            if (edge) updates = s.alignSelection(edge);
+          }
+          if (updates) {
+            e.preventDefault();
+            reportMoves(updates, onEntitiesChangeRef.current);
+            return;
+          }
+        }
+      }
+
       /**
        * SHIFT + an arrow MOVES what is selected, rather than walking to the next node.
        *

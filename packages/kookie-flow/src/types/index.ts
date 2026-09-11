@@ -20,6 +20,12 @@ export interface Viewport {
 /** Edge rendering type */
 export type EdgeType = 'straight' | 'bezier' | 'step' | 'smoothstep';
 
+/** An edge or centre line of a selection's bounds, to line the selection up on. */
+export type AlignEdge = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
+
+/** The axis a selection is spaced evenly along. */
+export type DistributeAxis = 'horizontal' | 'vertical';
+
 /** Edge marker type */
 export type EdgeMarkerType = 'arrow' | 'arrowClosed';
 
@@ -628,6 +634,10 @@ export interface ToolbarRenderProps {
   update: (entityId: string, data: Partial<EntityData>) => void;
   /** The selection's screen-space bounding box */
   bounds: { x: number; y: number; width: number; height: number };
+  /** Line the selection up on an edge or centre line of its bounds, reported as a drag is. */
+  align: (edge: AlignEdge) => void;
+  /** Space the selection evenly along an axis, reported as a drag is. */
+  distribute: (axis: DistributeAxis) => void;
 }
 
 /** Toolbar render function */
@@ -642,11 +652,17 @@ export type ImageToolbarWidget = 'objectFit' | 'aspectLock';
 /** Built-in toolbar widget names for comment entities */
 export type CommentToolbarWidget = 'backgroundColor' | 'textColor' | 'fontSize';
 
-/** Built-in toolbar widget names available to any entity type */
-export type CommonToolbarWidget = 'color';
+/** Built-in toolbar widget names for ink */
+export type DrawToolbarWidget = 'strokeColor' | 'strokeWidth';
+
+/**
+ * Built-in toolbar widget names available to any entity type. `arrange` is the align and
+ * distribute buttons, shown only once two or more are selected.
+ */
+export type CommonToolbarWidget = 'color' | 'arrange';
 
 /** All built-in toolbar widget names */
-export type ToolbarWidget = TextToolbarWidget | ImageToolbarWidget | CommentToolbarWidget | CommonToolbarWidget;
+export type ToolbarWidget = TextToolbarWidget | ImageToolbarWidget | CommentToolbarWidget | DrawToolbarWidget | CommonToolbarWidget;
 
 /**
  * Toolbar configuration for an entity type.
@@ -1049,6 +1065,12 @@ export interface KookieFlowProps {
    * was asked for explicitly.
    */
   helperLines?: boolean;
+  /**
+   * What the pen draws with: `strokeWidth` in world pixels and `strokeColor` as any CSS colour.
+   * Unset, ink is 3px in the theme's text colour. A stroke keeps the style it was drawn with; the
+   * `strokeColor` and `strokeWidth` toolbar widgets restyle a selection afterwards.
+   */
+  penStyle?: Pick<DrawEntityData, 'strokeWidth' | 'strokeColor'>;
   /** Default entity width when entity.width is not specified. Default: 240 */
   defaultEntityWidth?: number;
   /** Width reserved for socket labels before widget starts. Default: 96 */
@@ -1125,6 +1147,17 @@ export interface KookieFlowInstance {
    * default. Returns the positions it chose, so a controlled consumer can report them onwards.
    */
   autoLayout: (options?: LayoutOptions) => Array<{ id: string; position: XYPosition }>;
+  /**
+   * Line the selected entities up on one edge or centre line of the selection's own bounds.
+   * Reported through `onEntitiesChange` as a drag is, and returned. Needs two or more; a frame
+   * moves with its contents. Alt+A, D, W, S, H and V on the canvas.
+   */
+  alignSelection: (edge: AlignEdge) => Array<{ id: string; position: XYPosition }>;
+  /**
+   * Space the selected entities evenly along an axis: equal gaps, the outermost two staying put.
+   * Reported and returned like `alignSelection`. Needs three or more. Alt+Shift+H and V.
+   */
+  distributeSelection: (axis: DistributeAxis) => Array<{ id: string; position: XYPosition }>;
   /**
    * What is on screen, as an image data URL. `null` if the canvas is not mounted.
    *

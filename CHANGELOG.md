@@ -5,6 +5,17 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Added
+
+- **Align and distribute.** `alignSelection(edge)` and `distributeSelection(axis)` on the ref, Alt+A,
+  D, W, S, H and V to line a selection up and Alt+Shift+H and V to space it evenly, and an `arrange`
+  toolbar widget. Moves are reported as a drag is, a frame carries its contents, and the toolbar's
+  render props gain `align` and `distribute` for a custom toolbar.
+- **Cmd/Ctrl-click takes a node back out of a selection**, and Cmd/Ctrl-dragging a node that is not
+  selected adds it and moves the whole selection.
+- **Stroke styling.** `strokeColor` and `strokeWidth` toolbar widgets for ink (a width change re-fits
+  the stroke's box), and a `penStyle` prop for what the pen draws with.
+
 ### Fixed
 
 - An alignment guide no longer stays on the canvas after the drag that drew it.

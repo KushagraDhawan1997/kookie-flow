@@ -157,11 +157,14 @@ flowRef.current?.fitView({
 
 ### Selection & Interaction
 - **Click to select** — Single entity selection
-- **Ctrl+click** — Add to selection
+- **Ctrl/Cmd+click** — Add to the selection, or take a selected entity back out
+- **Ctrl/Cmd+drag** — Drag an unselected entity and it joins the selection, which moves with it
 - **Box select** — Drag on empty space to select multiple entities
 - **Keyboard** — one tab stop into the graph; arrows walk the cursor from node to node, Home/End
   jump to the ends, Enter steps into a node's controls and Escape steps back out, Shift+arrows move
-  the selection (Alt for a ten-step), Ctrl+A selects all, Delete deletes, T creates a text entity
+  the selection (Alt for a ten-step), Alt+A/D/W/S aligns it on its left, right, top or bottom edge
+  and Alt+H/V on its centre lines, Alt+Shift+H/V spaces it evenly, Ctrl+A selects all, Delete
+  deletes, T creates a text entity
 - **Entity dragging** — Move selected entities with snap-to-grid support
 - **Double-click** — Enter inline editing on text entities
 - **Entity resizing** — 8-direction resize handles with min-size clamping
@@ -312,6 +315,18 @@ the boundary, and `expandSubgraph()` puts them back.
 within a few screen pixels of another's, the drag lands on it and a line says why. `helperLines={false}`
 turns it off, and `snapToGrid` supersedes it. Dragging a node — or a wire — to the edge of the
 canvas brings the world to meet it.
+
+**Align and distribute.** `flowRef.current.alignSelection('left' | 'center' | 'right' | 'top' |
+'middle' | 'bottom')` lines the selection up on its own bounds, and `distributeSelection('horizontal'
+| 'vertical')` makes the gaps between it equal, the outermost two staying put. Both report through
+`onEntitiesChange` as a drag does, so they are one undo step, and a frame carries its contents. The
+same moves are on Alt+A, D, W, S, H and V and Alt+Shift+H and V, and in the `arrange` toolbar widget;
+a custom toolbar gets `align` and `distribute` in its render props.
+
+**Ink style.** `penStyle={{ strokeWidth: 4, strokeColor: '#e5484d' }}` sets what the pen draws with.
+A stroke keeps the style it was drawn in; the `strokeColor` and `strokeWidth` toolbar widgets
+(`entityTypes={{ draw: { type: 'draw', toolbar: true } }}`) restyle a selection, and a new width
+re-fits the stroke's box.
 
 **Undo.** `useGraph({ history: true })` returns `undo`, `redo`, `canUndo`, `canRedo`, and binds
 Cmd/Ctrl+Z while the graph has focus — scoped to the graph, so a page embedding a canvas keeps
@@ -776,6 +791,8 @@ Tested on 16" MacBook Pro M4 Pro:
 - [x] Alignment guides and auto-pan
 - [x] `autoLayout()`, `toImage()`, `toObject()`, subflow collapse/expand
 - [x] Keyboard move (Shift+arrows), on top of the existing cursor and mirror
+- [x] Align and distribute a selection (API, Alt shortcuts, `arrange` widget), Cmd/Ctrl-click to deselect
+- [x] Ink styling (`penStyle`, `strokeColor` / `strokeWidth` widgets)
 - [x] `font="system"` (atlas built at runtime from the platform's font)
 
 Not planned, and here so nobody looks for it: **hybrid entity portals** — a React component

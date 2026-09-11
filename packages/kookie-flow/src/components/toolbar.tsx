@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectContent,
   SelectItem,
+  Button,
   SegmentedControl,
   SegmentedItem,
   Separator,
@@ -53,9 +54,17 @@ import type {
   ToolbarConfig,
   ToolbarRenderFn,
   ToolbarRenderProps,
+  AlignEdge,
+  DistributeAxis,
+  DrawEntityData,
   ToolbarWidget,
 } from '../types';
 import { useFont, resolveFontForWeight } from '../contexts/FontContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { THEME_COLORS } from '../core/theme-colors';
+import { rgbToHex } from '../utils/color';
+import { restroke } from '../utils/stroke-geometry';
+import { DEFAULT_STROKE_WIDTH } from './draw-entities';
 import {
   resolveTextStyle,
   calculateTextAutoHeightMSDF,
@@ -100,6 +109,7 @@ function useToolbarContext() {
 
 /** Built-in defaults per built-in entity type */
 const BUILTIN_DEFAULTS: Record<string, ToolbarWidget[]> = {
+  draw: ['strokeColor', 'strokeWidth'],
   text: [
     'sizingMode',
     'fontSize',
@@ -179,6 +189,23 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       );
     },
     [store, onEntitiesChange]
+  );
+
+  // Align and distribute move the selection in the store and report the moves the way a drag does.
+  const reportPositions = useCallback(
+    (updates: Array<{ id: string; position: { x: number; y: number } }>) => {
+      if (updates.length === 0) return;
+      onEntitiesChange?.(updates.map((u) => ({ type: 'position' as const, id: u.id, position: u.position })));
+    },
+    [onEntitiesChange]
+  );
+  const align = useCallback(
+    (edge: AlignEdge) => reportPositions(store.getState().alignSelection(edge)),
+    [store, reportPositions]
+  );
+  const distribute = useCallback(
+    (axis: DistributeAxis) => reportPositions(store.getState().distributeSelection(axis)),
+    [store, reportPositions]
   );
 
   // Compute selection bounding box in world space
@@ -362,7 +389,9 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
     update,
     batchUpdate,
     getSelectionBounds,
-    onEntitiesChange
+    onEntitiesChange,
+    align,
+    distribute
   );
 
   if (!visible || !toolbarContent) {
@@ -442,12 +471,14 @@ function resolveToolbarContent(
   update: (entityId: string, data: Partial<EntityData>) => void,
   batchUpdate: (data: Partial<EntityData>) => void,
   getSelectionBounds: () => { x: number; y: number; width: number; height: number } | null,
-  onEntitiesChange?: (changes: EntityChange[]) => void
+  onEntitiesChange: ((changes: EntityChange[]) => void) | undefined,
+  align: (edge: AlignEdge) => void,
+  distribute: (axis: DistributeAxis) => void
 ): ReactNode {
   if (entities.length === 0) return null;
 
   const bounds = getSelectionBounds() ?? { x: 0, y: 0, width: 0, height: 0 };
-  const renderProps: ToolbarRenderProps = { entities, update, bounds };
+  const renderProps: ToolbarRenderProps = { entities, update, bounds, align, distribute };
 
   // Full override from children prop
   if (renderOverride) {
@@ -497,6 +528,8 @@ function resolveToolbarContent(
           entities={entities}
           batchUpdate={batchUpdate}
           onEntitiesChange={onEntitiesChange}
+          align={align}
+          distribute={distribute}
           showSeparator={i > 0}
         />
       ))}
@@ -539,6 +572,86 @@ const iconProps = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function AlignEdgeLeftIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 3V21" />
+      <rect x="7" y="6" width="12" height="4" rx="1" />
+      <rect x="7" y="14" width="8" height="4" rx="1" />
+    </svg>
+  );
+}
+
+function AlignEdgeCenterIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 3V21" />
+      <rect x="5" y="6" width="14" height="4" rx="1" />
+      <rect x="8" y="14" width="8" height="4" rx="1" />
+    </svg>
+  );
+}
+
+function AlignEdgeRightIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 3V21" />
+      <rect x="5" y="6" width="12" height="4" rx="1" />
+      <rect x="9" y="14" width="8" height="4" rx="1" />
+    </svg>
+  );
+}
+
+function AlignEdgeTopIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 3H21" />
+      <rect x="6" y="7" width="4" height="12" rx="1" />
+      <rect x="14" y="7" width="4" height="8" rx="1" />
+    </svg>
+  );
+}
+
+function AlignEdgeMiddleIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 12H21" />
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="8" width="4" height="8" rx="1" />
+    </svg>
+  );
+}
+
+function AlignEdgeBottomIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 21H21" />
+      <rect x="6" y="5" width="4" height="12" rx="1" />
+      <rect x="14" y="9" width="4" height="8" rx="1" />
+    </svg>
+  );
+}
+
+function DistributeHorizontalIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 3V21" />
+      <path d="M21 3V21" />
+      <rect x="9" y="7" width="6" height="10" rx="1" />
+    </svg>
+  );
+}
+
+function DistributeVerticalIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 3H21" />
+      <path d="M3 21H21" />
+      <rect x="7" y="9" width="10" height="6" rx="1" />
+    </svg>
+  );
+}
 
 function AlignLeftIcon() {
   return (
@@ -764,12 +877,16 @@ function BuiltInWidget({
   entities,
   batchUpdate,
   onEntitiesChange,
+  align,
+  distribute,
   showSeparator,
 }: {
   widget: ToolbarWidget;
   entities: Entity[];
   batchUpdate: (data: Partial<EntityData>) => void;
   onEntitiesChange?: (changes: EntityChange[]) => void;
+  align: (edge: AlignEdge) => void;
+  distribute: (axis: DistributeAxis) => void;
   showSeparator: boolean;
 }) {
   // Display values from first entity; updates apply to all selected
@@ -777,6 +894,9 @@ function BuiltInWidget({
 
   // Font context for sizing mode transitions (dimension recalculation)
   const fontContext = useFont();
+  // Ink with no colour of its own is drawn in the theme's text colour, so that is what its swatch shows.
+  const tokens = useTheme();
+  const inkDefault = rgbToHex(tokens[THEME_COLORS.text.primary]);
 
   let content: ReactNode;
 
@@ -989,6 +1109,76 @@ function BuiltInWidget({
         >
           {locked ? <LockIcon /> : <UnlockIcon />}
         </Toggle>
+      );
+      break;
+    }
+
+    case 'strokeColor':
+      content = (
+        <ToolbarColorInput
+          label="Stroke colour"
+          value={(data.strokeColor as string) || inkDefault}
+          onChange={(v) => batchUpdate({ strokeColor: v })}
+        />
+      );
+      break;
+
+    case 'strokeWidth':
+      content = (
+        <ToolbarNumberInput
+          label="Stroke width"
+          value={(data.strokeWidth as number) ?? DEFAULT_STROKE_WIDTH}
+          onChange={(v) => {
+            if (!onEntitiesChange || !(v > 0)) return;
+            const changes: EntityChange[] = [];
+            for (const entity of entities) {
+              if (entity.type !== 'draw') continue;
+              const ink = entity.data as DrawEntityData;
+              const was = ink.strokeWidth ?? DEFAULT_STROKE_WIDTH;
+              if (was === v) continue;
+              // A width is a box and a shift as well: see `restroke`.
+              const next = restroke(entity.position, ink.points ?? [], was, v);
+              changes.push(
+                { type: 'position', id: entity.id, position: next.position },
+                { type: 'dimensions', id: entity.id, dimensions: { width: next.width, height: next.height } },
+                { type: 'data', id: entity.id, data: { strokeWidth: v, points: next.points } }
+              );
+            }
+            if (changes.length > 0) onEntitiesChange(changes);
+          }}
+        />
+      );
+      break;
+
+    case 'arrange': {
+      // One entity has nothing to line up with, and two have one gap, already even.
+      if (entities.length < 2) return null;
+      const edges: Array<[AlignEdge, string, ReactNode]> = [
+        ['left', 'Align left edges', <AlignEdgeLeftIcon key="l" />],
+        ['center', 'Align horizontal centres', <AlignEdgeCenterIcon key="c" />],
+        ['right', 'Align right edges', <AlignEdgeRightIcon key="r" />],
+        ['top', 'Align top edges', <AlignEdgeTopIcon key="t" />],
+        ['middle', 'Align vertical centres', <AlignEdgeMiddleIcon key="m" />],
+        ['bottom', 'Align bottom edges', <AlignEdgeBottomIcon key="b" />],
+      ];
+      content = (
+        <Flex align="center" gap="1">
+          {edges.map(([edge, label, icon]) => (
+            <Button key={edge} size="2" emphasis="quiet" iconOnly aria-label={label} onClick={() => align(edge)}>
+              {icon}
+            </Button>
+          ))}
+          {entities.length >= 3 && (
+            <>
+              <Button size="2" emphasis="quiet" iconOnly aria-label="Distribute horizontally" onClick={() => distribute('horizontal')}>
+                <DistributeHorizontalIcon />
+              </Button>
+              <Button size="2" emphasis="quiet" iconOnly aria-label="Distribute vertically" onClick={() => distribute('vertical')}>
+                <DistributeVerticalIcon />
+              </Button>
+            </>
+          )}
+        </Flex>
       );
       break;
     }
