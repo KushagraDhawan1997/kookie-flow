@@ -1,0 +1,39 @@
+{
+  "name": "studio",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A node-based studio for AI generation, deterministic image and video ops, and logic, built on kookie-flow.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 3002",
+    "dev:lan": "STUDIO_LAN=1 next dev -p 3002",
+    "build": "next build",
+    "start": "next start -p 3002",
+    "lint": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@hugeicons/core-free-icons": "^3.1.1",
+    "@hugeicons/react": "^1.1.4",
+    "@kookie-ui/react": "file:../../vendor/kookie-ui-react-0.0.0.tgz",
+    "@kushagradhawan/kookie-flow": "workspace:*",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "drizzle-orm": "^0.45.2",
+    "next": "^15.5.0",
+    "postgres": "^3.4.9",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "studio-core": "workspace:*",
+    "three": "^0.182.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.9.0"
+  }
+}

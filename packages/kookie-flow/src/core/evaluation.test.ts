@@ -723,4 +723,86 @@ describe('injected values and the whole graph', () => {
     ev.dispose();
     expect((signal as unknown as AbortSignal).aborted).toBe(true);
   });
+
+  it('comes back when handlers arrive after a dispose, as strict mode makes them', async () => {
+    // React's strict mode runs the flow's cleanup (dispose) and then its effects again on
+    // mount. An engine that stayed dead answered nothing in every development build.
+    const w = world([ent('a', [sock('in', 3)], [sock('out')])]);
+    const calls: string[] = [];
+    const run = (id: string, _t: string, inputs: Values) => {
+      calls.push(id);
+      return { out: (inputs.in as number) * 2 };
+    };
+    const ev = new Evaluator(hostFor(w), run);
+    ev.dispose();
+    await ev.evaluate('a');
+    expect(calls).toEqual([]);
+
+    ev.setHandlers(run);
+    await ev.evaluate('a');
+    await ev.settled();
+    expect(calls).toEqual(['a']);
+    expect(ev.getSocketValue('a', 'out')).toBe(6);
+    ev.dispose();
+  });
+
+  it('picks up work that was marked before the dispose', async () => {
+    // The strict-mode order exactly: a mark lands, React tears the effect down before the
+    // engine's own microtask runs, and the effect is set up again. Clearing `disposed` alone is
+    // not enough — the marks are gone from the set while the records still read 'dirty', and
+    // `markDirty` stops at an already-dirty record, so the graph could never run again.
+    const w = world(
+      [ent('a', [sock('in', 3)], [sock('out')]), ent('b', [sock('in')], [sock('out')])],
+      [edge('a', 'out', 'b', 'in')]
+    );
+    const calls: string[] = [];
+    const run = (id: string, _t: string, inputs: Values) => {
+      calls.push(id);
+      return { out: (inputs.in as number) * 2 };
+    };
+    const ev = new Evaluator(hostFor(w), run);
+    ev.markDirty('a');
+    ev.dispose();
+    ev.setHandlers(run);
+    await ev.settled();
+    expect(calls).toEqual(['a', 'b']);
+    expect(ev.getSocketValue('b', 'out')).toBe(12);
+
+    // And the same for a mark that arrives afterwards: the widget edit that used to do nothing.
+    calls.length = 0;
+    w.widget.set('a:in', 5);
+    ev.markDirty('a');
+    await ev.settled();
+    expect(calls).toEqual(['a', 'b']);
+    ev.dispose();
+  });
+
+  it('lets a run that was abandoned by a dispose start again', async () => {
+    // A record left 'running' by a dispose blocks everything downstream of it: the abandoned
+    // run's result is dropped, so without repair nothing ever settles it.
+    const w = world(
+      [ent('a', [sock('in', 1)], [sock('out')]), ent('b', [sock('in')], [sock('out')])],
+      [edge('a', 'out', 'b', 'in')]
+    );
+    const calls: string[] = [];
+    let release: (() => void) | null = null;
+    const hang = (id: string) => {
+      calls.push(id);
+      if (id === 'a') return new Promise<Values>((resolve) => { release = () => resolve({ out: 9 }); });
+      return { out: 1 };
+    };
+    const ev = new Evaluator(hostFor(w), hang);
+    ev.markDirty('a');
+    await tick();
+    expect(ev.status('a')).toBe('running');
+    ev.dispose();
+    release?.(); // the abandoned run answers after the dispose; its result must be dropped
+    await tick();
+
+    calls.length = 0;
+    ev.setHandlers((id: string) => { calls.push(id); return { out: 2 }; });
+    await ev.settled();
+    expect(calls).toEqual(['a', 'b']);
+    ev.dispose();
+  });
 });

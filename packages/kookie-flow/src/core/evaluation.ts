@@ -159,6 +159,16 @@ export class Evaluator {
 
   /** The consumer's callbacks can change between renders; the engine does not rebuild for that. */
   setHandlers(onEvaluate?: OnEvaluate, onStatusChange?: OnStatusChange): void {
+    // Handlers arriving mean a live consumer, so a disposed engine comes back. React's strict
+    // mode runs every effect's cleanup and then the effect again on mount, and the flow's
+    // cleanup is `dispose()`: without this, every development build with strict mode on had an
+    // engine that answered nothing from its first frame (found 2026-09-12, from the studio).
+    //
+    // Lifting the flag is the whole revival, and only because `dispose` keeps the queue. It was
+    // not enough on its own: the queue was cleared there, and an entity whose record already
+    // reads dirty cannot be marked again, so a graph opened under strict mode sat stale with
+    // every Run doing nothing. See `dispose` for why the note outlives the disposal.
+    this.disposed = false;
     this.onEvaluate = onEvaluate ?? null;
     this.onStatusChange = onStatusChange ?? null;
     // Handlers arriving can change the answer for something already dirty: a graph mounted
@@ -292,14 +302,32 @@ export class Evaluator {
     return new Promise((resolve) => this.waiters.push(resolve));
   }
 
-  /** Cancel everything in flight and drop every timer. The store calls this on unmount. */
+  /**
+   * Cancel everything in flight and drop every timer. The store calls this on unmount.
+   *
+   * WHAT IT KEEPS, AND WHY. The queue of stale entities survives, and a run that was abandoned
+   * goes back into it. `disposed` is what stops work from starting; `dirty` is only the note of
+   * what to do when that lifts, and the note cannot be rewritten later — `markDirty` stops at a
+   * record that already reads dirty (the invariant that makes a slider drag cheap), so anything
+   * cleared here could never be marked again. React's strict mode disposes and revives this
+   * engine between a mark and the microtask that would have acted on it, which is exactly that
+   * case: with the queue dropped, every node of a freshly opened graph sat stale for good and
+   * Run did nothing.
+   *
+   * An abandoned run is demoted rather than left running. Its result is discarded when it
+   * arrives (`start` checks `runs`), so the entity is stale again, not finished — and a record
+   * left `running` blocks everything downstream of it through `upstreamSettled`. The demotion
+   * comes after the abort, because `abort` only drops the run and `setStatus('dirty')` is what
+   * puts the entity back in the queue.
+   */
   dispose(): void {
+    for (const id of [...this.runs.keys()]) {
+      this.abort(id);
+      this.setStatus(id, 'dirty');
+    }
     this.disposed = true;
-    for (const id of [...this.runs.keys()]) this.abort(id);
     for (const t of this.holds.values()) clearTimeout(t);
     this.holds.clear();
-    this.dirty.clear();
-    this.forced.clear();
     const waiters = this.waiters;
     this.waiters = [];
     for (const w of waiters) w();

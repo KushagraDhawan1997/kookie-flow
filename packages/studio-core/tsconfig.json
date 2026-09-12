@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": ["vitest/globals"],
+    // `noUncheckedIndexedAccess` is OFF, and it is the price of the mapping below: the library's
+    // source is in this program now, and it was not written under that flag — it reported 72
+    // errors in files this package does not own. The app makes the same trade for the same
+    // reason. This package's own code was written under the flag and still holds to it.
+    // THE LIBRARY'S TYPES COME FROM ITS SOURCE, not from `dist`. The package's watch build cleans
+    // `dist` and re-emits the JavaScript before the declarations, so a type-check that lands in
+    // that window reports the whole library as `any` and every document type collapses with it.
+    //
+    // The TYPE entry, not the package entry: this package imports types from the library and
+    // nothing else, and pointing at `src/index.ts` would pull the components — JSX, three.js,
+    // React Three Fiber — into a program that has no reason to compile them. If something here
+    // ever needs a runtime value from the library, this mapping is what has to change first.
+    "paths": {
+      "@kushagradhawan/kookie-flow": ["../kookie-flow/src/types/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

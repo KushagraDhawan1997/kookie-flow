@@ -10,6 +10,7 @@ import type {
   XYPosition,
   SocketHandle,
   WidgetHandle,
+  WidgetPopover,
   CloneElementsOptions,
   CloneElementsResult,
   ElementsBatch,
@@ -56,6 +57,8 @@ import {
 import type { AdjacencyIndex, CachedAnalysis } from './graph';
 import type { ResolvedSocketLayout } from '../utils/style-resolver';
 import { widgetKey, type WidgetOverride } from '../utils/widget-values';
+import { hexToHsv } from '../utils/hsv';
+import { scrollToShow, POPOVER_MAX_ROWS } from '../utils/popover-layout';
 import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
 import { stackCapacity } from '../utils/entity-depth';
 import { isEvaluated } from '../utils/entity-kind';
@@ -158,6 +161,46 @@ export interface FlowState {
    * on screen.
    */
   pressedWidgetKey: string | null;
+
+  /**
+   * The widget the KEYBOARD is on, through the accessibility mirror — v2's `:focus-visible`.
+   *
+   * The mirror's controls are clipped to a pixel and draw nothing, so without this a sighted
+   * keyboard user moving between a node's controls saw no sign of where they were. The widget
+   * layer wears the focus ring for this key, the way a v2 control wears one for keyboard focus.
+   * Only the mirror writes it, and the mirror is reachable only by keyboard, so a pointer press
+   * never lights a ring on a checkbox, a slider or a trigger.
+   */
+  focusVisibleWidgetKey: string | null;
+
+  /**
+   * The widget panel that is open — a select's list or a colour picker — or null.
+   *
+   * Here rather than in the canvas component's state because three GL layers read it: the panel
+   * draws itself from it, the widget layer lights the trigger it hangs off, and the text layer
+   * keeps printing the trigger's value under it (unlike `editingWidgetKey`, which suppresses).
+   * The panel's LIVE state — which row is lit, how far it is scrolled, where the colour cursors
+   * are — is the three fields below it, so a hover over a row changes a number and not this record.
+   */
+  widgetPopover: WidgetPopover | null;
+  /** The list row under the pointer or the keyboard, or -1. */
+  popoverIndex: number;
+  /** The first row on screen. */
+  popoverScroll: number;
+  /**
+   * The colour picker's hue, saturation and value, in 0..1. MUTATED IN PLACE on every pointermove
+   * of a drag, with `popoverVersion` as the dirty flag beside it — a fresh tuple per move is the
+   * allocation the widget layer's rule forbids. Kept separately from the hex value the widget
+   * emits because a hex cannot hold the hue of a grey, and dragging value to zero and back must
+   * not lose where the hue cursor was.
+   */
+  popoverHsv: Float32Array;
+  popoverVersion: number;
+  /**
+   * The key `setWidgetValue` last wrote, so a layer that animates a change knows WHICH widget
+   * changed without diffing the whole map. Read beside `widgetValuesVersion`.
+   */
+  lastChangedWidgetKey: string | null;
 
   /**
    * Stacking order: entity id -> a monotonically increasing index; higher is nearer the camera.
@@ -323,6 +366,16 @@ export interface FlowState {
   /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
   setEditingWidgetKey: (key: string | null) => void;
   setPressedWidgetKey: (key: string | null) => void;
+  setFocusVisibleWidgetKey: (key: string | null) => void;
+
+  /** Open a widget's panel; the row is seeded from its value, the colour from its hex. */
+  /** @param scroll the scroll the panel was PLACED for, from the layout that positions it. */
+  openWidgetPopover: (popover: WidgetPopover, scroll?: number) => void;
+  closeWidgetPopover: () => void;
+  setPopoverIndex: (index: number) => void;
+  setPopoverScroll: (scroll: number) => void;
+  /** Move the colour picker's cursors. Writes in place; bumps `popoverVersion`. */
+  setPopoverHsv: (h: number, s: number, v: number) => void;
 
   /** Move the keyboard cursor. See `focusedEntityId` for why this is not selection. */
   setFocusedEntityId: (id: string | null) => void;
@@ -714,14 +767,6 @@ function rebuildDerivedState(entities: Entity[], collapsedGroupIds?: Set<string>
  * O(overrides), which is at most a handful: an override lives only between a pointer event and
  * the consumer's echo.
  */
-function hasLocalOverride(widgetValues: Map<string, WidgetOverride>, entityId: string): boolean {
-  const prefix = `${entityId}:`;
-  for (const key of widgetValues.keys()) {
-    if (key.startsWith(prefix)) return true;
-  }
-  return false;
-}
-
 function rebuildConnectedSockets(edges: Edge[], widgetValues?: Map<string, WidgetOverride>): Set<string> {
   const connected = new Set<string>();
   for (const edge of edges) {
@@ -965,6 +1010,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       evaluationVersion: 0,
       editingWidgetKey: null,
       pressedWidgetKey: null,
+      focusVisibleWidgetKey: null,
+      widgetPopover: null,
+      popoverIndex: -1,
+      popoverScroll: 0,
+      popoverHsv: new Float32Array(3),
+      popoverVersion: 0,
+      lastChangedWidgetKey: null,
       stackOrder: initialStackOrder,
       stackVersion: 0,
 
@@ -1014,12 +1066,58 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // is still pending for the entity, because then the echo IS the answer to a mark
         // `setWidgetValue` already made, and marking again would abort the run that mark started.
         const changedInputs: string[] = [];
+        let overridesRetired = false;
         for (const next of entities) {
           const prev = state.entityMap.get(next.id);
-          if (!prev) continue;
+          if (!prev) {
+            // A node that arrived through the CONSUMER's array — their own "add node" button, an
+            // undo of a delete, an agent's edit — has never run and has no outputs. `addElements`
+            // marks what it adds for exactly this reason; without the same rule here, the node
+            // sits idle, and whatever it feeds reads `undefined` for that input, falls back to the
+            // socket default and reports success. Nothing looks wrong and the number is wrong.
+            if (isEvaluated(next.type)) changedInputs.push(next.id);
+            continue;
+          }
           const a = (prev.data as { values?: unknown } | undefined)?.values;
           const b = (next.data as { values?: unknown } | undefined)?.values;
-          if (a !== b && !hasLocalOverride(state.widgetValues, next.id)) changedInputs.push(next.id);
+          if (a === b) continue;
+          /**
+           * WHICH SOCKET MOVED, AND WAS IT THIS PERSON'S OWN WRITE COMING BACK?
+           *
+           * The question used to be asked per ENTITY — "is any widget write pending on this
+           * node?" — and one pending write vetoed the mark for every socket on it. That alone
+           * would be a narrow bug; what made it permanent is that an override whose value
+           * already equalled what the entity held could never retire, because retirement waits
+           * for the entity to move OFF the baseline and it was already there. One such record
+           * froze evaluation for that node for good: every later change through the controlled
+           * prop — the inspector, an undo, an agent — was read as an echo and ignored.
+           *
+           * Asked per socket, both halves are answered: an echo of exactly what was set retires
+           * the record it belongs to, and anything else is a real change and marks the node.
+           */
+          const prevValues = isValueBag(a) ? a : undefined;
+          const nextValues = isValueBag(b) ? b : undefined;
+          const socketIds = new Set<string>([
+            ...(prevValues ? Object.keys(prevValues) : []),
+            ...(nextValues ? Object.keys(nextValues) : []),
+          ]);
+          let external = false;
+          for (const socketId of socketIds) {
+            const before = prevValues?.[socketId];
+            const after = nextValues?.[socketId];
+            if (Object.is(before, after)) continue;
+            const key = widgetKey(next.id, socketId);
+            const pending = state.widgetValues.get(key);
+            if (pending && Object.is(pending.value, after)) {
+              // The consumer answered this socket with exactly what was set: the record has
+              // nothing left to protect, and a mark here would abort the run that write started.
+              state.widgetValues.delete(key);
+              overridesRetired = true;
+              continue;
+            }
+            external = true;
+          }
+          if (external) changedInputs.push(next.id);
         }
         const derived = rebuildDerivedState(entities, undefined, state.socketLayout);
         cachedAnalysis = null;
@@ -1042,7 +1140,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           topologyVersion: state.topologyVersion + 1,
           positionVersion: state.positionVersion + 1,
           stackVersion: state.stackVersion + 1,
-          ...(widgetValuesDropped
+          ...(widgetValuesDropped || overridesRetired
             ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
             : {}),
         });
@@ -1254,10 +1352,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // utils/widget-values.ts: comparing the echo against the value the person SET means a
         // consumer that clamps or rounds never closes the round trip, and the widget shows the
         // rejected value forever.
-        const values = entityMap.get(entityId)?.data.values;
-        const baseline = isValueBag(values) ? values[socketId] : undefined;
-        widgetValues.set(widgetKey(entityId, socketId), { value, baseline });
-        set({ widgetValuesVersion: widgetValuesVersion + 1 });
+        const entity = entityMap.get(entityId);
+        const values = entity?.data.values;
+        const held = isValueBag(values) ? values[socketId] : undefined;
+        // A socket nobody has set holds nothing, and what the widget DRAWS there — and what the
+        // engine reads — is the socket's default. That is what "unchanged" means for it. Recorded
+        // as `undefined` instead, the very first write on such a socket counted as answered the
+        // moment the consumer echoed anything at all, so the grip snapped back to the default
+        // mid-drag and a second press within the echo window read the old value again.
+        const baseline = held ?? entity?.inputs?.find((socket) => socket.id === socketId)?.defaultValue;
+        const key = widgetKey(entityId, socketId);
+        widgetValues.set(key, { value, baseline });
+        set({ widgetValuesVersion: widgetValuesVersion + 1, lastChangedWidgetKey: key });
       },
 
       // ---- Phase 8.5: Evaluation ----
@@ -1279,6 +1385,51 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setPressedWidgetKey: (pressedWidgetKey) => {
         if (get().pressedWidgetKey === pressedWidgetKey) return;
         set({ pressedWidgetKey });
+      },
+
+      setFocusVisibleWidgetKey: (focusVisibleWidgetKey) => {
+        if (get().focusVisibleWidgetKey === focusVisibleWidgetKey) return;
+        set({ focusVisibleWidgetKey });
+      },
+
+      openWidgetPopover: (popover, scroll) => {
+        const { popoverHsv, popoverVersion } = get();
+        const index = popover.kind === 'select' ? popover.options.indexOf(popover.value) : -1;
+        if (popover.kind === 'color') {
+          const hsv = hexToHsv(popover.value) ?? [0, 0, 0.5];
+          popoverHsv[0] = hsv[0];
+          popoverHsv[1] = hsv[1];
+          popoverHsv[2] = hsv[2];
+        }
+        set({
+          widgetPopover: popover,
+          popoverIndex: index,
+          // The opening scroll comes from the layout that placed the panel, because v2 opens a
+          // select with the chosen row over its trigger and that row's offset IS the placement.
+          // The fallback is for a caller with no viewport to measure against.
+          popoverScroll:
+            scroll ?? (index < 0 ? 0 : scrollToShow(0, index, popover.options.length, POPOVER_MAX_ROWS)),
+          popoverVersion: popoverVersion + 1,
+        });
+      },
+      closeWidgetPopover: () => {
+        if (get().widgetPopover === null) return;
+        set({ widgetPopover: null, popoverIndex: -1, popoverScroll: 0 });
+      },
+      setPopoverIndex: (popoverIndex) => {
+        if (get().popoverIndex === popoverIndex) return;
+        set({ popoverIndex });
+      },
+      setPopoverScroll: (popoverScroll) => {
+        if (get().popoverScroll === popoverScroll) return;
+        set({ popoverScroll });
+      },
+      setPopoverHsv: (h, s, v) => {
+        const { popoverHsv, popoverVersion } = get();
+        popoverHsv[0] = h;
+        popoverHsv[1] = s;
+        popoverHsv[2] = v;
+        set({ popoverVersion: popoverVersion + 1 });
       },
 
       setFocusedEntityId: (focusedEntityId) => {
