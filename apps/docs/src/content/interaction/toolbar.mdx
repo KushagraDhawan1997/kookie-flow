@@ -1,0 +1,214 @@
+The selection toolbar is a small card that floats above whatever is selected. It holds controls
+for the selection: a font size for text, a colour for a sticky note, a width for a pen stroke, or
+buttons you write yourself. You decide which entity types get a toolbar and what goes in it.
+
+## Show the toolbar
+
+Render `Toolbar` as a child of `KookieFlow`, then give each entity type that should have a toolbar
+a `toolbar` entry in `entityTypes`. A type without an entry shows no toolbar.
+
+<Example name="toolbar" />
+
+Every control in the toolbar edits the graph through `onEntitiesChange`, the same callback a drag
+uses. Pass it: without it, a control shows the current value, and changing the value does nothing.
+`useGraph` applies these changes for you, as the example does.
+
+`Toolbar` has to sit inside `KookieFlow`, because it reads the selection from the flow's store.
+Rendered anywhere else, it throws.
+
+The toolbar centres itself over the bounding box of the selection, 8 pixels above it. When that
+would push it past the top of the canvas, it sits 8 pixels below the selection instead. It follows the selection while you pan and zoom, and it hides
+while you drag, resize, draw a wire or drag a selection box, then comes back when the gesture
+ends.
+
+### Style the card
+
+The toolbar draws its controls inside a KookieUI `Card` at size 1. `cardProps` passes props to that
+card. Use it to change the card's size, or set `backdrop` to tell the card that the canvas shows
+behind it. Without `backdrop`, the card is solid even when your theme uses a glass material.
+
+```tsx
+<KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+  <Toolbar cardProps={{ size: '2', backdrop: true }} />
+</KookieFlow>
+```
+
+| Prop | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `cardProps` | `Omit<CardProps, 'children'>` | none | Props for the card around the controls. `CardProps` comes from `@kookie-ui/react`. |
+| `children` | `ToolbarRenderFn` | none | Replaces the toolbar's contents for every selection. See [Replace the toolbar's contents](#replace-the-toolbars-contents). |
+
+## Turn on the built-in controls
+
+Set `toolbar: true` on a built-in entity type to show its default controls. Text, comments, images
+and ink each have a set.
+
+```tsx
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  text: { type: 'text', toolbar: true },
+  comment: { type: 'comment', toolbar: true },
+  image: { type: 'image', toolbar: true },
+  draw: { type: 'draw', toolbar: true },
+};
+```
+
+A control shows the value of the first selected entity. A change applies to every selected entity
+at once, in one `onEntitiesChange` call. Number fields commit when you press Enter or move focus
+away, so typing "24" doesn't write a font size of 2 on the way.
+
+| Widget | Default for | Control | What it writes |
+| --- | --- | --- | --- |
+| `sizingMode` | `text` | Auto width, auto height or fixed | `data.sizingMode`, and the width and height that mode gives the text |
+| `fontSize` | `text`, `comment` | Number | `data.fontSize` |
+| `fontFamily` | `text` | System, Serif or Mono | `data.fontFamily`: `'system-ui'`, `'serif'` or `'monospace'` |
+| `fontWeight` | `text` | Regular, Semibold or Bold | `data.fontWeight`: `400`, `600` or `700` |
+| `textColor` | `text`, `comment` | Colour picker | `data.textColor` |
+| `textAlign` | `text` | Left, centre or right | `data.textAlign` |
+| `lineHeight` | `text` | Number | `data.lineHeight` |
+| `letterSpacing` | `text` | Number | `data.letterSpacing` |
+| `objectFit` | `image` | Fill, cover or contain | `data.objectFit` |
+| `aspectLock` | `image` | Lock toggle | `data.aspectLocked` |
+| `strokeColor` | `draw` | Colour picker | `data.strokeColor` |
+| `strokeWidth` | `draw` | Number | `data.strokeWidth`, and a box refitted to the new width |
+| `arrange` | none | Align and distribute buttons | New positions, reported as a drag reports them |
+
+The comment defaults also name `backgroundColor`, and the widget types include `color`. Neither
+draws a control, so a comment's toolbar shows its text colour and font size.
+
+`arrange` works on any entity type. It shows six align buttons once two or more entities are
+selected, and two distribute buttons once three or more are. With one entity selected it shows
+nothing. The [chapter on arranging entities](/data/arrange#align-a-selection) describes what each
+button does, and the keys that do the same.
+
+The widget names are typed in groups: `TextToolbarWidget`, `CommentToolbarWidget`,
+`ImageToolbarWidget`, `DrawToolbarWidget` and `CommonToolbarWidget` (`color` and `arrange`).
+`ToolbarWidget` is all of them together.
+
+The `toolbar` field's own type is `ToolbarConfig`. It accepts `true`, `false`, an array of widget
+names, an object with `defaults` and `extra`, or a render function.
+
+## Pick which controls appear
+
+Pass an array instead of `true` to choose the controls and their order. The toolbar draws a divider
+between each one.
+
+```tsx
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  text: { type: 'text', toolbar: ['fontSize', 'fontWeight', 'textColor', 'arrange'] },
+};
+```
+
+Only text, comments, images and ink have default controls. On any other type, including the types
+you define, `toolbar: true` shows no toolbar, and an array is how you give that type built-in
+controls. A list such as `['arrange']` works on any type. With only one entity selected it shows an
+empty card, because `arrange` has nothing to show for one entity.
+
+To show no toolbar for a type, set `toolbar: false` or leave `toolbar` out.
+
+## Add your own controls
+
+Pass an object with `defaults` and `extra` to keep built-in controls and add yours after them.
+`defaults` takes `true` or an array of widget names. `extra` is a function that returns the controls
+to add, and the toolbar puts a divider between the two groups.
+
+```tsx
+import { Button } from '@kookie-ui/react';
+import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  step: {
+    type: 'step',
+    toolbar: {
+      defaults: ['arrange'],
+      extra: ({ entities, update }) => (
+        <Button
+          size="2"
+          emphasis="quiet"
+          onClick={() => entities.forEach((entity) => update(entity.id, { status: 'warning' }))}
+        >
+          Flag
+        </Button>
+      ),
+    },
+  },
+};
+```
+
+The function receives an object of type `ToolbarRenderProps`:
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `entities` | `Entity[]` | Every selected entity. |
+| `update` | `(entityId: string, data: Partial<EntityData>) => void` | Reports one `data` change for one entity through `onEntitiesChange`. |
+| `bounds` | `{ x: number; y: number; width: number; height: number }` | The selection's bounding box, in world coordinates. |
+| `align` | `(edge: AlignEdge) => void` | Lines the selection up on one edge or centre line, and reports the moves. |
+| `distribute` | `(axis: DistributeAxis) => void` | Spaces the selection evenly along an axis, and reports the moves. |
+
+`update` sends only the fields you pass. `useGraph` merges them into the entity's existing `data`,
+so `update(id, { status: 'warning' })` keeps the label. If you apply changes yourself, merge the
+same way. Each call to `update` is its own `onEntitiesChange` call, so a loop over five entities
+reports five.
+
+`ToolbarRenderFn` is the type of this function: `(props: ToolbarRenderProps) => React.ReactNode`.
+
+## Replace the toolbar's contents
+
+Set `toolbar` to a function to draw that type's toolbar entirely yourself. The toolbar shows no
+built-in controls or dividers, only what your function returns.
+
+```tsx
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  step: {
+    type: 'step',
+    toolbar: ({ entities, update }) => (
+      <Button size="2" emphasis="quiet" onClick={() => update(entities[0].id, { label: 'Renamed' })}>
+        Rename
+      </Button>
+    ),
+  },
+};
+```
+
+To replace the contents for every selection, whatever its types, pass the same kind of function
+as the child of `Toolbar`. That function ignores every `toolbar` entry in `entityTypes`, and the
+toolbar appears for any selection that holds at least one entity.
+
+## Show controls for a mixed selection
+
+The `toolbar` entries in `entityTypes` apply only when every selected entity has the same type.
+When a selection mixes types, such as a text block and a step, no entry applies and no toolbar
+appears.
+
+To offer controls for a mixed selection, pass a function as the child of `Toolbar` and decide
+from `entities` what to show. Return `null` to show nothing.
+
+```tsx title="board.tsx"
+'use client';
+
+import { Button, Flex } from '@kookie-ui/react';
+import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow';
+
+export function Board() {
+  const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph();
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange}>
+        <Toolbar>
+          {({ entities: selected, align }) =>
+            selected.length < 2 ? null : (
+              <Flex align="center" gap="1">
+                <Button size="2" emphasis="quiet" onClick={() => align('left')}>Align left</Button>
+                <Button size="2" emphasis="quiet" onClick={() => align('top')}>Align top</Button>
+              </Flex>
+            )
+          }
+        </Toolbar>
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+`align` and `distribute` move the selection in the canvas and then report every move through
+`onEntitiesChange`, so a controlled graph keeps the new positions.

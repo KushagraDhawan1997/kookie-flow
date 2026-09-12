@@ -1,0 +1,208 @@
+`useContextMenu` holds the state of a context menu that you draw yourself: whether it's open,
+where it opened, and what was under the pointer. You wrap `KookieFlow` in an element that listens
+for right-clicks and long presses, work out what sits under the pointer, and render the menu from
+that state.
+
+## Open a menu on right-click
+
+Import `useContextMenu` from `@kushagradhawan/kookie-flow/plugins`, and put an `onContextMenu`
+handler on a `div` around `KookieFlow`. The canvas doesn't cancel the browser's `contextmenu`
+event, so a right-click on the graph bubbles up to your `div`.
+
+<Example name="context-menu" />
+
+Your handler decides what was clicked, then passes the event, the target and the clicked point in
+world coordinates to the hook's `onContextMenu`. That function stops the browser's own menu from
+opening, stops the event from bubbling further, and stores the target, the pointer position and
+the world point as the open menu's state. While the menu is closed, `contextMenu` is `null`.
+
+A right-click on the canvas doesn't select anything, so the entity under the pointer can be
+different from the selected ones.
+
+The wrapper is outside `KookieFlow`, and `useFlowStoreApi` throws outside it. Read the graph through
+a ref to `KookieFlow` instead, as the example does with `getViewport()` and `getEntities()`.
+
+`useContextMenu` takes an optional `UseContextMenuOptions` object:
+
+| Option | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `longPressDuration` | `number` | `500` | How long a touch has to stay down, in milliseconds, before the menu opens. |
+| `enabled` | `boolean` | `true` | With `false`, the handlers do nothing. They don't cancel the event either, so the browser shows its own menu. |
+
+`useContextMenu` returns `UseContextMenuReturn`:
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `contextMenu` | `ContextMenuState \| null` | The open menu, or `null`. |
+| `onContextMenu` | `(event, target, worldPosition) => void` | Opens the menu from a mouse event. |
+| `longPressProps` | `{ onTouchStart, onTouchEnd, onTouchMove }` | Opens the menu after a long press. See [Open the menu on long press](#open-the-menu-on-long-press). |
+| `openMenu` | `(state: ContextMenuState) => void` | Opens the menu with a state you build, with no event. |
+| `closeMenu` | `() => void` | Closes the menu. |
+
+## Work out what was clicked
+
+A mouse event gives you coordinates in the browser window, and the graph needs world coordinates.
+Convert in two steps:
+
+1. Subtract the wrapper's top-left corner from `clientX` and `clientY`. The wrapper is the same size
+   as the canvas, so this gives a point on the canvas.
+2. Pass that point and the ref's `getViewport()` to `screenToWorld(point, viewport)`.
+
+Then ask what is at that world point. `getEntityAtPosition(worldPos, entities, layout)` returns the
+last entity in the array whose box contains the point, or `null`.
+
+Pass the `layout` argument. Without it, an entity with no `height` of its own is tested as 100
+pixels tall, while the canvas draws it at the height its title and sockets need, so the lower part
+of a node misses. `useSocketLayout()` returns the layout the canvas draws with, and it follows
+`KookieFlow`'s `header` and `size` props and the theme. The hook works only in a component rendered
+inside `KookieFlow`, so render a small child that copies the layout into a ref your wrapper owns:
+
+```tsx title="share-layout.tsx"
+import { useEffect, type RefObject } from 'react';
+import { useSocketLayout, type ResolvedSocketLayout } from '@kushagradhawan/kookie-flow';
+
+export function ShareLayout({ into }: { into: RefObject<ResolvedSocketLayout | undefined> }) {
+  const layout = useSocketLayout();
+  useEffect(() => {
+    into.current = layout;
+  }, [into, layout]);
+  return null;
+}
+```
+
+Create the ref with `useRef<ResolvedSocketLayout | undefined>(undefined)`, render
+`<ShareLayout into={layoutRef} />` as a child of `KookieFlow`, and read `layoutRef.current` when the
+menu opens. Writing to a ref doesn't re-render your wrapper.
+
+A target is one of four shapes, and the menu you draw for each can differ:
+
+| `ContextMenuTarget` | When to use it |
+| --- | --- |
+| `{ type: 'entity'; entity: Entity }` | The pointer is over one entity. |
+| `{ type: 'edge'; edge: Edge }` | The pointer is over an edge. |
+| `{ type: 'selection'; entityIds: string[]; edgeIds: string[] }` | The pointer is over something that is part of a larger selection. |
+| `{ type: 'pane' }` | The pointer is over empty canvas. |
+
+The hook never works the target out for you. This function checks for a selection first, then an
+entity, then an edge, and returns the target with the world point:
+
+```tsx
+const hitTest = (clientX: number, clientY: number): [ContextMenuTarget, XYPosition] | null => {
+  const flow = flowRef.current;
+  const box = boxRef.current?.getBoundingClientRect();
+  if (!flow || !box) return null;
+
+  const viewport = flow.getViewport();
+  const world = screenToWorld({ x: clientX - box.left, y: clientY - box.top }, viewport);
+  const layout = layoutRef.current;
+  const entity = getEntityAtPosition(world, flow.getEntities(), layout);
+  const selected = flow.getSelectedEntities();
+
+  if (entity && selected.length > 1 && selected.some((s) => s.id === entity.id)) {
+    const edgeIds = flow.getSelectedEdges().map((e) => e.id);
+    return [{ type: 'selection', entityIds: selected.map((s) => s.id), edgeIds }, world];
+  }
+  if (entity) return [{ type: 'entity', entity }, world];
+
+  const entityMap = new Map(flow.getEntities().map((e) => [e.id, e]));
+  const edge = getEdgeAtPosition(world, flow.getEdges(), entityMap, 'bezier', viewport, undefined, layout);
+  return [edge ? { type: 'edge', edge } : { type: 'pane' }, world];
+};
+
+const handleContextMenu = (event: React.MouseEvent) => {
+  const hit = hitTest(event.clientX, event.clientY);
+  if (hit) onContextMenu(event, hit[0], hit[1]);
+};
+```
+
+`getEdgeAtPosition` takes the world point, the edges, a map of entities by id, the default edge type,
+the viewport, an optional socket index, and the layout. Pass your `defaultEdgeType` prop as the
+fourth argument; it's `'bezier'` unless you set it.
+
+## Place the menu
+
+`ContextMenuState` carries three fields:
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `target` | `ContextMenuTarget` | What you said was clicked. |
+| `position` | `XYPosition` | Where the pointer was, in browser window coordinates. |
+| `worldPosition` | `XYPosition` | The world point you passed, for actions such as adding a node there. |
+
+`position` comes from `clientX` and `clientY`, so it suits a menu with `position: fixed`. A fixed
+menu is placed relative to an ancestor instead of the window when that ancestor has a `transform`
+or a backdrop filter, which a panel or a dialog often does. The example avoids that case: it
+positions the menu absolutely inside the wrapper, and subtracts the wrapper's corner, which it
+recorded when the menu opened.
+
+## Open the menu on long press
+
+On a touch screen, call `longPressProps.onTouchStart` from the wrapper's `onTouchStart`, with the
+same target and world point you would pass for a right-click. Pass `onTouchMove` and `onTouchEnd`
+straight through.
+
+```tsx
+<div
+  ref={boxRef}
+  onContextMenu={handleContextMenu}
+  onTouchStart={(event) => {
+    const touch = event.touches[0];
+    const hit = touch ? hitTest(touch.clientX, touch.clientY) : null;
+    if (hit) longPressProps.onTouchStart(event, hit[0], hit[1]);
+  }}
+  onTouchMove={longPressProps.onTouchMove}
+  onTouchEnd={longPressProps.onTouchEnd}
+>
+  <KookieFlow ref={flowRef} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+    <ShareLayout into={layoutRef} />
+  </KookieFlow>
+</div>
+```
+
+The menu opens when the touch has stayed down for `longPressDuration`, at the point where the touch
+started. Moving the finger before then, or lifting it, cancels the long press, so a pan or a drag
+never opens the menu.
+
+## Close the menu
+
+Once the menu is open, a click anywhere on the page or the Escape key closes it. That includes a
+click on one of the menu's own items, which closes the menu after the item's `onClick` runs, so an
+item doesn't have to close the menu itself.
+
+Call `closeMenu()` to close the menu from code, and `openMenu(state)` to open one without an event,
+with a `ContextMenuState` you build yourself.
+
+## Act on the target
+
+The flow's store is inside `KookieFlow`, and your menu is outside it. Make every edit through the
+same callbacks the canvas uses, `onEntitiesChange` and `onEdgesChange`, so a controlled graph keeps
+the result.
+
+```tsx
+const runDelete = (target: ContextMenuTarget) => {
+  const entityIds = target.type === 'entity' ? [target.entity.id] : target.type === 'selection' ? target.entityIds : [];
+  const edgeIds = new Set(target.type === 'edge' ? [target.edge.id] : target.type === 'selection' ? target.edgeIds : []);
+
+  // An entity takes its wires with it.
+  for (const edge of edges) {
+    if (entityIds.includes(edge.source) || entityIds.includes(edge.target)) edgeIds.add(edge.id);
+  }
+
+  onEdgesChange([...edgeIds].map((id) => ({ type: 'remove', id })));
+  onEntitiesChange(entityIds.map((id) => ({ type: 'remove', id })));
+};
+```
+
+A `remove` change for an entity doesn't remove its edges, so report them yourself. With
+`useGraph({ history: true })`, the two calls in one handler become one undo step. `useGraph` also
+returns a `removeEntity(id)` helper, which removes an entity and its edges in one call. It records
+no undo step, and neither does `addEntity`. The [undo and redo chapter](/data/history) covers
+history.
+
+To add something where the menu was opened, use its `worldPosition`:
+
+```tsx
+onEntitiesChange([
+  { type: 'add', entity: { id: crypto.randomUUID(), type: 'default', position: contextMenu.worldPosition, data: { label: 'New node' } } },
+]);
+```

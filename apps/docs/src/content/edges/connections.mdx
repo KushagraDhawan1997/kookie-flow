@@ -1,0 +1,292 @@
+People connect two entities by dragging a wire from one socket to another. When they let go
+over a socket that accepts the wire, the canvas calls `onConnect`, and your code adds the edge.
+You set which wires are allowed with `connectionMode`, `isValidConnection` and `allowCycles`.
+
+## Drag a wire between sockets
+
+Press on any socket and drag. A wire can start from an output or from an input, and it follows
+the pointer until you let go.
+
+While you drag, the canvas shows where the wire can go:
+
+- The wire has the colour of the socket type it started from.
+- Every socket on another entity that faces the other way and has a compatible type shows a halo
+  in the success colour, `--success-9`.
+- When the socket under the pointer faces the same way, sits on the same entity or has an
+  incompatible type, that socket and the wire turn the destructive colour, `--destructive-9`.
+- When `allowCycles` is `false`, the wire also turns the destructive colour over a socket that
+  would close a loop.
+- Near the edge of the canvas, within 50 pixels, the view pans to follow the pointer, so you can
+  reach an entity that is off screen.
+
+Press Escape to drop the wire without connecting it.
+
+These colours don't reflect `connectionMode` or your own `isValidConnection`. In the default
+loose mode, a wire that turned the destructive colour only because its types don't match still
+connects when you let go. A wire that your own rule rejects can look acceptable until you let go.
+
+## Create the edge
+
+The canvas doesn't add an edge by itself. When a wire is accepted, it calls `onConnect` with a
+`Connection`, and you add the edge to the `edges` you pass back. Without an `onConnect`, the
+wire disappears when you let go.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `source` | `string \| null` | The entity on the output side. |
+| `sourceSocket` | `string \| null` | The output socket. |
+| `target` | `string \| null` | The entity on the input side. |
+| `targetSocket` | `string \| null` | The input socket. |
+| `invalid` | `boolean` | `true` when the two socket types aren't compatible. |
+
+`source` is always the output side, whichever end the drag started from. The canvas fills all
+four ids when it calls `onConnect`. They're typed as nullable, so check them before you use
+them as strings.
+
+`invalid` reports type compatibility and nothing else. It is `true` for an incompatible wire
+that loose mode accepted, and also for one that your own `isValidConnection` accepted. An edge
+that keeps `invalid: true` draws as a dashed line in the destructive colour. The
+[Edges](/edges/edges#when-an-edge-is-invalid) chapter explains how to set it yourself.
+
+`useGraph` returns an `onConnect` that appends an edge with the id
+`` `${source}-${sourceSocket}-${target}-${targetSocket}` `` and copies `invalid` onto it. It
+doesn't look for an edge that is already there. An input can take several wires, and dragging
+the same wire twice adds a second edge with the same id.
+
+Write your own handler when an input should hold one wire. This one replaces whatever was
+plugged into the input, and reports the change through `onEdgesChange` so `useGraph` records it
+as one undo step when history is on:
+
+```tsx title="editor.tsx"
+import { KookieFlow, useGraph, type Connection, type EdgeChange, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
+
+  function handleConnect({ source, sourceSocket, target, targetSocket, invalid }: Connection) {
+    if (!source || !sourceSocket || !target || !targetSocket) return;
+    // One wire per input: unplug whatever was in this one before.
+    const changes: EdgeChange[] = edges
+      .filter((edge) => edge.target === target && edge.targetSocket === targetSocket)
+      .map((edge): EdgeChange => ({ type: 'remove', id: edge.id }));
+    const id = `${source}.${sourceSocket}->${target}.${targetSocket}`;
+    changes.push({ type: 'add', edge: { id, source, sourceSocket, target, targetSocket, invalid } });
+    onEdgesChange(changes);
+  }
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={handleConnect}
+    />
+  );
+}
+```
+
+## Choose loose or strict connections
+
+`connectionMode` sets how strictly the canvas checks socket types when you let go of a wire.
+
+- `'loose'` is the default. It accepts a wire between any output and any input on two
+  different entities. An incompatible wire still connects, with `invalid: true`.
+- `'strict'` also rejects a wire whose socket types aren't compatible.
+
+Both modes reject a wire from an input to an input, from an output to an output, and from an
+entity to itself. Types are compatible when they're the same, when either is `any`, or when
+either type's `compatibleWith` lists the other or is `'*'`. The
+[Sockets and widgets](/entities/sockets#compatibility) chapter covers those rules.
+
+<Example name="connection-rules" />
+
+This graph uses `connectionMode="strict"`. Drag from **Value** to the **Image** input on
+**Blur**: the wire turns the destructive colour and disappears when you let go, because a `float`
+can't feed an `image`. Drag from **Value** to **Radius** instead, and the two `float` sockets
+connect.
+
+| Prop | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `onConnect` | `(connection: Connection) => void` | none | Called when a wire is accepted. |
+| `onConnectStart` | `(event: PointerEvent, params: OnConnectStartParams) => void` | none | Called when the pointer goes down on a socket. |
+| `onConnectEnd` | `(event: PointerEvent, state: ConnectionEndState) => void` | none | Called when a wire is let go, accepted or not. |
+| `connectionMode` | `ConnectionMode` | `'loose'` | `'loose'` or `'strict'`. |
+| `isValidConnection` | `IsValidConnectionFn` | none | Your own rule. Replaces the type check that `connectionMode` makes. |
+| `allowCycles` | `boolean` | `true` | Set to `false` to reject a wire that closes a loop. |
+
+## Write your own connection rule
+
+Pass `isValidConnection` when the rule depends on more than socket types. The canvas calls it
+when you let go over a socket, after its own checks for direction, for two different entities
+and for sockets that exist. If it returns `false`, the canvas rejects the wire.
+
+Your rule replaces `connectionMode`, so the canvas no longer checks types for you. Call
+`areTypesCompatible` inside the rule if you still want them checked. The `socketTypes` argument
+is your table merged over the built-in socket types.
+
+This rule rejects a second wire into an input that is already connected:
+
+```tsx title="editor.tsx"
+import {
+  areTypesCompatible,
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type IsValidConnectionFn,
+} from '@kushagradhawan/kookie-flow';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+
+  const isValidConnection: IsValidConnectionFn = (params, socketTypes) => {
+    // The drag can start at either end, so find the input first.
+    const input = params.source.isInput ? params.source : params.target;
+    const taken = edges.some((edge) => edge.target === input.entityId && edge.targetSocket === input.socketId);
+    return !taken && areTypesCompatible(params.sourceSocketType, params.targetSocketType, socketTypes);
+  };
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      isValidConnection={isValidConnection}
+    />
+  );
+}
+```
+
+`IsValidConnectionFn` is `(params: ConnectionValidationParams, socketTypes: Record<string, SocketType>) => boolean`.
+
+| `ConnectionValidationParams` field | Type | Meaning |
+| --- | --- | --- |
+| `source` | `SocketHandle` | The socket the drag started from. It can be an input. |
+| `target` | `SocketHandle` | The socket under the pointer. |
+| `sourceSocketType` | `string` | The `type` of `source`. |
+| `targetSocketType` | `string` | The `type` of `target`. |
+
+Unlike a `Connection`, these params follow the drag rather than the data flow. When someone
+drags from an input to an output, `params.source` is the input.
+
+A `SocketHandle` names one socket:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `entityId` | `string` | The entity the socket belongs to. |
+| `socketId` | `string` | The socket's `id`. |
+| `isInput` | `boolean` | `true` for an input, `false` for an output. |
+
+## Reject cycles
+
+`allowCycles` defaults to `true`, so a wire can close a loop. Set it to `false` when your graph
+has to run in order, such as a processing pipeline, where a loop has no first step.
+
+```tsx
+<KookieFlow entities={entities} edges={edges} onConnect={onConnect} allowCycles={false} />
+```
+
+With `allowCycles={false}`, the canvas rejects a wire when its target entity already leads
+back to its source entity through existing edges. The wire turns the destructive colour as
+soon as it reaches such a socket. The loop check runs after `connectionMode` or your own
+`isValidConnection`, so it applies with either one. To ask the same question in your own code,
+use `wouldCreateGraphCycle` from [Graph queries](/data/graph-queries).
+
+## Follow a drag from start to end
+
+`onConnectStart` runs as soon as the pointer goes down on a socket, before it moves.
+`onConnectEnd` runs when you let go, after `onConnect` if the wire was accepted.
+
+| `OnConnectStartParams` field | Type | Meaning |
+| --- | --- | --- |
+| `entityId` | `string` | The entity the drag started on. |
+| `socketId` | `string` | The socket the drag started on. |
+| `isInput` | `boolean` | Whether that socket is an input. |
+
+| `ConnectionEndState` field | Type | Meaning |
+| --- | --- | --- |
+| `isValid` | `boolean` | `true` when the wire was accepted and `onConnect` was called. |
+| `source` | `{ entityId: string; socketId: string; isInput: boolean }` | The socket the drag started on. |
+| `position` | `XYPosition` | Where the pointer was let go, in world coordinates, the space entity positions use. |
+
+`onConnectEnd` isn't called when Escape cancels the drag. `isValid` is `false` both when the
+wire is let go over empty canvas and when it is let go over a socket that rejects it.
+
+A common use is to create a node where a wire is dropped, already connected to the socket the
+drag started from:
+
+```tsx title="editor.tsx"
+import { KookieFlow, useGraph, type ConnectionEndState, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+
+  function handleConnectEnd(_event: PointerEvent, { isValid, source, position }: ConnectionEndState) {
+    if (isValid) return;
+    const id = `node-${Date.now()}`;
+    const socket = { id: 'value', name: 'Value', type: 'any' };
+    // A drag from an input needs a node with an output, placed to the left of the drop point.
+    const fromInput = source.isInput;
+    onEntitiesChange([{
+      type: 'add',
+      entity: fromInput
+        ? { id, type: 'default', position: { x: position.x - 200, y: position.y }, width: 200, data: { label: 'New node' }, outputs: [socket] }
+        : { id, type: 'default', position, width: 200, data: { label: 'New node' }, inputs: [socket] },
+    }]);
+    onEdgesChange([{
+      type: 'add',
+      edge: fromInput
+        ? { id: `${id}-wire`, source: id, sourceSocket: 'value', target: source.entityId, targetSocket: source.socketId }
+        : { id: `${id}-wire`, source: source.entityId, sourceSocket: source.socketId, target: id, targetSocket: 'value' },
+    }]);
+  }
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onConnectEnd={handleConnectEnd}
+    />
+  );
+}
+```
+
+Because `isValid` is also `false` for a rejected wire, this handler also adds a node when a
+wire is let go over a socket that rejects it.
+
+## Check compatibility in your own code
+
+The canvas exports the checks it uses, so a menu, a shortcut or an import step can apply the
+same rules.
+
+| Function | Returns `true` when |
+| --- | --- |
+| `areTypesCompatible(typeA, typeB, socketTypes)` | The two types are compatible. The order of the types doesn't matter. |
+| `isSocketCompatible(source, target, entitiesOrMap, socketTypes)` | The two sockets face opposite ways, belong to different entities, both exist, and have compatible types. This is the check behind the wire's colour during a drag, and behind an edge's `invalid`. |
+| `validateConnection(source, target, entitiesOrMap, socketTypes, connectionMode?, isValidConnection?)` | The canvas would accept the wire when you let go, apart from the loop check. `connectionMode` defaults to `'loose'`, and `isValidConnection` replaces the type check when you pass it. |
+
+`source` and `target` are `SocketHandle` objects. `entitiesOrMap` takes an `Entity[]` or a
+`Map<string, Entity>`. Pass a map when you check many sockets, because the function then looks each
+entity up directly instead of searching the array.
+
+This checks a wire before a button adds it:
+
+```tsx
+import { validateConnection, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow';
+
+export function connectIfAllowed(
+  entities: Entity[],
+  edges: Edge[],
+  socketTypes: Record<string, SocketType>
+): Edge[] {
+  const output = { entityId: 'noise', socketId: 'image', isInput: false };
+  const input = { entityId: 'blur', socketId: 'image', isInput: true };
+  if (!validateConnection(output, input, entities, socketTypes, 'strict')) return edges;
+  return [...edges, { id: 'noise-to-blur', source: 'noise', sourceSocket: 'image', target: 'blur', targetSocket: 'image' }];
+}
+```

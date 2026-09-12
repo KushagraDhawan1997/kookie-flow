@@ -1,0 +1,439 @@
+The package exports plain functions for the questions the canvas answers on its own: which entity
+is under a point, where a socket sits, where a point on an edge lies and which frame holds what.
+It also exports colour converters and the sizes the canvas falls back to. None of the functions
+on this page reads the flow store, changes the graph or reports a change, so you pass in the
+data they work on.
+
+## Hit testing and edge geometry
+
+These functions work in world coordinates, the same coordinates as `entity.position`. To test a
+pointer event, convert its position first with `screenToWorld`, which the
+[Canvas and camera](/interaction/camera) chapter covers. A position that the canvas hands you,
+such as the one `onFileDrop` receives, is already in world coordinates.
+
+This board uses `getEntityAtPosition` to put a dropped picture inside the frame it lands on. The
+frame has an explicit `width` and `height`, so the function measures it exactly as the canvas
+draws it.
+
+```tsx title="moodboard.tsx"
+'use client';
+
+import {
+  KookieFlow,
+  getEntityAtPosition,
+  isFrameEntity,
+  useGraph,
+  type Entity,
+  type XYPosition,
+} from '@kushagradhawan/kookie-flow';
+
+const initialEntities: Entity[] = [
+  { id: 'moodboard', type: 'frame', position: { x: 0, y: 0 }, width: 720, height: 480, data: { label: 'Moodboard' } },
+];
+
+export function Moodboard() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, addEntity } = useGraph({ initialEntities });
+
+  const handleFileDrop = (files: File[], position: XYPosition) => {
+    const frame = getEntityAtPosition(position, entities.filter(isFrameEntity));
+    files
+      .filter((file) => file.type.startsWith('image/'))
+      .forEach((file, i) => {
+        addEntity({
+          id: crypto.randomUUID(),
+          type: 'image',
+          position: { x: position.x - 120 + i * 24, y: position.y - 80 + i * 24 },
+          width: 240,
+          height: 160,
+          data: { src: URL.createObjectURL(file) },
+          parentId: frame?.id,
+        });
+      });
+  };
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onFileDrop={handleFileDrop}
+      />
+    </div>
+  );
+}
+```
+
+Each function checks every entity or edge you pass it, so it takes longer as the graph grows.
+Call them in response to an event, such as a drop, a click or a menu opening, rather than on
+every pointer move.
+
+### Pass the socket layout
+
+Every hit testing and edge function takes an optional last argument, `layout`, of type
+`ResolvedSocketLayout`. A node with no `height` is drawn as tall as its header, socket rows and
+preview band need. The functions can work out that height only from the layout. Without it, they treat the
+node as 100 units tall, which is `DEFAULT_ENTITY_HEIGHT`, so the lower part of a taller node
+doesn't count as part of it, and its sockets are placed at the wrong height.
+
+Read the layout with `useSocketLayout` in a component rendered inside `<KookieFlow>`. The
+[Hooks](/api/hooks) chapter covers it. Take the entities from the flow store too, because the
+store's copies have the sizes and sockets from your [entity types](/entities/types) filled in.
+This hook finds the entity under a point, and skips entities hidden inside a collapsed frame:
+
+```ts title="use-entity-at.ts"
+import { useCallback } from 'react';
+import {
+  getEntityAtPosition,
+  getVisibleEntities,
+  useFlowStoreApi,
+  useSocketLayout,
+  type XYPosition,
+} from '@kushagradhawan/kookie-flow';
+
+// Call from a component rendered inside <KookieFlow>.
+export function useEntityAt() {
+  const store = useFlowStoreApi();
+  const layout = useSocketLayout();
+
+  return useCallback(
+    (point: XYPosition) => {
+      const { entities, entityMap, collapsedGroupIds } = store.getState();
+      const visible = getVisibleEntities(entities, entityMap, collapsedGroupIds);
+      return getEntityAtPosition(point, visible, layout);
+    },
+    [store, layout]
+  );
+}
+```
+
+An entity without a `width` is measured at 240 units, which is `DEFAULT_ENTITY_WIDTH`. The
+`defaultEntityWidth` prop on `KookieFlow` doesn't change that.
+
+### Entities
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `isPointInEntity` | `(point: XYPosition, entity: Entity, layout?: ResolvedSocketLayout) => boolean` | Whether the point is inside the entity's box. A point on the edge of the box counts as inside. |
+| `getEntityAtPosition` | `(worldPos: XYPosition, entities: Entity[], layout?: ResolvedSocketLayout) => Entity \| null` | The entity whose box contains the point, or `null`. When boxes overlap, the entity later in the array wins. |
+| `getEntitiesInBox` | `(start: XYPosition, end: XYPosition, entities: Entity[], layout?: ResolvedSocketLayout) => Entity[]` | Every entity whose box overlaps the rectangle between two corners, even partly. The corners can be in either order. |
+
+`getEntityAtPosition` goes by array order. Pressing an entity on the canvas brings it to the
+top without reordering your array, so after a press the entity drawn on top can differ from
+the one this function returns. None of the three functions skips entities inside a collapsed
+frame, so filter with `getVisibleEntities` first, as the hook above does.
+
+### Sockets
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `getSocketPosition` | `(entity: Entity, socketId: string, isInput: boolean, layout?: ResolvedSocketLayout) => XYPosition \| null` | The world position of the socket's centre, or `null` when the entity has no socket with that id on that side. |
+| `getSocketAtPosition` | `(worldPos: XYPosition, entities: Entity[], viewport: Viewport, canvasSize: { width: number; height: number }, layout?: ResolvedSocketLayout) => SocketHandle \| null` | The socket under the point, or `null`. |
+
+An input socket sits 12 units outside the entity's left edge, and an output socket 12 units
+outside its right edge. A socket with a `position` sits at that fraction of the entity's height.
+Otherwise the socket sits in its row, as the canvas draws it.
+
+`getSocketAtPosition` counts a point as on a socket when it's within the socket's radius plus 4
+units. The radius comes from the layout, or is 6 without one. The function skips entities
+outside the view, so pass the current `viewport` and the canvas's size in screen pixels. It
+checks the entity latest in the array first, and an entity's inputs before its outputs. The
+`SocketHandle` it returns names the entity, the socket and whether the socket is an input. The
+[Connections](/edges/connections) chapter covers `SocketHandle`.
+
+### Edges
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `getEdgeAtPosition` | `(worldPos: XYPosition, edges: Edge[], entityMap: Map<string, Entity>, defaultEdgeType: EdgeType \| undefined, viewport: Viewport, socketIndexMap?: SocketIndexMap, layout?: ResolvedSocketLayout) => Edge \| null` | The edge closest to the point, if one runs within 8 screen pixels of it. Otherwise `null`. |
+| `getEdgePointAtT` | `(edge: Edge, entityMap: Map<string, Entity>, t: number, defaultEdgeType?: EdgeType, socketIndexMap?: SocketIndexMap, layout?: ResolvedSocketLayout) => EdgePointResult \| null` | The point on the edge at `t`, from `0` at the source to `1` at the target, with its direction. |
+| `getEdgeEndpoints` | `(edge: Edge, entityMap: Map<string, Entity>, defaultEdgeType?: EdgeType, socketIndexMap?: SocketIndexMap, layout?: ResolvedSocketLayout) => { start: EdgePointResult; end: EdgePointResult } \| null` | The points at `t = 0` and `t = 1`. |
+
+All three look up an edge's `source` and `target` in `entityMap`, and skip the edge, or return
+`null`, when either entity is missing. The flow store keeps an `entityMap`, as
+[The flow store](/data/store) chapter shows.
+
+`defaultEdgeType` is the shape for an edge with no `type` of its own. It defaults to
+`'bezier'`, as the prop of the same name on `KookieFlow` does. In `getEdgeAtPosition` it comes
+before the required `viewport`, so pass `undefined` to keep the default. The
+[Edges](/edges/edges) chapter describes the four shapes.
+
+An edge with no `sourceSocket` or `targetSocket` starts or ends halfway down that entity. On a
+`'bezier'` or `'smoothstep'` edge, both drawn as curves, `t` is the curve's own parameter, so
+`t = 0.5` isn't always halfway along the line.
+On a `'step'` edge, each of the three straight segments takes a third of the range, whatever its
+length.
+
+`EdgePointResult` has three fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `position` | `XYPosition` | The point on the edge, in world coordinates. |
+| `tangent` | `XYPosition` | The direction of the edge at that point, as a vector of length 1. |
+| `angle` | `number` | The same direction in radians, from `Math.atan2(tangent.y, tangent.x)`. |
+
+This function places a DOM badge on an edge at `t = 0.5` and turns it to follow the line.
+`worldToScreen` converts the point to pixels on the canvas.
+
+```ts title="place-badge.ts"
+import {
+  getEdgePointAtT,
+  worldToScreen,
+  type Edge,
+  type FlowState,
+  type ResolvedSocketLayout,
+} from '@kushagradhawan/kookie-flow';
+
+export function placeBadge(el: HTMLElement, edge: Edge, state: FlowState, layout: ResolvedSocketLayout) {
+  const mid = getEdgePointAtT(edge, state.entityMap, 0.5, 'bezier', undefined, layout);
+  if (!mid) return;
+  const { x, y } = worldToScreen(mid.position, state.viewport);
+  el.style.transform = `translate(${x}px, ${y}px) rotate(${mid.angle}rad)`;
+}
+```
+
+### Socket index maps
+
+Without a `SocketIndexMap`, the edge functions search each entity's socket list for the edge's
+sockets. When you test many edges at once, build the map one time and pass it in to look each
+socket up directly.
+
+`SocketIndexMap` is `Map<string, { index: number; socket: { id: string; type: string; position?: number } }>`.
+The key is the entity id, the socket id and `input` or `output`, joined by colons. The value
+holds the socket's position in its `inputs` or `outputs` array, and the socket itself.
+
+```ts title="socket-index.ts"
+import type { Entity, SocketIndexMap } from '@kushagradhawan/kookie-flow';
+
+export function buildSocketIndex(entities: Entity[]): SocketIndexMap {
+  const map: SocketIndexMap = new Map();
+  for (const entity of entities) {
+    entity.inputs?.forEach((socket, index) => map.set(`${entity.id}:${socket.id}:input`, { index, socket }));
+    entity.outputs?.forEach((socket, index) => map.set(`${entity.id}:${socket.id}:output`, { index, socket }));
+  }
+  return map;
+}
+```
+
+Rebuild the map when entities or their sockets change, because a stale map places an edge at an
+old socket row.
+
+## Grouping utilities
+
+An entity belongs to a frame through its `parentId`, as the [Frames and groups](/entities/frames)
+chapter explains. These functions walk those links in an array or map you pass. The
+[ref methods](/api/instance) with the same names, `getGroupChildren` and `getGroupDescendants`,
+read the canvas's current graph instead.
+
+Most of them take an `entityMap` of `Map<string, Entity>`, and the visibility functions also take
+`collapsedGroupIds`, the set of ids of collapsed frames. The flow store keeps both.
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `getGroupChildren` | `(entities: Entity[], groupId: string) => Entity[]` | The entities whose `parentId` is `groupId`. |
+| `getGroupDescendants` | `(entities: Entity[], groupId: string) => Entity[]` | The children, their children, and so on down, nearest first. |
+| `getParentChain` | `(entity: Entity, entityMap: Map<string, Entity>) => Entity[]` | The entity's parent, that parent's parent, and so on up to the top. Stops at a `parentId` the map doesn't hold. |
+| `getAncestorGroups` | `(entities: Entity[], entityMap: Map<string, Entity>) => Set<string>` | The ids of every ancestor of every entity you pass. |
+| `isDescendantOf` | `(entityA: Entity, entityB: Entity, entityMap: Map<string, Entity>) => boolean` | Whether `entityB` is anywhere in `entityA`'s parent chain. |
+| `getTopLevelEntities` | `(entities: Entity[], entityMap: Map<string, Entity>) => Entity[]` | The entities with no `parentId`, or with a `parentId` the map doesn't hold. |
+| `sortByDepth` | `(entities: Entity[], entityMap: Map<string, Entity>) => Entity[]` | A new array with parents before their children. Entities at the same depth keep their order. |
+| `isEntityHidden` | `(entity: Entity, entityMap: Map<string, Entity>, collapsedGroupIds: Set<string>) => boolean` | Whether any ancestor of the entity is collapsed. |
+| `getVisibleEntities` | `(entities: Entity[], entityMap: Map<string, Entity>, collapsedGroupIds: Set<string>) => Entity[]` | The entities that no collapsed ancestor hides. |
+| `calculateGroupBounds` | `(entities: Entity[], groupId: string, padding?: number, layout?: ResolvedSocketLayout) => Bounds \| null` | A box around the group's children, or `null` when it has none. |
+| `calculateDescendantPositions` | `(entities: Entity[], groupId: string, delta: XYPosition) => Map<string, XYPosition>` | Every descendant's position moved by `delta`, keyed by id. The group itself isn't included. |
+| `wouldCreateCycle` | `(entityId: string, proposedParentId: string, entityMap: Map<string, Entity>) => boolean` | Whether making `proposedParentId` the parent of `entityId` would put the entity inside itself. |
+
+Check `wouldCreateCycle` before you set a `parentId` from code. It returns `true` when the
+proposed parent is the entity itself or one of its descendants, and `false` when the map doesn't
+hold `entityId`. The graph engine has a different function for a cycle of edges, exported as
+`wouldCreateGraphCycle`, which the [Graph queries](/data/graph-queries) chapter covers.
+
+When no frame is collapsed, `getVisibleEntities` returns the array you passed rather than a copy.
+Every function that walks parent chains stops when it reaches an id it has already seen, so a
+graph whose `parentId` links form a loop can't hang it.
+
+### Group bounds
+
+`calculateGroupBounds` measures the group's direct children, not deeper descendants, and adds
+`padding` on every side. The box is at least `MIN_GROUP_WIDTH` wide and `MIN_GROUP_HEIGHT` tall.
+Pass the socket layout for the reason given in [Pass the socket layout](#pass-the-socket-layout).
+
+| Constant | Value | Meaning |
+| --- | --- | --- |
+| `GROUP_PADDING` | `24` | The default `padding` for `calculateGroupBounds`. |
+| `MIN_GROUP_WIDTH` | `100` | The narrowest box `calculateGroupBounds` returns. |
+| `MIN_GROUP_HEIGHT` | `80` | The shortest box `calculateGroupBounds` returns. |
+
+`Bounds` is `{ x: number; y: number; width: number; height: number }`, with `x` and `y` at the
+top-left corner.
+
+## Colour utilities
+
+The canvas draws with colours as numbers from 0 to 1. These functions convert CSS colour strings
+into that form and back. Use them when you draw something of your own that has to match the
+canvas, such as a 2D canvas overlay or a legend.
+
+`RGBColor` is `[number, number, number]` and `RGBAColor` is `[number, number, number, number]`.
+Each channel runs from 0 to 1.
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `parseColorToRGB` | `(color: string) => RGBColor` | Any CSS colour as red, green and blue. |
+| `parseColorToRGBA` | `(color: string) => RGBAColor` | Any CSS colour with its alpha. |
+| `resolveColorToRGB` | `(colorValue: string) => RGBColor \| null` | The colour as the browser computes it, or `null`. |
+| `resolveColorToRGBA` | `(colorValue: string) => RGBAColor \| null` | The same, with alpha. |
+| `hexToRGB` | `(hex: string) => RGBColor` | A hex colour as red, green and blue. Any alpha digits are dropped. |
+| `rgbToHex` | `(rgb: RGBColor) => string` | A `#rrggbb` string. Pass channels from 0 to 1. |
+| `parsePx` | `(value: string) => number` | A CSS length as a number of pixels. |
+
+### Parse a colour
+
+`parseColorToRGB` and `parseColorToRGBA` read hex (`#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`),
+`rgb()`, `rgba()` and `transparent` themselves, so these formats also work on the server. They
+pass every other format, such as `oklch()`, `hsl()`, a colour name or `var(--accent-9)`, to
+`resolveColorToRGB` or `resolveColorToRGBA`.
+
+A colour they can't read comes back as mid-grey, `[0.5, 0.5, 0.5]`, and `parseColorToRGBA` gives
+it an alpha of `1`. They log a console warning only for a colour they passed on that came back
+unresolved, which includes every such colour on the server. A hex or `rgb()` string they can't
+read, and an invalid hex passed to `hexToRGB`, return the same grey without a warning.
+
+Of the formats it reads itself, `parseColorToRGBA` finds alpha only in hex and in strings that
+start with `rgba`. It reads `rgb(0 0 0 / 0.5)` as opaque, so write that colour as
+`rgba(0 0 0 / 0.5)` to keep its alpha.
+
+### Resolve a theme colour
+
+`resolveColorToRGB` and `resolveColorToRGBA` ask the browser for the computed colour, on a
+hidden element that they add to the page for the length of the call. The element sits inside the
+first KookieUI `Theme` on the page, or inside `<html>` when there's none, so a `var()` resolves
+in that theme's light or dark appearance. A nested `Theme` with a different appearance isn't
+taken into account.
+
+They return `null` on the server, and when the browser rejects the value. A `var()` naming a
+variable the theme doesn't define isn't rejected, because the browser can't tell it's invalid
+until it computes it. You get the colour the hidden element inherits instead.
+
+A 2D canvas can't read CSS variables. This function turns any CSS colour, variables included, into
+a string a 2D canvas accepts:
+
+```ts title="canvas-color.ts"
+import { parseColorToRGBA } from '@kushagradhawan/kookie-flow';
+
+export function canvasColor(css: string): string {
+  const [r, g, b, a] = parseColorToRGBA(css);
+  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
+}
+
+// canvasColor('var(--accent-9)'), canvasColor('#1e1e1eaa'), canvasColor('oklch(70% 0.1 250)')
+```
+
+### Read a length
+
+`parsePx` reads a value that starts with a number, such as `12px`, directly. It doesn't convert
+units, so `parsePx('2rem')` returns `2`. It passes a `calc()` expression, a `var()` and anything
+else that doesn't start with a number to the browser to measure. It returns `0` for an empty
+string, and for a value it can't measure, which includes every such value on the server.
+
+## Socket type colours
+
+`resolveSocketTypes` turns the colour names in a socket type table into colour strings. The
+canvas calls it on your `socketTypes`. Call it yourself to show the same colours outside the
+canvas, such as in a legend or a node palette.
+
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `resolveSocketTypes` | `(socketTypes: Record<string, SocketType>, tokens: ThemeTokens) => Record<string, SocketType>` | A new table with every `color` resolved. The other fields are copied unchanged. |
+
+Each `color` resolves in this order:
+
+1. **A colour that doesn't start with `--`** is kept as written.
+2. **A hue name built into the package** becomes a fixed hex value. The built-in hues are
+   `gold`, `bronze`, `brown`, `yellow`, `amber`, `orange`, `tomato`, `red`, `ruby`, `crimson`,
+   `pink`, `plum`, `purple`, `violet`, `iris`, `indigo`, `blue`, `cyan`, `teal`, `jade`, `green`,
+   `grass`, `lime`, `mint` and `sky`, at steps 9 and 10, such as `--purple-10`. Step 10 has a
+   different value in light and dark appearances, and `tokens.appearance` picks between them.
+3. **Any other colour in `tokens`**, such as `--neutral-10`, becomes that colour as hex.
+4. **Anything else** becomes `#808080`, with a console warning.
+
+Because built-in hue names resolve to fixed values, redefining `--purple-10` in your own CSS
+doesn't change a socket's colour. To use your own colour, write it in the socket type, such as
+`color: '#7c3aed'`. The [Sockets and widgets](/entities/sockets) chapter covers socket types.
+
+This legend shows the socket colours the canvas draws. The canvas adds your `socketTypes` on top
+of `DEFAULT_SOCKET_TYPES`, so the legend resolves the same combined table.
+
+```tsx title="socket-legend.tsx"
+import { useMemo } from 'react';
+import {
+  DEFAULT_SOCKET_TYPES,
+  resolveSocketTypes,
+  useTheme,
+  type SocketType,
+} from '@kushagradhawan/kookie-flow';
+
+export const socketTypes: Record<string, SocketType> = {
+  audio: { name: 'Audio', color: '--crimson-10' },
+  prompt: { name: 'Prompt', color: '#7c3aed' },
+};
+
+// Render inside <KookieFlow socketTypes={socketTypes}>, where useTheme reads the flow's theme.
+export function SocketLegend() {
+  const tokens = useTheme();
+  const resolved = useMemo(
+    () => resolveSocketTypes({ ...DEFAULT_SOCKET_TYPES, ...socketTypes }, tokens),
+    [tokens]
+  );
+
+  return (
+    <ul style={{ position: 'absolute', top: 12, left: 12 }}>
+      {Object.entries(resolved).map(([key, type]) => (
+        <li key={key} style={{ color: type.color }}>
+          {type.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+`useTheme` and `ThemeTokens` are covered in the [Theming](/styling/theming) chapter.
+
+## Size constants
+
+These are the default and minimum sizes the canvas uses. All of them are in world units, which
+match screen pixels at zoom 1.
+
+| Constant | Value | Meaning |
+| --- | --- | --- |
+| `DEFAULT_ENTITY_WIDTH` | `240` | The width of an entity with no `width`. |
+| `DEFAULT_ENTITY_HEIGHT` | `100` | The height the geometry functions give an entity with no `height` when you pass no socket layout. |
+| `MIN_ENTITY_WIDTH` | `120` | The narrowest a person can resize a node. |
+| `MIN_ENTITY_HEIGHT` | `40` | The shortest a person can resize a node, unless its header and sockets need more. |
+| `MIN_FRAME_WIDTH` | `100` | The narrowest a person can resize a `frame`. |
+| `MIN_FRAME_HEIGHT` | `60` | The shortest a person can resize a `frame`. |
+| `MIN_COMMENT_WIDTH` | `80` | The narrowest a person can resize a `comment`. |
+| `MIN_COMMENT_HEIGHT` | `40` | The shortest a person can resize a `comment`. |
+| `SOCKET_LABEL_WIDTH` | `96` | The default for the `socketLabelWidth` prop: the space a socket's label takes before its widget starts. |
+
+The minimum sizes apply while a person drags a resize handle. The
+[entity model](/entities/model) chapter lists the minimum sizes for text, images, video and
+models, which have no exported constants.
+
+## Utilities documented elsewhere
+
+The package exports more functions and constants that belong to a single feature. Each one is
+documented with that feature.
+
+| Export | Chapter |
+| --- | --- |
+| `screenToWorld`, `worldToScreen`, `DEFAULT_VIEWPORT` | [Canvas and camera](/interaction/camera) |
+| `isSocketCompatible`, `validateConnection`, `areTypesCompatible` | [Connections](/edges/connections) |
+| `DEFAULT_SOCKET_TYPES` | [Sockets and widgets](/entities/sockets) |
+| `resolveTextStyle`, `resizableForSizingMode` | [Text and comments](/entities/text) |
+| `layoutGraph`, `rankNodes` | [Layout and alignment](/data/arrange) |
+| `buildAdjacencyIndex`, `getIncomers`, `getOutgoers`, `walkUpstream`, `wouldCreateGraphCycle`, `validateGraph` and the other graph functions | [Graph queries](/data/graph-queries) |
+| `SUCCESS_HOLD_MS` | [Evaluation](/data/evaluation) |
+| `THEME_COLORS`, `resolveColor`, `FALLBACK_TOKENS` | [Theming](/styling/theming) |
+| `MINIMAP_DEFAULTS` | [Minimap](/styling/minimap) |

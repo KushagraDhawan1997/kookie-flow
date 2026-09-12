@@ -1,0 +1,363 @@
+/**
+ * The docs' own CSS, and it is deliberately this short.
+ *
+ * Everything here is one of two things, never a third: a prose primitive the system has not
+ * shipped (a list; the inline link and the data table have since shipped), or the code theme's variable bindings. Both
+ * resolve entirely through the public token contract (§13) — there is no raw colour and no
+ * raw distance in this file — so a re-judged palette or a density change moves the docs with
+ * the system rather than leaving them behind.
+ *
+ * The three gaps are recorded in LOG 2026-08-21. §11 has planned `Link` since the defaults
+ * table was written and plans a table ROW as an interactive surface; a list has never been
+ * named by anything. Each rule below is the app drawing one for itself, which is what the
+ * escape hatch is for, and each is small enough to delete the day the component lands.
+ */
+
+/* ── The reading measure ───────────────────────────────────────────────────────────────────
+   Prose ran 93 characters per line before 2026-08-25 (measured, not estimated: the paragraph's
+   own text laid out on a canvas at its own computed font). The comfortable range is 45–75 and
+   80 is the ceiling anything technical is usually granted, so the column was about a quarter
+   too wide — which is most of why a chapter read as a wall even before the rhythm was flat.
+
+   IT IS A COLUMN WIDTH, AND A CHAPTER SIZES ITSELF BY IT (2026-09-01, Kushagra: "I dont like
+   that the title + specimen + the page desc. have a different width than prose"). He is right,
+   and what was here was the reason: the measure capped TEXT while the title, the deck and every
+   figure kept the column, so a chapter had two right edges — 640px of prose inside a 736px
+   column — and the wider one belonged to the blocks a reader is not reading. The argument for
+   the split was that narrowing the column pays for reading with the figures. That is a real
+   cost and it is smaller than it sounds: a fenced sample already scrolls (measured, the widest
+   line on this very page is 738px against a 673px well), so the split was buying width for
+   samples that overflow either way.
+
+   Which side gives is settled by measurement rather than by taste: prose at 40rem already
+   measures 80 characters, exactly the ceiling, so the column cannot come to the text — the text
+   has to be what the column is. `:root`, not `.kd-prose`, because a page now sizes its COLUMN
+   by this number and the column is the thing outside the prose.
+
+   THE CAP BELOW STAYS, and it is not redundant. `.kd-prose` is also used inside pages whose
+   column is deliberately wider than a reading column — the front door's section cells — where
+   the text still owes the measure. On a
+   chapter, where the column IS the measure, both rules are inert by construction.
+
+   Stated as `> *` with figures opting out, rather than the reverse, because there are three
+   kinds of figure and every other block is prose; marking the minority is the smaller claim
+   and it cannot go stale when a new prose element is mapped. */
+:root {
+  /* 44rem SINCE 2026-09-05 (Kushagra: "make our docs page content area also wider"), and the
+     cost was measured before it was spent rather than after: at 40rem full lines already ran
+     72 to 83 characters against a comfortable range that tops out near 75, so this is not
+     room the measure had going spare — it is a step past the range, taken knowingly. 44 is
+     the smallest step that reads as wider; 48 was refused as the one that reads as long. */
+  --kd-measure: 44rem;
+  /* The contents' column and the air between it and the reading column. Judged beside the
+     measure above because the three are one arrangement — see the chapter's own rules. */
+  --kd-toc-w: 14rem;
+  --kd-toc-gutter: 3rem;
+}
+
+.kd-prose > * {
+  max-inline-size: var(--kd-measure);
+}
+
+.kd-prose > .kd-figure {
+  max-inline-size: none;
+}
+
+/* There is deliberately no opt-out here for a page title, because a page title is no longer
+   inside this class at all: `PageTitle` used to wrap both of its children in `.kd-prose` and
+   now wraps neither, for the reason written above it in `page-frame.tsx`. A measure is
+   characters, `--kd-measure` is a pixel number taken at body size, and the title and the deck
+   are not at body size. What is left under this class is what the class was measured for —
+   the running prose of a chapter. */
+
+/* ── Lists ─────────────────────────────────────────────────────────────────────────────────
+   Type and ink arrive from `<Text render={<ul/>}>` and inherit; what is left is the indent
+   and the marker. `li + li` rather than a gap, because a flex list stops generating markers
+   — the browser's list-item layout is the thing being kept here, and it is also what makes a
+   nested list indent correctly with no rule of its own. */
+.kd-list {
+  padding-inline-start: var(--layout-space-5);
+  margin: 0;
+}
+
+.kd-list li + li,
+.kd-list .kd-list {
+  margin-block-start: var(--layout-space-2);
+}
+
+/* The marker is furniture, not content — the faint role is exactly the rung §15 minted for
+   "something stood down". */
+.kd-list li::marker {
+  color: var(--color-text-faint);
+}
+
+/* ── Inline links ──────────────────────────────────────────────────────────────────────────
+   Tone comes from `<Text tone="accent">`, so this owns only the underline. Offset and
+   thickness are stated because the UA's default underline sits on the baseline and cuts every
+   descender in the line. */
+/* ── The page scroller must not inherit its content's appetite ─────────────────────────────
+   Base UI's ScrollArea puts `min-width: fit-content` on its content wrapper AS AN INLINE
+   STYLE, so that content wider than the viewport can be scrolled to rather than crushed. That
+   is right for the box doing the scrolling and wrong one level up, because the demand
+   PROPAGATES: a fenced code block sets `white-space: pre`, its own scroller refuses to shrink
+   below the longest line, and that refusal travels out through every ancestor until it reaches
+   the page.
+
+   Measured at a 700px window before this rule: the page's content box computed 784px inside a
+   685px pane, so a chapter's prose ran off the right edge — every code-heavy page, on every
+   phone. The reading column's own `max-inline-size` did not save it; a maximum stops being a
+   maximum once an ancestor is sized by fit-content.
+
+   `!important` is here because the declaration it beats is inline, which nothing else can
+   out-rank — the one place this repo's usual objection ("it wins the cascade and leaves the
+   library's intent unstated") does not apply, since the intent is stated right here. Scoped to
+   the PAGE scroller alone (`.kd-scroll`), so the nested scroller inside every code block keeps
+   its appetite and long lines still scroll sideways within their own well.
+
+   Whether `ShellScroll` should contain its content's intrinsic demand by construction is a
+   package question, not one this app decides. */
+.kd-scroll > * > .kui-scroll-content {
+  min-inline-size: 0 !important;
+}
+
+/* ── The chapter, and the column the table of contents stands in ───────────────────────────
+   OUT OF THE ARTICLE'S FLOW, AT THE PANE'S OWN END (2026-09-05, Kushagra: "can we make ToC get
+   out of doc flow, and towards the right end of the page"). It was a flex sibling of the
+   reading column inside a 57rem frame, so at 1920 the pair stopped 360px short of the pane and
+   the contents sat in the middle of the page with a third of the pane empty beside it.
+
+   THE RESERVE IS WHAT MAKES THE PIN SAFE, and it is why this is not simply `position: absolute`
+   on the old element. Centring the reading column in the WHOLE pane and pinning the contents to
+   the end would let the two meet: at 1440 the free space each side of a 40rem measure is 256px
+   against a 224px column plus its gutter, and at 1280 it is 176 — an overlap, silently, at the
+   width most people read this at. So the chapter reserves the column on the END SIDE ONLY and
+   the frame centres in what is left. Measured, that arrangement moves the contents 336px right
+   at 1920 and leaves the reading column where it already was at every width — the reserve is
+   the same 17rem the old frame spent on this, so nothing about the measure's position changes
+   and only the leftover moves.
+
+   TWO ELEMENTS, and each holds one fact. The COLUMN is absolutely placed and as tall as the
+   chapter (`inset-block: 0`), which is what gives the sticky nav inside it something to travel
+   in; a sticky element pinned by `inset-inline-end` cannot do both jobs, because sticky is
+   in-flow positioning and an in-flow box cannot leave the flow it is being taken out of.
+
+   The block itself decides none of this: how wide the column is, that it holds still while the
+   page scrolls, and where the arrangement stops fitting are measurements about this page's
+   layout rather than about anything's box, and a block may not decide a distance.
+
+   The breakpoint is a WINDOW query rather than a container tier, and that is the §18
+   distinction rather than laziness: this is a question about which interface shape the page
+   shows, not about how much room a component has been given. 64rem is where the reading column
+   plus this column plus the sidebar stop coexisting — judged, not derived. Below it the reserve
+   goes with the column, or the reading column would centre in a box that is still holding room
+   for something nobody can see. */
+.kd-chapter {
+  position: relative;
+  padding-inline-end: calc(var(--kd-toc-w) + var(--kd-toc-gutter));
+}
+
+/* IT CLEARS THE BAND (2026-09-06, Kushagra: "The on this page is too high up, it collides with
+   toolbar"). The content pane's chrome row FLOATS, so the scroller runs underneath it and
+   anything pinned to the scroller's top edge lands behind the toolbar's title — which is what
+   happened the moment that title moved to the middle of the band and met this one.
+
+   The distance is the pane's own published reach (§27), so nothing here restates a number:
+   `--kui-pane-inset-block-start` is what the floating row costs and it is zero when nothing
+   floats. The page's own title clears the same band through `Page` (§46); this column is a
+   SIBLING of that page and cannot read what a page declares, so it spends the frame's value
+   rather than the page's — and it must land on the same line, or the list and the title it sits
+   beside start at two different heights.
+
+   LESS THE INSET THE SCROLLER HAS ALREADY PAID (2026-09-06), which is `Page`'s own correction
+   said in the two places this column states the same distance. Both rules below were `reach +
+   pane inset`, one inset too many twice over: the resting column landed at 104 where the title
+   landed at 88, and the travelling one pinned at 88, so the list JUMPED sixteen pixels the first
+   time the page moved. The reach is measured from the pane's inner edge; the scroller bleeds to
+   that edge and re-pads, and BOTH of these are spent inside that re-pad — the absolute one
+   inside the chapter, and the sticky one against a scrollport Chrome measures from its content
+   box.
+
+   PLUS THE INTERVAL THE PAGE TAKES (2026-09-06, Kushagra: "ToC needs to move down too"). `Page`
+   stopped beginning ON the band's bottom edge the same day and began an interval below it, and
+   this column's whole rule is that it lands on the title's line — it is a SIBLING of the page
+   and cannot read what a page declares, so it spends the same three terms itself. The interval
+   is named here rather than derived because there is nothing to derive it from: `--layout-space-6`
+   is what `Page` spends, and the two are held together by the law that measures the list's first
+   row against the title rather than by either of them naming the other. One expression, one
+   landing place, stated twice. */
+.kd-toc-column {
+  position: absolute;
+  inset-block-start: calc(
+    var(--kui-pane-inset-block-start) - var(--kui-sf-p) + var(--layout-space-6)
+  );
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  inline-size: var(--kd-toc-w);
+}
+
+/* IT IS THE BLOCK'S OWN `<nav>` that wears this, not a wrapper around it. The block draws a
+   labelled navigation region, so an `<aside>` outside it would be a second landmark announcing
+   the same thing. */
+.kd-toc {
+  position: sticky;
+  /* The same line once it is travelling: sticky pins against the SCROLLPORT's edge, which is
+     under the band, so a zero here would slide the list back behind the toolbar the moment the
+     page scrolled — the resting position above would have been the only correct frame. The
+     scrollport is measured from its content box, which the scroller has re-padded — the same
+     box the rule above is spent in, so it is the same expression. */
+  inset-block-start: calc(
+    var(--kui-pane-inset-block-start) - var(--kui-sf-p) + var(--layout-space-6)
+  );
+  display: block;
+}
+
+@media (max-width: 64rem) {
+  .kd-chapter {
+    padding-inline-end: 0;
+  }
+
+  .kd-toc-column {
+    display: none;
+  }
+}
+
+/* The code theme lives in the PACKAGE now (2026-09-01), declared on `CodeBlock`: point a
+   highlighter's CSS-variables mode at `--code-token-` and every colour it emits resolves
+   against the system's own ink ladder. What is left in `blocks/code.css` is the block's half —
+   the line washes, the diff gutter and the line numbers the sample paints around the tokens. */
+
+/* The wordmark's face. The variable is published on `<html>` by the root layout and consumed
+   here and nowhere else, which is the whole containment story: nothing inherits a display face,
+   and the one rule that applies it is the one place to look. Here it points at the body face —
+   the licensed display faces KookieUI's docs set their mark in cannot travel — so the rule is a
+   seam rather than a costume: swap the variable and the mark changes face with nothing else.
+
+   The fallback in the chain is load-bearing rather than defensive: if the variable is ever
+   unset, the mark resolves the second entry and is still set in the body face.
+
+   The WEIGHT is not here, because it is a real fact about the mark, so it is said with the
+   component's own `weight` prop where a reader of the markup will see it, rather than hidden in
+   a stylesheet override.
+
+   `line-height: 1` is the one thing the mark needs that a paragraph does not. The type step's
+   line box is built for a run of text with room for descenders on both sides, and a display
+   step spends that room as air above and below the word. Collapsing the box to the ink is what
+   lets the mark sit at the pane's own padding instead of a dozen pixels inside it.
+   `display: block` because a line box cannot be collapsed on an inline element. */
+.kd-wordmark {
+  font-family: var(--kd-font-wordmark), var(--font-body);
+}
+
+.kui-type.kd-wordmark[data-size] {
+  display: block;
+  line-height: 1;
+  /* AND THE BOX IS THE CAP LINE TO THE BASELINE (Kushagra: "it is visually offset to the top a
+     lot, the baseline is very high").
+
+     `text-box` is the property for this and it is why `line-height` alone could not fix it:
+     line-height sizes the box, and what was wrong is where the FACE puts its baseline inside
+     one. Trimmed, the box is the letters you can see, so placing the mark places the ink rather
+     than the face's ascent and descent allowance — whichever face is in the slot.
+
+     `cap alphabetic` rather than `text` (which trims to the ascender): ascenders differ by
+     letter in a display face, so an ascender-trimmed box is a property of which letters the
+     string happens to contain. A cap line is a property of the face, so the short form and the
+     long form trim to the same rule.
+
+     THE INK HANGS OUTSIDE THE BOX, which is correct for a logotype and is a real obligation on
+     whatever sits above and below it. How much is a property of the face, so it is re-checked
+     when the face changes rather than carried forward as a number. TWO call sites — the masthead
+     and the footer.
+
+     `line-height: 1` STAYS and is the fallback rather than the mechanism. Firefox has no
+     `text-box` yet, so there the declaration is ignored and the mark keeps exactly the box it
+     had. The same is true of `.kd-masthead` below. */
+  text-box: cap alphabetic;
+}
+
+/* IN A CHROME ROW, THE MARK'S BOX IS THE ROW (Kushagra: "both panels are flush, so why arent
+   the buttons not in line").
+
+   A ShellPaneHeader is one control row as a FLOOR and centres what is in it, so the tallest
+   child sets the row. A mark whose box is taller than the row grows the band, both of its
+   children re-centre lower, and the pane next door, holding nothing but a 32px button, stays at
+   the floor — the sidebar's search button then sits lower than the collapse trigger beside it.
+
+   So the row is fixed by taking the mark out of the height question rather than by moving a
+   button: `line-height` collapses the box to one control row while the glyph keeps centring
+   inside it, so the ink is painted exactly where it was judged and only its BOX changes. It is
+   stated here, at the placement, because this is a fact about sitting in a chrome row, not about
+   the mark.
+
+   `--kui-shell-row` rather than `--control-height-2`: the pane publishes the row it uses and
+   registers it `inherits: true` for exactly this reason, so nothing here restates the shell's
+   index and the mark follows if it ever moves.
+
+   IT IS THE FALLBACK, NOT THE MECHANISM, where `text-box` trims the mark under the row already.
+   What this rule still does is hold the guarantee on an engine without `text-box` — Firefox
+   today — where the untrimmed box would grow the band again.
+
+   IT ALSO MAKES THE PANE'S REACH HONEST. A floating row publishes `--kui-pane-inset-block-start`
+   as one control row plus the pane's padding — derived, never measured — so an overgrown row
+   covers more than it declares, and the nav's first item would pass under the mark's band with
+   nothing saying so. The package's own note says to keep a floating row one control row tall;
+   this is the docs doing that. */
+.kd-masthead .kui-type.kd-wordmark[data-size] {
+  line-height: var(--kui-shell-row);
+  /* ONE LINE AT EVERY WIDTH THE SEPARATOR ALLOWS. The mark is two words here, so at the 240
+     floor a wrap would double the box and draw "Flow" over the first group label beneath. */
+  white-space: nowrap;
+}
+
+/* THE © IS SET AT FULL SIZE, WHICH IS THE FACE'S OWN DRAWING OF IT. No rule shrinks or raises
+   it: the face sets its own mark, and nothing here has an opinion about the size. If a face ever
+   needs the mark treated, it is the CALL SITE that knows — `wordmark.tsx` places the character
+   and a rule here cannot see which face is loaded. */
+
+/* A SEARCH RESULT'S TWO HALVES TAKE THE ROW'S OWN TYPE (2026-09-06).
+
+   They were two `<Text>`s pinned at step 2, and the day the palette's rows moved one step above
+   the palette itself, the boxes grew and the words did not. `Text` cannot answer it: it rests at
+   step 3 whatever it sits in — right for body copy on a page, wrong for the label of a control,
+   which takes the font of the row it is in. So these are bare spans that inherit, and the title
+   is told from the section it sits in the way a row already tells them apart: by weight and by
+   ink, never by size.
+
+   HERE AND NOT IN THE PACKAGE. A row's label carrying a secondary word is this app's own
+   arrangement, and both values are the package's published ones, so nothing is being invented —
+   `--font-weight-medium` is the skeleton's own label weight and `--color-text-faint` is what
+   `emphasis="quiet"` resolves to. */
+.kd-hit-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.kd-hit-context {
+  color: var(--color-text-faint);
+}
+
+/* ── The canvas guard ──────────────────────────────────────────────────────────────────────
+   `canvas-guard.tsx` carries why. The stage is isolated so nothing the canvas stacks inside it
+   can rise over the veil, and the veil exists only where a finger is the pointer: a mouse
+   scrolls past the canvas through the wheel listener and never meets it. */
+.kd-canvas-guard {
+  position: relative;
+  width: 100%;
+}
+
+.kd-canvas-guard-stage {
+  isolation: isolate;
+}
+
+.kd-canvas-guard-veil {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .kd-canvas-guard-veil {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    touch-action: pan-y;
+  }
+}

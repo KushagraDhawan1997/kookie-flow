@@ -1,0 +1,162 @@
+`toObject()` on the ref returns the graph as plain data: its entities, its edges and the viewport
+it's seen from. Store that object wherever you keep documents, and pass it back to `KookieFlow`
+to open the board again. `toImage()` returns a picture of what's on screen.
+
+## Save the graph as data
+
+`toObject()` returns a `FlowObject`, which holds three things.
+
+| Field      | Type       | Meaning                                                   |
+| ---------- | ---------- | --------------------------------------------------------- |
+| `entities` | `Entity[]` | Every entity in the graph.                                |
+| `edges`    | `Edge[]`   | Every edge in the graph.                                  |
+| `viewport` | `Viewport` | Where the board was scrolled to and how far it was zoomed. |
+
+`JSON.stringify` writes the whole object, as long as everything your app put on its entities can
+be written. A socket whose `widget` is `{ component }` holds a React component, which JSON can't
+write, so give that socket its component again when you load the save.
+
+```tsx title="save-button.tsx"
+'use client';
+
+import type { RefObject } from 'react';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function SaveButton({ flowRef, boardId }: { flowRef: RefObject<KookieFlowInstance | null>; boardId: string }) {
+  const save = async () => {
+    const flow = flowRef.current;
+    if (!flow) return;
+    await fetch(`/api/boards/${boardId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(flow.toObject()),
+    });
+  };
+
+  return <button type="button" onClick={save}>Save</button>;
+}
+```
+
+## Load a saved graph
+
+Give the saved entities and edges to `useGraph` as its starting graph, and the saved viewport to
+`defaultViewport`.
+
+```tsx title="board.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type FlowObject } from '@kushagradhawan/kookie-flow';
+
+export function Board({ saved }: { saved: FlowObject }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: saved.entities,
+    initialEdges: saved.edges,
+  });
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      defaultViewport={saved.viewport}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+`useGraph` reads its starting graph, and `KookieFlow` reads `defaultViewport`, only when they first
+mount. To open a different save in the same place, give the board a key that changes with the
+save, such as `<Board key={boardId} saved={saved} />`. React then mounts a new board, so the
+selection and any computed values start fresh as well.
+
+To swap the graph without remounting, pass the save to `setEntities` and `setEdges` from
+`useGraph`, and call `setViewport(saved.viewport)` on the ref. If `useGraph` keeps
+[undo history](/data/history), use a key instead: the history isn't cleared, so an undo would bring
+back a version of the graph you replaced.
+
+A save holds no computed values. If your graph evaluates, load it with a key, and call
+`evaluateAll()` in an effect when the board mounts, or put stored results back with
+`setSocketValue`. The [Evaluation](/data/evaluation) chapter covers both.
+
+## What a save leaves out
+
+A save keeps what describes the graph and drops what describes the moment. These aren't in it:
+
+- **Selection and drags.** `selected` is removed from entities and edges, and `dragging` from
+  entities.
+- **Computed values and evaluation status.** Output values and the status the canvas tracks aren't
+  saved. A `data.status` your app set is part of `data`, so it is saved.
+- **Muted entities.** Muting is kept by the store, not on the entity.
+- **Stacking.** Which node was brought in front of another by pressing it isn't saved.
+
+### What a save adds
+
+A save can also hold things your app never wrote into its own entities:
+
+- **Widget edits in flight.** A widget value a person set that your `onWidgetChange` hasn't
+  written back yet is added to that entity's `data.values`, so the save matches what's on screen.
+- **Values filled in from `entityTypes`.** An entity's `inputs`, `outputs`, `width`, `height`,
+  `preview` and `data.label` are saved when its type supplied them. A reloaded entity then states
+  those values itself, so a later change to that type's definition no longer reaches it. If the
+  type table should stay in charge of a type's sockets, delete `inputs` and `outputs` from those
+  entities before you store the save.
+- **Edge validity.** An edge that names both of its sockets carries `invalid`, which records
+  whether the two socket types are compatible.
+
+## Read the current graph
+
+`getEntities()` and `getEdges()` return the arrays the canvas is drawing right now. Use them in
+code that holds the ref but not your graph state.
+
+| Method          | Returns    | Meaning                         |
+| --------------- | ---------- | ------------------------------- |
+| `getEntities()` | `Entity[]` | Every entity, as the canvas holds it. |
+| `getEdges()`    | `Edge[]`   | Every edge, as the canvas holds it.   |
+
+These are the canvas's own arrays, not copies, so don't change them. They differ from what
+`toObject()` returns in two ways: `selected` and `dragging` aren't removed, and widget edits in
+flight aren't added. To save the graph, call `toObject()`.
+
+## Export an image
+
+`toImage(options)` returns a data URL of what's on screen, or `null` when the canvas isn't
+mounted. Its options have the type `CaptureOptions`.
+
+| Option       | Type     | Default       | Meaning                                                                              |
+| ------------ | -------- | ------------- | ------------------------------------------------------------------------------------ |
+| `pixelRatio` | `number` | `2`           | Image pixels for each pixel of the canvas on screen. Kept between 0.1 and 8.         |
+| `background` | `string` | transparent   | A CSS colour to fill behind the graph.                                               |
+| `type`       | `string` | `'image/png'` | The image format, as a MIME type.                                                    |
+
+The image covers the current view at the canvas's size multiplied by `pixelRatio`. A browser can
+refuse a very large drawing buffer, and then the image comes out smaller than you asked for. JPEG
+has no transparency, so pass a `background` with `type: 'image/jpeg'`, or transparent areas turn
+black.
+
+To capture the whole graph, fit the view first. The camera moves to the new view on the next
+frame, so capture inside `requestAnimationFrame`.
+
+```tsx title="export-png.ts"
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function exportPng(flow: KookieFlowInstance) {
+  const view = { ...flow.getViewport() };
+  flow.fitView({ padding: 40 });
+
+  requestAnimationFrame(() => {
+    const url = flow.toImage({ pixelRatio: 2, background: 'white' });
+    flow.setViewport(view); // put the person's view back
+    if (!url) return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'graph.png';
+    link.click();
+  });
+}
+```
+
+Only what the canvas draws with WebGL is in the image. Comments, widget components you supply
+through `widgetTypes`, the minimap, and anything you pass as `children` are drawn outside the WebGL
+canvas, so they're left out.

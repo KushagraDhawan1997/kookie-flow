@@ -1,0 +1,146 @@
+You'll build a graph with two nodes and connect them by dragging a wire from one to the
+other. Your component holds the nodes and wires in React state, and the canvas reports each
+change you make back to that state. This page assumes you've finished
+[Installation](/start/installation).
+
+## Describe two entities
+
+Everything on the canvas is an entity: a plain object with an `id`, a `type`, a `position`
+and some `data`. Nodes are entities, and so are frames, comments, pictures and text.
+
+```tsx
+import type { Entity } from "@kushagradhawan/kookie-flow";
+
+const initialEntities: Entity[] = [
+  { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" } },
+  { id: "viewer", type: "viewer", position: { x: 320, y: 0 }, data: { label: "Viewer" } },
+];
+```
+
+- `id` names the entity. Wires and change reports refer to it, so it must be unique.
+- `type` is any string. Eight names, such as `frame`, `text` and `image`, are built-in kinds of
+  entity with behaviour of their own. Any other string, like `constant` here, is a node.
+- `position` is the node's top-left corner in world units. `y` grows downward, as it does on
+  a web page.
+- `data.label` is the title the node shows.
+
+The node is 240 units wide unless you set `width`, and it's as tall as its contents need. The
+[entity model](/entities/model) chapter describes every field.
+
+## Give them sockets
+
+A socket is a point on a node that a wire attaches to. Outputs sit on the node's right edge
+and inputs sit on its left. Give the first node an output and the second an input:
+
+```tsx
+const initialEntities: Entity[] = [
+  {
+    id: "constant",
+    type: "constant",
+    position: { x: 0, y: 0 },
+    data: { label: "Constant" },
+    outputs: [{ id: "value", name: "Value", type: "float" }],
+  },
+  {
+    id: "viewer",
+    type: "viewer",
+    position: { x: 320, y: 0 },
+    data: { label: "Viewer" },
+    inputs: [{ id: "value", name: "Value", type: "float" }],
+  },
+];
+```
+
+Each socket has an `id`, a `name` that the node prints beside it, and a `type`. `float` is one
+of the socket types the library defines for you. It colours the socket blue, and an input of
+that type draws a slider while nothing is wired into it.
+
+A socket's `id` only has to be unique among that node's inputs, or among its outputs. That's
+why both sockets can be called `value`. [Sockets and widgets](/entities/sockets) lists the
+built-in types and shows how to add your own.
+
+## Hold the graph in state
+
+`useGraph` keeps the entities and edges in React state and gives you the handlers that update
+them. Pass all five values to `KookieFlow`:
+
+```tsx
+const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+  initialEntities,
+});
+
+return (
+  <KookieFlow
+    entities={entities}
+    edges={edges}
+    onEntitiesChange={onEntitiesChange}
+    onEdgesChange={onEdgesChange}
+    onConnect={onConnect}
+  />
+);
+```
+
+Each handler has its own job:
+
+- `onEntitiesChange` receives moves, resizes, new entities and deletions.
+- `onEdgesChange` receives wires being deleted.
+- `onConnect` runs when you drop a wire on a socket that accepts it.
+
+The canvas doesn't create an edge when you connect two sockets. It calls `onConnect` with
+the two ends, and `useGraph` adds the edge to `edges`. Leave `onConnect` out and the wire
+follows your pointer, then disappears when you let go.
+
+`useGraph` reads `initialEntities` once, when the component mounts, and ignores the value on
+every later render. Define the array outside the component, so it's created once.
+
+## Frame the view
+
+The canvas opens at zoom 1 with the world's origin in the top-left corner of the box, so the
+nodes sit against the top-left edge. Call `fitView` once after mount to centre them. It's a
+method on the instance you get by passing a ref to `KookieFlow`:
+
+```tsx
+const flowRef = useRef<KookieFlowInstance>(null);
+
+useEffect(() => {
+  flowRef.current?.fitView({ padding: 80 });
+}, []);
+```
+
+Then add `ref={flowRef}` to the `KookieFlow` element. `padding` leaves space between the nodes
+and the edge of the box. `fitView` zooms out as far as it needs to, and it doesn't zoom in
+past 100% unless you pass a larger `maxZoom`.
+[Canvas and camera](/interaction/camera) covers the other view methods.
+
+Here is the whole file, running:
+
+<Example name="quick-start" />
+
+## Try the canvas
+
+Click the canvas first. It only answers keys while it has focus, so a page that embeds it
+keeps its own shortcuts.
+
+- **Connect the sockets.** Press on either `Value` socket and drag to the other one. When you
+  let go, the wire stays and the slider on the Viewer's input goes away.
+- **Move a node.** Drag it by its body.
+- **Select several.** Drag across empty canvas to draw a selection box. Hold Cmd or Ctrl to
+  add to the current selection, or to click a node out of it.
+- **Delete.** Click a node or a wire, then press Delete or Backspace. Deleting a node also
+  deletes its wires.
+- **Pan.** Hold Space and drag, or drag with the middle mouse button.
+- **Zoom.** Pinch on a trackpad, or hold Cmd or Ctrl and scroll. In your own app a plain scroll
+  zooms too, but on this page it scrolls the page.
+- **Clear the selection.** Press Escape.
+
+## Where to go next
+
+Each step on this page has a chapter of its own:
+
+- [Controlled and uncontrolled state](/start/state) explains what the canvas reports, and how
+  to keep the graph in your own store instead of `useGraph`.
+- [The entity model](/entities/model) describes every field an entity can carry.
+- [Sockets and widgets](/entities/sockets) covers socket types and the controls on inputs.
+- [Connections](/edges/connections) shows how to decide which sockets may connect.
+- [Canvas and camera](/interaction/camera) covers zoom limits, the grid and the view methods.
+- [Keyboard](/interaction/keyboard) lists every key the canvas answers.

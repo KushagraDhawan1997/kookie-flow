@@ -1,0 +1,350 @@
+Kookie Flow can run your graph, but it never knows what a node does. You give it one function,
+`onEvaluate`, that turns an entity's inputs into its outputs. The canvas decides when to call it,
+carries each result along the wires, cancels runs whose inputs have changed, and draws each
+entity's progress on its outline.
+
+## Compute outputs with onEvaluate
+
+`onEvaluate` receives an entity's id, its type, its inputs and a context object. Return the
+outputs as an object keyed by output socket id. The function can be synchronous or `async`.
+
+```tsx title="board.tsx"
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { KookieFlow, useGraph, type FlowObject, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow';
+
+const onEvaluate: OnEvaluate = async (id, type, inputs) => {
+  switch (type) {
+    case 'number':
+      return { out: Number(inputs.value ?? 0) };
+    case 'add':
+      return { sum: Number(inputs.a ?? 0) + Number(inputs.b ?? 0) };
+    case 'uppercase':
+      return { text: String(inputs.text ?? '').toUpperCase() };
+  }
+};
+
+export function Board({ graph }: { graph: FlowObject }) {
+  const flowRef = useRef<KookieFlowInstance>(null);
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: graph.entities,
+    initialEdges: graph.edges,
+  });
+
+  // A graph you mount with has never run, so run all of it once.
+  useEffect(() => {
+    flowRef.current?.evaluateAll();
+  }, []);
+
+  return (
+    <KookieFlow
+      ref={flowRef}
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onEvaluate={onEvaluate}
+    />
+  );
+}
+```
+
+The function's type is `OnEvaluate`, and it takes four arguments.
+
+| Argument     | Type                      | Meaning                                                             |
+| ------------ | ------------------------- | ------------------------------------------------------------------- |
+| `entityId`   | `string`                  | The id of the entity being run.                                     |
+| `entityType` | `string`                  | The entity's `type`, so you can switch on it.                       |
+| `inputs`     | `Record<string, unknown>` | One value for each input socket, keyed by socket id.                |
+| `ctx`        | `EvaluationContext`       | The entity itself, a cancellation signal, and a progress reporter.  |
+
+`EvaluationContext` has three fields.
+
+| Field      | Type                         | Meaning                                                                      |
+| ---------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| `entity`   | `Entity`                     | The whole entity, with its sockets and `data`, so you don't look it up.      |
+| `signal`   | `AbortSignal`                | Aborted when the run is cancelled. See [Cancel stale runs](#cancel-stale-runs). |
+| `progress` | `(fraction: number) => void` | Reports how far the run has got, from 0 to 1. See [Report progress](#report-progress). |
+
+What you return decides what the outputs hold:
+
+- **An object** writes each key to the output socket with that id. The values can be anything:
+  a number, a string, an object, an image URL.
+- **An output you leave out** keeps the value it already had. Returning nothing keeps all of them,
+  and the run still succeeds.
+- **A thrown error** fails the run. The entity's status becomes `error`, and the error's
+  `message` is shown under the node.
+
+## How inputs are resolved
+
+The canvas works out every input at the moment a run starts, one socket at a time.
+
+1. **A connected input** takes the value on the output at the other end of its wire. It's
+   `undefined` when the entity upstream hasn't produced that output yet. When two wires reach one
+   input, the first of them in `edges` is used.
+2. **An unconnected input** takes the value its widget shows. That's the value a person just set,
+   even before your `onWidgetChange` has written it back. After that comes
+   `data.values[socketId]` on the entity, and then the socket's `defaultValue`.
+
+A widget you supply through `widgetTypes` reaches a run when your `onWidgetChange` writes the
+value into `data.values`. The [Sockets and widgets](/entities/sockets) chapter shows that write.
+
+Output values are kept by the canvas, not in your entities, so a result never passes through
+your React state. Read one with `getSocketValue(entityId, socketId)` on the ref.
+
+## When an entity runs
+
+Every entity has a status, of type `EvaluationStatus`: `idle`, `dirty`, `running`, `success` or
+`error`. An entity is `dirty` when its inputs have changed and nothing has run on them yet.
+
+A change marks the entity it touches, and everything downstream of it, dirty at once. The canvas
+then starts each dirty entity whose inputs are ready, which means nothing it reads from is dirty,
+running or failed. A chain therefore runs front to back, two branches run at the same time, and a
+node where two branches meet runs once, after both have finished. A pass starts once the code
+that made the change has returned, so a paste of ten nodes starts one pass rather than ten.
+
+These changes mark an entity dirty:
+
+- A person changes a widget on it.
+- Your app gives its `data.values` a new object, as an undo or a preset does. Changing a value
+  inside the existing object isn't noticed.
+- A wire into it is added or removed. Deleting the node at the other end of a wire counts.
+- It's muted or unmuted.
+- It arrives through the store's `addElements`, as a pasted node does.
+
+Moving, resizing, selecting and renaming an entity don't mark it. To mark entities after a change
+the canvas can't see, call `markDirty` on the [store](/data/store) from a component inside
+`KookieFlow`.
+
+The graph you mount with starts `idle`, and so does an entity your app adds to its own `entities`
+array. Neither runs until one of the changes above reaches it, or until you run it from code.
+That's why the board above calls `evaluateAll()` once after it mounts.
+
+A failed entity holds its chain. Everything downstream stays dirty rather than running on an
+output the failed run never replaced. The entity runs again when its inputs change, or when you
+call `evaluate` on it. Entities that form a loop can never be ready, so they stay dirty.
+
+## Wait for a trigger with manual types
+
+Set `evaluation: 'manual'` on an entity type to make its entities wait. A change still marks a
+manual entity dirty, but it doesn't run, and everything downstream of it stays dirty too. The
+type is `EvaluationMode`, and its other value, `'reactive'`, is the default.
+
+```tsx
+import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  blur: {
+    type: 'blur',
+    label: 'Blur',
+    inputs: [{ id: 'image', name: 'Image', type: 'image' }, { id: 'radius', name: 'Radius', type: 'float' }],
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+  generate: {
+    type: 'generate',
+    label: 'Generate',
+    evaluation: 'manual',
+    inputs: [{ id: 'prompt', name: 'Prompt', type: 'string' }],
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+};
+```
+
+Make a type manual when a run is slow or costs money: a model call, a render, a paid API. This
+is a judgment about what people expect. Dragging a slider upstream should update the cheap nodes
+on every step, not start a generation on every step.
+
+`evaluate(id)` runs a manual entity, and reactive entities downstream follow it as usual.
+`evaluateDirty()` and `evaluateAll()` run manual entities too.
+
+<Example name="evaluation" />
+
+Drag either slider. Number and Add run on every step, while Render dims and waits. Press
+**Run Render** and its outline fills as the run reports progress. Move a slider during the run
+and the run is cancelled. Render goes back to waiting, because a manual entity whose inputs
+change mid-run waits for the next trigger rather than starting again.
+
+When your `entityTypes` change so that a manual type becomes reactive, the entities waiting under
+it run.
+
+## Cancel stale runs
+
+When an entity's inputs change during a run, the canvas aborts `ctx.signal`, sets the entity back
+to `dirty`, and ignores whatever the run later returns or throws. A reactive entity then runs
+again with the new inputs. Calling `evaluate` on an entity that's already running also cancels the
+run in progress and starts over. Deleting an entity cancels its run and releases its outputs, and
+unmounting `KookieFlow` cancels every run.
+
+You don't have to honour the signal, because a cancelled result is thrown away either way. Honour
+it anyway when the work is expensive, so nobody pays for a result that will never be used. Pass it
+to `fetch`, or check `signal.aborted` inside a loop.
+
+```tsx
+import type { OnEvaluate } from '@kushagradhawan/kookie-flow';
+
+const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
+  if (type === 'weather') {
+    const city = encodeURIComponent(String(inputs.city ?? ''));
+    const response = await fetch(`/api/weather?city=${city}`, { signal: ctx.signal });
+    if (!response.ok) throw new Error(`The weather service answered ${response.status}`);
+    return { forecast: await response.json() };
+  }
+};
+```
+
+A cancelled `fetch` rejects with an `AbortError`. The canvas ignores errors from cancelled runs,
+so you don't need to catch it.
+
+## Report progress
+
+Call `ctx.progress(fraction)` with a number from 0 to 1. The entity's outline fills with the
+accent colour to that fraction, starting at the top. The drawn outline catches up with each report
+smoothly, so reporting every tenth still reads as one continuous motion. A run that never reports
+shows a short arc travelling round the outline instead.
+
+```tsx
+import type { OnEvaluate } from '@kushagradhawan/kookie-flow';
+
+const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
+  if (type === 'translate') {
+    const lines = String(inputs.text ?? '').split('\n');
+    const translated: string[] = [];
+    for (const line of lines) {
+      const response = await fetch('/api/translate', { method: 'POST', body: line, signal: ctx.signal });
+      translated.push(await response.text());
+      ctx.progress(translated.length / lines.length);
+    }
+    return { text: translated.join('\n') };
+  }
+};
+```
+
+A value below 0 or above 1 is clamped. Reports from a cancelled run are ignored.
+
+## Status on the node
+
+Each status draws on the entity's own outline.
+
+| Status    | What the node shows                                                                        |
+| --------- | ------------------------------------------------------------------------------------------ |
+| `idle`    | Nothing.                                                                                   |
+| `dirty`   | The card fades a little, and its outline takes a light tint of the accent colour.          |
+| `running` | The outline fills with the accent colour as progress is reported, or an arc travels round it. |
+| `success` | The outline completes, then fades out over `SUCCESS_HOLD_MS`. The status then returns to `idle`. |
+| `error`   | The outline turns red and a little thicker, and the error message appears under the node.  |
+
+`SUCCESS_HOLD_MS` is exported, and it's 1500 milliseconds. The success outline fades rather than
+staying on, because an outline held in the accent colour is also what a selected node looks like.
+To keep a node marked as done, set its status yourself, as described below.
+
+### Follow status in your app
+
+`onStatusChange(entityId, status, message)` is called on every transition the canvas makes,
+including the return to `idle` after the success hold. `message` is set when the status is
+`error`. Its type is `OnStatusChange`. To ask about one entity at any moment, call
+`getEvaluationStatus(entityId)` on the ref.
+
+A slider drag produces several transitions for every step, so keep `onStatusChange` cheap. The
+example above schedules one update for the next animation frame and writes its readout into a DOM
+node rather than into React state, so the drag doesn't re-render the component.
+
+The store holds more detail as an `EvaluationRecord`, which you read with
+`getEvaluationRecord(entityId)` through [the flow store](/data/store). It returns `undefined` for
+an entity that has never been marked.
+
+| Field      | Type               | Meaning                                                                  |
+| ---------- | ------------------ | ------------------------------------------------------------------------ |
+| `status`   | `EvaluationStatus` | The current status.                                                      |
+| `since`    | `number`           | When the status was set, in `performance.now()` milliseconds.            |
+| `message`  | `string`           | The error message, while the status is `error`.                          |
+| `progress` | `number`           | The last reported fraction, from 0 to 1, while the status is `running`.  |
+
+### Set the status yourself
+
+`data.status` on an entity draws a status of your own, and `data.statusMessage` shows a line of
+text under the node. The type of `data.status` is `EntityStatus`: `'dirty'`, `'error'`,
+`'warning'`, `'running'` or `'success'`. Use it for work that happens outside `onEvaluate`, such as
+a job on your server.
+
+```tsx
+import type { Entity } from '@kushagradhawan/kookie-flow';
+
+const training: Entity = {
+  id: 'train',
+  type: 'default',
+  position: { x: 0, y: 0 },
+  data: { label: 'Train model', status: 'warning', statusMessage: 'Dataset is 3 days old' },
+};
+```
+
+Your status wins over the canvas's while it's set, and the canvas's progress isn't drawn for that
+entity. `'warning'` draws an amber outline, and the canvas never sets it itself. Your `'success'` draws a steady
+green outline, because nothing ran that could fade it. Your `'running'` draws the travelling arc.
+`statusMessage` shows whatever the status is, and it replaces the canvas's error message. Setting
+`data.status` changes only what is drawn: the entity still runs, and `onStatusChange` still reports
+the canvas's own status.
+
+## Run the graph from code
+
+These methods are on the `KookieFlowInstance` you get from `ref`.
+
+| Method                                 | Returns            | What it does                                                                                                        |
+| -------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `evaluate(entityId)`                   | `Promise<void>`    | Runs one entity now, whatever its type's mode, then lets reactive entities downstream follow. Resolves when that entity's run ends. |
+| `evaluateDirty()`                      | `Promise<void>`    | Runs every dirty entity in order, manual ones included. Resolves when nothing is running and nothing else can start. |
+| `evaluateAll()`                        | `Promise<void>`    | Marks every entity dirty, then runs them all as `evaluateDirty()` does.                                             |
+| `setSocketValue(entityId, socketId, value)` | `void`        | Puts a value on an output without running the entity. Everything the entity feeds becomes dirty.                   |
+| `getSocketValue(entityId, socketId)`   | `unknown`          | The value on an output, or `undefined` if nothing has put one there.                                                |
+| `getEvaluationStatus(entityId)`        | `EvaluationStatus` | The entity's status. `idle` for an entity that has never been marked.                                               |
+
+`evaluate` doesn't wait for dirty entities upstream. It runs with the outputs they hold right now,
+which may be out of date. Call `evaluateDirty()` to run a whole stale chain in order. On the other
+hand, `evaluateDirty()` doesn't retry a failed entity, because a failed entity isn't dirty. Call
+`evaluate` on it instead.
+
+Use `setSocketValue` for a result that already exists: one you saved with the graph, or one
+another system produced. A preview band draws whatever value sits on its socket, so this also fills
+a preview in a graph that never evaluates. The [Images, video and models](/entities/media) chapter
+covers previews.
+
+```tsx title="run-stale-button.tsx"
+'use client';
+
+import { useState, type RefObject } from 'react';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function RunStaleButton({ flowRef }: { flowRef: RefObject<KookieFlowInstance | null> }) {
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    setRunning(true);
+    await flowRef.current?.evaluateDirty();
+    setRunning(false);
+  };
+
+  return (
+    <button type="button" disabled={running} onClick={run}>
+      {running ? 'Running…' : 'Run stale nodes'}
+    </button>
+  );
+}
+```
+
+## Entities that never run
+
+Comments, text, images, video, models and ink compute nothing, so adding one never marks it
+dirty. `evaluateAll()` marks every entity in the graph, though, so write `onEvaluate` to return
+nothing for a type it doesn't compute, rather than throwing. The `switch` in the first example does
+this: a type with no `case` falls through, returns nothing, and succeeds.
+
+Until you pass `onEvaluate`, changed entities stay dirty. Reactive entities that are dirty when
+the function arrives run then.
+
+### Muted entities
+
+A muted entity doesn't call `onEvaluate`. Its input values pass straight to its outputs by
+position: the first input to the first output, the second to the second, and so on. Muting and
+unmuting both mark the entity dirty, so what it feeds runs again. Mute an entity with
+`muteEntity(entityId)` and unmute it with `unmuteEntity(entityId)` on [the flow store](/data/store).

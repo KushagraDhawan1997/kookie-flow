@@ -116,36 +116,37 @@ export const THEME_COLORS = {
    */
   widget: {
     /**
-     * The field well. Dark: punched through to the canvas, so a control reads as a hole in the
-     * card. Light: a step below the white card. Same language, inverted with the value stack.
+     * The field dress, from v2: `--dress-field-fill` is neutral-3 in both appearances, one step up
+     * on hover and one more when active. The material draws it at a partial alpha over the card
+     * (gl/material.ts), so it is a well the card shows through rather than a punched hole.
      */
-    fill: { light: '--neutral-3', dark: '--neutral-1' },
-    /** The hairline. */
-    border: '--neutral-5',
-    /** A slider's unfilled channel, and a checkbox's box when it is off. The well pair. */
-    track: { light: '--neutral-3', dark: '--neutral-1' },
-    /**
-     * The same three, one step up, for the pointer being over the control.
-     *
-     * Hover is +1 step and nothing else — no invented token, no new hue. That is the rule the
-     * design system already applies to every variant it ships: `VARIANT_MAP` in
-     * utils/style-resolver.ts moves a background one step up on hover and takes a border one step
-     * up. A GL widget is a control on a surface like any other, so it wears the same convention
-     * rather than a second one that would drift from it the first time the scale changed.
-     */
-    fillHover: { light: '--neutral-4', dark: '--neutral-2' },
-    trackHover: { light: '--neutral-4', dark: '--neutral-2' },
-    borderHover: '--neutral-6',
-    /** The filled portion, a ticked box, a grabbed thumb. */
+    fill: '--neutral-3',
+    fillHover: '--neutral-4',
+    fillActive: '--neutral-5',
+    /** The mark's dress before it is checked: `--dress-mark-fill`, and its hover and active steps. */
+    markFill: { light: '--neutral-4', dark: '--neutral-5' },
+    markFillHover: { light: '--neutral-5', dark: '--neutral-6' },
+    markFillActive: { light: '--neutral-6', dark: '--neutral-7' },
+    /** A slider's channel: `--color-track`. */
+    track: '--neutral-4',
+    /** The filled portion, a checked mark, a swatch's cast. */
     active: '--accent-9',
     /** What sits ON the active fill — a tick, a label over a solid. */
     activeContrast: '--accent-contrast',
-    /** A slider's grip: the card's body colour, so it reads as sitting on the card. */
-    thumb: { light: '--neutral-1', dark: '--neutral-3' },
-    /** The hairline around the grip. */
-    thumbRing: '--neutral-7',
+    /** A slider's grip: `--color-thumb`, the surface in light and near-white in dark. */
+    thumb: { light: '--neutral-1', dark: '--neutral-12' },
     /** A select's chevron. */
-    chevron: '--neutral-11',
+    /**
+     * v2's `--focus-ring`: accent-solid in light, accent-11 in dark, whatever the control's tone.
+     * High contrast re-solves accent-11, so the ring follows without a rule of its own.
+     */
+    ring: { light: '--accent-9', dark: '--accent-11' },
+    /** A select row's selected tick: `--accent-glyph`, a glyph in the accent on a neutral ground. */
+    glyph: '--accent-glyph',
+    /** A slider's channel under high contrast, where v2 re-solves `--color-track` to neutral-6. */
+    trackHighContrast: '--neutral-6',
+    /** The select chevron: neutral-12, drawn at the material's partial ink. */
+    chevron: '--neutral-12',
   },
 
   text: {

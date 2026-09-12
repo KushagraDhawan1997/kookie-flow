@@ -1,0 +1,282 @@
+`KookieFlow` keeps the live graph in a Zustand store: the entities and edges as the canvas holds
+them, the viewport, the selection, and the indexes it uses to find things quickly. Any component
+you render inside `KookieFlow` can read that store and change it.
+
+During a drag or a pan the store changes on every frame. Read it when you need a value, and
+subscribe to the one piece you care about, so your components don't re-render sixty times a
+second.
+
+## Reach the store from inside KookieFlow
+
+Render your component as a child of `KookieFlow`, and call `useFlowStoreApi()` in it. Children
+are drawn in a layer over the canvas.
+
+```tsx title="flow.tsx"
+'use client';
+
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+import { SelectionPanel } from './selection-panel';
+
+export function Flow() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph();
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      >
+        <div style={{ position: 'absolute', top: 12, right: 12, pointerEvents: 'auto' }}>
+          <SelectionPanel />
+        </div>
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+- **Set `pointerEvents: 'auto'` on anything people click.** The layer that holds children lets the
+  pointer through to the canvas, so a button without it can't be pressed.
+- **Most canvas keys don't reach your controls.** Keys like Delete and the arrows work only while
+  the canvas itself has focus, so typing in an input in your panel doesn't delete nodes. The
+  exception is undo: with `useGraph({ history: true })`, Cmd/Ctrl+Z in an input inside the canvas
+  undoes the graph rather than the text.
+- **Outside `KookieFlow`, use the ref.** `useFlowStoreApi()` throws when it's called in a component
+  that isn't rendered inside `KookieFlow`, including the component that renders it. The
+  [ref instance](/api/instance) covers what you can do from there.
+
+`useFlowStoreApi()` returns a `FlowStore`. You use two of its methods: `getState()`, which returns
+the current `FlowState`, and `subscribe()`. Change the store through the actions on `getState()`
+rather than `setState()`, because the actions also rebuild the indexes that clicks and hovers
+rely on.
+
+## Read state in an event handler
+
+`getState()` returns the state at the moment you call it. It doesn't subscribe and it doesn't
+render, so it's the right call inside a click handler.
+
+```tsx title="selection-panel.tsx"
+'use client';
+
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+export function SelectionPanel() {
+  const store = useFlowStoreApi();
+
+  const copyAsJson = () => {
+    const { getSelectedEntities, getConnectedEdges, selectedEntityIds } = store.getState();
+    const entities = getSelectedEntities();
+    const edges = getConnectedEdges([...selectedEntityIds]);
+    void navigator.clipboard.writeText(JSON.stringify({ entities, edges }, null, 2));
+  };
+
+  return <button onClick={copyAsJson}>Copy selection as JSON</button>;
+}
+```
+
+These are the fields you read most often. The last column says how often each one changes,
+which matters as soon as you subscribe to it.
+
+| Field | Type | Changes |
+| --- | --- | --- |
+| `entities` | `Entity[]` | On every edit, and on every frame of a drag. Sockets, size and label are filled in from `entityTypes`. |
+| `edges` | `Edge[]` | When edges are added, removed or replaced. |
+| `viewport` | `Viewport` | On every frame of a pan or zoom. |
+| `selectedEntityIds` | `Set<string>` | When the entity selection changes. |
+| `selectedEdgeIds` | `Set<string>` | When the edge selection changes. |
+| `entityMap` | `Map<string, Entity>` | A new map whenever the entities are rebuilt, such as when your `entities` prop changes. During a drag it's updated in place, so a subscriber misses the moves. Read it, don't subscribe to it. |
+| `hoveredEntityId` | `string \| null` | When the pointer moves onto or off an entity. |
+| `positionVersion` | `number` | Goes up when a drag, a resize or `updateEntityPositions` moves entities, and whenever your `entities` prop changes. |
+| `topologyVersion` | `number` | Goes up when entities or edges are added or removed, whenever your `entities` or `edges` prop changes, and when an entity is muted or unmuted. |
+| `hiddenEntityIds` | `Set<string>` | Holds the entities inside collapsed frames. A new set whenever the entities are rebuilt. |
+| `focusedEntityId` | `string \| null` | The entity the [keyboard cursor](/interaction/keyboard) is on. Changes when someone presses an entity, moves the cursor with a key, or when the canvas adds an entity for a dropped or pasted file or link. |
+
+The query actions are in [Graph queries](/data/graph-queries), and copying and pasting is in
+[Clipboard and cloning](/data/clipboard). The rest of the store's actions are listed further down
+this page.
+
+## Subscribe to one piece of state
+
+`store.subscribe(selector, listener)` calls `listener` whenever the value `selector` returns
+changes, and returns a function that unsubscribes. Values are compared with `Object.is`. Pass
+`{ equalityFn }` as a third argument to compare them another way, or `{ fireImmediately: true }` to
+call `listener` once straight away.
+
+For anything that changes during a gesture, update the page through a ref, and do it at most once
+per frame. This readout follows the zoom while someone zooms, without rendering React once:
+
+```tsx title="zoom-readout.tsx"
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+export function ZoomReadout() {
+  const store = useFlowStoreApi();
+  const labelRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      const { zoom } = store.getState().viewport;
+      if (labelRef.current) labelRef.current.textContent = `${Math.round(zoom * 100)}%`;
+    };
+    paint();
+    const unsubscribe = store.subscribe(
+      (state) => state.viewport.zoom,
+      () => {
+        if (frame === 0) frame = requestAnimationFrame(paint);
+      }
+    );
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+    };
+  }, [store]);
+
+  return <span ref={labelRef} />;
+}
+```
+
+When a value changes only when someone clicks, a render is fine. `useFlowStore(selector)`
+re-renders your component whenever the selected value changes:
+
+```tsx
+import { useFlowStore } from '@kushagradhawan/kookie-flow';
+
+export function SelectionCount() {
+  const count = useFlowStore((state) => state.selectedEntityIds.size);
+  return <span>{count} selected</span>;
+}
+```
+
+Two rules keep `useFlowStore` from costing you frames:
+
+- **Don't select `entities`, `viewport` or `positionVersion`.** Each one changes on every frame of
+  a drag or a pan, so the component would render on every frame too. Subscribe with a ref instead.
+- **Return a value that stays the same when nothing changed:** a number, a string, a boolean, or a
+  reference the store already holds. A selector that builds a new array or object on every call
+  never returns the same value twice, and React renders again and again.
+
+## Add and delete elements
+
+`addElements` and `deleteElements` change several entities and edges in one update.
+
+| Action | Takes | What it does |
+| --- | --- | --- |
+| `addElements` | `ElementsBatch` | Adds entities and edges. Each entity gets its type's sockets, size and label from `entityTypes`, and is drawn above what's already there. |
+| `deleteElements` | `DeleteElementsBatch` | Removes entities and edges by id, along with every edge attached to a removed entity, and takes them out of the selection. |
+| `deleteSelected` | nothing | Removes the selected entities and edges, the same way. |
+
+```ts
+interface ElementsBatch {
+  entities?: Entity[];
+  edges?: Edge[];
+}
+
+interface DeleteElementsBatch {
+  entityIds?: string[];
+  edgeIds?: string[];
+}
+```
+
+The store also holds actions for selection, the camera and positions:
+
+| Action | Signature | What it does |
+| --- | --- | --- |
+| `selectEntity` | `(id: string, additive?: boolean) => void` | Selects one entity. Without `additive`, it replaces the selection and clears selected edges. |
+| `selectEntities` | `(ids: string[]) => void` | Replaces the entity selection. Selected edges stay selected. |
+| `toggleEntitySelection` | `(id: string) => void` | Adds an entity to the selection, or takes it out. |
+| `selectEdge` | `(id: string, additive?: boolean) => void` | Selects one edge. Without `additive`, it replaces the selection and clears selected entities. |
+| `selectEdges` | `(ids: string[]) => void` | Replaces the edge selection. |
+| `selectAll` | `() => void` | Selects every entity. |
+| `deselectAll` | `() => void` | Clears the entity and edge selection. |
+| `isEntitySelected` | `(id: string) => boolean` | Whether the entity is selected. |
+| `isEdgeSelected` | `(id: string) => boolean` | Whether the edge is selected. |
+| `setViewport` | `(viewport: Viewport) => void` | Moves the camera. |
+| `pan` | `(delta: XYPosition) => void` | Moves the graph on screen by `delta` pixels. A positive `x` moves it right. |
+| `zoom` | `(delta: number, center?: XYPosition) => void` | Adds `delta` to the zoom, kept between `0.01` and `16` whatever your `minZoom` and `maxZoom` props say. Pass `center`, a point on the canvas in pixels, to keep the graph under that point in place. |
+| `updateEntityPositions` | `(updates: Array<{ id: string; position: XYPosition }>) => void` | Moves entities without rebuilding the whole graph. |
+| `updateEntityDimensions` | `(id: string, width: number, height: number, position?: XYPosition) => void` | Sets an entity's `width` and `height`, and its `position` when you pass one, without rebuilding the whole graph. |
+| `fitEntityToContent` | `(id: string) => void` | Removes an entity's `width` and `height`, so the canvas sizes it as it sizes an entity with neither set. |
+| `applyEntityChanges` | `(changes: EntityChange[]) => void` | Applies the same changes `onEntitiesChange` receives. |
+| `applyEdgeChanges` | `(changes: EdgeChange[]) => void` | Applies the same changes `onEdgesChange` receives. |
+
+## Move frames, restack and re-run entities
+
+These actions work on frames, on the order entities are drawn in, and on evaluation:
+
+| Action | Signature | What it does |
+| --- | --- | --- |
+| `moveGroup` | `(groupId: string, delta: XYPosition) => void` | Moves an entity and everything inside it, at every depth, by `delta` world units. |
+| `setEntityParent` | `(entityId: string, parentId: string \| null) => boolean` | Sets the entity's `parentId`, or clears it with `null`. Nothing moves. Returns `false` and changes nothing when either entity is missing, when both ids are the same, or when the parent is already inside the entity. |
+| `bringToFront` | `(entityId: string) => void` | Draws the entity above the others, as a press does. The frames around it come up beneath it, and a frame's contents come up above the frame. |
+| `markDirty` | `(ids: string \| readonly string[]) => void` | Marks the entities, and everything downstream of them, dirty. A run in progress on any of them is cancelled, and reactive entities run again. |
+
+`markDirty` is for a change the canvas can't see, such as a file or a remote value one of your
+entities reads. [Evaluation](/data/evaluation) covers what dirty means and what runs.
+
+`bringToFront` and `markDirty` change only what the store holds, like selection and the camera, so
+they work in any graph. `moveGroup`, `setEntityParent`, `updateEntityDimensions` and
+`fitEntityToContent` change entities without reporting it, so the next section applies to them.
+
+The rest of `FlowState` serves the canvas's own gestures: hovering, drawing a wire, editing text,
+pressing a widget and drawing with the pen. Those fields change in step with the gesture, and
+calling one of the actions on its own can leave the gesture half done. `stopEditing`, for example,
+closes the text editor without reporting what was typed, and `setWidgetValue` changes what a widget
+shows without calling `onWidgetChange`.
+
+## Edit a controlled graph through your own state
+
+Store actions change the canvas, and they don't call `onEntitiesChange` or `onEdgesChange`. The
+canvas also replaces its entities whenever your `entities` prop changes, and its edges whenever
+your `edges` prop changes. So in a controlled graph, an edit made through the store lasts only
+until your state next changes.
+
+Here's how that goes wrong. A child calls `addElements()`, and the new node appears. Someone drags
+another node. `useGraph` applies that drag to its own array, which never had the new node, and
+the new node disappears.
+
+In a controlled graph, add, delete and move entities through your own state. Pass the handlers
+from `useGraph` to the child that needs them:
+
+```tsx title="add-node-button.tsx"
+'use client';
+
+import {
+  screenToWorld,
+  useFlowStoreApi,
+  type Entity,
+  type EntityChange,
+} from '@kushagradhawan/kookie-flow';
+
+export function AddNodeButton({ onEntitiesChange }: { onEntitiesChange: (changes: EntityChange[]) => void }) {
+  const store = useFlowStoreApi();
+
+  const add = () => {
+    const entity: Entity = {
+      id: crypto.randomUUID(),
+      type: 'default',
+      // 40 pixels in from the top-left corner of what's on screen.
+      position: screenToWorld({ x: 40, y: 40 }, store.getState().viewport),
+      data: { label: 'New node' },
+    };
+    onEntitiesChange([{ type: 'add', entity }]);
+  };
+
+  return <button onClick={add}>Add node</button>;
+}
+```
+
+Render it as `<AddNodeButton onEntitiesChange={onEntitiesChange} />` inside `KookieFlow`. The
+change goes through `useGraph`, so it survives the next render, and with `history` on, undo can
+take it back.
+
+Selection and the camera exist only in the store, so selection and viewport actions are safe in
+a controlled graph. If your `entities` and `edges` arrays never change identity, the store is the
+only copy of the graph, and its edits last. The
+[Controlled and uncontrolled state](/start/state) chapter explains both setups.

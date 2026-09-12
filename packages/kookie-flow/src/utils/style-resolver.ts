@@ -247,6 +247,19 @@ export const RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
  * Widgets were a fixed 8px before this, so the `radius` prop stopped at the node body and never
  * reached the controls on it.
  */
+/**
+ * `--radius-mark-1..4` at each level, from v2's stylesheet: square at `none`, and `full` is `large`
+ * because a checkbox never becomes a circle. Used when the flow names a radius itself; otherwise the
+ * theme's own tokens answer.
+ */
+export const MARK_RADIUS_BY_LEVEL: Record<EntityRadius, readonly [number, number, number, number]> = {
+  none: [0, 0, 0, 0],
+  small: [2, 2, 3, 3],
+  medium: [4, 4, 6, 6],
+  large: [6, 6, 8, 8],
+  full: [6, 6, 8, 8],
+};
+
 export const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   none: 0,
   small: '--radius-1',
@@ -295,6 +308,14 @@ export interface ResolvedEntityStyle {
    * capsule's curve eats the corner the first glyph would otherwise sit in.
    */
   widgetPad: number;
+  /**
+   * A checkbox's corner. v2 restates it per radius level rather than deriving it from the
+   * control's, because a mark is a 16-26px square and never becomes a circle: `--radius-mark-N`,
+   * read from the theme, or the level's own row when the flow names a radius.
+   */
+  markRadius: number;
+  /** The type step a control prints its value at: `--font-size-N`, 14px at size 2. */
+  widgetFontSize: number;
   borderWidth: number;
   borderColor: RGBColor;
   borderColorHover: RGBColor;
@@ -442,6 +463,11 @@ export function resolveEntityStyle(
         ? resolveTokenPx('--radius-full', tokens)
         : controlRadius;
   const widgetPad = resolveTokenPx(atIndex('--control-px-pill', size), tokens);
+  const markRadius =
+    radius !== undefined
+      ? MARK_RADIUS_BY_LEVEL[radius][Math.min(4, Math.max(1, Number(size))) - 1]
+      : resolveTokenPx(atIndex('--radius-mark', size), tokens);
+  const widgetFontSize = resolveTokenPx(atIndex('--font-size', size), tokens);
 
   // Resolve background colors
   const background = overrides?.background
@@ -508,6 +534,8 @@ export function resolveEntityStyle(
     borderRadius,
     widgetRadius,
     widgetPad,
+    markRadius,
+    widgetFontSize,
     borderWidth,
     borderColor,
     borderColorHover,
@@ -554,6 +582,11 @@ export interface ResolvedSocketLayout {
   markSize: number;
   /** The slider's rail, from `--slider-track-N`. Also a shader literal before. */
   trackHeight: number;
+  /**
+   * A list row: v2's `line height + 2 × row inset`, 30px at size 2, never under the 24px target.
+   * A select's list is laid out in these, not in control heights.
+   */
+  listRowHeight: number;
   /**
    * The body's border, which every content inset owes. `.kui-surface` is border-box and declares
    * its border in the same rule as its padding, so the distance from the outer edge to the first
@@ -626,6 +659,7 @@ export function resolveSocketLayout(
     borderWidth,
     markSize: resolveTokenPx(atIndex('--mark', size), tokens),
     trackHeight: resolveTokenPx(atIndex('--slider-track', size), tokens),
+    listRowHeight: Math.max(24, resolveTokenPx(atIndex('--line-height', size), tokens) + 2 * rowInset),
   };
 }
 

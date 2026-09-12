@@ -1,0 +1,179 @@
+Six props on `KookieFlow` set how every node on the board is drawn: `size`, `variant`, `radius`,
+`header`, `accentHeader` and `entityStyle`. Each one applies to the whole board. The only
+per-entity setting is `color`, which marks one node with a line of colour. The colours, padding
+and corners these props pick come from the theme's tokens, so the nodes keep matching your app in
+light and dark mode.
+
+<Example name="entity-styling" />
+
+| Prop | Type | Default | What it sets |
+| --- | --- | --- | --- |
+| `size` | `EntitySize` | `'2'` | Padding, socket row and widget heights, and the corner when `radius` is unset |
+| `variant` | `EntityVariant` | `'surface'` | The body's fill, border and shadow |
+| `radius` | `EntityRadius` | Follows `size` | The corner of the body and of its widgets |
+| `header` | `HeaderPosition` | `'inside'` | Where the title is drawn, if at all |
+| `accentHeader` | `boolean` | `false` | A line of the theme's accent along the top edge of every node |
+| `entityStyle` | `Partial<EntityStyleOverrides>` | None | Colour, border, corner and shadow overrides |
+
+These props style nodes. Text, images, video, models, comments, reroutes and ink draw
+themselves, so a title, a body fill and an accent line never appear on them.
+
+## Pick a size
+
+`size` takes `'1'`, `'2'`, `'3'`, `'4'` or `'5'`. It picks a step on KookieUI's surface tokens
+for the padding (`--surface-p-N`) and the corner (`--radius-surface-N`), and the same step on its
+control tokens for the height and inset of widgets. Sizes `'1'` and `'2'` share a step.
+
+| `size` | Surface and control step |
+| --- | --- |
+| `'1'` | 1, with smaller sockets, so socket rows can sit closer together |
+| `'2'` | 1 |
+| `'3'` | 2 |
+| `'4'` | 3 |
+| `'5'` | 4 |
+
+The default `'2'` uses KookieUI's first step, one below a page card's default. That's a judgment:
+a node is narrower than a page card, and you usually read a board zoomed out, so the page's
+default step spends too much of the node on padding.
+
+`size` doesn't change the text. Titles and socket labels stay at a 12-pixel font size in world
+units, and zooming is what makes them larger.
+
+## Pick a variant
+
+`variant` sets how the body is painted.
+
+| `variant` | Fill | Border | Shadow |
+| --- | --- | --- | --- |
+| `'surface'` | `--neutral-1` in light, `--neutral-3` in dark | `--neutral-5` | A long, soft shadow |
+| `'outline'` | None | `--neutral-5` | None |
+| `'soft'` | `--neutral-2` in light, `--neutral-3` in dark | None | A long, soft shadow |
+| `'classic'` | `--color-surface` | None | A short drop shadow |
+| `'ghost'` | None | None | None |
+
+A `'ghost'` node draws no body at all, so its title, sockets and widgets sit straight on the
+canvas.
+
+Node shadows don't read the Theme's `depth` setting, so a `depth="flat"` Theme still shows them.
+For a flat board, use `'outline'`, or set `entityStyle.shadow` to `'none'`.
+
+## Set the corner radius
+
+`radius` takes `'none'`, `'small'`, `'medium'`, `'large'` or `'full'`. From `'small'` to
+`'full'`, the body reads `--radius-surface-1` to `--radius-surface-4`, and `'none'` is a square
+corner. The Theme's own `radius` setting decides what each of those tokens is worth.
+
+Leave `radius` unset and the corner follows `size`: `'small'` at sizes `'1'` and `'2'`, then
+`'medium'`, `'large'` and `'full'` for `'3'`, `'4'` and `'5'`. The same corner reaches the
+selection outline and every image, video and model on the board.
+
+`'full'` is the largest card corner, not a pill, because the surface tokens stop at a rounded
+card.
+
+Widgets read KookieUI's control corners instead. With `radius` set, `'small'`, `'medium'` and
+`'large'` read `--radius-1` to `--radius-3`, and `'full'` reads `--radius-full`. The Theme's own
+`radius` level decides what those are worth, so under a Theme at `radius="full"`, KookieUI's
+default, every one of them draws a pill, and under `radius="none"` every one is square. With
+`radius` unset, a widget takes the Theme's control corner at the node's size.
+
+## Place the title
+
+`header` decides where a node's title goes.
+
+- `'inside'` draws the title in a band at the top of the body, above the first socket row.
+- `'outside'` draws the title above the body. The title isn't inside the node's box, so leave
+  room above each node for it.
+- `'none'` draws no title and reserves no space for one.
+
+The title is the entity's `data.label`, or its `type` when there's no label. A title that's
+wider than the node ends in an ellipsis. It's drawn in the semibold weight of the canvas font,
+which the [Fonts and text rendering](/styling/fonts) chapter covers.
+
+## Mark nodes with colour
+
+There are two ways to mark nodes with colour, and both draw the same thin line inside the top
+edge of the body:
+
+- `accentHeader` draws the line on every node, in the theme's `--accent-9`, whatever `header`
+  is.
+- `color` on an entity draws the line in a hue you choose, for that node only. It replaces the
+  `accentHeader` line on that node.
+
+```tsx title="pipeline.tsx"
+import type { Entity } from "@kushagradhawan/kookie-flow";
+
+const entities: Entity[] = [
+  {
+    id: "load",
+    type: "default",
+    position: { x: 0, y: 0 },
+    color: "teal",
+    data: { label: "Load image" },
+    outputs: [{ id: "image", name: "Image", type: "image" }],
+  },
+  {
+    id: "upscale",
+    type: "default",
+    position: { x: 300, y: 0 },
+    color: "orange",
+    data: { label: "Upscale" },
+    inputs: [{ id: "image", name: "Image", type: "image" }],
+  },
+];
+```
+
+`color` takes an `AccentColor`: `gray`, `gold`, `bronze`, `brown`, `yellow`, `amber`, `orange`,
+`tomato`, `red`, `ruby`, `crimson`, `pink`, `plum`, `purple`, `violet`, `iris`, `indigo`,
+`blue`, `cyan`, `teal`, `jade`, `green`, `grass`, `lime`, `mint` or `sky`. These hues ship with
+the package and look the same in light and dark mode, except `gray`, which reads the theme's
+`--neutral-9`. The theme's accent doesn't change them. A `red` node isn't your destructive
+colour either, so it stays the same red if your theme's destructive colour changes.
+
+The line needs a body to sit on. It appears on `'surface'`, `'soft'` and `'classic'` nodes, and
+`'outline'` and `'ghost'` nodes draw no line. A name that isn't in the list logs one warning,
+and the node draws as if it had no colour. `color` doesn't tint the body, the selection outline
+or the widgets.
+
+## Override the resolved style
+
+`entityStyle` replaces individual values that the other props resolved. It applies to every node.
+
+| Field | Type | What it replaces |
+| --- | --- | --- |
+| `background` | `string` | The body fill. Any CSS colour. |
+| `borderColor` | `string` | The border colour. Any CSS colour. |
+| `borderWidth` | `number` | The border width, in pixels |
+| `borderRadius` | `number` | The body corner, in pixels. It wins over `radius` and `size`, and leaves widget corners alone. |
+| `shadow` | `'1'` to `'6'`, or `'none'` | The shadow |
+
+Write a colour as a token, such as `var(--neutral-4)`. The canvas resolves it inside the Theme,
+and resolves it again whenever the theme changes, so the override follows light and dark mode.
+A hex value stays the same in both modes.
+
+```tsx title="board.tsx"
+<KookieFlow
+  entities={entities}
+  edges={edges}
+  onEntitiesChange={onEntitiesChange}
+  onEdgesChange={onEdgesChange}
+  variant="soft"
+  radius="medium"
+  entityStyle={{
+    background: "var(--neutral-4)",
+    borderColor: "var(--accent-9)",
+    borderWidth: 1,
+    shadow: "none",
+  }}
+/>
+```
+
+Some overrides depend on the variant:
+
+- `background` has no effect on `'outline'` or `'ghost'`, because those variants draw no fill.
+- `borderColor` shows only where the border has a width. `'soft'`, `'classic'` and `'ghost'`
+  have none until you set `borderWidth`.
+- `shadow` from `'1'` to `'5'` picks one of five fixed drop shadows, from small to large. `'6'`
+  draws no shadow.
+
+You can write the object inline. The canvas compares its five fields, so a new object with the
+same values doesn't re-resolve any styles.

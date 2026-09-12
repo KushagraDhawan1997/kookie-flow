@@ -58,3 +58,12 @@ missing the more of the canvas is hardcoded rather than themed.
 The behaviour suite asserts the census is clean, so the commit that swaps design systems fails and
 NAMES each token that stopped resolving. This spike prints the same census grouped, which is the
 form you want while doing the port rather than after it.
+
+## glass-compare.mjs: real v2 beside the GL controls
+
+`glass-look.mjs` shows the GL controls alone, which is how the first two passes were judged, and
+how a look that did not match v2 got approved by its author. This spike builds
+`reference/reference.tsx`, a page of real v2 controls in `material="regular"`, and screenshots it
+next to the canvas at the same device scale, closed and with a list open, in both appearances
+(`dist/compare/`). `v2-probe.mjs` prints each v2 part's computed style, pseudo-elements included,
+so a number can be read off the real control and not guessed from a token.

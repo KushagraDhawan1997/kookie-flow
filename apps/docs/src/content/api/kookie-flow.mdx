@@ -1,0 +1,343 @@
+`KookieFlow` is the component that draws a graph. It renders a WebGL canvas that fills its parent
+element, with a layer of HTML over the canvas for overlays of your own. The tables below list
+every prop it takes, with its type and default, and link each one to the chapter that explains it.
+
+## Render the graph
+
+```tsx title="editor.tsx"
+'use client';
+
+import { useRef } from 'react';
+import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function Editor() {
+  const flowRef = useRef<KookieFlowInstance>(null);
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph();
+
+  return (
+    <div style={{ height: 600 }}>
+      <KookieFlow
+        ref={flowRef}
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
+    </div>
+  );
+}
+```
+
+`KookieFlow` is 100% of its parent's width and height, so give the parent a height. With no height,
+the canvas is zero pixels tall and nothing shows.
+
+The package carries no `'use client'` directive, so in a Next.js App Router app, render `KookieFlow`
+from a file that starts with `'use client'`. The `ref` gives you the methods listed in [The ref instance](/api/instance).
+
+## Props
+
+Only `entities` and `edges` are required. A default of "none" means the prop is `undefined` unless
+you set it.
+
+### Graph data
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `entities` | `Entity[]` | required | The entities in the graph. | [State](/start/state) |
+| `edges` | `Edge[]` | required | The edges between them. | [State](/start/state) |
+| `onEntitiesChange` | `(changes: EntityChange[]) => void` | none | Called with the entity changes an interaction made, for you to apply to your own state. | [State](/start/state) |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | none | Called with the edge changes an interaction made. | [State](/start/state) |
+| `entityTypes` | `Record<string, EntityTypeDefinition>` | `{}` | The sockets, size and label an entity of each type gets when it doesn't set its own. | [Entity types](/entities/types) |
+| `socketTypes` | `Record<string, SocketType>` | `{}` | Your socket types, added to `DEFAULT_SOCKET_TYPES`. A key you define replaces the built-in type of that name. | [Sockets](/entities/sockets) |
+| `defaultEntityWidth` | `number` | `240` | The width that widgets and alignment guides assume for an entity with no `width`. The body is drawn 240 wide whatever this is, so set `width` on entities rather than changing it. | [Entity model](/entities/model) |
+
+### Connections and edges
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `onConnect` | `(connection: Connection) => void` | none | Called when someone drags a connection onto a socket that accepts it. | [Connections](/edges/connections) |
+| `onConnectStart` | `(event: PointerEvent, params: OnConnectStartParams) => void` | none | Called when a connection drag starts. | [Connections](/edges/connections) |
+| `onConnectEnd` | `(event: PointerEvent, state: ConnectionEndState) => void` | none | Called when a connection drag ends, whether or not it connected. | [Connections](/edges/connections) |
+| `connectionMode` | `ConnectionMode` | `'loose'` | `'strict'` refuses a connection between incompatible socket types. | [Connections](/edges/connections) |
+| `isValidConnection` | `IsValidConnectionFn` | none | Your own check for a connection. When set, it replaces `connectionMode`. | [Connections](/edges/connections) |
+| `allowCycles` | `boolean` | `true` | Set `false` to refuse a connection that would make a cycle. | [Connections](/edges/connections) |
+| `defaultEdgeType` | `EdgeType` | `'bezier'` | The shape of an edge that sets no `type`. | [Edges](/edges/edges) |
+| `showEdgeLabels` | `boolean` | `true` | Whether edge labels are drawn. | [Edges](/edges/edges) |
+
+### Sockets and widgets
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `showSocketLabels` | `boolean` | `true` | Whether socket names are drawn beside the sockets. | [Sockets](/entities/sockets) |
+| `showWidgets` | `boolean` | `true` | Whether an unconnected input shows a control for its value. | [Sockets](/entities/sockets) |
+| `widgetTypes` | `Record<string, React.ComponentType<WidgetProps>>` | none | Your own widget components, by widget type name. | [Sockets](/entities/sockets) |
+| `onWidgetChange` | `(entityId: string, socketId: string, value: unknown) => void` | none | Called when someone changes a widget's value. | [Sockets](/entities/sockets) |
+| `socketLabelWidth` | `number` | `96` | The width kept for a socket's label before its widget starts. | [Sockets](/entities/sockets) |
+| `ThemeComponent` | `React.ComponentType<{ children: React.ReactNode }>` | none | A component that wraps each of your own widget components on an entity that sets a `color`, for theming of your own. | [Sockets](/entities/sockets) |
+
+### Evaluation
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `onEvaluate` | `OnEvaluate` | none | Computes an entity's outputs from its inputs. The canvas decides when to call it. | [Evaluation](/data/evaluation) |
+| `onStatusChange` | `OnStatusChange` | none | Called for every status change the evaluation engine makes. | [Evaluation](/data/evaluation) |
+
+### Selection and clicks
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `onEntityClick` | `(entity: Entity) => void` | none | Called when someone clicks an entity. | [Selection](/interaction/selection) |
+| `onEdgeClick` | `(edge: Edge) => void` | none | Called when someone clicks an edge. | [Selection](/interaction/selection) |
+| `onPaneClick` | `() => void` | none | Called when someone clicks empty canvas. | [Selection](/interaction/selection) |
+| `edgesSelectable` | `boolean` | `true` | Whether clicking an edge selects it. When `false`, the click counts as a click on empty canvas and `onEdgeClick` isn't called. | [Selection](/interaction/selection) |
+
+### Canvas and camera
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `defaultViewport` | `Viewport` | `{ x: 0, y: 0, zoom: 1 }` | The view the canvas opens at. It's read once, when `KookieFlow` mounts. | [Camera](/interaction/camera) |
+| `minZoom` | `number` | `0.01` | The furthest someone can zoom out. | [Camera](/interaction/camera) |
+| `maxZoom` | `number` | `16` | The furthest someone can zoom in. | [Camera](/interaction/camera) |
+| `showGrid` | `boolean` | `true` | Whether the background grid is drawn. | [Camera](/interaction/camera) |
+| `showMinimap` | `boolean` | `false` | Whether a minimap is drawn in a corner. | [Minimap](/styling/minimap) |
+| `minimapProps` | `MinimapProps` | none | The minimap's position, size and colours. | [Minimap](/styling/minimap) |
+
+### Arranging
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `helperLines` | `boolean` | `true` | Whether alignment guides appear while someone drags an entity. Ignored while `snapToGrid` is on. | [Layout](/data/arrange) |
+| `snapToGrid` | `boolean` | `false` | Whether a dragged entity snaps to a grid. | [Layout](/data/arrange) |
+| `snapGrid` | `[number, number]` | `[20, 20]` | The snap grid's spacing, across and down. | [Layout](/data/arrange) |
+
+### Drawing and media
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `penStyle` | `Pick<DrawEntityData, 'strokeWidth' \| 'strokeColor'>` | none | The width and colour the pen draws with. Unset, ink is 3 pixels wide in the theme's text colour. | [Drawing](/interaction/drawing) |
+| `onFileDrop` | `(files: File[], position: XYPosition) => void` | none | Receives dropped and pasted files, in place of the entities the canvas would make from them. | [Dropping media](/interaction/drop-and-paste) |
+| `maxImageTextureSize` | `number` | `2048` | The largest width or height, in pixels, of an image entity's full-resolution texture. | [Media](/entities/media) |
+
+### Appearance
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `size` | `EntitySize` | `'2'` | The size step for every entity: padding, corners, type and sockets. | [Entity styling](/styling/entities) |
+| `variant` | `EntityVariant` | `'surface'` | How an entity's body is filled and outlined. | [Entity styling](/styling/entities) |
+| `radius` | `EntityRadius` | follows `size` | The corner radius of an entity's body. | [Entity styling](/styling/entities) |
+| `header` | `HeaderPosition` | `'inside'` | Where an entity's title is drawn: `'inside'` the body, `'outside'` above it, or `'none'`. | [Entity styling](/styling/entities) |
+| `accentHeader` | `boolean` | `false` | Draws a thin accent line along the top edge of every entity. | [Entity styling](/styling/entities) |
+| `entityStyle` | `Partial<EntityStyleOverrides>` | none | Exact background, border, corner and shadow values that override the props above. | [Entity styling](/styling/entities) |
+| `font` | `FontPreset \| FontConfig` | `'inter'` | The font the canvas draws text with. | [Fonts](/styling/fonts) |
+
+### Container
+
+| Prop | Type | Default | Meaning | Chapter |
+| --- | --- | --- | --- | --- |
+| `className` | `string` | none | A class for the element that holds the canvas. | This page |
+| `ariaLabel` | `string` | `'Flow graph'` | The name a screen reader announces for the graph. | [Keyboard](/interaction/keyboard) |
+| `children` | `React.ReactNode` | none | Overlays drawn over the canvas. | [This page](#render-overlays-as-children) |
+| `showStats` | `boolean` | `false` | Shows a frame-rate panel. | [This page](#show-performance-stats) |
+
+`className` goes on the outer element. That element sets its position, width, height, overflow and
+background colour as inline styles, which win over a class. Use `className` for other styles, such
+as a border or a corner radius.
+
+## Render overlays as children
+
+Anything you pass as `children` renders in a layer of HTML that covers the canvas exactly. Use it
+for controls that belong to the graph: a zoom readout, a legend, or the [`Toolbar`](/interaction/toolbar)
+and [`Minimap`](/styling/minimap) components.
+
+Children render inside the flow, so the hooks that need a flow work there. `useFlowStoreApi`,
+`useFlowStore`, `useClipboard`, `Toolbar` and `Minimap` throw anywhere else. The [Hooks](/api/hooks) chapter
+lists which hooks need a flow and which don't.
+
+This button shows the zoom level and resets the view when clicked:
+
+```tsx title="zoom-button.tsx"
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+export function ZoomButton() {
+  const store = useFlowStoreApi();
+  const label = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const write = () => {
+      frame = 0;
+      const percent = Math.round(store.getState().viewport.zoom * 100);
+      if (label.current) label.current.textContent = `${percent}%`;
+    };
+    write();
+    const unsubscribe = store.subscribe(
+      (state) => state.viewport.zoom,
+      () => {
+        if (frame === 0) frame = requestAnimationFrame(write);
+      }
+    );
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+    };
+  }, [store]);
+
+  return (
+    <button
+      type="button"
+      style={{ position: 'absolute', top: 12, right: 12, pointerEvents: 'auto' }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={() => store.getState().setViewport({ x: 0, y: 0, zoom: 1 })}
+    >
+      <span ref={label} />
+    </button>
+  );
+}
+```
+
+```tsx
+<KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+  <ZoomButton />
+</KookieFlow>
+```
+
+The button writes the zoom into its label through a ref, at most once a frame, instead of keeping
+it in React state. Zooming changes the value on every wheel event, and a React render for each one
+would slow the canvas down.
+
+Follow these rules for anything you render as a child:
+
+- **Set `pointerEvents: 'auto'` on what people click.** The overlay layer has
+  `pointer-events: none`, so the canvas under it keeps working. Your children inherit that value
+  until they set their own.
+- **Stop `onPointerDown` from reaching the canvas.** A press on a child also reaches the canvas,
+  which takes focus and can select, drag or deselect whatever lies under the pointer. The library's
+  own toolbar stops the event the same way.
+- **Position in canvas pixels.** The layer's top-left corner is the canvas's top-left corner. To
+  follow a point on the graph, convert it with `worldToScreen` and update the element through a
+  ref. [Hooks](/api/hooks#style-and-layout-hooks) has an example that follows a socket.
+- **Put a large panel outside `KookieFlow`.** The wheel over a child zooms the canvas, so a
+  scrolling list inside the layer doesn't scroll. Screen readers such as NVDA and JAWS also treat
+  the whole canvas, children included, as one application, and leave their reading mode inside it.
+  A panel positioned over the canvas from outside avoids both. This is a judgment, not a measured
+  limit.
+
+Typing into an input inside a child doesn't trigger the canvas's keyboard shortcuts. The canvas
+answers keys only while the canvas itself has focus. The exception is `useGraph` with `history` on:
+its undo and redo keys work while focus is anywhere inside `KookieFlow`, so Cmd+Z or Ctrl+Z in that
+input undoes the graph rather than your typing.
+
+## Keep props stable between renders
+
+Some props are compared by identity. When your component renders again and passes a new object
+or array, `KookieFlow` redoes work even if the contents are the same.
+
+| Prop | What a new object or array costs |
+| --- | --- |
+| `entities`, `edges` | The canvas replaces its copy of the graph and rebuilds its lookups. Pass a new array only when the graph changed, which `useGraph` does for you. |
+| `socketTypes` | Every edge is synced again, and the canvas rebuilds its buffers for edges, sockets and widgets. |
+| `entityTypes` | The table is compared entry by entry. A new object holding the same entry objects resolves nothing again, but new entry objects make every entity resolve again. |
+| `font` | A custom `FontConfig` with the same name and atlas URLs isn't loaded again, but a new object still re-renders every component inside the flow that reads the font. |
+| `widgetTypes`, `ThemeComponent` | A component defined inside your render function is a new component each time, so React remounts every widget that uses it. |
+
+Define these outside your component, or wrap them in `useMemo`:
+
+```tsx title="editor.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type SocketType } from '@kushagradhawan/kookie-flow';
+
+// Module scope: one object for the life of the app, however often Editor renders.
+const socketTypes: Record<string, SocketType> = {
+  audio: { name: 'Audio', color: '--cyan-10' },
+  prompt: { name: 'Prompt', color: '--amber-10', widget: 'textarea' },
+};
+
+export function Editor() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph();
+
+  return (
+    <div style={{ height: 600 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        socketTypes={socketTypes}
+      />
+    </div>
+  );
+}
+```
+
+`entityStyle` is compared by value, so an inline object is fine. `penStyle` is read when the pen
+draws, `minimapProps` is spread into the minimap, and `defaultViewport` is read once, so all three
+can be written inline too. A `minimapProps.entityColor` function is the exception, which
+the [Minimap](/styling/minimap#read-colours-from-the-theme) chapter explains.
+
+## Show performance stats
+
+Set `showStats` to show a frame-rate panel while you work on a graph's performance:
+
+```tsx
+<KookieFlow entities={entities} edges={edges} showStats={process.env.NODE_ENV === 'development'} />
+```
+
+The panel is fixed to the top-left corner of the page, not of the canvas, and sits above the rest
+of the page. Click it to switch between its readings:
+
+- **FPS**: frames drawn per second.
+- **MS**: how long the canvas took to draw the last frame, in milliseconds. React renders and your
+  HTML overlays aren't included.
+- **MB**: memory used by JavaScript. Only browsers that report memory, such as Chrome, show this
+  reading.
+
+The canvas draws every frame, even when nothing moves, so FPS stays near the display's refresh
+rate while a graph is idle. Watch it while you pan, zoom and drag to see where a large graph slows
+down.
+
+## Recover from a canvas crash
+
+`KookieFlow` wraps its WebGL canvas in `CanvasErrorBoundary`. When a component inside the canvas
+throws, the boundary replaces the canvas with the message "Something went wrong rendering the
+canvas." and a **Retry** button, and logs the error to the console with the prefix
+`[KookieFlow] Canvas crashed:`.
+
+Only the canvas is replaced. Your children and the minimap stay on screen, and the flow keeps its
+copy of the graph, so **Retry** mounts a new canvas that draws the same graph. Until then,
+`toImage()` returns `null`.
+
+An error inside the canvas stops at that boundary, so an error boundary of yours around
+`KookieFlow` never receives it. Yours still receives errors thrown anywhere else in the flow,
+including in your children, and those unmount the whole flow.
+
+`CanvasErrorBoundary` is exported for WebGL canvases of your own. It takes `children` and an
+optional `onError(error, errorInfo)`, which is where you report the crash. Its fallback fills the
+nearest positioned ancestor, so give the wrapper a position:
+
+```tsx title="model-preview.tsx"
+'use client';
+
+import { Canvas } from '@react-three/fiber';
+import { CanvasErrorBoundary } from '@kushagradhawan/kookie-flow';
+
+export function ModelPreview({ onCrash }: { onCrash: (error: Error) => void }) {
+  return (
+    <div style={{ position: 'relative', height: 240 }}>
+      <CanvasErrorBoundary onError={(error) => onCrash(error)}>
+        <Canvas>
+          <mesh>
+            <boxGeometry />
+            <meshNormalMaterial />
+          </mesh>
+        </Canvas>
+      </CanvasErrorBoundary>
+    </div>
+  );
+}
+```

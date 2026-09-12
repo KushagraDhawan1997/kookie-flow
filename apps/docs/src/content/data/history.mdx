@@ -1,0 +1,233 @@
+`useGraph` can keep an undo history of the graph it holds. Turn it on with one option, and you get
+`undo` and `redo` functions, two flags for enabling buttons, and Cmd/Ctrl+Z on the canvas.
+
+## Turn on history
+
+Pass `history: true` to `useGraph`.
+
+```tsx title="board.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Board({ initialEntities, initialEdges }: { initialEntities: Entity[]; initialEdges: Edge[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+    initialEdges,
+    history: true,
+  });
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+History is off by default. An app that already keeps its own history, in a document store, on a
+server or in a collaborative document, would otherwise end up with two, both answering Cmd/Ctrl+Z.
+
+| Option    | Type                                | Default | Meaning                                                      |
+| --------- | ----------------------------------- | ------- | ------------------------------------------------------------ |
+| `history` | `boolean \| UseGraphHistoryOptions` | `false` | `true` keeps 50 steps and binds the keyboard. An object sets either. |
+
+`useGraph` returns four fields for history.
+
+| Field     | Type         | Meaning                                                           |
+| --------- | ------------ | ----------------------------------------------------------------- |
+| `undo`    | `() => void` | Puts the graph back one step. Does nothing when there's no step. |
+| `redo`    | `() => void` | Moves forward one step again. Does nothing when there's no step. |
+| `canUndo` | `boolean`    | Whether there's a step to undo.                                   |
+| `canRedo` | `boolean`    | Whether there's a step to redo.                                   |
+
+With history off, `undo` and `redo` do nothing, and `canUndo` and `canRedo` stay `false`.
+
+## What counts as one step
+
+Before `useGraph` applies a batch of changes, it keeps a copy of the whole graph, its entities
+and its edges. Undo restores the most recent copy, and redo returns to where you were before the
+undo. These rules decide when a copy is kept:
+
+- **A selection isn't a step.** A batch that only selects or deselects records nothing, so
+  clicking around never fills the history.
+- **A drag is one step.** The canvas reports a move once, when the pointer is released, however
+  many frames the drag took. A resize works the same way.
+- **An edit that keeps arriving is one step.** Two batches are folded together when both are
+  moves, both are resizes or both are `data` changes, both touch exactly the same entities, and
+  the second arrives less than 600 milliseconds after the first. A quick run of Shift+arrow nudges
+  is one step, and so is a slider drag that your `onWidgetChange` reports as a `data` change.
+  Moving one node and then another makes two steps, and so does moving a node and then resizing
+  it. A batch that mixes kinds is never folded: a resize from a top or left handle reports a
+  resize and a move together, so each one is a step of its own.
+- **Adding and removing are never folded.** A batch that adds or removes entities or edges is
+  always a step of its own, and so is each new wire. Deleting a node with wires attached is one
+  step, although the canvas reports the wires and the node separately.
+- **A ref method that reports its changes is recorded.** `alignSelection` and
+  `distributeSelection` report their moves through `onEntitiesChange`, as a drag does, so they're
+  recorded the same way.
+- **Undoing starts a new step.** The next edit after an undo or a redo isn't folded into an
+  earlier one, and it discards the steps you could have redone.
+
+Only changes that arrive through `onEntitiesChange`, `onEdgesChange` and `onConnect` are recorded.
+`setEntities`, `setEdges`, `addEntity`, `removeEntity`, `addEdge` and `removeEdge` change the graph
+without recording a step. An undo after one of them restores a copy taken before it, so that change
+is undone along with the step. Report an edit through `onEntitiesChange` when people should be able
+to undo it.
+
+Widget values are the edit this catches most often. The canvas reports a widget change only to
+`onWidgetChange`, and writing it back with `setEntities` records nothing. Report it as a `data`
+change instead:
+
+```tsx title="board.tsx"
+'use client';
+
+import { useCallback } from 'react';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Board({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, getEntity, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+    history: true,
+  });
+
+  const onWidgetChange = useCallback(
+    (entityId: string, socketId: string, value: unknown) => {
+      const current = getEntity(entityId)?.data.values;
+      const values = { ...(current instanceof Object ? current : {}), [socketId]: value };
+      onEntitiesChange([{ type: 'data', id: entityId, data: { values } }]);
+    },
+    [getEntity, onEntitiesChange]
+  );
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onWidgetChange={onWidgetChange}
+    />
+  );
+}
+```
+
+History holds the graph and nothing else. The viewport, the selection and computed values aren't
+part of a step. After an undo, any entity whose `data.values` changed is marked dirty, and a
+reactive one runs again, as described in [Evaluation](/data/evaluation).
+
+## Add undo and redo buttons
+
+Bind the buttons' `disabled` state to `canUndo` and `canRedo`.
+
+<Example name="history" />
+
+Drag a node, wire Load into Sharpen, or select a node and press Delete, then press **Undo**. Click
+between nodes as much as you like first: selecting adds no steps.
+
+## Change the limit and the shortcuts
+
+Pass an object instead of `true` to change either default. Its type is `UseGraphHistoryOptions`.
+
+| Option      | Type      | Default | Meaning                                                                                   |
+| ----------- | --------- | ------- | ----------------------------------------------------------------------------------------- |
+| `limit`     | `number`  | `50`    | How many steps are kept. Past the limit, the oldest step is dropped.                      |
+| `shortcuts` | `boolean` | `true`  | Binds Cmd/Ctrl+Z to undo, and Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y to redo, while the canvas has focus. |
+
+The shortcuts work only while focus is inside the canvas, which a press or a Tab gives it. A text
+field elsewhere on your page keeps its own undo.
+
+To bind the keys yourself, turn `shortcuts` off first. Both listeners would otherwise run, and one
+key press would undo two steps. This board binds them with `useKeyboardShortcuts`, which listens on
+the whole page except while a text field has focus:
+
+```tsx title="board.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+export function Board({ initialEntities }: { initialEntities: Entity[] }) {
+  const { undo, redo, entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+    history: { limit: 200, shortcuts: false },
+  });
+
+  useKeyboardShortcuts({
+    bindings: { 'mod+z': undo, 'mod+shift+z': redo, 'mod+y': redo },
+  });
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+The [Keyboard](/interaction/keyboard) chapter covers `useKeyboardShortcuts` in full.
+
+## Keep your own history instead
+
+When your graph lives in another store, such as Redux, Zustand or a server cache, leave `history`
+off and record steps where your store applies changes. A collaborative document usually comes with
+an undo manager of its own, and that one is the right place.
+
+This small history follows the same rules as `useGraph` for selection and for Delete's two
+batches. `read` returns the graph from your store, and `write` puts one back.
+
+```ts title="graph-history.ts"
+import type { Edge, EdgeChange, Entity, EntityChange } from '@kushagradhawan/kookie-flow';
+
+type Graph = { entities: Entity[]; edges: Edge[] };
+
+export function createGraphHistory(read: () => Graph, write: (graph: Graph) => void, limit = 50) {
+  const past: Graph[] = [];
+  let future: Graph[] = [];
+  let batchOpen = false;
+
+  /** Keep a copy of the graph as it is now. Call it before adding the edge in onConnect. */
+  const checkpoint = () => {
+    // Delete reports wires, then the node, in the same tick: that's one step.
+    if (batchOpen) return;
+    batchOpen = true;
+    queueMicrotask(() => { batchOpen = false; });
+    past.push(read());
+    if (past.length > limit) past.shift();
+    future = [];
+  };
+
+  return {
+    checkpoint,
+    /** Call with every batch from onEntitiesChange and onEdgesChange, before you apply it. */
+    record: (changes: Array<EntityChange | EdgeChange>) => {
+      if (changes.some((change) => change.type !== 'select')) checkpoint();
+    },
+    undo: () => {
+      const previous = past.pop();
+      if (!previous) return;
+      future.unshift(read());
+      write(previous);
+    },
+    redo: () => {
+      const next = future.shift();
+      if (!next) return;
+      past.push(read());
+      write(next);
+    },
+  };
+}
+```
+
+A slider sends a `data` change for every value it passes through. If your app writes those back,
+fold them the way `useGraph` does: skip the checkpoint while `data` changes to the same entity
+keep arriving less than 600 milliseconds apart.

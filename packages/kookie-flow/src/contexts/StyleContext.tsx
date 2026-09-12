@@ -59,6 +59,8 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     borderRadius: 12,
     widgetRadius: WIDGET_RADIUS,
     widgetPad: PAD,
+    markRadius: 6,
+    widgetFontSize: 14,
     borderWidth: 1,
     borderColor: [0.239, 0.239, 0.239],
     borderColorHover: [0.306, 0.306, 0.306],

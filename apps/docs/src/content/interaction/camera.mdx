@@ -1,0 +1,201 @@
+The canvas extends without limit in every direction, and the camera's position sets which part
+of it is on screen. That position is a `Viewport`: `x` and `y`, an offset in screen pixels, and
+`zoom`, the scale. You set where the camera starts with props, people move it with the pointer,
+and you move it from code through the ref.
+
+## Pan and zoom
+
+The canvas responds to these gestures without any setup.
+
+| Gesture | What it does |
+|---|---|
+| Scroll wheel | Zooms toward the pointer. |
+| Two-finger scroll on a trackpad | Zooms toward the pointer, because the browser reports it as a wheel event. |
+| Drag with the middle mouse button | Pans. |
+| Hold Space and drag with the primary button | Pans. The canvas needs keyboard focus, which any press on it gives. |
+| Two fingers on a touch screen | Pinch to zoom around the point between them, and move both fingers to pan. |
+
+The wheel always zooms. There's no scroll-to-pan: an upward or downward swipe on a trackpad
+zooms, and a sideways swipe does nothing. The canvas also cancels the page's own scrolling
+while the pointer is over it, so a long page that embeds a canvas doesn't scroll until the
+pointer leaves the canvas.
+
+One finger on a touch screen behaves like the mouse's primary button: it selects, drags, and
+draws a selection box, as the [Selection](/interaction/selection) chapter describes. When
+you drag a node or a wire to within 50 pixels of the canvas's edge, the camera pans toward
+that edge until you move back.
+
+## Set the starting view
+
+`defaultViewport` sets where the camera starts. `x` and `y` are where the world origin sits,
+in pixels from the canvas's top-left corner, and `zoom` is the scale.
+
+```tsx
+<KookieFlow
+  entities={entities}
+  edges={edges}
+  // The world origin 120px right and 80px down, at 75%.
+  defaultViewport={{ x: 120, y: 80, zoom: 0.75 }}
+/>
+```
+
+| Prop | Type | Default | Meaning |
+|---|---|---|---|
+| `defaultViewport` | `Viewport` | `DEFAULT_VIEWPORT`, which is `{ x: 0, y: 0, zoom: 1 }` | The camera's position when the canvas mounts. |
+
+The canvas uses `defaultViewport` only when it mounts. Changing the prop later does nothing,
+so call `setViewport` on the ref to move the camera after that.
+
+You rarely know the canvas's size when you write the starting view. To frame the graph
+instead, call `fitView` in an effect after mount, as the toolbar example below does. To restore a
+saved view, pass the `viewport` from `toObject()` back in as `defaultViewport`; the
+[Saving and exporting](/data/saving) chapter covers that round trip.
+
+## Limit the zoom
+
+`minZoom` and `maxZoom` bound the wheel and pinch gestures.
+
+| Prop | Type | Default | Meaning |
+|---|---|---|---|
+| `minZoom` | `number` | `0.01` | The furthest out a person can zoom. `fitView` also uses it as its lower bound. |
+| `maxZoom` | `number` | `16` | The furthest in a person can zoom. |
+
+The limits apply to gestures, not to the ref. `setViewport` and `setCenter` take any zoom you
+give them, and `zoomIn` and `zoomOut` stop only at 0.01 and 16. Clamp the value yourself when
+code sets the zoom.
+
+The canvas stops drawing some detail as you zoom out, which is worth knowing when you choose
+`minZoom`. Below 0.4 a node's built-in widgets aren't drawn and can't be pressed. Socket labels
+disappear below 0.35, edge labels below 0.25, and node titles below 0.15.
+
+## Move the camera from code
+
+The ref on `<KookieFlow>` carries six camera methods. None of them is reported through a
+callback, and there's no prop that tells you the camera moved. To follow the camera as it
+moves, subscribe to `viewport` in the flow store, as the chapter on
+[the flow store](/data/store) shows.
+
+| Method | Signature | What it does |
+|---|---|---|
+| `fitView` | `(options?: FitViewOptions) => void` | Frames every entity, or the ones you list. Does nothing when there's nothing to frame. |
+| `setCenter` | `(x: number, y: number, options?: { zoom?: number }) => void` | Puts the world point in the middle of the canvas, at `options.zoom` or the current zoom. |
+| `zoomIn` | `(step?: number) => void` | Adds `step` to the zoom. The default step is `0.25`. |
+| `zoomOut` | `(step?: number) => void` | Subtracts `step` from the zoom. The default step is `0.25`. |
+| `getViewport` | `() => Viewport` | Returns the camera's current position. |
+| `setViewport` | `(viewport: Viewport) => void` | Replaces the camera's position. |
+
+`fitView` takes these options:
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `padding` | `number` | `50` | Space added around the entities before the zoom is calculated, in world units. At zoom 1 that's screen pixels. |
+| `entities` | `string[]` | every entity | The ids to frame. An empty list frames every entity. |
+| `minZoom` | `number` | the `minZoom` prop | The furthest out the fit may go. |
+| `maxZoom` | `number` | `1` | The furthest in the fit may go, so a small graph is shown at full size rather than blown up. |
+
+`FitViewOptions` also lists `duration` and `includeHiddenEntities`, but neither has any effect.
+The camera always moves in one step, and entities hidden inside a collapsed frame still count
+toward the area it frames.
+
+This toolbar frames the selection, or the whole graph when nothing is selected, and steps the
+zoom. It sits outside `<KookieFlow>`, so it reaches the camera through the ref.
+
+```tsx title="board.tsx"
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function Board({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const flowRef = useRef<KookieFlowInstance>(null);
+
+  // Frame the graph once the canvas has its size.
+  useEffect(() => {
+    flowRef.current?.fitView({ padding: 80 });
+  }, []);
+
+  const fitSelection = () => {
+    const ids = flowRef.current?.getSelectedEntities().map((entity) => entity.id) ?? [];
+    flowRef.current?.fitView({ entities: ids, padding: 80 });
+  };
+
+  return (
+    <div>
+      <div>
+        <button onClick={fitSelection}>Fit</button>
+        <button onClick={() => flowRef.current?.zoomIn()}>Zoom in</button>
+        <button onClick={() => flowRef.current?.zoomOut()}>Zoom out</button>
+      </div>
+      <div style={{ height: 480 }}>
+        <KookieFlow
+          ref={flowRef}
+          entities={entities}
+          edges={edges}
+          onEntitiesChange={onEntitiesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+        />
+      </div>
+    </div>
+  );
+}
+```
+
+`zoomIn` and `zoomOut` add and subtract, so a step from 0.25 doubles the scale while a step
+from 4 barely changes it. They also change only `zoom` and leave `x` and `y` alone, so the
+view doesn't stay centred on what you were looking at. To zoom around the centre, pass
+`setCenter` the world point at the centre and the new zoom.
+
+## Convert between screen and world coordinates
+
+Entity positions are in world coordinates. Pointer events and DOM layout are in screen
+coordinates. Two functions convert between them, given the current viewport.
+
+| Function | Signature | Meaning |
+|---|---|---|
+| `screenToWorld` | `(screenPos: XYPosition, viewport: Viewport) => XYPosition` | Where a point on the canvas lands in the world. |
+| `worldToScreen` | `(worldPos: XYPosition, viewport: Viewport) => XYPosition` | Where a world point appears on the canvas. |
+
+The conversion is `screen = world × zoom + offset`, with the viewport's `x` and `y` as the
+offset. World `y` grows downward, as it does in the DOM. A screen position is measured from
+the canvas's top-left corner, not the page's, so subtract the `left` and `top` of the
+canvas's `getBoundingClientRect()` from a pointer's `clientX` and `clientY` before you convert.
+
+This function zooms by a factor around the middle of the canvas. It finds the world point
+at the centre, then puts that point back in the centre at the new zoom.
+
+```tsx title="zoom-by.ts"
+import { screenToWorld, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function zoomBy(flow: KookieFlowInstance, canvas: HTMLElement, factor: number) {
+  const { width, height } = canvas.getBoundingClientRect();
+  const viewport = flow.getViewport();
+  const centre = screenToWorld({ x: width / 2, y: height / 2 }, viewport);
+  // The ref doesn't apply minZoom and maxZoom, so clamp here.
+  const zoom = Math.min(4, Math.max(0.1, viewport.zoom * factor));
+  flow.setCenter(centre.x, centre.y, { zoom });
+}
+```
+
+Call it with the element that wraps `<KookieFlow>`, such as `zoomBy(flow, wrapper, 1.25)`.
+The same conversion places a new entity in the middle of the view, or positions a DOM popover
+over an entity with `worldToScreen(entity.position, flow.getViewport())`.
+
+## Show the grid
+
+The canvas draws a dot grid behind the graph. `showGrid={false}` leaves the plain canvas
+colour.
+
+| Prop | Type | Default | Meaning |
+|---|---|---|---|
+| `showGrid` | `boolean` | `true` | Draws a dot every 20 world units. |
+
+A dot sits on every multiple of 20, which is where `snapToGrid` lands a node at its default
+`snapGrid` of `[20, 20]`. The grid's spacing is fixed at 20, so a `snapGrid` that isn't a
+multiple of 20 can put nodes between the dots. The [Layout and alignment](/data/arrange)
+chapter covers snapping.
+
+Each dot stays about the same size on screen at every zoom. The grid fades as you zoom out
+past 0.9 and is gone below 0.45, where the dots would be too dense to read as a grid. Its
+colour comes from the theme and follows light and dark mode.

@@ -1,0 +1,258 @@
+The canvas paints with WebGL, so your CSS can't style what it draws. Instead, it reads the
+KookieUI design tokens off the page, turns them into numbers, and paints with those. Put the
+canvas inside a KookieUI `Theme` and its nodes, wires and widgets use the same colours, spacing
+and corners as the rest of your app.
+
+## Put the canvas inside a Theme
+
+Import the KookieUI stylesheet once, and render `KookieFlow` anywhere inside a `Theme`. The
+[Installation](/start/installation) chapter lists the packages you need.
+
+```tsx title="app.tsx"
+"use client";
+
+import "@kookie-ui/react/styles.css";
+import { Theme } from "@kookie-ui/react";
+import { KookieFlow, useGraph } from "@kushagradhawan/kookie-flow";
+
+export function App() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities: [
+      { id: "source", type: "default", position: { x: 0, y: 0 }, data: { label: "Source" } },
+    ],
+  });
+
+  return (
+    <Theme radius="large">
+      <div style={{ height: "100dvh" }}>
+        <KookieFlow
+          entities={entities}
+          edges={edges}
+          onEntitiesChange={onEntitiesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+        />
+      </div>
+    </Theme>
+  );
+}
+```
+
+The canvas reads the neutral scale, the accent, the destructive and success colours, the surface
+padding and corner steps, and the heights and corners of controls, which its widgets use. A
+checkbox's square comes from `--mark-N` and a slider's rail from `--slider-track-N`. So the
+`radius` on that Theme changes the corner of every node and every widget.
+
+KookieUI writes each length as a multiple of `--scale`, and the canvas measures those lengths
+inside the root Theme. A `--scale` you set on the Theme, or on an element above it, resizes what
+the canvas draws along with the rest of the page: node padding, socket rows, and the height of
+every widget.
+
+The canvas reads the first element with the `kui-theme` class in the document, which is
+normally your root `Theme`. A nested `Theme` around the canvas isn't read, so the canvas still
+paints with the root Theme's values.
+
+### When the canvas reads the theme again
+
+The canvas reads the tokens when it mounts. It reads them again when the window finishes
+loading, in case the stylesheet arrived late, and whenever the Theme element's class or one of
+the attributes a `Theme` writes changes. Those attributes cover `appearance`, `density`,
+`radius`, `contrast`, `pointer` and `depth`.
+
+A change that leaves the Theme element untouched isn't seen. That includes a stylesheet that
+loads after the window has finished loading, a media query that starts matching, an inline
+style, and an attribute written on `<html>`. When a read finds the same values as before,
+nothing on the canvas re-renders.
+
+### Follow a dark mode toggle
+
+KookieUI's recommended setup writes `data-appearance` onto `<html>` from a script, and gives the
+root Theme `appearance="inherit"`. With that setup the canvas reads the right mode when it
+mounts. A later toggle changes only `<html>`, though, so the canvas keeps painting the old mode.
+
+Pass the mode to the root Theme instead, so the change lands on the element the canvas watches:
+
+```tsx title="app-theme.tsx"
+"use client";
+
+import { useSyncExternalStore, type ReactNode } from "react";
+import { Theme } from "@kookie-ui/react";
+
+type Appearance = "light" | "dark" | "inherit";
+
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributeFilter: ["data-appearance"] });
+  return () => observer.disconnect();
+}
+
+function readAppearance(): Appearance {
+  return document.documentElement.getAttribute("data-appearance") === "dark" ? "dark" : "light";
+}
+
+export function AppTheme({ children }: { children: ReactNode }) {
+  const appearance = useSyncExternalStore(subscribe, readAppearance, (): Appearance => "inherit");
+  return <Theme appearance={appearance}>{children}</Theme>;
+}
+```
+
+On the server, and during hydration, the Theme stays at `inherit`, so the HTML matches the first
+client render. Straight after hydration it writes the real mode onto its own element, and every
+toggle after that reaches the canvas.
+
+## Use the canvas without a Theme
+
+With no `kui-theme` element on the page, the canvas reads `<html>` instead, and watches the
+attributes on `<html>`. What it finds there depends on the stylesheet:
+
+- **The KookieUI stylesheet is loaded.** The stylesheet declares every token on `:root`, so the
+  canvas reads real values. It takes the mode from a `light` or `dark` class on `<html>`, then
+  from `data-appearance`, then from the computed `color-scheme`, and uses light when none of
+  them says.
+- **Nothing declares the tokens.** Every read comes back empty, so the canvas paints from
+  `FALLBACK_TOKENS`: a dark grey scale, an indigo accent, and the default lengths at scale 1.
+  The mode is still detected from `<html>`, and it decides the background. Set
+  `color-scheme: dark` on `<html>` to match the dark nodes. Without it, the canvas background is
+  light and the nodes on it are dark.
+
+To draw a light canvas without KookieUI, declare the colour tokens yourself. The canvas falls
+back one name at a time, so declare the whole neutral scale together:
+
+```css title="canvas-tokens.css"
+:root {
+  color-scheme: light;
+  --neutral-1: #fcfcfc;
+  --neutral-2: #f9f9f9;
+  --neutral-3: #f0f0f0;
+  --neutral-4: #e8e8e8;
+  --neutral-5: #e0e0e0;
+  --neutral-6: #d9d9d9;
+  --neutral-7: #cecece;
+  --neutral-8: #bbbbbb;
+  --neutral-9: #8d8d8d;
+  --neutral-10: #838383;
+  --neutral-11: #646464;
+  --neutral-12: #202020;
+  --accent-3: #e6f4fe;
+  --accent-9: #0090ff;
+  --accent-contrast: #ffffff;
+  --destructive-9: #e5484d;
+  --success-9: #30a46c;
+  --color-surface: #ffffff;
+}
+```
+
+## Which colours come from which tokens
+
+| What the canvas paints | Token |
+| --- | --- |
+| The canvas background | `--neutral-2` in light, `--neutral-1` in dark |
+| The dot grid | `--neutral-7` |
+| An edge | The colours of the socket types at its ends, or `--neutral-8` when it names no socket |
+| A selected edge, the selection outline, the drag-select box, alignment guides, a running node's ring | `--accent-9` |
+| An invalid edge or connection, a failed node's outline and its message | `--destructive-9` |
+| A socket that would accept the connection you're dragging | `--success-9` |
+| The hover outline | `--neutral-7` |
+| Node titles, and edge labels, text and ink with no colour of their own | `--neutral-12` |
+| Socket labels | `--neutral-11` |
+| A widget's well | `--neutral-3` in light, `--neutral-1` in dark, inside a `--neutral-5` border |
+| A ticked checkbox, a slider's fill, a focused widget's ring | `--accent-9`, with the checkbox's tick in `--accent-contrast` |
+| The minimap | `--neutral-1` behind `--neutral-4` nodes, with `--accent-9` for the selection and the viewport |
+
+`THEME_COLORS` holds this mapping as data. Each role is either a token name or a
+`{ light: ..., dark: ... }` pair, for roles that use a different step in each mode. The node
+body and border come from the variant, which the [Entity styling](/styling/entities) chapter
+covers. The [Minimap](/styling/minimap) chapter shows how to override the minimap's colours.
+
+Socket type colours and per-entity colours aren't theme tokens. They're hues that ship with the
+package, and your theme's accent doesn't change them. A per-entity colour looks the same in
+light and dark mode, while each built-in socket type colour has a light value and a dark value.
+Only the grey ones read the theme: the `any` socket type uses `--neutral-10`, and an entity
+coloured `gray` uses `--neutral-9`. Redefining a hue such as `--purple-10` in your CSS doesn't
+move a socket, so give the socket type a CSS colour instead, as the
+[Sockets and widgets](/entities/sockets) chapter shows. The warning ring and the success ring you
+set through an entity's `status` are fixed amber and green.
+
+## Read the tokens in your own overlay
+
+Anything you pass as `children` to `KookieFlow` renders in a DOM layer over the canvas. For DOM
+content, write the token as a CSS variable. The browser resolves it and follows every theme
+change without any JavaScript. Take the token name from `THEME_COLORS` so your overlay uses the
+same role as the canvas:
+
+```tsx title="wire-legend.tsx"
+import { THEME_COLORS } from "@kushagradhawan/kookie-flow";
+
+export function WireLegend() {
+  const swatch = (token: string) => ({
+    display: "inline-block",
+    width: 16,
+    borderTop: `2px solid var(${token})`,
+  });
+
+  return (
+    <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", gap: 16 }}>
+      <span style={{ color: `var(${THEME_COLORS.text.secondary})` }}>
+        <span style={swatch(THEME_COLORS.edge.selected)} /> Selected
+      </span>
+      <span style={{ color: `var(${THEME_COLORS.text.secondary})` }}>
+        <span style={swatch(THEME_COLORS.edge.invalid)} /> Invalid
+      </span>
+    </div>
+  );
+}
+```
+
+Render it as `<KookieFlow ...><WireLegend /></KookieFlow>`. The overlay layer passes the pointer
+through to the canvas, so the legend doesn't block panning.
+
+### Read the numbers with useTheme
+
+When you need the values as numbers, call `useTheme()` inside the canvas. It returns the
+`ThemeTokens` the canvas is painting with: lengths as pixel numbers, colours as `[r, g, b]`
+arrays from 0 to 1, shadows as `SimpleShadow` objects of `offsetY`, `blur` and `opacity`, the
+`--scale` value, and the resolved `appearance`. `resolveColor(role, tokens)` turns a token name
+or a pair into `[r, g, b]`. It returns mid-grey for a name that isn't a colour. `ColorTokenKey`
+is the type of any token name in `ThemeTokens`.
+
+```tsx title="canvas-swatch.tsx"
+import { useEffect, useRef } from "react";
+import { THEME_COLORS, resolveColor, rgbToHex, useTheme } from "@kushagradhawan/kookie-flow";
+
+export function CanvasSwatch() {
+  const tokens = useTheme();
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const context = ref.current?.getContext("2d");
+    if (!context) return;
+    context.fillStyle = rgbToHex(resolveColor(THEME_COLORS.canvas.background, tokens));
+    context.fillRect(0, 0, 24, 24);
+  }, [tokens]);
+
+  return <canvas ref={ref} width={24} height={24} />;
+}
+```
+
+Use the tokens in an effect, as above, rather than in markup. The token object keeps its
+identity until a value changes, so the effect runs once per theme change and never during a pan.
+During server rendering the hook returns `FALLBACK_TOKENS`, so markup built from token values
+wouldn't match the first client render.
+
+Two entries in `ThemeTokens` don't match the page's token of the same name:
+
+- `--space-1` to `--space-7` sit one step higher on the page's space scale. `tokens["--space-3"]`
+  holds the page's `--space-4`.
+- `--shadow-1` to `--shadow-5` are fixed single drop shadows. The canvas doesn't read them from
+  the page.
+
+Outside a `KookieFlow`, `useTheme()` returns `FALLBACK_TOKENS`. In code that lives outside any
+canvas, call `useThemeTokens()` instead. It does a read of its own and watches the Theme element
+itself, while `useTheme()` inside a canvas shares the canvas's read.
+
+KookieUI also exports a hook named `useTheme`, which returns the Theme's settings rather than
+its tokens. If a file needs both, rename one import:
+
+```tsx lineNumbers=false
+import { useTheme as useFlowTokens } from "@kushagradhawan/kookie-flow";
+```

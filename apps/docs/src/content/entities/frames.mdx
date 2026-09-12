@@ -1,0 +1,225 @@
+A frame is an entity that holds other entities. You put an entity in a frame by setting its
+`parentId` to the frame's id. Collapsing the frame hides everything inside it. Folding a set of
+wired nodes into a group node puts a frame around them and moves each wire that crosses into or out
+of the set onto a port on that frame.
+
+## Put entities in a frame
+
+Give the frame `type: 'frame'`, a `width` and a `height`. Then set `parentId` on each entity that
+belongs inside it.
+
+```tsx title="pipeline.tsx"
+import type { Entity } from '@kushagradhawan/kookie-flow';
+
+const entities: Entity[] = [
+  // The frame comes first, so it paints behind the entities it holds.
+  { id: 'prep', type: 'frame', position: { x: 400, y: 0 }, width: 600, height: 220, data: { label: 'Prepare' } },
+  {
+    id: 'load', type: 'default', parentId: 'prep', position: { x: 432, y: 64 },
+    data: { label: 'Load' }, outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+  {
+    id: 'resize', type: 'default', parentId: 'prep', position: { x: 728, y: 64 },
+    data: { label: 'Resize' }, inputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+];
+```
+
+A child's `position` is a point on the canvas, the same as any other entity's. It isn't an offset
+from the frame, which is why the children above start at `x: 432` inside a frame at `x: 400`.
+
+`parentId` records that an entity belongs to a frame. It doesn't keep the entity inside the
+frame's rectangle, and a child placed outside the frame still belongs to it.
+
+Entities paint in array order when they first appear, so list a frame before its children. When
+someone presses a frame, the frame comes to the front and its children stay above it. While a
+frame is selected, though, it draws above every unselected entity, its own children included, so
+a solid frame body covers them until you select something else.
+
+A frame is drawn as a node body with its label as the title, so the options in
+[Entity styling](/styling/entities) apply to it. It can be resized down to 100 × 60.
+
+### Moving and deleting a frame
+
+Dragging moves only what is selected. A frame dragged on its own leaves its children where they
+are, so select the children with the frame to move them together. Lining up a selection with
+`alignSelection` or `distributeSelection` moves a frame together with its contents, as
+[Layout and alignment](/data/arrange) describes.
+
+Deleting a frame removes the frame alone. Its children stay on the canvas.
+
+### Frame fields
+
+| Field                  | Type                  | Default | Meaning                                                                 |
+| ---------------------- | --------------------- | ------- | ----------------------------------------------------------------------- |
+| `type`                 | `'frame'`             | none    | Makes the entity a frame.                                               |
+| `collapsed`            | `boolean`             | `false` | Hides every entity inside the frame.                                    |
+| `extent`               | `'auto' \| 'fixed'`   | none    | Accepted, but the canvas doesn't read it. A frame never resizes itself. |
+| `data.label`           | `string`              | none    | The title drawn at the top of the frame.                                |
+| `data.description`     | `string`              | none    | Accepted, but not drawn.                                                |
+| `data.backgroundColor` | `string`              | none    | Accepted, but not drawn. Use [Entity styling](/styling/entities).       |
+| `data.borderColor`     | `string`              | none    | Accepted, but not drawn.                                                |
+
+`FrameEntity` is `Entity<FrameEntityData>` with `type: 'frame'`, and `FrameEntityData` is the
+`data` shape in the table.
+
+## Size a frame to its children
+
+A frame keeps the size you give it. When a child is dragged past the edge, it hangs outside the
+frame. To fit the frame around its children, measure them with `getGroupBounds` on the
+[ref](/api/instance), and pass the result to `onEntitiesChange` as a move and a resize.
+
+```tsx title="fit-frame.ts"
+import type { EntityChange, KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+// Room above the children for the frame's title.
+const TITLE_ROOM = 40;
+
+export function fitFrame(flow: KookieFlowInstance, frameId: string): EntityChange[] {
+  const bounds = flow.getGroupBounds(frameId);
+  if (!bounds) return []; // The frame has no children.
+  return [
+    { type: 'position', id: frameId, position: { x: bounds.x, y: bounds.y - TITLE_ROOM } },
+    { type: 'dimensions', id: frameId, dimensions: { width: bounds.width, height: bounds.height + TITLE_ROOM } },
+  ];
+}
+
+// if (flowRef.current) onEntitiesChange(fitFrame(flowRef.current, 'prep'));
+```
+
+`getGroupBounds` measures a box around the frame's direct children and adds 24 units on every
+side. The result is at least 100 wide and 80 tall. The padding doesn't include a title, so without
+extra room the title can overlap a child at the top.
+
+## Nest frames
+
+A frame can hold another frame. Set the inner frame's `parentId` to the outer frame's id, and set
+each inner child's `parentId` to the inner frame.
+
+Collapsing the outer frame hides the inner frame and everything in it. Collapsing the inner frame
+hides only what the inner frame holds.
+
+Two ref methods list what a frame holds. `getGroupChildren` returns the entities whose `parentId`
+is the frame. `getGroupDescendants` also returns their children, and their children's children,
+at every depth. To move a frame and everything in it from code, move each descendant by the same
+distance as the frame, and report the moves through `onEntitiesChange`. When the canvas's store is
+the only copy of your graph, the store's `moveGroup` does this in one call, as the
+[store chapter](/data/store) describes.
+
+## Collapse and expand a frame
+
+Set `collapsed: true` on a frame to hide what it holds, and set it back to `false` to show it
+again. The frame stays where it is, at the size it has.
+
+While a frame is collapsed, every entity inside it at any depth is hidden. A hidden entity isn't
+drawn and can't be pressed, and a video inside a collapsed frame pauses. Wires that touch a hidden
+entity aren't drawn either, including wires that cross the frame's edge to an entity outside it.
+Hidden entities are still part of the graph: `getEntities()` and `toObject()` return them.
+
+The canvas has no control that collapses a frame, so add your own. This example writes
+`collapsed` into the graph's state from a button:
+
+<Example name="frames" />
+
+### Grouping methods on the ref
+
+| Method                          | Returns                                               | Reports the change | Meaning                                                            |
+| ------------------------------- | ----------------------------------------------------- | ------------------ | ------------------------------------------------------------------ |
+| `getGroupChildren(groupId)`     | `Entity[]`                                            | –                  | The entities whose `parentId` is `groupId`.                        |
+| `getGroupDescendants(groupId)`  | `Entity[]`                                            | –                  | The children, their children, and so on at every depth.           |
+| `getGroupBounds(groupId)`       | `{ x, y, width, height } \| null`                     | –                  | A box around the direct children, or `null` when there are none.   |
+| `isGroupCollapsed(groupId)`     | `boolean`                                             | –                  | Whether the canvas is hiding the frame's contents right now.       |
+| `collapseGroup(groupId)`        | `void`                                                | No                 | Hides the contents. Does nothing if they're already hidden.        |
+| `expandGroup(groupId)`          | `void`                                                | No                 | Shows the contents. Does nothing if they're already shown.         |
+| `toggleGroupCollapse(groupId)`  | `void`                                                | No                 | Collapses an expanded frame or expands a collapsed one. Ignores an id that isn't a frame. |
+| `collapseToSubgraph(entityIds, groupId)` | `void`                                       | Yes                | Folds the entities into a group node. See the next section.        |
+| `expandSubgraph(groupId, childEntities, internalEdges, portMapping)` | `void`           | Yes                | Unfolds a group node. See the next section.                        |
+
+The three methods that report nothing change what the canvas shows and leave your state as it
+was. [Keep a controlled graph in step](#keep-a-controlled-graph-in-step) explains what that means
+for your code.
+
+## Fold nodes into a group node
+
+`collapseToSubgraph(entityIds, groupId)` turns a set of wired nodes into one node with ports. It
+makes these changes:
+
+- **A frame.** It has the id `groupId` and the label `Group`, and it's sized around the entities
+  with 40 units to spare on every side.
+- **New parents.** Each listed entity's `parentId` becomes the new frame. The entities stay on
+  the canvas, inside the frame, and leave any frame they were in before.
+- **No inside wires.** Every wire that runs between two listed entities is removed.
+- **Ports.** The frame gets one input socket for each socket inside that a wire from outside
+  reaches, and one output socket for each socket inside that feeds something outside. Each port
+  takes the name and type of the socket it stands for. Input ids are `gin-0`, `gin-1`, and so on,
+  and output ids are `gout-0`, `gout-1`, and so on.
+- **Rewired edges.** Each wire that crossed the boundary is replaced by a wire to or from the
+  matching port.
+
+The new frame isn't collapsed. Set `collapsed: true` on it to show the group as a single node.
+
+`expandSubgraph(groupId, childEntities, internalEdges, portMapping)` reverses the fold. It removes
+the frame and every wire on its ports, clears `parentId` on the entities it held, and adds
+`internalEdges` back. Each wire that was on a port is reconnected to the socket inside that
+`portMapping` names, and a wire on a port that `portMapping` doesn't list is dropped.
+
+`collapseToSubgraph` returns nothing and deletes the wires between the folded entities, so record
+what you need to unfold before you fold. `computeCollapseToSubgraph` runs the same calculation
+without changing anything, and [Graph queries](/data/graph-queries) covers it.
+
+```tsx title="fold.ts"
+import {
+  buildAdjacencyIndex,
+  computeCollapseToSubgraph,
+  type Edge,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow';
+
+type PortMapping = Parameters<KookieFlowInstance['expandSubgraph']>[3];
+export type Fold = { groupId: string; internalEdges: Edge[]; portMapping: PortMapping };
+
+type Port = { id: string; originalEntityId: string; originalSocketId: string };
+const toMapping = ({ id, originalEntityId, originalSocketId }: Port) =>
+  ({ framePortId: id, originalEntityId, originalSocketId });
+
+export function fold(flow: KookieFlowInstance, entityIds: string[], groupId: string): Fold {
+  const edges = flow.getEdges();
+  const plan = computeCollapseToSubgraph(entityIds, groupId, flow.getEntities(), buildAdjacencyIndex(edges));
+  const inside = new Set(entityIds);
+  flow.collapseToSubgraph(entityIds, groupId);
+  return {
+    groupId,
+    internalEdges: edges.filter((edge) => inside.has(edge.source) && inside.has(edge.target)),
+    portMapping: { inputs: plan.frameInputs.map(toMapping), outputs: plan.frameOutputs.map(toMapping) },
+  };
+}
+
+export function unfold(flow: KookieFlowInstance, { groupId, internalEdges, portMapping }: Fold) {
+  // The folded entities never left the canvas, so there are none to add back.
+  flow.expandSubgraph(groupId, [], internalEdges, portMapping);
+}
+```
+
+Pass entities in `childEntities` only when you removed them from the graph after folding. The
+entities `collapseToSubgraph` parented are still in the graph, and passing them again adds a
+second copy of each.
+
+## Keep a controlled graph in step
+
+With `useGraph`, your state holds the graph and the canvas draws a copy of it. Whenever your
+entities array changes, the canvas rebuilds its copy from your array, including which frames are
+collapsed. The [Controlled and uncontrolled state](/start/state) chapter covers this arrangement.
+
+`collapseGroup`, `expandGroup`, and `toggleGroupCollapse` change only the canvas's copy and report
+nothing. A frame collapsed this way opens again the next time your entities change, which a single
+drag is enough to cause. `onEntitiesChange` from `useGraph` doesn't apply a `collapse` change
+either. Write `collapsed` into your own state instead:
+
+```tsx
+const setCollapsed = (frameId: string, collapsed: boolean) =>
+  setEntities((all) => all.map((e) => (e.id === frameId ? { ...e, collapsed } : e)));
+```
+
+`collapseToSubgraph` and `expandSubgraph` report what they change, as a drag does. Your
+`onEntitiesChange` receives `add`, `remove`, and `parent` changes, and your `onEdgesChange` receives
+`add` and `remove` changes, so a graph managed by `useGraph` keeps the result with no extra code.

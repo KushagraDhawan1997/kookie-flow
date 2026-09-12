@@ -7,6 +7,44 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **A select's list and a colour widget's picker are drawn in WebGL.** Releasing on a select opens
+  a list off the trigger's own box — glass over a blurred copy of the frame beneath it, scaling with
+  the node, flipping above the trigger when the bottom of the screen is near, scrolling past eight
+  rows, driven by arrows, Home/End, PageUp/Down, Enter, Escape and type-ahead from the canvas's own
+  keyboard. Pressing a colour widget opens a saturation square, a hue strip and a hex readout in the
+  same panel. Neither borrows a DOM element at any point. The platform's `<select>` popup used to
+  open wherever the platform chose (the top-left of the window, on a scaled canvas) and could not be
+  styled; `<input type="color">` had the same popup.
+- **The on-node controls are KookieUI v2's `material="regular"`**, measured against real v2
+  controls rendered beside them (`harness/spikes/glass-compare.mjs`). A field is v2's `.kui-field`:
+  the fill at the control alpha, the conic ring one pixel inside the edge, a pool that is a whisper
+  along the bottom, and grain. It has no wash. A checkbox is flat, as v2's is: a solid fill, a 1px
+  edge, and when checked the accent with a light tick. A slider has v2's 5px track and white grip,
+  and its readout sits past the track's end instead of on it. The chevron is v2's thin 7px glyph
+  at partial ink. The list is a squircle floating-rows surface with 12px of inset, round 30px rows,
+  the tick in a leading gutter in the accent, the floating wash and pool, and `--shadow-3`. A
+  pressed mark and grip squash, and the chevron turns over while its list is open. A select's list
+  opens with the chosen row over the trigger and that row's label on the trigger's own label, is at
+  least 112px wide, and is capped by the screen rather than by a row count — v2's own placement.
+- **Controls animate the way v2's do.** Colour and movement keep separate clocks: a hover colour
+  arrives in 80ms and leaves in 220ms, a press lands at once, and a mark or a grip squashes into a
+  press on v2's stiff spring and recovers on its lively one (both fitted to the stylesheet's own
+  `linear()` tables, within half a percent). The tick draws on over 380ms and clears at once. Each
+  transition is interpolated in the shader from a start time per instance — no React and no buffer
+  traffic per frame (`src/gl/motion.ts`).
+- **Reduced motion is honoured.** With the system setting on, every control state and the list's
+  entrance land immediately, as v2 does with `transition: none`.
+- **Keyboard focus is visible on the canvas.** Moving the keyboard onto a node's controls rings the
+  GL control: a mark or a trigger takes v2's ring landing from 6px out to 2px, a slider's grip takes
+  it on the thumb, and a field rings the moment it has the caret. The colour is `--focus-ring`,
+  accent-solid in light and accent-11 in dark.
+- **The controls follow v2's other axes.** Hover only fires on a pointer that can hover; a
+  checkbox's corner and a slider track's corner follow the radius level (both square at `none`); a
+  control prints its value at the size's own type step; a number is centred; high contrast turns a
+  lit list row into a solid accent with contrast ink, re-solves the track and the mark's edge.
+- **`src/gl/`**: the shapes, the glass material, easing, transitions and the backdrop copy, with no
+  import of the store or a component, so the control kit can be lifted into its own package later.
+
 - **Align and distribute.** `alignSelection(edge)` and `distributeSelection(axis)` on the ref, Alt+A,
   D, W, S, H and V to line a selection up and Alt+Shift+H and V to space it evenly, and an `arrange`
   toolbar widget. Moves are reported as a drag is, a frame carries its contents, and the toolbar's

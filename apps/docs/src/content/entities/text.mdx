@@ -1,0 +1,213 @@
+A text entity is a block of text on the canvas that people can edit where it sits. You choose
+whether the block grows with its text or keeps the size you give it. A comment is a sticky note:
+a coloured box of text for notes that sit beside the graph rather than in it.
+
+## Place a text entity
+
+Give the entity `type: 'text'` and put the words in `data.content`. Give it a `width` and a
+`height` as well, because the canvas measures presses and selection against them.
+
+```tsx title="board.tsx"
+'use client';
+
+import { KookieFlow, resizableForSizingMode, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+
+const initialEntities: Entity[] = [
+  {
+    id: 'heading', type: 'text', position: { x: 0, y: 0 }, width: 320, height: 48,
+    resizable: resizableForSizingMode('auto-width'),
+    data: { content: 'Onboarding flow', sizingMode: 'auto-width', fontSize: 28, fontWeight: 600 },
+  },
+  {
+    id: 'intro', type: 'text', position: { x: 0, y: 72 }, width: 320, height: 48,
+    resizable: resizableForSizingMode('auto-height'),
+    data: { content: 'Each step below runs once for every new account.\nFailed steps retry after an hour.' },
+  },
+];
+
+export function Board() {
+  const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange} />
+    </div>
+  );
+}
+```
+
+Text is drawn with the face the `font` prop loads, the same face as node titles, and it stays
+sharp at every zoom level. [Fonts and text rendering](/styling/fonts) covers the `font` prop. A
+`\n` in `content` starts a new line, and a `content` that is empty or only spaces shows a faint
+"Type something..." until someone types.
+
+People can also make text themselves. Pressing T while the canvas has focus adds an empty text
+entity, 200 units wide, in the middle of the view and opens it for editing. The canvas reports the
+new entity to `onEntitiesChange` as an `add` change.
+
+Text entities hold content and compute nothing, so `onEvaluate` is never called for them. The
+[Evaluation](/data/evaluation) chapter covers `onEvaluate`.
+
+## Choose a sizing mode
+
+`data.sizingMode` decides which sides of the block follow the text and which sides stay where you
+put them. The default is `'auto-height'`.
+
+| `sizingMode`    | Width                  | Height                 | Line breaks                  | Resize handles |
+| --------------- | ---------------------- | ---------------------- | ---------------------------- | -------------- |
+| `'auto-width'`  | Follows the text       | Follows the text       | Only at `\n`                 | None           |
+| `'auto-height'` | Yours                  | Follows the text       | At `\n` and at the width     | Width only     |
+| `'fixed'`       | Yours                  | Yours                  | At `\n` and at the width     | Both           |
+
+Use `'auto-width'` for a heading or a label, `'auto-height'` for a paragraph, and `'fixed'` when the
+text has to fit a box in a layout. Text that overflows a fixed box is cut off at the bottom edge.
+
+When the canvas measures an auto-sized block at a new size, it reports the size to
+`onEntitiesChange` as a `dimensions` change, so your saved graph holds the size people see.
+
+### Match the resize handles to the mode
+
+The handles come from the entity's `resizable` field, not from `sizingMode`. A new entity doesn't
+work them out on its own, so set `resizable` from the mode with `resizableForSizingMode`, as the
+code above does. Without it, an `'auto-width'` block shows handles that its text immediately
+undoes.
+
+| Call                                     | Returns                             |
+| ---------------------------------------- | ----------------------------------- |
+| `resizableForSizingMode('auto-width')`   | `false`                             |
+| `resizableForSizingMode('auto-height')`  | `{ width: true, height: false }`    |
+| `resizableForSizingMode('fixed')`        | `{ width: true, height: true }`     |
+
+After that, a `data` change that sets `sizingMode` updates `resizable` for you, both on the canvas
+and in the state `useGraph` holds. The toolbar's sizing control sends that change. If you apply
+changes with your own reducer instead of `useGraph`, call `resizableForSizingMode` there too.
+
+This example shows the three modes side by side, with a comment beside them. Select a block to see
+its toolbar, and drag its handles:
+
+<Example name="text-entities" />
+
+## Edit text on the canvas
+
+Double-click a text entity to edit it. Editing starts with all of its text selected, so typing
+replaces it. Pressing T starts editing a new block straight away.
+
+While someone is editing, these gestures work inside the text:
+
+- **One click** places the cursor, and a drag selects from there.
+- **Two clicks** select a word, **three** select a line as it wraps on screen, and **four** select
+  all of the text.
+- **Up, Down, Home, and End** move along the lines as they wrap on screen.
+- **Enter** starts a new line. Copy, paste, and input methods for other scripts work as they do in
+  a text field.
+
+Keys go to the text while someone edits, so Delete and Backspace remove characters rather than
+the entity. Press Escape, or click outside the text, to finish.
+
+Nothing is reported while someone types. When they finish, and only if the text changed,
+`onEntitiesChange` receives a `data` change with the new `content` and a `dimensions` change with
+the block's final size.
+
+## Style text
+
+Every style is a field on the entity's `data`, and you change a style by changing its field.
+
+| Field           | Type                              | Default               | Meaning                                                                                          |
+| --------------- | --------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| `content`       | `string`                          | required              | The text. `\n` starts a new line.                                                                |
+| `sizingMode`    | `TextSizingMode`                  | `'auto-height'`       | Which sides follow the text. See [Choose a sizing mode](#choose-a-sizing-mode).                  |
+| `fontSize`      | `number`                          | `16`                  | The size of the text, in the same units as `position`.                                           |
+| `fontWeight`    | `number`                          | `400`                 | `600` or more draws the font's semibold weight when the font has one. Anything lower draws regular. |
+| `textColor`     | `string`                          | The theme's text colour | A hex colour such as `'#1f6feb'`, or an `rgb()` colour with commas such as `'rgb(31, 111, 235)'`. Any other form draws white, and alpha is ignored. |
+| `textAlign`     | `'left' \| 'center' \| 'right'`   | `'left'`              | How each line sits within the block.                                                             |
+| `lineHeight`    | `number`                          | `1.5`                 | The distance between lines, as a multiple of `fontSize`.                                         |
+| `letterSpacing` | `number`                          | `0`                   | Extra space between characters, in the same units as `fontSize`.                                 |
+| `fontFamily`    | `string`                          | none                  | Stored with the entity, but not drawn. The canvas draws every text entity in the `font` prop's face. |
+
+`TextEntityData` is the type of this `data`, `TextSizingMode` is the union of the three modes, and
+`TextEntity` is `Entity<TextEntityData>` with `type: 'text'`.
+
+To give people controls for these fields, set `toolbar: true` on the `text` entry of `entityTypes`
+and render a `Toolbar` inside `KookieFlow`, as the example does. The
+[Selection toolbar](/interaction/toolbar) chapter lists every control.
+
+### Read a style with its defaults
+
+`resolveTextStyle(data, defaults?)` returns every style for a text entity, with defaults filled in
+where `data` leaves a field out. Use it when you draw the same text somewhere else, such as a
+list of notes beside the canvas.
+
+```tsx title="note-preview.tsx"
+import { resolveTextStyle, type TextEntity } from '@kushagradhawan/kookie-flow';
+
+export function NotePreview({ entity }: { entity: TextEntity }) {
+  // Pass the colour your page uses, because the canvas's default comes from its theme.
+  const style = resolveTextStyle(entity.data, { textColor: 'currentColor' });
+  return (
+    <p
+      style={{
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        textAlign: style.textAlign,
+        color: style.textColor,
+        padding: style.padding,
+      }}
+    >
+      {entity.data.content}
+    </p>
+  );
+}
+```
+
+`defaults` takes an optional `fontFamily` and `textColor`. The result is a `TextStyleConfig`:
+
+| Field           | Type                              | Value when `data` and `defaults` leave it out           |
+| --------------- | --------------------------------- | ------------------------------------------------------- |
+| `fontFamily`    | `string`                          | `'"Inter", system-ui, -apple-system, sans-serif'`       |
+| `fontSize`      | `number`                          | `16`                                                    |
+| `fontWeight`    | `number`                          | `400`                                                   |
+| `lineHeight`    | `number`                          | `1.5`                                                   |
+| `letterSpacing` | `number`                          | `0`                                                     |
+| `textAlign`     | `'left' \| 'center' \| 'right'`   | `'left'`                                                |
+| `textColor`     | `string`                          | `'#e0e0e0'`                                             |
+| `padding`       | `number`                          | Always `4`: the space inside each edge of the block.    |
+
+## Add a comment
+
+A comment is an entity with `type: 'comment'`. Put its text in `data.content`, and give it a
+`width` and a `height`.
+
+```tsx
+const note: Entity = {
+  id: 'review-note', type: 'comment', position: { x: 520, y: -40 }, width: 220, height: 120,
+  data: { content: 'Check the retry limit with the payments team.', backgroundColor: '#d8f5e5' },
+};
+```
+
+| Field             | Type     | Default     | Meaning                                                       |
+| ----------------- | -------- | ----------- | ------------------------------------------------------------- |
+| `content`         | `string` | required    | The note. Line breaks are kept and long lines wrap.           |
+| `backgroundColor` | `string` | `'#FFF9C4'` | The note's fill. Any CSS colour.                              |
+| `textColor`       | `string` | `'#424242'` | The colour of the text. Any CSS colour.                       |
+| `fontSize`        | `number` | `14`        | The size of the text. It scales with zoom, like the note.     |
+
+`CommentEntityData` is the type of this `data`, and `CommentEntity` is `Entity<CommentEntityData>`
+with `type: 'comment'`.
+
+Comments differ from text entities in three ways:
+
+- **A comment is a page element laid over the canvas.** It draws above every other entity,
+  whatever order they were pressed in. Its text uses the font your theme's `--font-body` variable
+  names, or the system font when your page has no such variable. Because it's a page element, a
+  `var(--token)` colour works in `backgroundColor` and `textColor`.
+- **People can't edit a comment on the canvas.** They can select, move, and resize it, down to
+  80 × 40, but its text changes only through `data.content`. Use a text entity when people should
+  type.
+- **Comments hide when the zoom drops below 0.1**, so a zoomed-out graph isn't covered in notes.
+
+A comment inside a collapsed frame is hidden, as any entity is. Set `toolbar: true` on the
+`comment` entry of `entityTypes` to give people controls for a comment's background, text colour,
+and font size. Like text, comments are never sent to `onEvaluate`.

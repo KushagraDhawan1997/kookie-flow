@@ -1,0 +1,292 @@
+A socket is a typed connection point on an entity. Inputs sit on the left edge and outputs on the
+right, and an edge always runs from an output to an input. When nothing is wired into an input,
+the input can show a widget, such as a slider or a text field, so a person can set its value by
+hand.
+
+<Example name="nodes" />
+
+The Render node's inputs show six of the seven built-in widgets. Drag a wire from Value into
+Strength and the slider disappears, because the value now comes down the wire.
+
+## Add inputs and outputs
+
+List sockets in an entity's `inputs` and `outputs`. Each socket needs an `id`, a `name` and a
+`type`:
+
+```tsx
+import type { Entity } from '@kushagradhawan/kookie-flow';
+
+const resize: Entity = {
+  id: 'resize-1',
+  type: 'image/resize',
+  position: { x: 0, y: 0 },
+  data: { label: 'Resize' },
+  inputs: [
+    { id: 'image', name: 'Image', type: 'image' },
+    { id: 'width', name: 'Width', type: 'int', min: 1, max: 4096, defaultValue: 1024 },
+    { id: 'keepAspect', name: 'Keep aspect', type: 'boolean', defaultValue: true },
+  ],
+  outputs: [{ id: 'resized', name: 'Image', type: 'image' }],
+};
+```
+
+An edge names the sockets at its two ends by `id`, so keep ids stable once you save a graph. The
+`name` is the label the canvas draws beside the socket.
+
+Outputs are laid out first, from the top of the body, and inputs follow underneath them. A node
+with no `height` grows to fit every row.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | `string` | required | The socket's id. Edges refer to it. |
+| `name` | `string` | required | The label drawn beside the socket, and the accessible name of its widget. |
+| `type` | `string` | required | A key in the socket type table. Sets the colour, the compatibility and the default widget. |
+| `widget` | `WidgetType \| false \| InlineWidgetComponent` | from the type | The widget to show. `false` shows none. |
+| `min` | `number` | from the type | The lowest value of a slider. |
+| `max` | `number` | from the type | The highest value of a slider. |
+| `step` | `number` | from the type | The increment a slider snaps to, and the decimal places a slider or number field shows. |
+| `options` | `string[]` | none | The choices in a select. |
+| `placeholder` | `string` | none | The text an empty text, text area, number or select widget shows. |
+| `defaultValue` | `unknown` | none | The value the widget shows until the entity holds one. |
+| `layout` | `SocketLayoutMode` | `'inline'` | `'inline'` puts the widget beside the label. `'stacked'` puts it under the label. |
+| `rows` | `number` | `1` | Multiplies the widget's height. |
+| `height` | `number` | none | The row's height in world pixels. Overrides `rows`. |
+| `position` | `number` | none | Where the dot sits, as a fraction of the entity's height from `0` to `1`. The label and widget keep their row. |
+
+## Define socket types
+
+A socket type gives every socket of that type a colour, a default widget and a rule about what it
+connects to. Pass your types to `KookieFlow` as `socketTypes`:
+
+```tsx
+import { KookieFlow, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow';
+
+// Declared outside the component, so the object is the same on every render.
+const socketTypes: Record<string, SocketType> = {
+  audio: { name: 'Audio', color: '#e5484d' },
+  gain: { name: 'Gain', color: '--jade-10', widget: 'slider', min: 0, max: 2, step: 0.05 },
+  frequency: { name: 'Frequency', color: '--sky-10', widget: 'number', step: 1 },
+  control: { name: 'Control', color: '--iris-10', compatibleWith: ['gain', 'frequency'] },
+};
+
+export function Synth({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
+  return <KookieFlow entities={entities} edges={edges} socketTypes={socketTypes} />;
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `name` | `string` | The type's display name. |
+| `color` | `string` | The socket's colour. |
+| `compatibleWith` | `string[] \| '*'` | Other types this one can connect to. `'*'` connects to every type. |
+| `widget` | `WidgetType` | The widget an input of this type shows by default. |
+| `min`, `max`, `step` | `number` | The values a socket of this type uses when it doesn't set its own. |
+
+`color` takes a hex colour such as `'#e5484d'`. It also takes a colour name from the graph's own
+palette, written as step 9 or step 10 of any `AccentColor` except `gray`, such as `'--jade-10'`.
+Step 10 is adjusted for light and dark mode. `'--neutral-9'` and `'--neutral-10'` read the neutral
+grey from your KookieUI theme.
+
+Declare the table outside your component, or memoise it. A new object on every render makes the
+canvas rebuild every edge and socket on every render.
+
+### Compatibility
+
+Two sockets are compatible when they have the same type, when either type is `any`, or when
+either type lists the other in `compatibleWith`. The rule works in both directions, so listing
+`gain` on `control` also lets a `gain` output connect to a `control` input.
+
+In the default `'loose'` connection mode, an incompatible wire still connects and is marked
+invalid. In `'strict'` mode, the canvas refuses it. The [Connections](/edges/connections) chapter
+covers both modes and the other ways to validate a wire.
+
+## The built-in socket types
+
+`DEFAULT_SOCKET_TYPES` is always available, and your `socketTypes` are merged over it. An entry
+of yours with the same key replaces the built-in entry whole, so a `float` you define without a
+`widget` has no slider.
+
+| Type | Colour | Widget |
+| --- | --- | --- |
+| `float` | blue | `slider`, from 0 to 1 in steps of 0.01 |
+| `int` | blue | `number`, with `min` 0, `max` 100 and `step` 1 |
+| `string` | amber | `text` |
+| `enum` | amber | `select` |
+| `boolean` | orange | `checkbox` |
+| `color` | pink | `color` |
+| `image`, `mask` | purple | none |
+| `mesh` | violet | none |
+| `signal` | cyan | none |
+| `latent`, `model`, `conditioning`, `clip`, `vae` | teal | none |
+| `any` | neutral grey | none |
+
+A socket whose `type` isn't in the table draws in the colour of `any`.
+
+## Show a widget on an unconnected input
+
+An input shows a widget when its socket names one in `widget`, or when its socket type has a
+default `widget`. Only inputs have widgets. When an edge lands on the input, the widget disappears
+and the input takes its value from the edge.
+
+The socket's own settings win over the type's. `min`, `max` and `step` fall back to the socket
+type, while `options`, `placeholder`, `defaultValue` and `rows` come only from the socket. Set
+`widget: false` on a socket to show no widget even when its type has one.
+
+| `WidgetType` | What a person does | Value |
+| --- | --- | --- |
+| `slider` | Presses or drags along the track. The value snaps to `step`. | `number` |
+| `number` | Types into a number field. | `number`, or `''` when the field is empty |
+| `text` | Types into a text field. | `string` |
+| `textarea` | Types into a multi-line field. The node shows the first line. | `string` |
+| `select` | Picks from a list of `options`. A select with no options doesn't open. | `string` |
+| `checkbox` | Presses to toggle. | `boolean` |
+| `color` | Picks a colour in the browser's colour picker. | `string`, such as `'#3e63dd'` |
+
+The canvas draws every built-in widget itself. A text, text area, number, select or colour widget
+opens a real input over itself while a person edits it, and closes it when they press Enter or
+Escape or click elsewhere. In a text area, Enter adds a new line. Built-in widgets aren't drawn,
+and can't be pressed, below 40% zoom.
+
+`showWidgets` on `KookieFlow` defaults to `true`. Set it to `false` to hide every widget on the
+canvas, including the ones you supply.
+
+## Lay out a widget row
+
+An inline row puts the socket's name on the left and the widget to its right. The widget starts
+after a gutter of `socketLabelWidth`, which defaults to `96` (`SOCKET_LABEL_WIDTH`), and the canvas
+shortens a socket name that doesn't fit the gutter. Widen the gutter when your names are long:
+
+```tsx
+<KookieFlow entities={entities} edges={edges} socketLabelWidth={140} />
+```
+
+A stacked row puts the name above the widget and gives the widget the full width of the body. Use
+it for a text area, or for any widget that needs room:
+
+```tsx
+{
+  id: 'prompt',
+  name: 'Prompt',
+  type: 'string',
+  layout: 'stacked',
+  widget: 'textarea',
+  rows: 4,
+  placeholder: 'Describe the image',
+}
+```
+
+`rows` multiplies the widget's height, in either layout. `height` sets the whole row's height in
+world pixels and takes precedence over `rows`.
+
+`showSocketLabels` defaults to `true`. Set it to `false` to hide socket names on every entity.
+
+## Read widget changes
+
+`onWidgetChange` reports every change a person makes, with the entity id, the socket id and the
+new value. A text field reports on every keystroke, and a slider reports on every pointer move
+while it's dragged.
+
+A widget reads its value from `entity.data.values`, keyed by socket id, and falls back to the
+socket's `defaultValue`. Write each change back there:
+
+```tsx
+'use client';
+
+import { useCallback } from 'react';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, setEntities, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
+
+  const onWidgetChange = useCallback(
+    (entityId: string, socketId: string, value: unknown) => {
+      setEntities((current) =>
+        current.map((entity) => {
+          if (entity.id !== entityId) return entity;
+          const values = entity.data.values instanceof Object ? entity.data.values : {};
+          return { ...entity, data: { ...entity.data, values: { ...values, [socketId]: value } } };
+        })
+      );
+    },
+    [setEntities]
+  );
+
+  return (
+    <KookieFlow
+      entities={entities}
+      edges={edges}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onWidgetChange={onWidgetChange}
+    />
+  );
+}
+```
+
+A built-in widget draws the value it finds in `data.values`, so a change you don't write back can
+disappear from the widget on its next redraw. For an unconnected input with a built-in widget,
+`onEvaluate` reads the value the widget shows, as the [Evaluation](/data/evaluation) chapter
+describes.
+
+## Replace a widget with your own component
+
+A widget component is a React component that takes `WidgetProps`. Use one on a single socket by
+passing an `InlineWidgetComponent`, `{ component }`, as its `widget`. To replace a built-in widget
+everywhere, pass `widgetTypes` to `KookieFlow`, keyed by `WidgetType`:
+
+```tsx
+import { KookieFlow, type Socket, type WidgetProps } from '@kushagradhawan/kookie-flow';
+
+function StarRating({ label, value, onChange, max = 5 }: WidgetProps) {
+  const rating = typeof value === 'number' ? value : 0;
+  return (
+    <div role="radiogroup" aria-label={label}>
+      {Array.from({ length: max }, (_, i) => (
+        <button key={i} type="button" aria-label={`${i + 1} of ${max}`} onClick={() => onChange(i + 1)}>
+          {i < rating ? '★' : '☆'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// On one socket:
+const rating: Socket = { id: 'rating', name: 'Rating', type: 'int', max: 5, widget: { component: StarRating } };
+
+// In place of every number widget on the canvas:
+const widgetTypes = { number: StarRating };
+
+<KookieFlow entities={entities} edges={edges} widgetTypes={widgetTypes} />;
+```
+
+| Prop | Type | Meaning |
+| --- | --- | --- |
+| `label` | `string` | The socket's `name`. Use it as the control's accessible name. |
+| `value` | `unknown` | The current value, from `data.values` or `defaultValue`. |
+| `onChange` | `(value: unknown) => void` | Call it with the new value. It reaches `onWidgetChange`. |
+| `min`, `max`, `step` | `number` | From the socket, falling back to its type. |
+| `options` | `string[]` | From the socket. |
+| `placeholder` | `string` | From the socket. |
+| `rows` | `number` | From the socket. |
+| `disabled` | `boolean` | Not set by the canvas, because a connected input has no widget. |
+
+Your component is mounted as HTML over the widget's area and scales with the zoom. Presses and key
+presses inside it don't reach the canvas, so pressing it doesn't select or drag the node.
+The canvas still draws a built-in widget in that area underneath, so give your component's root
+an opaque background.
+
+### Wrap your widgets
+
+`ThemeComponent` is a component the canvas wraps around each of your own widget components, on
+entities that have a `color`. It receives `children` and nothing else, so it can't tell which
+colour the entity has. Built-in widgets are never wrapped.
+
+```tsx
+import { Theme } from '@kookie-ui/react';
+import { KookieFlow } from '@kushagradhawan/kookie-flow';
+
+<KookieFlow entities={entities} edges={edges} widgetTypes={widgetTypes} ThemeComponent={Theme} />;
+```

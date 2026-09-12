@@ -25,7 +25,9 @@ import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '.
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { frozenHue } from '../../src/core/palette';
-import { getWidgetBox } from '../../src/utils/widget-geometry';
+import { getWidgetBox, sliderTrackWidth } from '../../src/utils/widget-geometry';
+import { popoverLayoutFor, POPOVER_PAD } from '../../src/utils/popover-layout';
+import { useResolvedStyle } from '../../src/contexts/StyleContext';
 import { resolveWidgetConfig } from '../../src/utils/widgets';
 import { DEFAULT_SOCKET_TYPES } from '../../src/core/constants';
 
@@ -148,6 +150,22 @@ export interface HarnessApi {
    * where the shader was actually handed the quad and this reports where the geometry says it
    * should be.
    */
+  /**
+   * The open widget panel — a select's list or a colour picker — as the store holds it, or null.
+   * The GL renderer, the pointer handlers and this read the same record, so a law can ask what
+   * is open without a DOM element to find.
+   */
+  popover(): {
+    kind: 'select' | 'color';
+    entityId: string;
+    socketId: string;
+    options: string[];
+    index: number;
+    scroll: number;
+    value: string;
+  } | null;
+  /** Where the centre of list row `i` is on screen, from the same layout the renderer draws. */
+  popoverRowPoint(i: number): { x: number; y: number } | null;
   widgetSockets(): { entityId: string; socketId: string; x: number; y: number }[];
   /**
    * Every socket the INDEX holds, in world space — the hit-test side of the socket geometry.
@@ -901,6 +919,12 @@ function Probe() {
   // move the number it was supposed to move.
   const liveTokensRef = useRef(liveTokens);
   liveTokensRef.current = liveTokens;
+  // The style the RENDERER resolved, through a ref for the same reason as the tokens above. A
+  // panel is placed from the trigger's own text inset, so a law that guessed one would press
+  // somewhere the list is not.
+  const liveStyle = useResolvedStyle();
+  const liveStyleRef = useRef(liveStyle);
+  liveStyleRef.current = liveStyle;
 
   useEffect(() => {
     const canvas = () => document.querySelector<HTMLCanvasElement>('canvas');
@@ -1058,6 +1082,44 @@ function Probe() {
        * inside the well drawn for it. Straight from `getWidgetBox`, for the reason widgetPoint
        * gives: a law that computed its own rectangle would be testing its own arithmetic.
        */
+      popover() {
+        const s = store.getState();
+        const pop = s.widgetPopover;
+        if (!pop) return null;
+        return {
+          kind: pop.kind,
+          entityId: pop.entityId,
+          socketId: pop.socketId,
+          options: pop.options,
+          index: s.popoverIndex,
+          scroll: s.popoverScroll,
+          value: pop.value,
+        };
+      },
+      popoverRowPoint(i: number) {
+        const s = store.getState();
+        const pop = s.widgetPopover;
+        if (!pop || pop.kind !== 'select' || !s.socketLayout) return null;
+        const canvas = document.querySelector('canvas');
+        const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+        const layout = popoverLayoutFor(
+          pop,
+          s.socketLayout.listRowHeight,
+          liveStyleRef.current.widgetRadius,
+          liveStyleRef.current.widgetPad,
+          s.viewport,
+          rect
+        );
+        if (layout.kind !== 'select') return null;
+        const row = i - s.popoverScroll;
+        if (row < 0 || row >= layout.visible) return null;
+        const wx = layout.x + layout.width / 2;
+        const wy = layout.y + POPOVER_PAD + (row + 0.5) * layout.rowHeight;
+        return {
+          x: wx * s.viewport.zoom + s.viewport.x + rect.left,
+          y: wy * s.viewport.zoom + s.viewport.y + rect.top,
+        };
+      },
       widgetBox(entityId: string, socketId: string) {
         const s = store.getState();
         const e = s.entityMap.get(entityId);
@@ -1078,13 +1140,16 @@ function Probe() {
             const socket = inputs[i];
             // The same two skips widgets-gl applies before it writes an instance.
             if (s.connectedSockets.has(`${e.id}:${socket.id}:input`)) continue;
-            if (!resolveWidgetConfig(socket, DEFAULT_SOCKET_TYPES)) continue;
+            const config = resolveWidgetConfig(socket, DEFAULT_SOCKET_TYPES);
+            if (!config) continue;
             const box = getWidgetBox(e, i, s.socketLayout);
             if (!box) continue;
+            // A slider's instance is its track, which stops short of the readout.
+            const drawWidth = config.type === 'slider' ? sliderTrackWidth(box) : box.width;
             out.push({
               entityId: e.id,
               socketId: socket.id,
-              x: box.x + box.width / 2,
+              x: box.x + drawWidth / 2,
               y: box.y + box.height / 2,
             });
           }

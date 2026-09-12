@@ -1,0 +1,213 @@
+A minimap is a small overview of the graph drawn in a corner of the canvas. It shows each entity
+as a rectangle and marks the part of the graph that's on screen, and people can click it or drag
+it to move the view.
+
+## Show the minimap
+
+Set `showMinimap` on `KookieFlow`, and pass any settings in `minimapProps`. The minimap is off by
+default, and `minimapProps` has no effect while `showMinimap` is off.
+
+```tsx title="pipeline.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+
+const initialEntities: Entity[] = [
+  { id: 'load', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Load' } },
+  { id: 'clean', type: 'default', position: { x: 320, y: 80 }, data: { label: 'Clean' } },
+  { id: 'train', type: 'default', position: { x: 640, y: 0 }, data: { label: 'Train' } },
+  { id: 'report', type: 'default', position: { x: 1600, y: 900 }, data: { label: 'Report' } },
+];
+
+export function Pipeline() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        showMinimap
+        minimapProps={{ position: 'bottom-left', width: 240, height: 160 }}
+      />
+    </div>
+  );
+}
+```
+
+The minimap draws every entity in the graph as a filled rectangle at the entity's size, and a
+selected entity in a second colour. It doesn't draw edges.
+
+### Render it as a child
+
+`Minimap` is also a component you can render yourself, as a child of `KookieFlow`. It takes the
+same props as `minimapProps`. When you render it yourself, the component around it can get the
+flow's theme colours, as the section [Read colours from the theme](#read-colours-from-the-theme) shows.
+
+```tsx
+<KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+  <Minimap position="top-right" />
+</KookieFlow>
+```
+
+Follow three rules when you do this:
+
+- **Render it inside `KookieFlow`.** The minimap needs the flow's store, and outside a flow it
+  throws an error.
+- **Don't wrap it in an element of your own.** The minimap measures the element it sits in to
+  find the size of the canvas. Inside a wrapper it measures the wrapper instead, so the view
+  rectangle comes out the wrong size or doesn't appear, and a click centres the wrong point. A
+  component that returns `<Minimap />` with no element around it is fine.
+- **Leave `showMinimap` off.** With both, you get two minimaps.
+
+## Place and size it
+
+| Prop | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `position` | `MinimapPosition` | `'bottom-right'` | The corner the minimap sits in: `'top-left'`, `'top-right'`, `'bottom-left'` or `'bottom-right'`. |
+| `width` | `number` | `200` | The width of the minimap, in pixels. |
+| `height` | `number` | `150` | The height of the minimap, in pixels. |
+| `padding` | `number` | `20` | The space, in minimap pixels, between the graph and the minimap's edge. Ignored when `zoomable` is on. |
+| `className` | `string` | none | A class for the minimap's outer element. |
+
+The minimap sits 10 pixels in from both edges of its corner. Its corner radius comes from
+`--radius-surface-1` and its shadow from `--shadow-2`, both read from your KookieUI theme.
+
+The minimap sets its position, size, corner radius and shadow as inline styles. A `className`
+can add styles, such as a border, but an ordinary rule in your stylesheet can't override the
+inline ones.
+
+The minimap draws in the graph's proportions, not its own. A wide graph in a tall minimap fills
+the width and leaves space above and below, so pick a `width` and `height` close to the shape of
+the graphs you expect.
+
+## Navigate with it
+
+The rectangle on the minimap is the view: it covers the part of the graph that's on the canvas
+right now. As you zoom in, the rectangle gets smaller.
+
+- **Click** anywhere outside the rectangle, and the canvas centres on that point. The zoom stays
+  the same.
+- **Drag** the rectangle to pan the canvas. A click inside the rectangle does nothing.
+
+A click or drag on the minimap moves the view and nothing else. It doesn't select or deselect
+anything on the graph behind it, and it doesn't call `onPaneClick`. The minimap has no zoom of
+its own. Scrolling over it zooms the canvas around the pointer, as it does anywhere else on the
+canvas.
+
+Set `interactive` to `false` for a minimap that only shows the graph. Clicks and drags then pass
+through the minimap to the graph underneath, as if the minimap weren't there.
+
+```tsx
+<KookieFlow entities={entities} edges={edges} showMinimap minimapProps={{ interactive: false }} />
+```
+
+| Prop | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `interactive` | `boolean` | `true` | Whether clicking and dragging the minimap moves the view. |
+
+## Zoom it with the canvas
+
+By default the minimap fits the whole graph and never changes scale. The view rectangle moves
+and resizes over it.
+
+Set `zoomable` to show a close-up that follows the canvas instead. The minimap then centres on the
+middle of the view, and draws the graph at 0.15 times the canvas zoom
+(`MINIMAP_DEFAULTS.zoomableBaseScale`). When you zoom the canvas in, the minimap zooms in too.
+
+```tsx
+<KookieFlow entities={entities} edges={edges} showMinimap minimapProps={{ zoomable: true }} />
+```
+
+A zoomable minimap works differently in three ways:
+
+- **It has no view rectangle.** A line in `viewportBorderColor` runs round its edge instead, and
+  `viewportColor` and `padding` have no effect.
+- **It shows part of the graph.** At that scale only the area around the view fits, and entities
+  outside the minimap's edges aren't drawn.
+- **You drag anywhere on it to pan.** The graph follows the pointer. A click without a drag
+  doesn't move the view.
+
+| Prop | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `zoomable` | `boolean` | `false` | Whether the minimap zooms and pans with the canvas instead of fitting the whole graph. |
+
+Use the default for most graphs, because it shows where the view is in relation to all of your
+work. Use `zoomable` when a graph is so large that, fitted into the minimap, each entity is too
+small to pick out. This is a judgment, not a measured limit.
+
+## Colour the minimap
+
+The minimap's colours come from your KookieUI theme, and they update when the theme changes.
+
+| Prop | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `backgroundColor` | `string` | `--neutral-1` at 90% opacity | The fill behind the graph. |
+| `entityColor` | `string \| ((entity: Entity) => string)` | `--neutral-4` | The fill for an entity that isn't selected. A function picks a colour for each entity. |
+| `selectedEntityColor` | `string` | `--accent-9` | The fill for a selected entity. |
+| `viewportColor` | `string` | `--accent-9` at 30% opacity | The fill of the view rectangle. |
+| `viewportBorderColor` | `string` | `--accent-9` | The outline of the view rectangle, or of the whole minimap when `zoomable` is on. |
+
+The minimap draws on a 2D canvas, so pass colours the canvas understands: a hex value, `rgb()`,
+`rgba()`, `hsl()` or a colour name. A CSS variable such as `var(--accent-9)` doesn't resolve on a
+canvas.
+
+### Read colours from the theme
+
+To use theme colours of your own choice, render the minimap as a child and get the flow's theme
+from `useTheme`. It gives each colour as red, green and blue values from 0 to 1, and `rgbToHex`
+turns that into a hex string the canvas accepts. The [Theming](/styling/theming) chapter covers
+`useTheme` in full.
+
+```tsx title="flow-minimap.tsx"
+import { useMemo } from 'react';
+import { Minimap, rgbToHex, useTheme, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function FlowMinimap() {
+  const tokens = useTheme();
+
+  // Frames are large, so draw them fainter than the entities inside them.
+  const entityColor = useMemo(() => {
+    const frame = rgbToHex(tokens['--neutral-3']);
+    const entity = rgbToHex(tokens['--neutral-8']);
+    return (e: Entity) => (e.type === 'frame' ? frame : entity);
+  }, [tokens]);
+
+  return (
+    <Minimap
+      position="top-right"
+      entityColor={entityColor}
+      selectedEntityColor={rgbToHex(tokens['--success-9'])}
+    />
+  );
+}
+```
+
+Render `<FlowMinimap />` inside `KookieFlow`. Outside a flow, `useTheme` returns fallback colours
+rather than your theme's.
+
+Give `entityColor` a function that keeps its identity between renders. Define it outside your
+component, or wrap it in `useMemo` or `useCallback` as above. When the function changes, the
+minimap resets its canvases and repaints every entity, so an inline arrow function repeats that
+work every time your component renders. The minimap also calls the function for each entity it
+draws whenever it redraws the entities. A zoomable minimap does that on every frame in which
+anything in the flow changes, such as a pan or a hover, so keep the function to a quick lookup.
+
+## Default values
+
+`MINIMAP_DEFAULTS` holds the minimap's default sizes. Use it to size a minimap relative to the
+default, such as `width: MINIMAP_DEFAULTS.width * 1.5`.
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `width` | `200` | The default `width`, in pixels. |
+| `height` | `150` | The default `height`, in pixels. |
+| `padding` | `20` | The default `padding`, in pixels. |
+| `viewportBorderWidth` | `1` | The width of the view outline, in pixels. |
+| `minNodeSize` | `2` | The smallest width and height, in pixels, that an entity is drawn at, so small entities stay visible on a large graph. An entity under half a pixel in both directions isn't drawn at all. |
+| `zoomableBaseScale` | `0.15` | The scale of a zoomable minimap at canvas zoom 1. |

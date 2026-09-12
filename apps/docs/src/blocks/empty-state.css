@@ -1,0 +1,56 @@
+/* ── The empty state's own half ─────────────────────────────────────────────────────────────
+   Two declarations, and neither decides a value the package has not already decided: every
+   length below resolves through a `--` token, which is the condition that makes a copied file
+   safe (THESIS §6 — the center stays in the dependency).
+
+   IT CENTRES, AND THIS IS THE ONE PLACE THIS SYSTEM CENTRES PROSE. Everywhere else a paragraph
+   belongs to a column and centring it costs the reader a ragged left edge to find on every
+   line. There is no column here: an empty state is a single object standing in a region,
+   read in one glance rather than scanned, which is the case the objection to centred text was
+   never about. Polaris, Atlassian and Material all centre theirs, and so does SwiftUI's
+   `ContentUnavailableView`.
+
+   `block-size: 100%` IS WHAT MAKES `justify="center"` MEAN ANYTHING, and it is also why there is
+   no `minHeight` prop: the height stays the caller's to state, and one declaration answers every
+   way they state it. Measured, all three:
+
+     - a region with a DEFINITE height — `height: 400px` — the block fills it and centres in it
+       (400px tall, first child 123px down against 122 of exact centring);
+     - a region with `min-height` only — 156px, hugging. A percentage resolves against the
+       containing block's HEIGHT, which is `auto` here whatever the used size comes out at, so the
+       block hugs and whatever centres it is the region's own doing. This block's own figures are
+       that case, and they read as centred because the specimen's stage centres what it holds;
+     - a region with no height at all — 156px, hugging, which is the only thing it could do. */
+.kb-empty {
+  block-size: 100%;
+  text-align: center;
+
+  /* AND IT HOLDS A MEASURE, because centred text without one is the worst of both. Unbounded,
+     a sentence runs the width of the region — measured at 1152px here, ~130 characters, over
+     twice the comfortable maximum — and with a centred left edge the reader has to hunt for the
+     start of each line. The wider the region, the worse a centred paragraph gets, which is the
+     opposite of how every other block on this site behaves.
+
+     `ch`, and the unit is the argument: a measure is a statement about TEXT rather than about a
+     screen, which is the carve-out `Code`'s padding and the footer's own columns both make, and
+     the reason this block states `ch` and never `px`. Forty-two is the low end of the
+     comfortable range — a centred blurb is read in one glance rather than scanned line by line,
+     so it wants to be narrower than a column of prose, not the same. */
+  max-inline-size: 42ch;
+  margin-inline: auto;
+}
+
+/* THE MARK IS ONE LINE OF THE TITLE, which is the mark family's own identity read across
+   (§4: `--mark-N` IS `--line-height-N`, so a mark is exactly one line of its label and lands on
+   it by construction). The title is step 5, so the glyph is `--line-height-5` on both axes and
+   the caller passes no size at all — the same arrangement every control slot uses, where the
+   thing holding the icon sizes it.
+
+   `> :first-child` rather than `svg`, so a caller who hands over an `<img>` or a wrapped node is
+   sized too. `display: block` because an inline svg sits on a baseline and reserves descender
+   space under itself, which reads as a gap the rhythm above did not ask for. */
+.kb-empty-mark > :first-child {
+  display: block;
+  inline-size: var(--line-height-5);
+  block-size: var(--line-height-5);
+}

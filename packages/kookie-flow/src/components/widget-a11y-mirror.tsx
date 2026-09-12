@@ -307,6 +307,24 @@ export function WidgetA11yMirror({
     [entityId, visible, onChange]
   );
 
+  /**
+   * Keyboard focus reaches the canvas. These controls draw nothing, so the widget layer draws the
+   * ring for whichever one holds focus (`focusVisibleWidgetKey`). Focus events bubble in React, so
+   * the group hears every control's; a blur that lands on a sibling is followed by that sibling's
+   * focus, which overwrites the null in the same task.
+   */
+  const handleFocus = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      const socketId = e.target instanceof HTMLElement ? e.target.dataset.socketId : undefined;
+      if (!entityId || !socketId) return;
+      store.getState().setFocusVisibleWidgetKey(widgetKey(entityId, socketId));
+    },
+    [store, entityId]
+  );
+  const handleBlur = useCallback(() => {
+    store.getState().setFocusVisibleWidgetKey(null);
+  }, [store]);
+
   const focusAt = useCallback(
     (index: number) => {
       if (visible.length === 0) return;
@@ -392,6 +410,8 @@ export function WidgetA11yMirror({
           style={SR_ONLY}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
         >
           {visible.map((entry) => (
             <MirrorControlElement

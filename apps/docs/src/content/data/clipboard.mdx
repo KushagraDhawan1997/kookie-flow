@@ -1,0 +1,495 @@
+`useClipboard` copies, cuts and pastes whatever is selected on the canvas. A paste adds copies of
+the entities and the edges between them, each with a new id, so you can paste the same selection
+as many times as you like.
+
+A paste is made from two store functions, `cloneElements` and `addElements`. You can call them
+yourself to duplicate a selection without touching the clipboard, or to copy a graph between
+browser tabs.
+
+## Copy, cut and paste a selection
+
+Import `useClipboard` from the plugins entry, and call it in a component that you render inside
+`<KookieFlow>`. The hook reads the canvas's store from context, so it throws an error anywhere
+else.
+
+```tsx title="flow-editor.tsx"
+'use client';
+
+import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+const entities: Entity[] = [
+  {
+    id: 'source',
+    type: 'default',
+    position: { x: 0, y: 0 },
+    data: { label: 'Source' },
+    outputs: [{ id: 'out', name: 'Value', type: 'float' }],
+  },
+  {
+    id: 'scale',
+    type: 'default',
+    position: { x: 280, y: 0 },
+    data: { label: 'Scale' },
+    inputs: [{ id: 'in', name: 'Value', type: 'float' }],
+  },
+];
+
+const edges: Edge[] = [
+  { id: 'source-scale', source: 'source', sourceSocket: 'out', target: 'scale', targetSocket: 'in' },
+];
+
+function ClipboardShortcuts() {
+  const { copy, cut, paste } = useClipboard();
+
+  useKeyboardShortcuts({
+    bindings: { 'mod+c': copy, 'mod+x': cut, 'mod+v': () => paste() },
+  });
+
+  return null;
+}
+
+export function FlowEditor() {
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow entities={entities} edges={edges}>
+        <ClipboardShortcuts />
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+The canvas has no clipboard keys of its own, so `ClipboardShortcuts` binds them and renders
+nothing. `paste` is wrapped so that it's called with no arguments, rather than with the keyboard
+event.
+
+`useClipboard` returns four functions, typed as `UseClipboardReturn`:
+
+| Name | Type | What it does |
+|---|---|---|
+| `copy` | `() => void` | Puts the selected entities, and every edge attached to them, on the clipboard. |
+| `cut` | `() => void` | Copies, then deletes the selected entities and edges. |
+| `paste` | `(options?: PasteOptions) => CloneElementsResult \| null` | Adds copies of what's on the clipboard, selects them, and returns them. Returns `null` when the clipboard is empty. |
+| `hasClipboardContent` | `() => boolean` | Whether the clipboard holds at least one entity. |
+
+The clipboard behaves in these ways:
+
+- **Each canvas has its own clipboard.** It lives in memory, in that canvas's store. A second
+  `KookieFlow` on the page doesn't share it, and a reload empties it.
+- **Copy needs at least one entity.** With only edges selected, `copy` does nothing and the
+  clipboard keeps what it held, while `cut` deletes the edges without copying them.
+- **A paste reproduces the moment you copied.** The clipboard holds the entities as they were
+  when you copied them. Moving or deleting the originals afterwards changes nothing, and every
+  paste of the same copy lands in the same place.
+- **A paste replaces the selection.** The pasted entities and edges become the selection, so the
+  next key acts on them.
+- **A pasted node is marked dirty.** A reactive node then runs and goes to `onEvaluate`, while a
+  manual one waits until you run it. Text, comments, pictures, video, models and ink never run.
+  The [Evaluation](/data/evaluation) chapter explains when a dirty node runs.
+- **Nothing is reported.** `copy`, `cut` and `paste` change the canvas without calling
+  `onEntitiesChange` or `onEdgesChange`.
+
+The example passes `entities` and `edges` as constants, so the canvas keeps every change itself.
+If your app holds the graph in state, as `useGraph` does, a paste disappears again unless you
+report it. Read [Add pasted elements to a controlled graph](#add-pasted-elements-to-a-controlled-graph)
+before you use the clipboard with state.
+
+`hasClipboardContent` reads the clipboard when you call it, and doesn't re-render your component
+when the clipboard changes. Call it while you build something that renders on demand, such as the
+Paste item in a [context menu](/interaction/context-menu). For a button that enables itself after
+the first copy, subscribe to the store with `useFlowStore` from a component inside
+`<KookieFlow>`:
+
+```tsx lineNumbers=false
+const canPaste = useFlowStore((state) => state.internalClipboard !== null);
+```
+
+## Bind the clipboard keys
+
+`useKeyboardShortcuts` listens on the whole document by default. It skips text fields, but
+anywhere else on your page `mod+c` copies the graph selection and cancels the browser's own copy,
+even when someone has selected text in your sidebar. Listen on an element around the canvas
+instead, so the keys only act while focus is inside it:
+
+```tsx title="flow-editor.tsx"
+function ClipboardShortcuts({ container }: { container: HTMLElement | null }) {
+  const { copy, cut, paste } = useClipboard();
+
+  useKeyboardShortcuts({
+    bindings: { 'mod+c': copy, 'mod+x': cut, 'mod+v': () => paste() },
+    target: container,
+    enabled: container !== null,
+  });
+
+  return null;
+}
+
+export function FlowEditor() {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+
+  return (
+    <div ref={setContainer} style={{ height: 480 }}>
+      <KookieFlow entities={entities} edges={edges}>
+        <ClipboardShortcuts container={container} />
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+The element is held in state rather than a ref, so the hook attaches its listener once the
+element exists. Pressing anywhere on the canvas focuses it, so the keys work as soon as someone
+clicks the graph. The [Keyboard](/interaction/keyboard) chapter covers the hook's other options
+and the keys the canvas binds itself.
+
+### Pasted media goes to the canvas
+
+A `mod+v` binding behaves differently from every other binding. The hook never cancels the key.
+It waits for the browser's `paste` event and checks what the event carries:
+
+- If it carries a file, or text that is the URL of an image, video or model, your handler
+  doesn't run. The canvas takes the paste instead: it passes the files to `onFileDrop` if you've
+  set it, and otherwise makes an entity from any media it recognises.
+- Otherwise, your handler runs. It also runs when the browser fires no `paste` event at all.
+
+So when someone copies a screenshot and presses the paste key on the canvas, they get the
+screenshot rather than the nodes they copied last. `preventDefault` has no effect on a `mod+v`
+binding. [Dropping and pasting media](/interaction/drop-and-paste) describes what the canvas does
+with the media.
+
+## Change what a paste produces
+
+`useClipboard` takes three options, and `paste` takes the same three for a single paste. A value
+you pass to `paste` wins for that paste, and a value you leave out falls back to the hook's.
+
+| Name | Type | Default | What it does |
+|---|---|---|---|
+| `offset` | `{ x: number; y: number }` | `{ x: 50, y: 50 }` | How far the paste lands from the copied positions, in the same units as an entity's `position`. |
+| `transformData` | `(data: T) => T` | none | Returns the `data` for each pasted entity. Without it, each copy gets a shallow copy of the original's `data`. |
+| `preserveExternalConnections` | `boolean` | `false` | Also recreates edges between a copied entity and an entity outside the copy, attached to that same outside entity. |
+
+These are the `UseClipboardOptions` and `PasteOptions` types, exported from the plugins entry.
+`T` is the hook's type parameter, so `useClipboard<MyData>()` types `transformData` for your
+data, where `MyData` extends `EntityData`. The function runs on every entity in the paste, frames
+and comments included, so check a field before you rely on it.
+
+This component moves each paste further from the original, so pasting three times gives you
+three visible copies rather than a stack. The count starts again after each copy or cut. The
+component also clears the status on each copy. Without that, a node your app marked with
+`status: 'error'` pastes still showing the error.
+
+```tsx title="clipboard-shortcuts.tsx"
+const clearStatus = (data: EntityData): EntityData => ({
+  ...data,
+  status: undefined,
+  statusMessage: undefined,
+});
+
+function ClipboardShortcuts({ container }: { container: HTMLElement | null }) {
+  const { copy, cut, paste } = useClipboard({ transformData: clearStatus });
+  const pastes = useRef(0);
+
+  const copyAndReset = () => {
+    pastes.current = 0;
+    copy();
+  };
+
+  const cutAndReset = () => {
+    pastes.current = 0;
+    cut();
+  };
+
+  const pasteStepped = () => {
+    pastes.current += 1;
+    const step = 40 * pastes.current;
+    paste({ offset: { x: step, y: step } });
+  };
+
+  useKeyboardShortcuts({
+    bindings: { 'mod+c': copyAndReset, 'mod+x': cutAndReset, 'mod+v': pasteStepped },
+    target: container,
+    enabled: container !== null,
+  });
+
+  return null;
+}
+```
+
+### Keep the edges to the rest of the graph
+
+`copy` keeps every edge attached to the selection, so you can decide at paste time which edges
+come along. With `preserveExternalConnections`, a copy of a node that reads from a shared source
+reads from that same source.
+
+The option works in both directions. An edge from a copied node to an entity outside the copy is
+recreated too, so that entity's input receives a second edge. To keep only the edges coming in,
+clone the elements yourself, as the next section shows.
+
+### Widget values
+
+A paste copies each entity's `data` as the entity holds it. If someone changed a widget and your
+app hasn't written the value back into the entity through `onWidgetChange`, the copy doesn't get
+the new value. The [Sockets and widgets](/entities/sockets) chapter explains how widget values
+reach the entity.
+
+## Duplicate without the clipboard
+
+`useClipboard` calls functions on the flow store, and you can call them yourself. Read them from
+`useFlowStoreApi().getState()`:
+
+| Name | What it does |
+|---|---|
+| `copySelectedToInternal()` | What `copy` calls. |
+| `cutSelectedToInternal()` | What `cut` calls. |
+| `pasteFromInternal(options?)` | What `paste` calls. It takes `PasteFromInternalOptions`, which has the same three fields as `PasteOptions`. |
+| `internalClipboard` | The clipboard, as an `InternalClipboard` of `{ entities: Entity[]; edges: Edge[] }`, or `null` before the first copy. |
+| `cloneElements(entities, edges, options?)` | Returns copies with new ids. It doesn't change the graph, the selection or the clipboard. |
+| `addElements({ entities, edges })` | Adds entities and edges to the graph in one update, drawn above everything already there. |
+
+Neither `cloneElements` nor `addElements` reports its changes. The
+[flow store](/data/store) chapter covers the rest of the store.
+
+Clone the elements yourself when you want to duplicate a selection with one key and leave the
+clipboard alone, or when you want to choose exactly which edges come along. This function keeps
+the edges inside the selection and the edges feeding into it, and leaves out the edges leaving
+it, so nothing downstream gains a second input:
+
+```ts title="duplicate-selection.ts"
+import type { FlowStore } from '@kushagradhawan/kookie-flow';
+
+export function duplicateSelection(store: FlowStore) {
+  const state = store.getState();
+  const selected = state.getSelectedEntities();
+  if (selected.length === 0) return;
+
+  const ids = new Set(selected.map((entity) => entity.id));
+  // Edges inside the selection, and edges feeding into it. Edges leaving it stay behind.
+  const edges = state.getConnectedEdges([...ids]).filter((edge) => ids.has(edge.target));
+
+  const copy = state.cloneElements(selected, edges, {
+    offset: { x: 40, y: 40 },
+    preserveExternalConnections: true,
+  });
+
+  // A child copied with its frame belongs to the copy of that frame.
+  const entities = copy.entities.map((entity) => {
+    const parentId = entity.parentId ? copy.idMap.get(entity.parentId) : undefined;
+    return parentId ? { ...entity, parentId } : entity;
+  });
+
+  state.addElements({ entities, edges: copy.edges });
+  state.selectEntities(entities.map((entity) => entity.id));
+  state.selectEdges(copy.edges.map((edge) => edge.id));
+}
+```
+
+Bind it the same way as the clipboard keys, for example
+`'mod+d': () => duplicateSelection(store)` with `store` from `useFlowStoreApi()`.
+
+`cloneElements` sets a new `id`, a moved `position`, the new `data` and `selected: false` on each
+copy, and copies every other field unchanged. That includes `parentId`, so a copied child still
+belongs to the frame the original was in. A paste works the same way: paste a frame together with
+its children, and the pasted children still belong to the original frame.
+
+The `parentId` step in `duplicateSelection` points each child at the copy of its frame when the
+frame was copied too. A child copied without its frame stays in the original frame. The
+[Frames and groups](/entities/frames) chapter explains how `parentId` works.
+
+### Clone options
+
+`cloneElements` takes `CloneElementsOptions`. This type, `CloneElementsResult`, `InternalClipboard`
+and `PasteFromInternalOptions` are exported from `@kushagradhawan/kookie-flow`.
+
+| Name | Type | Default | What it does |
+|---|---|---|---|
+| `offset` | `XYPosition` | `{ x: 50, y: 50 }` | Added to each entity's position. |
+| `transformData` | `(data: T) => T` | none | Returns the `data` for each copy. Without it, each copy gets a shallow copy of the original's `data`. |
+| `generateId` | `() => string` | an id of the form `kf-<time>-<counter>` | Makes every new id, for entities and edges alike. |
+| `preserveExternalConnections` | `boolean` | `false` | Keeps an edge with one end outside the cloned entities, still attached to the outside entity. Without it, that edge is dropped. |
+
+`paste` doesn't accept `generateId`. If your app needs its own id format, clone with
+`cloneElements`.
+
+### What a clone returns
+
+`cloneElements` and `paste` both return a `CloneElementsResult`:
+
+| Name | Type | What it holds |
+|---|---|---|
+| `entities` | `Entity[]` | The copies, with new ids, moved positions and `selected: false`. |
+| `edges` | `Edge[]` | The copied edges, with new ids. Each end that was on a copied entity points at its copy. |
+| `idMap` | `Map<string, string>` | Each original entity id, mapped to the id of its copy. Edge ids aren't in it. |
+
+## Copy between tabs and apps
+
+The clipboard only exists in memory, so another tab, another window or another app can't read
+it. To copy between them, write the selection to the system clipboard as JSON, and clone it when
+it comes back:
+
+```ts title="system-clipboard.ts"
+import type { Edge, Entity, FlowStore } from '@kushagradhawan/kookie-flow';
+
+const FORMAT = 'my-app/graph';
+
+interface CopiedGraph {
+  format: typeof FORMAT;
+  entities: Entity[];
+  edges: Edge[];
+}
+
+export async function copyToSystem(store: FlowStore) {
+  const { getSelectedEntities, getConnectedEdges } = store.getState();
+  const entities = getSelectedEntities();
+  if (entities.length === 0) return;
+
+  // Only edges with both ends in the copy: the other end may not exist where it's pasted.
+  const ids = new Set(entities.map((entity) => entity.id));
+  const edges = getConnectedEdges([...ids]).filter(
+    (edge) => ids.has(edge.source) && ids.has(edge.target)
+  );
+
+  const copied: CopiedGraph = { format: FORMAT, entities, edges };
+  await navigator.clipboard.writeText(JSON.stringify(copied));
+}
+
+function readGraph(text: string): CopiedGraph | null {
+  try {
+    const value: CopiedGraph | null = JSON.parse(text);
+    return value?.format === FORMAT ? value : null;
+  } catch {
+    // Not JSON, so it isn't a graph this app copied.
+    return null;
+  }
+}
+
+export async function pasteFromSystem(store: FlowStore) {
+  const copied = readGraph(await navigator.clipboard.readText());
+  if (!copied) return;
+
+  const { cloneElements, addElements, selectEntities, selectEdges } = store.getState();
+  const pasted = cloneElements(copied.entities, copied.edges);
+  addElements({ entities: pasted.entities, edges: pasted.edges });
+  selectEntities(pasted.entities.map((entity) => entity.id));
+  selectEdges(pasted.edges.map((edge) => edge.id));
+}
+```
+
+Bind `copyToSystem` and `pasteFromSystem` to `mod+c` and `mod+v` in place of `useClipboard`. The
+`format` field lets `readGraph` ignore ordinary text that someone copied from elsewhere.
+
+Check these limits before you rely on the system clipboard:
+
+- **Media from files may not travel.** When someone pastes or drops an image, video or model
+  file onto a canvas that has no `onFileDrop`, the entity points at an object URL, which only
+  loads in the tab that created it. To copy media between tabs, upload the file in `onFileDrop`
+  and store a URL that works anywhere.
+- **Your data has to survive JSON.** Anything in `data` that `JSON.stringify` can't represent,
+  such as a function or a `Map`, doesn't arrive.
+- **The paste keeps its coordinates.** It lands at the copied positions plus the offset, which in
+  another tab can be outside the view.
+- **The browser controls access.** Pages can only use `navigator.clipboard` over HTTPS or on
+  localhost, and a browser can ask the person for permission before the page reads it.
+
+## Add pasted elements to a controlled graph
+
+In a controlled graph, your app holds `entities` and `edges` in state, and `KookieFlow` replaces
+its own copy with your props every time they change. Nothing in this chapter reports its changes,
+so a paste appears on the canvas and then disappears at the next change your app applies, such as
+a drag.
+
+Report what changed. `paste` returns what it added, so pass that to your change handlers as `add`
+changes. A cut deletes the selection, so read the selection first, then report the removals:
+
+```tsx title="flow-editor.tsx"
+'use client';
+
+import { useState } from 'react';
+import {
+  KookieFlow,
+  useFlowStoreApi,
+  useGraph,
+  type EdgeChange,
+  type EntityChange,
+} from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { initialEntities } from './initial-graph';
+
+interface ClipboardShortcutsProps {
+  container: HTMLElement | null;
+  onEntitiesChange: (changes: EntityChange[]) => void;
+  onEdgesChange: (changes: EdgeChange[]) => void;
+}
+
+function ClipboardShortcuts({ container, onEntitiesChange, onEdgesChange }: ClipboardShortcutsProps) {
+  const store = useFlowStoreApi();
+  const { copy, cut, paste } = useClipboard();
+
+  const pasteAndReport = () => {
+    const pasted = paste();
+    if (!pasted) return;
+    onEntitiesChange(pasted.entities.map((entity) => ({ type: 'add', entity })));
+    onEdgesChange(pasted.edges.map((edge) => ({ type: 'add', edge })));
+  };
+
+  const cutAndReport = () => {
+    // Read the selection before the cut clears it.
+    const { selectedEntityIds, selectedEdgeIds, getConnectedEdges } = store.getState();
+    const entityIds = [...selectedEntityIds];
+    const edgeIds = new Set(selectedEdgeIds);
+    for (const edge of getConnectedEdges(entityIds)) edgeIds.add(edge.id);
+
+    cut();
+    onEdgesChange([...edgeIds].map((id) => ({ type: 'remove', id })));
+    onEntitiesChange(entityIds.map((id) => ({ type: 'remove', id })));
+  };
+
+  useKeyboardShortcuts({
+    bindings: { 'mod+c': copy, 'mod+x': cutAndReport, 'mod+v': pasteAndReport },
+    target: container,
+    enabled: container !== null,
+  });
+
+  return null;
+}
+
+export function FlowEditor() {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const graph = useGraph({ initialEntities, history: true });
+
+  return (
+    <div ref={setContainer} style={{ height: 480 }}>
+      <KookieFlow
+        entities={graph.entities}
+        edges={graph.edges}
+        onEntitiesChange={graph.onEntitiesChange}
+        onEdgesChange={graph.onEdgesChange}
+        onConnect={graph.onConnect}
+      >
+        <ClipboardShortcuts
+          container={container}
+          onEntitiesChange={graph.onEntitiesChange}
+          onEdgesChange={graph.onEdgesChange}
+        />
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+A few details in this component matter:
+
+- **Report the edges of a cut.** Deleting an entity deletes its edges, but a `remove` change for
+  an entity doesn't remove its edges from `useGraph`'s state. The cut handler reports the selected
+  edges and every edge attached to a selected entity.
+- **One key press is one undo step.** With `useGraph({ history: true })`, the two reports that one
+  handler makes count as a single step. The [Undo and redo](/data/history) chapter explains how
+  steps are recorded.
+- **Report a clone the same way.** After `addElements`, report the entities and edges you passed
+  to it as `add` changes.
+- **A copy carries its type's defaults.** A copied entity holds the sockets, size, label and
+  preview that its [entity type](/entities/types) filled in. Once you report it, your state holds
+  those fields on the entity, and a later change to the type doesn't reach that copy.
+
+The [Controlled and uncontrolled state](/start/state) chapter explains when the canvas takes your
+props and what it reports.

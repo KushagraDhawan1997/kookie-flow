@@ -1,0 +1,300 @@
+Kookie Flow exports twelve hooks. Some of them read the flow that a `KookieFlow` creates, so they
+only give you that flow's values in a component rendered as one of its children. The others work
+anywhere in your app. The style, layout and font hooks are covered in full here, because they
+exist so an overlay of yours can line up with what the canvas drew.
+
+## Where hooks work
+
+A component that renders `KookieFlow` is outside that flow, even though it holds the flow's props.
+A hook that needs the flow has to run in a component you pass to `KookieFlow` as a child:
+
+```tsx title="editor.tsx"
+'use client';
+
+import { KookieFlow, useFlowStore, useGraph } from '@kushagradhawan/kookie-flow';
+
+function SelectionCount() {
+  // Inside the flow, so the hook reads this flow's store.
+  const count = useFlowStore((state) => state.selectedEntityIds.size);
+  return (
+    <div style={{ position: 'absolute', left: 12, bottom: 12 }}>{count} selected</div>
+  );
+}
+
+export function Editor() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph();
+  // useFlowStore here would throw: Editor is outside the flow it renders.
+  return (
+    <div style={{ height: 600 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      >
+        <SelectionCount />
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+From the component that renders `KookieFlow`, reach the flow through its ref instead. The
+[ref instance](/api/instance) chapter lists what it can do.
+
+Outside a flow, three hooks throw and five return fallback values without any warning. The fallback
+values are the risk: your code runs, but it reads a default theme and a default style rather than
+your flow's.
+
+| Hook | Import from | Outside `KookieFlow` | Chapter |
+| --- | --- | --- | --- |
+| `useGraph` | `@kushagradhawan/kookie-flow` | Works | [State](/start/state) |
+| `useFlowStore` | `@kushagradhawan/kookie-flow` | Throws | [The flow store](/data/store) |
+| `useFlowStoreApi` | `@kushagradhawan/kookie-flow` | Throws | [The flow store](/data/store) |
+| `useClipboard` | `@kushagradhawan/kookie-flow/plugins` | Throws | [Clipboard](/data/clipboard) |
+| `useKeyboardShortcuts` | `@kushagradhawan/kookie-flow/plugins` | Works | [Keyboard](/interaction/keyboard) |
+| `useContextMenu` | `@kushagradhawan/kookie-flow/plugins` | Works | [Context menus](/interaction/context-menu) |
+| `useThemeTokens` | `@kushagradhawan/kookie-flow` | Works | [Theming](/styling/theming) |
+| `useTheme` | `@kushagradhawan/kookie-flow` | Returns `FALLBACK_TOKENS` | [Theming](/styling/theming) |
+| `useEntityStyle` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useResolvedStyle` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useSocketLayout` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useFont` | `@kushagradhawan/kookie-flow` | Returns no font | [This page](#font-hook) |
+
+## Graph and plugin hooks
+
+- **`useGraph`** holds entities and edges in React state and returns the change handlers
+  `KookieFlow` needs. Call it in the component that renders `KookieFlow`. Its `undo` and `redo`
+  work when you turn `history` on, which [Undo and redo](/data/history) covers.
+- **`useFlowStore`** re-renders your component when the part of the store you select changes.
+- **`useFlowStoreApi`** returns the store itself, for reading state and subscribing without a
+  render.
+- **`useClipboard`** copies or cuts the selection, and pastes it back, inside the flow. It reads the flow's
+  store, so it throws outside a flow with the same message as `useFlowStoreApi`.
+- **`useKeyboardShortcuts`** binds keys to handlers. It listens on `document` unless you pass a
+  `target`, so it doesn't need a flow.
+- **`useContextMenu`** keeps the open or closed state of a context menu you draw yourself. It
+  doesn't read the flow's store, so it doesn't need a flow.
+
+## Theme hooks
+
+Both hooks return a `ThemeTokens` object: your KookieUI theme's values as numbers and colours the
+canvas can draw with. The [Theming](/styling/theming) chapter lists the tokens.
+
+- **`useTheme`** returns the tokens `KookieFlow` read for its flow. Use it in children. Outside a
+  flow it returns `FALLBACK_TOKENS`, a fixed dark theme, whatever your app's theme is.
+- **`useThemeTokens`** reads the theme's CSS variables itself, and reads them again when the theme
+  changes. Use it outside a flow. Each call does its own reading and watching, so inside a flow
+  `useTheme` does the same job without repeating that work.
+
+## Style and layout hooks
+
+`KookieFlow` turns its `size`, `variant`, `radius`, `header`, `accentHeader` and `entityStyle`
+props, together with your theme, into the numbers the canvas draws every entity with. These three
+hooks return those numbers:
+
+| Hook | Returns |
+| --- | --- |
+| `useEntityStyle()` | `StyleContextValue`: everything below, together. |
+| `useResolvedStyle()` | `ResolvedEntityStyle`: the entity body's sizes and colours. |
+| `useSocketLayout()` | `ResolvedSocketLayout`: where socket rows and widgets sit inside a body. |
+
+The values apply to the whole flow. An entity's own `color` doesn't change them. Lengths are in
+graph units, which are pixels at zoom 1, so multiply by `viewport.zoom` for screen pixels. Colours
+are `RGBColor` arrays of red, green and blue from 0 to 1, and `rgbToHex` turns one into a CSS
+colour.
+
+Outside a flow, the three hooks don't throw. They return fixed values for size `'2'` in a dark
+theme, which won't match your flow's props or theme.
+
+### StyleContextValue
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `resolved` | `ResolvedEntityStyle` | The same object `useResolvedStyle` returns. |
+| `socketLayout` | `ResolvedSocketLayout` | The same object `useSocketLayout` returns. |
+| `config` | `StyleConfig` | The style props the flow was given. |
+
+`StyleConfig` holds those props with the flow's defaults applied:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `size` | `EntitySize` | The `size` prop, `'2'` by default. |
+| `variant` | `EntityVariant` | The `variant` prop, `'surface'` by default. |
+| `radius` | `EntityRadius \| undefined` | The `radius` prop. `undefined` means the corner follows `size`. |
+| `header` | `HeaderPosition` | The `header` prop, `'inside'` by default. |
+| `accentHeader` | `boolean` | The `accentHeader` prop, `false` by default. |
+| `entityStyle` | `Partial<EntityStyleOverrides> \| undefined` | The `entityStyle` prop. |
+
+The [Entity styling](/styling/entities) chapter explains what each prop does.
+
+### ResolvedEntityStyle
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `padding` | `number` | The padding inside an entity's body. |
+| `headerHeight` | `number` | The height of the title's band above the body when `header` is `'outside'`. |
+| `headerBackground` | `RGBColor` | `--accent-3` with `accentHeader`, otherwise `--neutral-3`. The canvas doesn't paint it. It's there for a title bar you draw in HTML. |
+| `accentBand` | `RGBColor \| null` | The colour of the line along the top edge, `--accent-9`, or `null` without `accentHeader`. |
+| `headerPosition` | `0 \| 1 \| 2` | `header` as a number: `0` for `'none'`, `1` for `'inside'`, `2` for `'outside'`. |
+| `borderRadius` | `number` | The body's corner radius. `entityStyle.borderRadius` wins, then `radius`, then the size's own corner. |
+| `widgetRadius` | `number` | The corner radius of widgets. It can be a very large number that stands for a pill shape, so clamp it to half the widget's height. |
+| `widgetPad` | `number` | The space between a widget's edge and the value printed in it. |
+| `borderWidth` | `number` | The body's border width. |
+| `borderColor` | `RGBColor` | The border colour. |
+| `borderColorHover` | `RGBColor` | The variant's border colour for a hovered body. The canvas doesn't use it. |
+| `background` | `RGBColor` | The body's fill. |
+| `backgroundHover` | `RGBColor` | The variant's fill for a hovered body. The canvas doesn't use it. |
+| `backgroundAlpha` | `number` | `0` for the `'ghost'` and `'outline'` variants, which have no fill, and `1` otherwise. |
+| `shadowBlur` | `number` | The blur of the body's shadow. |
+| `shadowOffsetY` | `number` | How far the shadow sits below the body. |
+| `shadowOpacity` | `number` | The shadow's opacity, from 0 to 1. |
+| `topLightAlpha` | `number` | The opacity of the light line inside the body's top edge: `0.07` in dark appearance and `0` in light. |
+| `selectedBorderColor` | `RGBColor` | The outline of a selected entity, `--accent-9`. |
+| `fontSize` | `number` | The `--font-size` step for this `size`, in pixels. |
+| `socketSize` | `number` | The radius of a socket circle. |
+
+To draw an HTML highlight with the same corner and accent as a selected entity, read two fields:
+
+```tsx
+const { borderRadius, selectedBorderColor } = useResolvedStyle();
+const highlight = { borderRadius, boxShadow: `0 0 0 2px ${rgbToHex(selectedBorderColor)}` };
+```
+
+### ResolvedSocketLayout
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `rowHeight` | `number` | The height of one socket row. Output rows come first, then input rows. |
+| `widgetHeight` | `number` | The height of a widget inside its row. |
+| `marginTop` | `number` | The distance from the top of the body to the first socket row: `padding` plus `titleBand`. |
+| `titleBand` | `number` | The height kept for the title inside the body. It's `0` unless `header` is `'inside'`. |
+| `socketSize` | `number` | The radius of a socket circle. |
+| `padding` | `number` | The padding inside the body. |
+| `markSize` | `number` | The width and height of a checkbox widget's square, from the theme's `--mark-N`. |
+| `trackHeight` | `number` | The height of a slider widget's rail, from the theme's `--slider-track-N`. |
+| `borderWidth` | `number` | Always `1`. The canvas insets content from the body's edge by `padding` plus this value. |
+
+### Pass the layout to geometry functions
+
+The geometry functions `getSocketPosition`, `getSocketAtPosition`, `isPointInEntity`,
+`getEntityAtPosition`, `getEntitiesInBox`, `getEdgeAtPosition`, `getEdgePointAtT` and
+`getEdgeEndpoints` take an optional last argument, `layout`. Pass `useSocketLayout()` there.
+Without it, they use fixed spacing that doesn't match the canvas: a socket is placed away from
+where it's drawn, and an entity with no `height` is treated as 100 units tall however tall it's
+drawn. The [Utilities](/api/utilities) chapter covers each function.
+
+This label follows an output socket as the graph pans, zooms and moves. Render it as a child of
+`KookieFlow`:
+
+```tsx title="socket-label.tsx"
+'use client';
+
+import { useLayoutEffect, useRef } from 'react';
+import {
+  getSocketPosition,
+  useFlowStoreApi,
+  useSocketLayout,
+  worldToScreen,
+} from '@kushagradhawan/kookie-flow';
+
+type SocketLabelProps = { entityId: string; socketId: string; text: string };
+
+export function SocketLabel({ entityId, socketId, text }: SocketLabelProps) {
+  const store = useFlowStoreApi();
+  const layout = useSocketLayout();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const { entityMap, viewport } = store.getState();
+      const entity = entityMap.get(entityId);
+      const point = entity ? getSocketPosition(entity, socketId, false, layout) : null;
+      if (!ref.current || !point) return;
+      const { x, y } = worldToScreen(point, viewport);
+      ref.current.style.transform = `translate3d(${x + 12}px, ${y}px, 0) translateY(-50%)`;
+    };
+    place();
+    const unsubscribe = store.subscribe(() => {
+      if (frame === 0) frame = requestAnimationFrame(place);
+    });
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+    };
+  }, [store, layout, entityId, socketId]);
+
+  return (
+    <div ref={ref} style={{ position: 'absolute', left: 0, top: 0 }}>
+      {text}
+    </div>
+  );
+}
+```
+
+The label moves through `style.transform`, at most once a frame, rather than through React state.
+A pan changes the view on every pointer move, and a React render for each one would slow the canvas
+down. A layout effect places the label before the first paint, so it doesn't flash at the corner.
+The effect runs again only when the layout changes, which happens when the theme or a style
+prop changes.
+
+## Font hook
+
+`useFont()` returns a `FontContextValue`: the font the canvas draws its text with, once it has
+loaded. Use it to measure
+text the way the canvas does, for example to size an HTML element around a label the canvas drew.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `regular` | `LoadedFontWeight \| null` | The regular weight, or `null` while it loads or when loading failed. |
+| `semibold` | `LoadedFontWeight \| null` | The semibold weight, or `null` while it loads, when loading failed, or when the font has none. |
+| `isLoading` | `boolean` | `true` until loading finishes. |
+| `presetName` | `FontPreset \| null` | The preset the `font` prop named, or `null` for a custom `FontConfig`. |
+
+Outside a flow, `useFont` returns `null` for both weights and `isLoading: true`, and never loads
+anything.
+
+Each loaded weight is a `LoadedFontWeight`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `metrics` | `FontMetrics` | The font's glyph metrics. `metrics.info.size` is the size, in pixels, that every other metric is measured at. |
+| `texture` | `THREE.Texture` | The glyph atlas the canvas samples. |
+| `glyphMap` | `Map<number, GlyphMetrics>` | Each glyph's metrics, keyed by character code. |
+| `kerningMap` | `Map<number, number>` | The spacing adjustment between two characters, keyed by `(first << 16) \| second`. |
+
+The glyph metrics type isn't exported under a name, but TypeScript infers it from `glyphMap`. The
+[Fonts](/styling/fonts) chapter covers `FontMetrics` and custom fonts.
+
+This hook measures a string's width at a given size, adding each glyph's advance and the kerning
+between each pair, as the canvas does:
+
+```ts title="use-text-width.ts"
+import { useMemo } from 'react';
+import { useFont } from '@kushagradhawan/kookie-flow';
+
+export function useTextWidth(text: string, fontSize: number): number | null {
+  const { regular } = useFont();
+
+  return useMemo(() => {
+    if (!regular) return null;
+    let width = 0;
+    let previous = -1;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      const glyph = regular.glyphMap.get(code);
+      if (!glyph) continue;
+      if (previous !== -1) width += regular.kerningMap.get((previous << 16) | code) ?? 0;
+      width += glyph.xadvance;
+      previous = code;
+    }
+    return width * (fontSize / regular.metrics.info.size);
+  }, [regular, text, fontSize]);
+}
+```
+
+The result is in graph units. It's `null` until the font loads, so render nothing, or a fallback
+width, until it has a value.

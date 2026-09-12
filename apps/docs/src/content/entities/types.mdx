@@ -1,0 +1,212 @@
+An entity types table describes each kind of node once: its label, its size and its sockets. Pass
+the table to `KookieFlow` as `entityTypes`, and any entity of that type that leaves those fields out
+gets them from the table.
+
+## Describe a type once
+
+A graph with fifty Add nodes shouldn't repeat Add's sockets fifty times. Key the table by the
+entity's `type`, and describe each type with an `EntityTypeDefinition`:
+
+```tsx title="math-editor.tsx"
+'use client';
+
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type EntityTypeDefinition,
+} from '@kushagradhawan/kookie-flow';
+
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  'math/number': {
+    type: 'math/number',
+    label: 'Number',
+    defaultWidth: 180,
+    inputs: [{ id: 'value', name: 'Value', type: 'float', widget: 'number', defaultValue: 0 }],
+    outputs: [{ id: 'out', name: 'Value', type: 'float' }],
+  },
+  'math/add': {
+    type: 'math/add',
+    label: 'Add',
+    inputs: [
+      { id: 'a', name: 'A', type: 'float' },
+      { id: 'b', name: 'B', type: 'float' },
+    ],
+    outputs: [{ id: 'sum', name: 'Sum', type: 'float' }],
+  },
+};
+
+const initialEntities: Entity[] = [
+  { id: 'n1', type: 'math/number', position: { x: 0, y: 0 }, data: {} },
+  { id: 'n2', type: 'math/number', position: { x: 0, y: 140 }, data: {} },
+  { id: 'add', type: 'math/add', position: { x: 280, y: 60 }, data: {} },
+];
+
+export function MathEditor() {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
+
+  return (
+    <div style={{ height: 400 }}>
+      <KookieFlow
+        entities={entities}
+        edges={edges}
+        entityTypes={entityTypes}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
+    </div>
+  );
+}
+```
+
+The three entities set only an id, a type, a position and empty `data`. Each one draws with its
+type's label and sockets, the two Number nodes take their type's width, and you can wire them on
+the first frame.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | `string` | required | The type's name. Use the same string as the entry's key. |
+| `label` | `string` | none | The header text for an entity with no `data.label`. |
+| `defaultWidth` | `number` | none | The width of an entity with no `width`. |
+| `defaultHeight` | `number` | none | The height of an entity with no `height`. |
+| `inputs` | `Socket[]` | none | The input sockets of an entity with no `inputs`. |
+| `outputs` | `Socket[]` | none | The output sockets of an entity with no `outputs`. |
+| `preview` | `EntityPreview` | none | The preview band of an entity with no `preview`. See [Images, video and models](/entities/media). |
+| `toolbar` | `ToolbarConfig` | none | The toolbar shown when entities of this type are selected. |
+| `evaluation` | `EvaluationMode` | `'reactive'` | When entities of this type run. |
+
+Socket ids in a type are required, as they are on an entity. An edge names the socket it lands
+on, so the ids in your table have to match the ids in the graphs you save.
+
+## What a type fills in
+
+A type fills in six things, and only when the entity leaves them out: `inputs`, `outputs`,
+`width`, `height`, `preview` and `data.label`.
+
+The canvas fills them in where entities enter it: on the first render, whenever your `entities`
+prop changes, and when an entity arrives through a paste or an `add` change. Everything that
+reads an entity afterwards sees the filled-in version, so a socket that came from the table can be
+hovered and wired immediately.
+
+The canvas doesn't modify your `entities` array. `getEntities()` and `toObject()` return the
+filled-in entities, though, so a graph you save with `toObject()` carries each type's sockets and
+size on every node.
+
+When the table itself changes, the canvas fills in every entity again from the version you passed.
+Adding a type to the table reaches the entities of that type already on the canvas, and changing a
+type's `defaultWidth` resizes every entity of that type that doesn't set a width.
+
+## Override a type on one entity
+
+A value set on the entity is kept, even when the type has one. The type only fills gaps, and a gap
+means the field is `undefined`:
+
+```tsx
+const entities: Entity[] = [
+  // Gets the table's label and all three sockets.
+  { id: 'a1', type: 'math/add', position: { x: 0, y: 0 }, data: {} },
+  // Keeps its own label and width, and still gets the table's sockets.
+  { id: 'a2', type: 'math/add', position: { x: 0, y: 160 }, width: 320, data: { label: 'Offset' } },
+  // Has no inputs at all. An empty list is a value, not a gap.
+  { id: 'a3', type: 'math/add', position: { x: 0, y: 320 }, inputs: [], data: {} },
+];
+```
+
+Sockets are all or nothing. An entity that sets `inputs` replaces the type's whole input list,
+rather than adding to it or merging with it.
+
+A value written onto an entity counts as set. After someone resizes a node, `useGraph` applies
+the reported `dimensions` change and gives that entity its own `width` and `height`, so the type's
+`defaultWidth` and `defaultHeight` no longer apply to it. The same is true of a graph you reload
+from `toObject()`, as described in the previous section. To keep a node following its type,
+leave the field out of the entity you pass.
+
+## Keep the table stable
+
+Declare the table outside your component, as in the example above, or build it in a `useMemo`.
+
+The canvas compares a new table with the previous one entry by entry, by reference. A new table
+object that holds the same entry objects costs nothing. A table written inline in JSX, with its
+entries as object literals, has new entries on every render, so the canvas fills in every entity
+again and rebuilds its hit-testing indexes each time your component renders.
+
+```tsx
+// Wrong: new entries on every render.
+<KookieFlow entityTypes={{ 'math/add': { type: 'math/add', label: 'Add' } }} {...props} />
+
+// Right: the same entries on every render.
+<KookieFlow entityTypes={entityTypes} {...props} />
+```
+
+## Run a type only when you ask
+
+`evaluation` decides when `onEvaluate` runs an entity of this type after its inputs change.
+
+- **`'reactive'`**, the default, runs the entity as soon as its inputs settle.
+- **`'manual'`** marks the entity as out of date and stops there. It runs when you call
+  `evaluate(id)` or `evaluateDirty()` on the flow's ref, and reactive entities downstream of it
+  then run as usual.
+
+Use `'manual'` for anything slow or costly, such as a render or a call to a generation service:
+
+```tsx
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  'ai/generate': {
+    type: 'ai/generate',
+    label: 'Generate',
+    evaluation: 'manual',
+    inputs: [{ id: 'prompt', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'textarea', rows: 3 }],
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+    preview: { socket: 'image' },
+  },
+};
+```
+
+If you change a type from `'manual'` to `'reactive'`, the entities that were waiting run. The
+[Evaluation](/data/evaluation) chapter covers `onEvaluate` and the evaluation methods on the ref.
+
+## Give a type a toolbar
+
+`toolbar` sets the controls that appear above a selection of this type. Render `<Toolbar />` as a
+child of `KookieFlow`, then set `toolbar` on the types that should have one:
+
+```tsx
+import { KookieFlow, Toolbar, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+
+const entityTypes: Record<string, EntityTypeDefinition> = {
+  text: { type: 'text', toolbar: true },
+  image: { type: 'image', toolbar: ['objectFit', 'aspectLock'] },
+};
+
+<KookieFlow entities={entities} edges={edges} entityTypes={entityTypes}>
+  <Toolbar />
+</KookieFlow>;
+```
+
+`true` shows the built-in controls for that type, an array picks controls by name, and a function
+renders your own. The toolbar appears when every selected entity has the same type. The
+[Selection toolbar](/interaction/toolbar) chapter lists every control and the full `ToolbarConfig`.
+
+## What a type can't do
+
+Apart from `toolbar` and `evaluation`, a type only fills in fields that an entity could set
+itself.
+
+- **No component for the body.** `EntityTypeDefinition` has no `component` field, and nothing
+  mounts your own React component as a node. The canvas draws nodes in WebGL, and a node in front
+  covers the parts of a node behind it. An HTML element over one node couldn't take part in that
+  order: it would sit above the whole canvas or below all of it.
+- **No other defaults.** A type fills in only the six fields listed above. It can't give its
+  entities a default `color`, `resizable` setting or other `data` fields. Use a socket's
+  `defaultValue` for a starting widget value.
+- **No per-type styling.** Size, variant, corner radius and header position are set on `KookieFlow`
+  for every entity, and `color` is set on each entity. The [Entity styling](/styling/entities)
+  chapter covers them.
+
+To put your own content on a node, use the parts that are built for it. A
+[widget component](/entities/sockets#replace-a-widget-with-your-own-component) replaces a control
+in a socket row, a [preview band](/entities/media) shows a picture, a video or a model inside the
+body, and a [toolbar](/interaction/toolbar) holds controls for a selection.

@@ -363,6 +363,7 @@ describe('fitEntityToContent finishes the resize', () => {
     borderWidth: 1,
     markSize: 20,
     trackHeight: 4,
+    listRowHeight: 30,
   };
 
   const sized = (): Entity => ({
@@ -429,6 +430,7 @@ describe('the store can be built with the socket layout it will use', () => {
     borderWidth: 1,
     markSize: 20,
     trackHeight: 4,
+    listRowHeight: 30,
   };
 
   const socketed = (): Entity => ({

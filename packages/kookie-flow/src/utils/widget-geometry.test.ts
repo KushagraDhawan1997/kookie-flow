@@ -25,6 +25,7 @@ const layout: ResolvedSocketLayout = {
   borderWidth: 1,
   markSize: 20,
   trackHeight: 4,
+  listRowHeight: 30,
 };
 
 const entity: Entity = {

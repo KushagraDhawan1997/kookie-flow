@@ -1,19 +1,20 @@
 import type { MetadataRoute } from 'next';
 
+import { CHAPTERS } from './(docs)/chapters';
+
+const baseUrl = 'https://kookie-flow.vercel.app';
+
+/** The front door, then every chapter, straight from the registry — so the sitemap cannot list
+    a page that does not exist or miss one that does. */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://kookie-flow.vercel.app';
-
-  // Static routes
-  const staticRoutes = [
-    '',
-    '/docs',
-    '/examples',
-  ].map((route) => ({
-    url: `${baseUrl}${route}`,
-    lastModified: new Date(),
-    changeFrequency: 'weekly' as const,
-    priority: route === '' ? 1 : 0.8,
-  }));
-
-  return staticRoutes;
+  const lastModified = new Date();
+  return [
+    { url: baseUrl, lastModified, changeFrequency: 'weekly', priority: 1 },
+    ...CHAPTERS.map((chapter) => ({
+      url: `${baseUrl}/${chapter.slug}`,
+      lastModified,
+      changeFrequency: 'weekly' as const,
+      priority: 0.8,
+    })),
+  ];
 }

@@ -1,0 +1,283 @@
+Every type the package exports is listed on this page, with the chapter that explains it. The page
+also covers the type guards, which narrow an `Entity` to one of the built-in entity types, and
+the two small types for positions and sizes that the rest of the API is built on.
+
+## Narrow an entity by type
+
+An `Entity` has `data` of type `EntityData`, which names only `label`, `status` and
+`statusMessage`, and none of the fields a particular kind of entity carries. A type guard checks `entity.type` and, when it matches, tells TypeScript that
+the entity is the built-in type with that name. Inside the check, `entity.data` has the fields of
+that type, such as a text entity's `content`.
+
+| Guard | Returns `true` when `entity.type` is | Narrows to | Chapter |
+| --- | --- | --- | --- |
+| `isFrameEntity` | `'frame'` | `FrameEntity` | [Frames and groups](/entities/frames) |
+| `isCommentEntity` | `'comment'` | `CommentEntity` | [Text and comments](/entities/text) |
+| `isTextEntity` | `'text'` | `TextEntity` | [Text and comments](/entities/text) |
+| `isRerouteEntity` | `'reroute'` | `RerouteEntity` | [Edges](/edges/edges) |
+| `isImageEntity` | `'image'` | `ImageEntity` | [Images, video and models](/entities/media) |
+| `isVideoEntity` | `'video'` | `VideoEntity` | [Images, video and models](/entities/media) |
+| `isMeshEntity` | `'mesh'` | `MeshEntity` | [Images, video and models](/entities/media) |
+
+Each guard has the signature `(entity: Entity) => entity is FrameEntity`, with its own entity type
+in place of `FrameEntity`.
+
+A guard checks `type` and nothing else. It doesn't check that `data` holds what the type
+describes, so an entity with `type: 'text'` and no `content` still passes `isTextEntity`. Guard
+against missing fields yourself when the entities come from outside your code, such as a file
+someone loaded.
+
+There's no guard for `draw` entities. Write one with the exported `DrawEntity` type, as the
+`isDrawEntity` function below does.
+
+This function names each entity for a layers panel. Each branch reads fields that only exist on
+the type its guard narrows to.
+
+```ts title="layer-name.ts"
+import {
+  isCommentEntity,
+  isFrameEntity,
+  isImageEntity,
+  isMeshEntity,
+  isRerouteEntity,
+  isTextEntity,
+  isVideoEntity,
+  type DrawEntity,
+  type Entity,
+} from '@kushagradhawan/kookie-flow';
+
+function isDrawEntity(entity: Entity): entity is DrawEntity {
+  return entity.type === 'draw';
+}
+
+export function layerName(entity: Entity): string {
+  if (isFrameEntity(entity)) return entity.data.label ?? 'Frame';
+  if (isTextEntity(entity) || isCommentEntity(entity)) {
+    return (entity.data.content ?? '').split('\n')[0] || 'Empty text';
+  }
+  if (isImageEntity(entity)) return entity.data.alt ?? 'Image';
+  if (isVideoEntity(entity) || isMeshEntity(entity)) return entity.data.src?.split('/').pop() ?? 'Media';
+  if (isDrawEntity(entity)) return `Stroke of ${(entity.data.points?.length ?? 0) / 2} points`;
+  if (isRerouteEntity(entity)) return 'Reroute';
+  return entity.data.label ?? entity.type;
+}
+```
+
+A node type of your own has no guard, because its `type` is any string you choose. Compare
+`entity.type` directly, and read its `data` fields as `unknown` values that you check. The
+[entity model](/entities/model) chapter covers `Entity` and `EntityData`.
+
+## Positions and sizes
+
+`XYPosition` is a point and `Dimensions` is a size. Both are plain objects.
+
+| Type | Shape | Used for |
+| --- | --- | --- |
+| `XYPosition` | `{ x: number; y: number }` | An entity's `position`, a `position` change, the position `onFileDrop` receives, the `position` in the state `onConnectEnd` receives, the positions `autoLayout` and `alignSelection` return, and the input and output of the coordinate and hit testing functions. |
+| `Dimensions` | `{ width: number; height: number }` | The `dimensions` field of a `dimensions` change, which `onEntitiesChange` receives when an entity is resized. |
+
+Most positions in the API are world coordinates. A few are screen positions in pixels: the
+position you pass to `screenToWorld`, the one `worldToScreen` returns, and the `position` in a
+context menu's state, which holds the pointer's `clientX` and `clientY`. World `y` grows
+downward, as it does in the DOM. The [Canvas and camera](/interaction/camera) chapter explains
+the two coordinate systems.
+
+`Entity` keeps its size as two separate optional fields, `width` and `height`, rather than as a
+`Dimensions` object. This handler saves each new size that `onEntitiesChange` reports, such as
+the size a person leaves an entity at when they finish a resize:
+
+```ts title="save-sizes.ts"
+import type { Dimensions, EntityChange } from '@kushagradhawan/kookie-flow';
+
+export function saveSizes(changes: EntityChange[], save: (id: string, size: Dimensions) => void) {
+  for (const change of changes) {
+    if (change.type === 'dimensions') save(change.id, change.dimensions);
+  }
+}
+```
+
+Call it from your `onEntitiesChange` handler. The
+[Controlled and uncontrolled state](/start/state) chapter covers `EntityChange`.
+
+## Type index
+
+Import every type in these tables from `@kushagradhawan/kookie-flow`, except the types in
+[Types from the plugins subpath](#types-from-the-plugins-subpath).
+
+### Getting started
+
+| Type | Chapter |
+| --- | --- |
+| `EdgeChange` | [Controlled and uncontrolled state](/start/state) |
+| `EntityChange` | [Controlled and uncontrolled state](/start/state) |
+| `UseGraphOptions` | [Controlled and uncontrolled state](/start/state) |
+| `UseGraphReturn` | [Controlled and uncontrolled state](/start/state) |
+
+### Entities
+
+| Type | Chapter |
+| --- | --- |
+| `BuiltInEntityType` | [The entity model](/entities/model) |
+| `CommentEntity` | [Text and comments](/entities/text) |
+| `CommentEntityData` | [Text and comments](/entities/text) |
+| `DrawEntity` | [Drawing](/interaction/drawing) |
+| `DrawEntityData` | [Drawing](/interaction/drawing) |
+| `Entity` | [The entity model](/entities/model) |
+| `EntityData` | [The entity model](/entities/model) |
+| `EntityPreview` | [Images, video and models](/entities/media) |
+| `EntityTypeDefinition` | [Entity types](/entities/types) |
+| `FrameEntity` | [Frames and groups](/entities/frames) |
+| `FrameEntityData` | [Frames and groups](/entities/frames) |
+| `ImageEntity` | [Images, video and models](/entities/media) |
+| `ImageEntityData` | [Images, video and models](/entities/media) |
+| `InlineWidgetComponent` | [Sockets and widgets](/entities/sockets) |
+| `MeshEntity` | [Images, video and models](/entities/media) |
+| `MeshEntityData` | [Images, video and models](/entities/media) |
+| `Socket` | [Sockets and widgets](/entities/sockets) |
+| `SocketLayoutMode` | [Sockets and widgets](/entities/sockets) |
+| `SocketType` | [Sockets and widgets](/entities/sockets) |
+| `TextEntity` | [Text and comments](/entities/text) |
+| `TextEntityData` | [Text and comments](/entities/text) |
+| `TextSizingMode` | [Text and comments](/entities/text) |
+| `TextStyleConfig` | [Text and comments](/entities/text) |
+| `VideoEntity` | [Images, video and models](/entities/media) |
+| `VideoEntityData` | [Images, video and models](/entities/media) |
+| `WidgetProps` | [Sockets and widgets](/entities/sockets) |
+| `WidgetType` | [Sockets and widgets](/entities/sockets) |
+
+### Edges and connections
+
+| Type | Chapter |
+| --- | --- |
+| `Connection` | [Connections](/edges/connections) |
+| `ConnectionEndState` | [Connections](/edges/connections) |
+| `ConnectionMode` | [Connections](/edges/connections) |
+| `ConnectionValidationParams` | [Connections](/edges/connections) |
+| `Edge` | [Edges](/edges/edges) |
+| `EdgeLabelConfig` | [Edges](/edges/edges) |
+| `EdgeMarker` | [Edges](/edges/edges) |
+| `EdgeMarkerType` | [Edges](/edges/edges) |
+| `EdgeType` | [Edges](/edges/edges) |
+| `IsValidConnectionFn` | [Connections](/edges/connections) |
+| `OnConnectStartParams` | [Connections](/edges/connections) |
+| `RerouteEntity` | [Edges](/edges/edges) |
+| `RerouteEntityData` | [Edges](/edges/edges) |
+| `SocketHandle` | [Connections](/edges/connections) |
+
+### Data
+
+| Type | Chapter |
+| --- | --- |
+| `AdjacencyIndex` | [Graph queries](/data/graph-queries) |
+| `AlignEdge` | [Layout and alignment](/data/arrange) |
+| `CachedAnalysis` | [Graph queries](/data/graph-queries) |
+| `CaptureOptions` | [Saving and exporting](/data/saving) |
+| `CloneElementsOptions` | [Clipboard and cloning](/data/clipboard) |
+| `CloneElementsResult` | [Clipboard and cloning](/data/clipboard) |
+| `DeleteElementsBatch` | [The flow store](/data/store) |
+| `DistributeAxis` | [Layout and alignment](/data/arrange) |
+| `ElementsBatch` | [The flow store](/data/store) |
+| `EntityStatus` | [Evaluation](/data/evaluation) |
+| `EvaluationContext` | [Evaluation](/data/evaluation) |
+| `EvaluationMode` | [Evaluation](/data/evaluation) |
+| `EvaluationRecord` | [Evaluation](/data/evaluation) |
+| `EvaluationStatus` | [Evaluation](/data/evaluation) |
+| `FlowObject` | [Saving and exporting](/data/saving) |
+| `FlowState` | [The flow store](/data/store) |
+| `FlowStore` | [The flow store](/data/store) |
+| `GraphValidationIssue` | [Graph queries](/data/graph-queries) |
+| `InternalClipboard` | [Clipboard and cloning](/data/clipboard) |
+| `LayoutEdge` | [Layout and alignment](/data/arrange) |
+| `LayoutNode` | [Layout and alignment](/data/arrange) |
+| `LayoutOptions` | [Layout and alignment](/data/arrange) |
+| `LayoutResult` | [Layout and alignment](/data/arrange) |
+| `OnEvaluate` | [Evaluation](/data/evaluation) |
+| `OnStatusChange` | [Evaluation](/data/evaluation) |
+| `PasteFromInternalOptions` | [Clipboard and cloning](/data/clipboard) |
+| `UseGraphHistoryOptions` | [Undo and redo](/data/history) |
+
+### Interaction
+
+| Type | Chapter |
+| --- | --- |
+| `CommentToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `CommonToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `DrawToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `FitViewOptions` | [Canvas and camera](/interaction/camera) |
+| `ImageToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `TextToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `ToolbarConfig` | [Selection toolbar](/interaction/toolbar) |
+| `ToolbarProps` | [Selection toolbar](/interaction/toolbar) |
+| `ToolbarRenderFn` | [Selection toolbar](/interaction/toolbar) |
+| `ToolbarRenderProps` | [Selection toolbar](/interaction/toolbar) |
+| `ToolbarWidget` | [Selection toolbar](/interaction/toolbar) |
+| `Viewport` | [Canvas and camera](/interaction/camera) |
+
+### Styling
+
+| Type | Chapter |
+| --- | --- |
+| `AccentColor` | [Entity styling](/styling/entities) |
+| `ColorTokenKey` | [Theming](/styling/theming) |
+| `EntityRadius` | [Entity styling](/styling/entities) |
+| `EntitySize` | [Entity styling](/styling/entities) |
+| `EntityStyleOverrides` | [Entity styling](/styling/entities) |
+| `EntityVariant` | [Entity styling](/styling/entities) |
+| `FontConfig` | [Fonts and text rendering](/styling/fonts) |
+| `FontMetrics` | [Fonts and text rendering](/styling/fonts) |
+| `FontPreset` | [Fonts and text rendering](/styling/fonts) |
+| `FontWeightConfig` | [Fonts and text rendering](/styling/fonts) |
+| `HeaderPosition` | [Entity styling](/styling/entities) |
+| `MinimapPosition` | [Minimap](/styling/minimap) |
+| `MinimapProps` | [Minimap](/styling/minimap) |
+| `SimpleShadow` | [Theming](/styling/theming) |
+| `ThemeTokens` | [Theming](/styling/theming) |
+
+### API reference
+
+| Type | Chapter |
+| --- | --- |
+| `Bounds` | [Utilities](/api/utilities) |
+| `Dimensions` | [Positions and sizes](#positions-and-sizes) on this page |
+| `EdgePointResult` | [Utilities](/api/utilities) |
+| `FontContextValue` | [Hooks](/api/hooks) |
+| `KookieFlowInstance` | [The ref instance](/api/instance) |
+| `KookieFlowProps` | [KookieFlow](/api/kookie-flow) |
+| `LoadedFontWeight` | [Hooks](/api/hooks) |
+| `ResolvedEntityStyle` | [Hooks](/api/hooks) |
+| `ResolvedSocketLayout` | [Hooks](/api/hooks) |
+| `RGBAColor` | [Utilities](/api/utilities) |
+| `RGBColor` | [Utilities](/api/utilities) |
+| `SocketIndexMap` | [Utilities](/api/utilities) |
+| `StyleConfig` | [Hooks](/api/hooks) |
+| `StyleContextValue` | [Hooks](/api/hooks) |
+| `XYPosition` | [Positions and sizes](#positions-and-sizes) on this page |
+
+### Types from the plugins subpath
+
+Import these from `@kushagradhawan/kookie-flow/plugins`, the same path as the hooks they belong to.
+
+| Type | Chapter |
+| --- | --- |
+| `ContextMenuState` | [Context menus](/interaction/context-menu) |
+| `ContextMenuTarget` | [Context menus](/interaction/context-menu) |
+| `KeyBinding` | [Keyboard](/interaction/keyboard) |
+| `KeyHandler` | [Keyboard](/interaction/keyboard) |
+| `PasteOptions` | [Clipboard and cloning](/data/clipboard) |
+| `UseClipboardOptions` | [Clipboard and cloning](/data/clipboard) |
+| `UseClipboardReturn` | [Clipboard and cloning](/data/clipboard) |
+| `UseContextMenuOptions` | [Context menus](/interaction/context-menu) |
+| `UseContextMenuReturn` | [Context menus](/interaction/context-menu) |
+| `UseKeyboardShortcutsOptions` | [Keyboard](/interaction/keyboard) |
+
+### Types no chapter covers
+
+The package also exports these types. You rarely need them, so no chapter explains them.
+
+| Type | What it describes |
+| --- | --- |
+| `ComputedSocketPosition` | One socket row in an `EntitySocketLayoutCache`: the socket's index, the distance from the entity's top edge to the socket's centre, the row's height, its layout mode, and where its widget and label sit. |
+| `EntitySocketLayoutCache` | The layout the canvas computes for one entity while it draws: a `ComputedSocketPosition` for each input and output, the entity's computed height, and the top and height of its preview band. No documented function takes or returns it. To place a socket, call `getSocketPosition` with the socket layout, as the [Utilities](/api/utilities) chapter shows. |
+| `HistoryEntry` | One step in the undo history `useGraph` keeps: an `entities` array and an `edges` array. |
+| `HistoryState` | The undo history `useGraph` keeps: `past` and `future` lists of `HistoryEntry`. No exported function takes or returns it. |
+| `ResolvedWidgetConfig` | A socket's widget settings after the socket's own values are combined with its socket type's defaults. No exported function takes or returns it. |

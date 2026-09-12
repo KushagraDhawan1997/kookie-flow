@@ -778,13 +778,14 @@ function ThemeTokensTest() {
         left: 16,
         zIndex: 10,
         background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
         padding: '12px 16px',
         borderRadius: 8,
         fontSize: 11,
         maxWidth: 280,
       }}
     >
-      <h3 style={{ fontSize: 12, marginBottom: 8 }}>Theme Tokens Test</h3>
+      <h3 style={{ fontSize: 12, margin: '0 0 8px' }}>Theme Tokens Test</h3>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
         <span style={{ color: '#888' }}>--space-3:</span>
         <span>{tokens['--space-3']}px</span>
@@ -856,6 +857,7 @@ function ClipboardDemo() {
         right: 16,
         zIndex: 10,
         background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
         padding: '12px 16px',
         borderRadius: 8,
         fontSize: 12,
@@ -863,7 +865,7 @@ function ClipboardDemo() {
         pointerEvents: 'auto',
       }}
     >
-      <h2 style={{ fontSize: 14, marginBottom: 8 }}>Clipboard</h2>
+      <h2 style={{ fontSize: 14, margin: '0 0 8px' }}>Clipboard</h2>
       <p style={{ color: clipboardSize > 0 ? '#4ade80' : '#666' }}>
         {clipboardSize > 0 ? `${clipboardSize} nodes copied` : 'Empty'}
       </p>
@@ -951,6 +953,7 @@ function WidgetValuesPanel({ values }: { values: Record<string, Record<string, u
         right: 16,
         zIndex: 10,
         background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
         padding: '12px 16px',
         borderRadius: 8,
         fontSize: 11,
@@ -959,7 +962,7 @@ function WidgetValuesPanel({ values }: { values: Record<string, Record<string, u
         overflow: 'auto',
       }}
     >
-      <h3 style={{ fontSize: 12, marginBottom: 8 }}>Widget Values</h3>
+      <h3 style={{ fontSize: 12, margin: '0 0 8px' }}>Widget Values</h3>
       {entries.slice(-5).map(([nodeId, sockets]) => (
         <div key={nodeId} style={{ marginBottom: 4 }}>
           <span style={{ color: '#4ade80' }}>{nodeId}</span>
@@ -1007,6 +1010,7 @@ function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInst
         left: 16,
         zIndex: 10,
         background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
         padding: '12px 16px',
         borderRadius: 8,
         fontSize: 12,
@@ -1015,7 +1019,7 @@ function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInst
       }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <h3 style={{ fontSize: 13, marginBottom: 10 }}>Viewport Controls</h3>
+      <h3 style={{ fontSize: 13, margin: '0 0 10px' }}>Viewport Controls</h3>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button style={buttonStyle} onClick={() => flowRef.current?.fitView()}>
@@ -1073,6 +1077,7 @@ function VariantShowcase({
         left: 16,
         zIndex: 10,
         background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
         padding: '12px 16px',
         borderRadius: 8,
         fontSize: 12,
@@ -1083,7 +1088,7 @@ function VariantShowcase({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3 style={{ fontSize: 13, marginBottom: 10 }}>Node Variants</h3>
+      <h3 style={{ fontSize: 13, margin: '0 0 10px' }}>Node Variants</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {VARIANTS.map((v) => (
           <label
@@ -1260,12 +1265,13 @@ export default function DemoPage() {
           left: 16,
           zIndex: 10,
           background: 'rgba(0,0,0,0.8)',
+          color: '#fff',
           padding: '12px 16px',
           borderRadius: 8,
           fontSize: 14,
         }}
       >
-        <h1 style={{ fontSize: 18, marginBottom: 8 }}>Kookie Flow</h1>
+        <h1 style={{ fontSize: 18, margin: '0 0 8px' }}>Kookie Flow</h1>
         <p style={{ color: '#888' }}>
           {entities.length} entities, {edges.length} edges
         </p>

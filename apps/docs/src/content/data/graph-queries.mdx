@@ -1,0 +1,334 @@
+The graph engine answers questions about how a graph is wired: what feeds an entity, what it
+feeds, what order things run in, where the loops are, and which inputs are missing. It also
+works out the wiring for common edits, such as putting a new node in the middle of an edge.
+
+You can ask these questions two ways. The live store has an action for each one, and it keeps
+its own index of the wires up to date. For a graph you hold yourself, build an index from its
+edges and call the same functions directly.
+
+## Ask the live graph
+
+From a component rendered inside `KookieFlow`, get the store with `useFlowStoreApi()` and call
+the query actions on `getState()`. They take no index, because the store already has one. The
+[flow store](/data/store) chapter covers reaching the store.
+
+This button adds everything that feeds the selected nodes to the selection:
+
+```tsx title="select-upstream-button.tsx"
+'use client';
+
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+export function SelectUpstreamButton() {
+  const store = useFlowStoreApi();
+
+  const selectUpstream = () => {
+    const { selectedEntityIds, walkUpstream, selectEntities } = store.getState();
+    const ids = new Set(selectedEntityIds);
+    for (const id of selectedEntityIds) {
+      for (const upstream of walkUpstream(id)) ids.add(upstream);
+    }
+    selectEntities([...ids]);
+  };
+
+  return <button onClick={selectUpstream}>Select upstream</button>;
+}
+```
+
+Selection lives only in the store, so this is safe in a controlled graph. The store's answers
+use its own entities, which have their sockets filled in from `entityTypes`.
+
+| Store action | Same as |
+| --- | --- |
+| `getIncomers(id)`, `getOutgoers(id)` | `getIncomers(index, id)`, `getOutgoers(index, id)` |
+| `getEntityEdges(id)`, `getInputEdges(id)`, `getOutputEdges(id)` | the functions of the same name |
+| `getEdgesBetween(a, b)` | `getEdgesBetween(index, a, b)` |
+| `walkUpstream(id)`, `walkDownstream(id)` | the functions of the same name |
+| `getAnalysis()` | `computeAnalysis(ids, index, muted)`, computed again only after `topologyVersion` changes |
+| `wouldCreateCycle(source, target)` | `wouldCreateGraphCycle(index, source, target)` |
+| `getAffectedEntities(changed)` | `getAffectedEntities(changed, index, order, muted)` |
+| `getConnectedComponents()` | `getConnectedComponents(ids, index)` |
+| `areConnected(a, b)` | `areConnected(index, a, b)` |
+| `getExecutionOrder(id)` | `getExecutionOrder(index, id)` |
+| `getReadyEntities(ids, completed)` | `getReadyEntities(ids, index, completed)` |
+| `validate(socketTypes?)` | `validateGraph(entities, edges, index, socketTypes)` |
+| `isGraphComplete()` | `isGraphComplete(entities, index)` |
+| `getCompatiblePorts(entityId, socketId, isInput, socketTypes, allowCycles?)` | `getCompatiblePorts(entityId, socketId, isInput, entities, socketTypes, index, allowCycles)` |
+
+Two functions have different names when you import them. The cycle check is
+`wouldCreateGraphCycle`, because the package's `wouldCreateCycle` is a different function: it
+checks whether putting an entity inside a frame would make a frame contain itself. The validator
+is `validateGraph`.
+
+## Build an index for a graph you hold
+
+`buildAdjacencyIndex(edges)` reads your edges once and returns an `AdjacencyIndex`. Every pure
+query takes that index as its first argument. Build it again whenever your edges change.
+
+```tsx title="upstream-count.tsx"
+'use client';
+
+import { useMemo } from 'react';
+import { buildAdjacencyIndex, getIncomers, walkUpstream, type Edge } from '@kushagradhawan/kookie-flow';
+
+export function UpstreamCount({ edges, entityId }: { edges: Edge[]; entityId: string }) {
+  const index = useMemo(() => buildAdjacencyIndex(edges), [edges]);
+  const direct = getIncomers(index, entityId).length;
+  const total = [...walkUpstream(index, entityId)].length;
+  return <span>{direct} direct inputs, {total} entities upstream</span>;
+}
+```
+
+The index is built from edges alone, so an entity with no edges isn't in it, and the lookups below
+return an empty array for that entity.
+
+| Field | Type | What it holds |
+| --- | --- | --- |
+| `outgoing` | `Map<string, Map<string, Edge[]>>` | Edges leaving each entity, grouped by socket id. |
+| `incoming` | `Map<string, Map<string, Edge[]>>` | Edges arriving at each entity, grouped by socket id. |
+| `byEntity` | `Map<string, Edge[]>` | Every edge touching each entity. An edge from an entity to itself appears once. |
+
+An edge with no `sourceSocket` or `targetSocket` is grouped under `'__default__'`. The arrays
+belong to the index, and some queries return them directly, so copy one before you change it.
+
+| Function | Returns |
+| --- | --- |
+| `getIncomers(index, id)` | `string[]`: the ids of entities wired into `id`, each once. |
+| `getOutgoers(index, id)` | `string[]`: the ids of entities `id` is wired into, each once. |
+| `getEntityEdges(index, id)` | `Edge[]`: every edge touching `id`. |
+| `getInputEdges(index, id)` | `Edge[]`: the edges arriving at `id`. |
+| `getOutputEdges(index, id)` | `Edge[]`: the edges leaving `id`. |
+| `getEdgesBetween(index, a, b)` | `Edge[]`: the edges between `a` and `b`, in either direction. |
+
+## Walk upstream and downstream
+
+`walkUpstream(index, id)` yields every entity that feeds `id`, directly or through others.
+`walkDownstream(index, id)` yields every entity that `id` feeds. Both are generators.
+
+- **The starting entity isn't included,** and each entity is yielded once.
+- **Loops are safe.** A walk never visits an entity twice, so it ends.
+- **The order isn't run order.** The walk goes depth-first. Use `getExecutionOrder()` when order
+  matters.
+- **You can stop early.** Break out of the loop and the walk goes no further.
+
+```ts
+const { walkUpstream, entityMap } = store.getState();
+let loader: string | undefined;
+for (const id of walkUpstream('render')) {
+  if (entityMap.get(id)?.type === 'loader') {
+    loader = id;
+    break;
+  }
+}
+```
+
+`getAffectedEntities(changed, index, order?, muted?)` takes one id or an array, and returns
+everything downstream of them. Pass a topological order, such as
+`computeAnalysis(...).topologicalOrder`, to get the result in run order. Without one, the result
+isn't sorted. Muted entities are included.
+
+## Find the order and the cycles
+
+`computeAnalysis(entityIds, index, mutedEntityIds?)` sorts the graph in the order it can run.
+Pass every entity id, because an entity with no edges isn't in the index. It returns a
+`CachedAnalysis` without its `topologyVersion`. The store's `getAnalysis()` returns the full
+object, and computes it again only after the store's `topologyVersion` changes. The
+[flow store](/data/store) chapter lists what changes it.
+
+| Field | Type | What it holds |
+| --- | --- | --- |
+| `topologicalOrder` | `string[] \| null` | Every entity, each after everything that feeds it. `null` when the graph has a loop. |
+| `executionLevels` | `string[][] \| null` | Entities grouped into steps. Everything in one step can run once the steps before it are done. Muted entities are left out. `null` when the graph has a loop. |
+| `hasCycles` | `boolean` | Whether the graph has a loop. |
+| `cycleEntityIds` | `string[]` | The entities on a loop, and the entities a loop feeds. |
+| `roots` | `string[]` | Entities with nothing wired into them. |
+| `leaves` | `string[]` | Entities that feed nothing, not counting entities in `cycleEntityIds`. |
+| `topologyVersion` | `number` | The store's `topologyVersion` when the analysis was computed. |
+
+The rest of the functions answer narrower questions:
+
+| Function | Returns |
+| --- | --- |
+| `wouldCreateGraphCycle(index, source, target)` | `boolean`: whether a new edge from `source` to `target` would close a loop. `true` when they're the same entity. It walks only what's downstream of `target` and stops as soon as it reaches `source`, so you can call it while someone drags a connection. |
+| `getExecutionOrder(index, id)` | `string[]`: `id` and everything upstream of it, in run order. If that part of the graph has a loop, the same ids in no particular order. |
+| `getReadyEntities(ids, index, completed)` | `string[]`: the entities in `ids` that aren't in `completed` and whose inputs from `ids` are all in `completed`. |
+| `getConnectedComponents(ids, index)` | `Map<string, string[]>`: groups of entities joined by edges in either direction, keyed by one member of each group. An entity with no edges is a group of its own. |
+| `areConnected(index, a, b)` | `boolean`: whether any chain of edges joins `a` and `b`, in either direction. `true` when they're the same entity. |
+
+If you want the graph to run, you don't need to schedule it yourself with these.
+[Evaluation](/data/evaluation) runs entities in order and tracks their status.
+
+## Validate a graph
+
+`validateGraph(entities, edges, index, socketTypes?, isTypeCompatible?)` returns a list of
+`GraphValidationIssue`. An empty list means it found nothing.
+
+| `type` | Fields | What it means |
+| --- | --- | --- |
+| `'cycle'` | `entityIds` | The graph has a loop. `entityIds` holds the entities on it and the ones it feeds. |
+| `'unconnected-required'` | `entityId`, `portId`, `portName` | An input has no edge and no `defaultValue`. |
+| `'type-mismatch'` | `edgeId`, `sourceType`, `targetType` | An edge joins two socket types that aren't compatible. |
+
+This run button checks the graph first. If it finds problems, it lists them instead of running:
+
+```tsx title="run-button.tsx"
+'use client';
+
+import { useState } from 'react';
+import { useFlowStoreApi, type GraphValidationIssue, type SocketType } from '@kushagradhawan/kookie-flow';
+
+function describe(issue: GraphValidationIssue): string {
+  switch (issue.type) {
+    case 'cycle':
+      return `A loop runs through ${issue.entityIds.join(', ')}.`;
+    case 'unconnected-required':
+      return `${issue.entityId} needs something wired into ${issue.portName}.`;
+    case 'type-mismatch':
+      return `Edge ${issue.edgeId} connects ${issue.sourceType} to ${issue.targetType}.`;
+  }
+}
+
+export function RunButton({ socketTypes }: { socketTypes: Record<string, SocketType> }) {
+  const store = useFlowStoreApi();
+  const [problems, setProblems] = useState<string[]>([]);
+
+  const run = () => {
+    const issues = store.getState().validate(socketTypes);
+    setProblems(issues.map(describe));
+    if (issues.length === 0) void store.getState().evaluateAll();
+  };
+
+  return (
+    <div>
+      <button onClick={run}>Run</button>
+      {problems.map((problem) => <p key={problem}>{problem}</p>)}
+    </div>
+  );
+}
+```
+
+Keep these rules in mind when you read the results:
+
+- **Only `defaultValue` makes an input optional.** A value someone set with the input's widget
+  doesn't count, so an input with a widget and no `defaultValue` is reported until it's wired.
+- **Types are checked only if you ask.** Pass `socketTypes`, the same object you give
+  `KookieFlow`, or your own `isTypeCompatible(sourceType, targetType)`. Without either, no
+  `'type-mismatch'` issue is reported.
+- **With `socketTypes`, compatible means** the two types are the same, either one is `'any'`,
+  either type's `compatibleWith` is `'*'`, or one type's `compatibleWith` lists the other. Your
+  own `isTypeCompatible` replaces that rule.
+- **The pure function sees only the sockets you wrote.** If `entityTypes` fills in an entity's
+  sockets, your own entities don't have them. Call the store's `validate()` instead.
+
+`isGraphComplete(entities, index)` returns `true` when every input without a `defaultValue` has
+an edge. It's the `'unconnected-required'` check as a single answer.
+
+`getCompatiblePorts(entityId, socketId, isInput, entities, socketTypes, index?, allowCycles?)`
+lists the sockets on other entities that a socket could connect to, as
+`Array<{ entityId, socketId, socketName, socketType }>`. Pass `isInput` as `true` when the
+starting socket is an input, and you get outputs back. When you pass an index and `allowCycles`
+isn't `true`, sockets that would close a loop are left out. The store always has an index, so pass
+`true` there to keep them.
+
+## Rewire around an entity
+
+`computeInsertOnEdge()` and `computeBypass()` work out an edit without making it. You apply the
+result to your own state, so a controlled graph keeps it and undo can take it back.
+
+`computeInsertOnEdge(edge, newEntity, sourceEntity, targetEntity)` splits an edge from A to B
+into A to the new entity, and the new entity to B. It returns:
+
+- `removeEdgeId`: the id of the edge to remove.
+- `newEdges`: two edges. The first goes from A to the new entity's first input, and the second
+  from the new entity's first output to B. Their ids are the old id with `-a` and `-b` added.
+- `entityPosition`: halfway between the positions of A and B. A missing entity counts as `(0, 0)`.
+
+This component puts a new Blur node in the middle of any edge you click:
+
+```tsx title="insert-on-click.tsx"
+'use client';
+
+import {
+  KookieFlow,
+  computeInsertOnEdge,
+  useGraph,
+  type Edge,
+  type EdgeChange,
+  type Entity,
+} from '@kushagradhawan/kookie-flow';
+
+const blurNode = (): Entity => ({
+  id: crypto.randomUUID(),
+  type: 'default',
+  position: { x: 0, y: 0 },
+  data: { label: 'Blur' },
+  inputs: [{ id: 'in', name: 'In', type: 'image' }],
+  outputs: [{ id: 'out', name: 'Out', type: 'image' }],
+});
+
+export function InsertOnClick() {
+  const graph = useGraph({ history: true });
+
+  const insert = (edge: Edge) => {
+    const entity = blurNode();
+    const { removeEdgeId, newEdges, entityPosition } = computeInsertOnEdge(
+      edge,
+      entity,
+      graph.getEntity(edge.source),
+      graph.getEntity(edge.target)
+    );
+    graph.onEntitiesChange([{ type: 'add', entity: { ...entity, position: entityPosition } }]);
+    graph.onEdgesChange([
+      { type: 'remove', id: removeEdgeId },
+      ...newEdges.map((next): EdgeChange => ({ type: 'add', edge: next })),
+    ]);
+  };
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow
+        entities={graph.entities}
+        edges={graph.edges}
+        onEntitiesChange={graph.onEntitiesChange}
+        onEdgesChange={graph.onEdgesChange}
+        onConnect={graph.onConnect}
+        onEdgeClick={insert}
+      />
+    </div>
+  );
+}
+```
+
+`computeBypass(entityId, index)` removes an entity and joins what fed it to what it fed. It
+returns `removeEntityId`, `removeEdgeIds` with every edge in and out of the entity, and
+`newEdges`. The first edge in is joined to the first edge out, the second to the second, and so
+on. An edge left without a partner is removed and not replaced. The new ids are
+`bypass-<entityId>-0`, `bypass-<entityId>-1` and so on.
+
+The store has actions that make these edits straight away: `insertOnEdge(edgeId, newEntity)` and
+`bypassEntity(entityId)`. Like every store edit, they don't call `onEntitiesChange` or
+`onEdgesChange`, so in a controlled graph use the `compute` functions and report the changes
+yourself.
+
+### Mute an entity
+
+`muteEntity(id)` and `unmuteEntity(id)` are store actions, and `isMuted(id)` tells you which
+state an entity is in. A muted entity isn't sent to `onEvaluate`. Instead, the value on its first
+input passes straight to its first output, its second input to its second output, and so on.
+
+Muting lives only in the store. It isn't part of your entities, it isn't reported, `toObject()`
+doesn't save it, and nothing on the canvas shows it. If people need to see or save it, keep it in
+your entity data and call `muteEntity()` to match.
+
+### Collapse into a subgraph
+
+`computeCollapseToSubgraph(entityIds, frameId, entities, index, layout?)` works out how to fold
+a set of entities into one frame. It returns the frame's bounds, the edges to remove, new edges
+that connect outside entities to the frame, and `frameInputs` and `frameOutputs` that record which
+original socket each frame port stands for. Pass the socket layout from `useSocketLayout()` as
+`layout` so entities without a `height` are measured as they're drawn.
+
+`computeExpandSubgraph(frameId, childEntities, internalEdges, entities, index, portMapping)` is the
+reverse. It returns `removeEntityId`, `removeEdgeIds`, `restoreEntities`, `restoreEdges` and
+`reconnectEdges`. `collapseToSubgraph()` and `expandSubgraph()` on the ref make both edits and
+report them, and the [Frames and groups](/entities/frames) chapter shows how to use them.

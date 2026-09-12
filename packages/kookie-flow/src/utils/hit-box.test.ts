@@ -33,6 +33,7 @@ const LAYOUT: ResolvedSocketLayout = {
   borderWidth: 1,
   markSize: 20,
   trackHeight: 4,
+  listRowHeight: 30,
 };
 
 /** No width, no height — the shape whose drawn size is computed rather than stated. */

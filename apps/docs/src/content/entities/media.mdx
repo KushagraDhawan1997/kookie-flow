@@ -1,0 +1,239 @@
+A picture, a video clip, or a glTF model can be an entity of its own, drawn inside the canvas so
+nodes can sit in front of it or behind it. A node can also show what one of its outputs holds, in
+a band inside its own body.
+
+People can also paste or drop media onto the canvas to make these entities, as
+[Dropping and pasting media](/interaction/drop-and-paste) describes.
+
+## Show an image
+
+Give the entity `type: 'image'`, a `width`, a `height`, and a `data.src`.
+
+```tsx
+const cover: Entity = {
+  id: 'cover', type: 'image', position: { x: 0, y: 0 }, width: 320, height: 200,
+  data: { src: '/uploads/cover.jpg', objectFit: 'cover' },
+};
+```
+
+| Field          | Type                             | Default  | Meaning                                                                                  |
+| -------------- | -------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `src`          | `string`                         | none     | The picture's URL, a `data:` URL, or a `blob:` URL.                                      |
+| `objectFit`    | `'contain' \| 'cover' \| 'fill'` | `'fill'` | `fill` stretches the picture to the box, `cover` fills the box and crops, and `contain` fits the whole picture inside it. |
+| `aspectLocked` | `boolean`                        | `true`   | Whether a resize keeps the entity's proportions. See [Resize media](#resize-media).      |
+| `alt`          | `string`                         | none     | Stored with the entity, but the canvas doesn't use it.                                   |
+
+`ImageEntityData` is the type of this `data`, and `ImageEntity` is `Entity<ImageEntityData>` with
+`type: 'image'`.
+
+The canvas fetches `src` from the browser, so if your pictures live on another origin, that server
+must allow cross-origin requests (CORS). The entity shows a flat placeholder while the picture loads,
+and a flat error colour if it fails, with a warning in the console.
+
+When a picture first decodes, the entity keeps its width and takes the picture's own proportions,
+down to a height of 40. The canvas reports the new height to `onEntitiesChange` as a `dimensions`
+change. A new `src` reshapes the entity again. Its corners follow the same radius as node bodies.
+
+## Play a video
+
+Give the entity `type: 'video'`, a `width`, a `height`, and a `data.src`.
+
+```tsx
+const clip: Entity = {
+  id: 'clip', type: 'video', position: { x: 360, y: 0 }, width: 320, height: 180,
+  data: { src: '/uploads/walkthrough.mp4', autoplay: true },
+};
+```
+
+| Field          | Type                             | Default     | Meaning                                                                                  |
+| -------------- | -------------------------------- | ----------- | ---------------------------------------------------------------------------------------- |
+| `src`          | `string`                         | none        | The clip's URL.                                                                          |
+| `autoplay`     | `boolean`                        | `false`     | Play whenever the clip is on screen.                                                     |
+| `playing`      | `boolean`                        | none        | Play or pause from your code. When set, it wins over `autoplay` and over the play button. |
+| `loop`         | `boolean`                        | `true`      | Start again at the end.                                                                  |
+| `controls`     | `boolean`                        | `true`      | Show the play button and the scrub bar under the pointer.                                |
+| `objectFit`    | `'contain' \| 'cover' \| 'fill'` | `'contain'` | How the frame fills the box. `contain` shows the whole frame inside it.                  |
+| `aspectLocked` | `boolean`                        | `true`      | Whether a resize keeps the entity's proportions.                                         |
+| `poster`       | `string`                         | none        | Stored with the entity, but not drawn. The clip's own first frame shows until it plays.  |
+
+`VideoEntityData` is the type of this `data`, and `VideoEntity` is `Entity<VideoEntityData>` with
+`type: 'video'`.
+
+These rules decide what plays:
+
+- **Clips are always muted.** Browsers refuse to start a clip with sound until the person has
+  interacted with the page, so the canvas plays every clip without sound.
+- **A clip plays only while it's on screen.** A clip that leaves the view, or sits inside a
+  collapsed frame, pauses, and it carries on when it's visible again.
+- **At most four clips play at once.** Any others show their current frame until a playing clip
+  pauses or leaves the view.
+- **Entities with the same `src` share one clip.** Pausing one of them pauses them all.
+
+Moving the pointer over a clip at least 120 × 80 shows a bar along its bottom edge. The button at
+the left plays and pauses, and pressing or dragging along the track jumps through the clip. A
+press on the button outranks `autoplay`. When you use a clip as decoration, set
+`controls: false` so the pointer never raises a bar on it.
+
+The canvas loads a clip from its URL without credentials, so a clip on another origin must be
+served with CORS headers. When the clip's size is known, the entity keeps its width and takes the
+clip's proportions, and the canvas reports the change as it does for a picture.
+
+## Show a 3D model
+
+Give the entity `type: 'mesh'`, a `width`, a `height`, and a `data.src` that points at a `.glb` or
+`.gltf` file.
+
+```tsx
+const chair: Entity = {
+  id: 'chair', type: 'mesh', position: { x: 720, y: 0 }, width: 240, height: 240,
+  data: { src: '/models/chair.glb', cameraPosition: { x: 1, y: 0.6, z: 1 }, autoRotate: true },
+};
+```
+
+| Field            | Type                        | Default               | Meaning                                                                                   |
+| ---------------- | --------------------------- | --------------------- | ----------------------------------------------------------------------------------------- |
+| `src`            | `string`                    | none                  | The model's URL.                                                                          |
+| `cameraPosition` | `{ x, y, z }`               | `{ x: 0, y: 0.4, z: 1 }` | The direction the camera looks from, measured from the model's centre. The distance is chosen for you. |
+| `autoRotate`     | `boolean`                   | `false`               | Turn the model continuously.                                                              |
+| `rotateSpeed`    | `number`                    | `0.6`                 | How fast `autoRotate` turns the model, in radians per second.                             |
+| `orbit`          | `boolean`                   | `true`                | Let people turn the model by dragging it.                                                 |
+| `aspectLocked`   | `boolean`                   | `true`                | Whether a resize keeps the entity's proportions.                                          |
+
+`MeshEntityData` is the type of this `data`, and `MeshEntity` is `Entity<MeshEntityData>` with
+`type: 'mesh'`.
+
+The camera stands far enough back that the whole model fits the box, whatever size the model is,
+so `cameraPosition` only picks the angle you see it from. The background is transparent, and the canvas lights the
+model, because most glTF files carry no lights of their own. A model that can't load, because of a
+missing file, a parse error, or a refused cross-origin request, shows the error colour.
+
+Dragging a model turns it. To move the entity, drag the strip along its top edge, which appears
+under the pointer. A model shorter than 72 units has no strip, so every drag on it turns it. Set
+`orbit: false` to let a drag anywhere on the model move it instead.
+
+A turn someone makes isn't written to the entity, so it isn't saved. A reload shows the model from
+`cameraPosition` again. A model is drawn at the `width` and `height` you give it. Unlike a picture
+or a clip, it doesn't change shape to match the file.
+
+## Resize media
+
+Select an image, a video, or a model and drag a handle. A resize keeps the entity's proportions,
+as they are when the drag starts. Hold Shift to resize freely instead. When you set
+`aspectLocked: false`, the two swap: the resize is free, and Shift keeps the proportions. Hold Alt
+to resize from the centre rather than from the opposite edge.
+
+| Media | Smallest size |
+| ----- | ------------- |
+| Image | 60 × 40       |
+| Video | 60 × 40       |
+| Model | 80 × 80       |
+
+When the drag ends, the canvas reports a `dimensions` change, and a `position` change as well if
+the resize moved the entity's top-left corner.
+
+When the `image` entry of `entityTypes` sets `toolbar: true`, the toolbar's image controls set
+`objectFit` and `aspectLocked` on a selected picture. The [Selection toolbar](/interaction/toolbar)
+chapter covers them.
+
+## Show an output inside a node
+
+Set `preview` on a node to draw a band inside its body that shows what one of its output sockets
+holds. The band sits below the sockets, and the node grows taller to make room for it.
+
+```tsx
+const generate: Entity = {
+  id: 'generate', type: 'default', position: { x: 0, y: 0 }, width: 260,
+  data: { label: 'Generate' },
+  inputs: [{ id: 'prompt', name: 'Prompt', type: 'string' }],
+  outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  preview: { socket: 'image', height: 180, fit: 'contain' },
+};
+```
+
+| Field    | Type                    | Default   | Meaning                                                              |
+| -------- | ----------------------- | --------- | -------------------------------------------------------------------- |
+| `socket` | `string`                | required  | The id of the output socket whose value is shown.                    |
+| `height` | `number`                | `160`     | The band's height.                                                   |
+| `fit`    | `'cover' \| 'contain'`  | `'cover'` | Fill the band and crop, or fit the whole picture inside it.          |
+
+`EntityPreview` is the type of `preview`. An entity type can give every node of that type a band
+through its own `preview`, as [Entity types](/entities/types) describes.
+
+The band is drawn only on a node with a `width`, stated on the node or through its type's
+`defaultWidth`. A node that takes the default width reserves the space and leaves it empty. If you
+give the node a `height` too short for the band, the band shrinks to fit inside the node.
+
+The value comes from the evaluation engine, not from the node's `data`. You put it there by
+returning it from `onEvaluate`, or by calling `setSocketValue` on the [ref](/api/instance). The
+[Evaluation](/data/evaluation) chapter covers both. This example draws an image entity beside a
+node whose band shows a picture placed with `setSocketValue`:
+
+<Example name="media" />
+
+The band decides what to draw from the value:
+
+- **A string ending in `.mp4`, `.webm`, `.ogv`, `.mov`, or `.m4v`** plays as a clip.
+- **A string ending in `.glb` or `.gltf`** shows as a model. For clips and models, a query string
+  or a hash after the extension is ignored.
+- **Any other string that starts with `http://`, `https://`, `/`, `./`, `../`, or `blob:`** shows
+  as a picture, so a link with no extension works.
+- **A `data:` URL** shows as a picture, a clip, or a model, from its MIME type.
+- **An `ImageBitmap`, an `HTMLImageElement`, or an `HTMLCanvasElement`** shows as a picture, with
+  no download.
+- **Anything else**, such as a number, an object, a plain word, or no value yet, leaves the band
+  empty.
+
+A clip in a band plays muted and loops whenever the band is on screen, and it has no controls. A
+model in a band is shown from the default angle and can't be turned. A bitmap, image element or
+canvas is uploaded once, when it arrives, so drawing on the same canvas later doesn't change the
+band. When you want a new picture, set the value again with a new object.
+
+## What each media type costs
+
+A still picture costs nothing per frame once it's on the GPU. A playing clip and a turning model
+cost work on every frame, and the canvas limits how many of each run at once.
+
+| Media                 | Work on every frame                                  | Limits                                                                  |
+| --------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| Image                 | None                                                 | 32 full-size pictures kept at once. At most two picture uploads per frame.       |
+| Video                 | One frame upload per playing clip                    | Four clips playing at once. Clips off screen pause.                     |
+| Model                 | A redraw for each model that is turning              | Eight models drawn at once.                                             |
+| Clip in a band        | One frame upload per playing band                    | Four band clips playing at once, counted apart from video entities.     |
+| Model in a band       | None once drawn                                      | Four band models drawn at once.                                         |
+
+### Pictures
+
+Each `src` is downloaded and decoded once, and every entity that uses it shares the result. The
+decoding happens off the main thread where the browser allows it. The canvas first uploads a copy
+no larger than 256 pixels on its longest side, and decodes the full picture only when the entity
+is wider than 256 pixels on screen. When more than 32 full-size pictures are held, the one drawn
+least recently goes back to its small copy until it's drawn large again.
+
+`maxImageTextureSize` caps the full-size copy of each picture entity along its longest side. A
+decoded picture uses 4 bytes for each pixel, so a 2048 × 2048 copy takes about 16 MB. Lower the cap
+if your board holds many large pictures, and raise it if your users zoom in close on detailed ones.
+
+| Prop                  | Type     | Default | Meaning                                                                  |
+| --------------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `maxImageTextureSize` | `number` | `2048`  | The longest side, in pixels, of the full-size copy of each image entity. Pictures in preview bands always use 2048. |
+
+### Clips
+
+A clip loads only enough to know its size and show its first frame until it plays. While it plays,
+the canvas uploads a new frame to the GPU on every frame, so the cost grows with the number of
+clips playing, not the number on the board.
+
+### Models
+
+Entities with the same `src` share one loaded model.
+
+Each model is drawn into an image of its own, sized to how large the entity is on screen, rounded
+up to a power of two from 128 to 1024 pixels. That image is drawn again only when something
+changes: the model finishes loading, the entity crosses a size step, someone turns it, or
+`autoRotate` is on. A board of still models therefore costs nothing per frame.
+
+Eight models hold an image at once. When a ninth needs one, the model that has been off screen
+longest gives its image up, and draws a new one when it comes back into view. If all eight are on
+screen, the ninth shows the placeholder until one of them leaves the view. Model bands work the
+same way, with four images of up to 512 pixels, except that a band left without an image stays
+empty.

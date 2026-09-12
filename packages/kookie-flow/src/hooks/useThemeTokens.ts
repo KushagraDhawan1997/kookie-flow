@@ -101,6 +101,11 @@ export interface ThemeTokens {
   '--radius-control-2': number;
   '--radius-control-3': number;
   '--radius-control-4': number;
+  /** A checkbox's corner at each size, per radius level — v2 restates it rather than scaling the control's. */
+  '--radius-mark-1': number;
+  '--radius-mark-2': number;
+  '--radius-mark-3': number;
+  '--radius-mark-4': number;
   '--icon-size-1': number;
   '--icon-size-2': number;
   '--icon-size-3': number;
@@ -142,6 +147,10 @@ export interface ThemeTokens {
   // Accent colors (from Theme's accentColor prop)
   '--accent-3': RGBColor;
   '--accent-9': RGBColor;
+  /** The dark focus ring (`--focus-ring` is accent-solid in light, accent-11 in dark). */
+  '--accent-11': RGBColor;
+  /** A tick or a glyph in the accent on a neutral ground: a select row's selected mark. */
+  '--accent-glyph': RGBColor;
   /** The ink that reads on an `--accent-9` fill, in both appearances. */
   '--accent-contrast': RGBColor;
   /**
@@ -175,6 +184,13 @@ export interface ThemeTokens {
   // Meta
   '--scale': number;
   appearance: 'light' | 'dark';
+  /**
+   * v2's contrast axis: `high` when the Theme stamps `data-contrast="high"`, or when the platform
+   * asks for more contrast and the Theme has not pinned `normal`. Most of what high contrast moves is
+   * a token and arrives by itself; this is for the rules that are not a token, like a lit list row
+   * becoming a solid fill.
+   */
+  contrast: 'normal' | 'high';
 }
 
 /**
@@ -245,6 +261,10 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   '--radius-control-2': 6,
   '--radius-control-3': 8,
   '--radius-control-4': 10,
+  '--radius-mark-1': 6,
+  '--radius-mark-2': 6,
+  '--radius-mark-3': 8,
+  '--radius-mark-4': 8,
   '--icon-size-1': 16,
   '--icon-size-2': 16,
   '--icon-size-3': 20,
@@ -282,6 +302,8 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   // Accent (indigo defaults)
   '--accent-3': [0.114, 0.118, 0.208], // Subtle accent background (indigo-3)
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
+  '--accent-11': [0.537, 0.765, 1], // #89c3ff
+  '--accent-glyph': [0.098, 0.6, 1], // #1999ff
   '--accent-contrast': [1, 1, 1],
   '--destructive-9': [0.898, 0.282, 0.302], // #e5484d — v1's --red-9
   '--success-9': [0.188, 0.643, 0.424], // #30a46c — v1's --green-9
@@ -303,6 +325,7 @@ export const FALLBACK_TOKENS: ThemeTokens = {
   // Meta
   '--scale': 1,
   appearance: 'dark',
+  contrast: 'normal',
 };
 
 /**
@@ -378,6 +401,14 @@ function detectAppearance(root: Element): 'light' | 'dark' {
 
   // Default to light
   return 'light';
+}
+
+/** v2's contrast rule: the stamped attribute wins; `auto` or none defers to the platform. */
+function detectContrast(root: Element): 'normal' | 'high' {
+  const attr = root.closest('[data-contrast]')?.getAttribute('data-contrast');
+  if (attr === 'high') return 'high';
+  if (attr === 'normal') return 'normal';
+  return typeof matchMedia === 'function' && matchMedia('(prefers-contrast: more)').matches ? 'high' : 'normal';
 }
 
 /**
@@ -475,6 +506,10 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     '--radius-control-2': getCSSVarPx(styles, '--radius-control-2', FALLBACK_TOKENS['--radius-control-2']),
     '--radius-control-3': getCSSVarPx(styles, '--radius-control-3', FALLBACK_TOKENS['--radius-control-3']),
     '--radius-control-4': getCSSVarPx(styles, '--radius-control-4', FALLBACK_TOKENS['--radius-control-4']),
+    '--radius-mark-1': getCSSVarPx(styles, '--radius-mark-1', FALLBACK_TOKENS['--radius-mark-1']),
+    '--radius-mark-2': getCSSVarPx(styles, '--radius-mark-2', FALLBACK_TOKENS['--radius-mark-2']),
+    '--radius-mark-3': getCSSVarPx(styles, '--radius-mark-3', FALLBACK_TOKENS['--radius-mark-3']),
+    '--radius-mark-4': getCSSVarPx(styles, '--radius-mark-4', FALLBACK_TOKENS['--radius-mark-4']),
     '--icon-size-1': getCSSVarPx(styles, '--icon-size-1', FALLBACK_TOKENS['--icon-size-1']),
     '--icon-size-2': getCSSVarPx(styles, '--icon-size-2', FALLBACK_TOKENS['--icon-size-2']),
     '--icon-size-3': getCSSVarPx(styles, '--icon-size-3', FALLBACK_TOKENS['--icon-size-3']),
@@ -512,6 +547,8 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Accent
     '--accent-3': getCSSVarRGB(styles, '--accent-3', FALLBACK_TOKENS['--accent-3']),
     '--accent-9': getCSSVarRGB(styles, '--accent-9', FALLBACK_TOKENS['--accent-9']),
+    '--accent-11': getCSSVarRGB(styles, '--accent-11', FALLBACK_TOKENS['--accent-11']),
+    '--accent-glyph': getCSSVarRGB(styles, '--accent-glyph', FALLBACK_TOKENS['--accent-glyph']),
     '--accent-contrast': getCSSVarRGB(styles, '--accent-contrast', FALLBACK_TOKENS['--accent-contrast']),
     '--destructive-9': getCSSVarRGB(styles, '--destructive-9', FALLBACK_TOKENS['--destructive-9']),
     '--success-9': getCSSVarRGB(styles, '--success-9', FALLBACK_TOKENS['--success-9']),
@@ -538,6 +575,7 @@ function readTokensFromDOM(root: Element): ThemeTokens {
     // Meta
     '--scale': getCSSVarPx(styles, '--scale', FALLBACK_TOKENS['--scale']),
     appearance,
+    contrast: detectContrast(root),
   }));
 }
 

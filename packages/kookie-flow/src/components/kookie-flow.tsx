@@ -36,7 +36,7 @@ import { MultiWeightTextRenderer } from './text-renderer';
 import { Minimap } from './minimap';
 import { WidgetsLayer } from './widgets-layer';
 import { WidgetsGL } from './widgets-gl';
-import { ThemeProvider, StyleProvider, FontProvider, useTheme, useSocketLayout } from '../contexts';
+import { ThemeProvider, StyleProvider, FontProvider, useTheme, useSocketLayout, useResolvedStyle } from '../contexts';
 import { resolveSocketTypes } from '../utils/socket-types';
 import {
   DEFAULT_VIEWPORT,
@@ -99,8 +99,25 @@ import {
   type WidgetHit,
 } from '../utils/widget-hit';
 import { widgetKey } from '../utils/widget-values';
+import {
+  popoverLayoutFor,
+  popoverContains,
+  selectRowAt,
+  colorPartAt,
+  svAt,
+  hueAt,
+  clampScroll,
+  scrollToShow,
+  typeAheadIndex,
+  POPOVER_MAX_ROWS,
+  type ColorPopoverLayout,
+} from '../utils/popover-layout';
+import { hsvToHex } from '../utils/hsv';
+import { measureText } from '../utils/text-layout';
+import { motionNow } from '../gl';
 import { stepEntityCursor } from '../utils/entity-cursor';
 import { WidgetEditOverlay } from './widget-edit-overlay';
+import { WidgetPopoverGL } from './widget-popover';
 import { WidgetA11yMirror } from './widget-a11y-mirror';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
 import { boundsFromCorners } from '../core/spatial';
@@ -1034,6 +1051,211 @@ function InputHandler({
   );
 
   /**
+   * THE WIDGET PANELS — a select's list, a colour widget's picker — drawn in GL by
+   * widget-popover.tsx and driven from here. Everything below reads the store's `widgetPopover`
+   * and writes `popoverIndex`, `popoverScroll` and `popoverHsv`; the renderer repaints from those.
+   *
+   * The layout is computed through the SAME function the renderer uses, from the same inputs,
+   * so a row is pressed exactly where it is drawn. The two style facts it needs are read through
+   * a ref, because the wheel and key listeners register once for the life of the component.
+   */
+  const resolvedStyle = useResolvedStyle();
+  const popoverDepsRef = useRef({ socketLayout, resolvedStyle });
+  popoverDepsRef.current.socketLayout = socketLayout;
+  popoverDepsRef.current.resolvedStyle = resolvedStyle;
+  const popoverLayout = useCallback(() => {
+    const s = store.getState();
+    const pop = s.widgetPopover;
+    if (!pop) return null;
+    const d = popoverDepsRef.current;
+    return popoverLayoutFor(
+      pop,
+      d.socketLayout.listRowHeight,
+      d.resolvedStyle.widgetRadius,
+      d.resolvedStyle.widgetPad,
+      s.viewport,
+      cachedRectRef.current
+    );
+  }, [store]);
+
+  /**
+   * Open a panel off a pressed widget. The widest option is measured HERE, once per open, with
+   * the same font the rows will be drawn in, so the list can outgrow its trigger; the renderer
+   * takes the number rather than re-measuring on every frame.
+   */
+  const openWidgetPopover = useCallback(
+    (hit: WidgetHit) => {
+      const kind = hit.config.type === 'select' ? 'select' : 'color';
+      const options = kind === 'select' ? (hit.config.options ?? []) : [];
+      const font = regularFontRef.current;
+      let widest = 0;
+      if (font) {
+        const scale = popoverDepsRef.current.resolvedStyle.widgetFontSize / font.metrics.info.size;
+        for (const option of options) {
+          widest = Math.max(widest, measureText(option, font.glyphMap, font.kerningMap) * scale);
+        }
+      }
+      const popover = {
+        kind,
+        entityId: hit.entityId,
+        socketId: hit.socketId,
+        key: widgetKey(hit.entityId, hit.socketId),
+        box: { x: hit.box.x, y: hit.box.y, width: hit.box.width, height: hit.box.height },
+        options,
+        value: hit.value === undefined || hit.value === null ? '' : String(hit.value),
+        widest,
+        openedAt: motionNow(),
+      } as const;
+      /**
+       * The scroll the panel is PLACED for, computed from the same layout that draws it.
+       *
+       * v2 opens a select with the chosen row over its trigger. Which row that is depends on how
+       * far the list is scrolled, and how far it can scroll depends on how many rows the screen
+       * holds — so the opening scroll is the layout's answer, not a count the store can guess.
+       */
+      const d = popoverDepsRef.current;
+      const layout = popoverLayoutFor(
+        popover,
+        d.socketLayout.listRowHeight,
+        d.resolvedStyle.widgetRadius,
+        d.resolvedStyle.widgetPad,
+        store.getState().viewport,
+        cachedRectRef.current
+      );
+      store.getState().openWidgetPopover(popover, layout.kind === 'select' ? layout.scroll : 0);
+    },
+    [store]
+  );
+
+  /** A list row is chosen: the value goes out and the list closes, in that order. */
+  const pickPopoverRow = useCallback(
+    (index: number) => {
+      const s = store.getState();
+      const pop = s.widgetPopover;
+      if (!pop || index < 0 || index >= pop.options.length) return;
+      emitWidgetChange(pop.entityId, pop.socketId, pop.options[index]);
+      s.closeWidgetPopover();
+    },
+    [store, emitWidgetChange]
+  );
+
+  /** A picker drag, in progress: which pointer, and which of the two controls it is moving. */
+  const colorDragRef = useRef<{ pointerId: number; part: 'sv' | 'hue' } | null>(null);
+  const applyColorDrag = useCallback(
+    (layout: ColorPopoverLayout, part: 'sv' | 'hue', worldX: number, worldY: number) => {
+      const s = store.getState();
+      const pop = s.widgetPopover;
+      if (!pop) return;
+      const hsv = s.popoverHsv;
+      let h = hsv[0];
+      let sat = hsv[1];
+      let v = hsv[2];
+      if (part === 'sv') {
+        const sv = svAt(layout, worldX, worldY);
+        sat = sv[0];
+        v = sv[1];
+      } else {
+        h = hueAt(layout, worldX);
+      }
+      s.setPopoverHsv(h, sat, v);
+      emitWidgetChange(pop.entityId, pop.socketId, hsvToHex(h, sat, v));
+    },
+    [store, emitWidgetChange]
+  );
+
+  /**
+   * The list's keyboard: arrows, Home/End, PageUp/Down, Enter and Space to pick, Escape to
+   * close, and type-ahead — letters typed within 600ms of each other build a prefix, and a single
+   * repeated letter cycles through the options that start with it. Returns true when the key
+   * was the panel's, so the caller stops there.
+   */
+  const typeAheadRef = useRef({ text: '', at: 0 });
+  const popoverKey = useCallback(
+    (e: KeyboardEvent): boolean => {
+      const s = store.getState();
+      const pop = s.widgetPopover;
+      if (!pop) return false;
+      if (e.key === 'Escape') {
+        s.closeWidgetPopover();
+        return true;
+      }
+      if (e.key === 'Tab') {
+        s.closeWidgetPopover();
+        return false;
+      }
+      if (pop.kind === 'color') {
+        if (e.key === 'Enter' || e.key === ' ') {
+          s.closeWidgetPopover();
+          return true;
+        }
+        return e.key.startsWith('Arrow');
+      }
+      const n = pop.options.length;
+      const visible = Math.min(n, POPOVER_MAX_ROWS);
+      const move = (to: number) => {
+        const index = Math.max(0, Math.min(n - 1, to));
+        s.setPopoverIndex(index);
+        s.setPopoverScroll(scrollToShow(s.popoverScroll, index, n, visible));
+      };
+      switch (e.key) {
+        case 'ArrowDown':
+          move(s.popoverIndex + 1);
+          return true;
+        case 'ArrowUp':
+          move(s.popoverIndex < 0 ? n - 1 : s.popoverIndex - 1);
+          return true;
+        case 'Home':
+          move(0);
+          return true;
+        case 'End':
+          move(n - 1);
+          return true;
+        case 'PageDown':
+          move(s.popoverIndex + visible);
+          return true;
+        case 'PageUp':
+          move(s.popoverIndex - visible);
+          return true;
+        case 'Enter':
+        case ' ':
+          if (s.popoverIndex >= 0) pickPopoverRow(s.popoverIndex);
+          else s.closeWidgetPopover();
+          return true;
+        default: {
+          if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return false;
+          const now = performance.now();
+          const buffer = typeAheadRef.current;
+          if (now - buffer.at > 600) buffer.text = '';
+          buffer.text += e.key;
+          buffer.at = now;
+          const from = buffer.text.length === 1 ? s.popoverIndex : -1;
+          const found = typeAheadIndex(pop.options, buffer.text, from);
+          if (found >= 0) move(found);
+          return true;
+        }
+      }
+    },
+    [store, pickPopoverRow]
+  );
+  const popoverKeyRef = useRef(popoverKey);
+  popoverKeyRef.current = popoverKey;
+  const popoverLayoutRef = useRef(popoverLayout);
+  popoverLayoutRef.current = popoverLayout;
+
+  /** An open panel closes when its entity goes away — the same rule the borrowed input keeps. */
+  useEffect(
+    () =>
+      store.subscribe(
+        (s) => s.entityMap,
+        (entityMap) => {
+          const pop = store.getState().widgetPopover;
+          if (pop && !entityMap.has(pop.entityId)) store.getState().closeWidgetPopover();
+        }
+      ),
+    [store]
+  );
+
+  /**
    * An open field closes when its entity goes away.
    *
    * The overlay snapshots the widget's world box at press time and follows the viewport from
@@ -1322,6 +1544,8 @@ function InputHandler({
   // Handle wheel zoom - using native event for { passive: false }
   useEffect(() => {
     const container = containerRef.current;
+    // Wheel travel not yet worth a row, carried between events so a trackpad scrolls a list.
+    const wheelCarry = { value: 0 };
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
@@ -1333,6 +1557,33 @@ function InputHandler({
       const cursorY = e.clientY - rect.top;
 
       const { viewport } = store.getState();
+
+      /**
+       * A wheel over an open list scrolls the list, a row per row's worth of travel, with the
+       * remainder carried so a trackpad's small deltas add up. A wheel anywhere else closes the
+       * panel, as a platform popup closes on scroll, and does not zoom — the gesture that
+       * dismissed the list should not also move the graph under it.
+       */
+      const pop = store.getState().widgetPopover;
+      if (pop) {
+        const layout = popoverLayoutRef.current();
+        const worldX = (cursorX - viewport.x) / viewport.zoom;
+        const worldY = (cursorY - viewport.y) / viewport.zoom;
+        if (layout && layout.kind === 'select' && popoverContains(layout, worldX, worldY)) {
+          const rowPx = layout.rowHeight * viewport.zoom;
+          wheelCarry.value += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1);
+          const steps = Math.trunc(wheelCarry.value / rowPx);
+          if (steps !== 0) {
+            wheelCarry.value -= steps * rowPx;
+            const s = store.getState();
+            s.setPopoverScroll(clampScroll(s.popoverScroll + steps, layout.rows, layout.visible));
+          }
+          return;
+        }
+        wheelCarry.value = 0;
+        store.getState().closeWidgetPopover();
+        return;
+      }
 
       // Normalize wheel delta across browsers
       // Safari often uses larger delta values
@@ -1512,6 +1763,39 @@ function InputHandler({
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
+
+      /**
+       * AN OPEN PANEL TAKES THE PRESS, before anything else does, the way a platform popup does:
+       * a press on a row picks it, a press on the picker starts a drag, a press anywhere else
+       * closes the panel and goes no further — the node under it is not selected by the press
+       * that dismissed the list over it.
+       */
+      const openPopover = store.getState().widgetPopover;
+      if (openPopover) {
+        if (e.button !== 0) {
+          store.getState().closeWidgetPopover();
+        } else {
+          e.preventDefault();
+          const layout = popoverLayout();
+          const worldPos = screenToWorld({ x: screenX, y: screenY }, store.getState().viewport);
+          if (layout && popoverContains(layout, worldPos.x, worldPos.y)) {
+            if (layout.kind === 'select') {
+              const row = selectRowAt(layout, store.getState().popoverScroll, worldPos.x, worldPos.y);
+              if (row >= 0) pickPopoverRow(row);
+            } else {
+              const part = colorPartAt(layout, worldPos.x, worldPos.y);
+              if (part === 'sv' || part === 'hue') {
+                colorDragRef.current = { pointerId: e.pointerId, part };
+                containerRef.current.setPointerCapture(e.pointerId);
+                applyColorDrag(layout, part, worldPos.x, worldPos.y);
+              }
+            }
+          } else {
+            store.getState().closeWidgetPopover();
+          }
+          return;
+        }
+      }
 
       // Middle-click or space+left-click: start panning
       if (e.button === 1 || (e.button === 0 && isSpaceDown)) {
@@ -1711,7 +1995,13 @@ function InputHandler({
               }
               return;
             }
-            // text, number, textarea, color — a borrowed DOM input, for this edit only.
+            if (hit.config.type === 'color') {
+              // The picker is GL, so it can open under a held button without the flash a native
+              // popup showed; nothing is borrowed.
+              openWidgetPopover(hit);
+              return;
+            }
+            // text, number, textarea — a borrowed DOM input, for its caret and IME, for this edit only.
             openWidgetEdit(hit);
             return;
           }
@@ -1852,6 +2142,44 @@ function InputHandler({
   // (which is batched). This prevents issues when events fire before React processes state updates.
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent) => {
+      /**
+       * An open panel owns the pointer while it is up: a picker drag moves its cursors, and a
+       * pointer over the list lights the row under it. Nothing beneath the panel is hovered
+       * meanwhile — a node lighting up through an open list is the wrong thing responding.
+       */
+      const colorDrag = colorDragRef.current;
+      if (colorDrag) {
+        if ((e.buttons & 1) === 0) {
+          colorDragRef.current = null;
+        } else {
+          const layout = popoverLayout();
+          if (layout && layout.kind === 'color') {
+            const rect = cachedRectRef.current;
+            const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, store.getState().viewport);
+            applyColorDrag(layout, colorDrag.part, world.x, world.y);
+          }
+          return;
+        }
+      }
+      if (store.getState().widgetPopover) {
+        const layout = popoverLayout();
+        if (layout) {
+          const rect = cachedRectRef.current;
+          const s = store.getState();
+          const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, s.viewport);
+          if (layout.kind === 'select') {
+            const row = selectRowAt(layout, s.popoverScroll, world.x, world.y);
+            // Off the rows the keyboard's row stays lit, as a platform list keeps it.
+            if (row >= 0) s.setPopoverIndex(row);
+            setWidgetCursor(row >= 0);
+          } else {
+            const part = colorPartAt(layout, world.x, world.y);
+            setWidgetCursor(part === 'sv' || part === 'hue');
+          }
+          return;
+        }
+      }
+
       /**
        * A slider drag, before anything else in this handler.
        *
@@ -2528,6 +2856,9 @@ function InputHandler({
         let hoveredWidgetSocketId: string | null = null;
         if (
           showWidgets &&
+          // v2 lights hover only on a pointer that can hover. A touch has no hover, and a finger
+          // that moved across a control on its way somewhere would otherwise leave it lit.
+          e.pointerType !== 'touch' &&
           newHoveredId !== null &&
           newHoveredSocket === null &&
           viewport.zoom >= MIN_WIDGET_ZOOM
@@ -2565,6 +2896,14 @@ function InputHandler({
   // before React has processed the state updates from handlePointerMove.
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent) => {
+      // A picker drag ends with its own pointer, and the panel stays open: the person is still
+      // choosing until they press away or Escape.
+      const colorDrag = colorDragRef.current;
+      if (colorDrag && colorDrag.pointerId === e.pointerId) {
+        colorDragRef.current = null;
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
       // A slider drag ends here and nowhere else. Released first so a gesture that started on a
       // widget cannot fall through into the selection logic below and clear the selection.
       //
@@ -2670,7 +3009,7 @@ function InputHandler({
         pendingSelectRef.current = null;
         const travelled =
           Math.abs(e.clientX - pendingSelect.screenX) + Math.abs(e.clientY - pendingSelect.screenY);
-        if (e.type === 'pointerup' && travelled <= DRAG_THRESHOLD) openWidgetEdit(pendingSelect.hit);
+        if (e.type === 'pointerup' && travelled <= DRAG_THRESHOLD) openWidgetPopover(pendingSelect.hit);
         // Returned whether or not it opened, for the reason the drag branch above returns: a
         // gesture that began on a widget must not fall through into the selection logic below.
         return;
@@ -3330,6 +3669,13 @@ function InputHandler({
         return;
       }
 
+      // An open widget panel gets every key first; see `popoverKey`.
+      if (popoverKeyRef.current(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       /**
        * THE ENTITY CURSOR — the half that makes one tab stop enough.
        *
@@ -3750,6 +4096,15 @@ function InputHandler({
        * handler all along; the canvas is the one that lacked it.
        */
       onPointerCancel={handlePointerUp}
+      /**
+       * Focus leaving the canvas closes an open panel: its keyboard is this element's keydown,
+       * and a list that no key can reach is a list that has to be pressed shut. Children losing
+       * focus bubble here too; a panel cannot be open while one of them has focus, so the target
+       * test only keeps a mirror control's blur from being mistaken for the canvas's.
+       */
+      onBlur={(e) => {
+        if (e.target === containerRef.current) store.getState().closeWidgetPopover();
+      }}
       onPointerLeave={(e) => {
         handlePointerUp(e);
         store.getState().setHoveredEntityId(null);
@@ -3997,6 +4352,8 @@ function FlowCanvas({
           defaultEntityWidth={defaultEntityWidth}
           socketLabelWidth={socketLabelWidth}
         />
+        {/* Last, so its ground copy sees everything drawn before it — see widget-popover.tsx. */}
+        {showWidgets && <WidgetPopoverGL />}
       </Canvas>
     </CanvasErrorBoundary>
   );

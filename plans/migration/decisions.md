@@ -1090,3 +1090,180 @@ nothing happening. The shader path had existed since the widgets moved into GL; 
 was driving it.
 
 703 unit tests, 273 laws.
+
+---
+
+## D20 — the panels are GL, and the controls are glass
+
+**Date:** 2026-09-12
+
+**Owner ruling: "Select opens in top left of the window, but the chevron looks bad, checkbox looks
+bad, there's no animation etc. and the DOM switch makes it look weird. I LOVE glass, thats what
+kookie ui v2 is based on, and I think glass in webgl is easier than DOM. We need to make these set
+of controls in webgl, from scratch, and then control the entire look. Build it in a way where we
+should be able to extract a package out of it should we want."**
+
+### What was wrong
+
+D7's rule — everything persistent paints in GL, the DOM appears only during an edit — had two
+exceptions that each borrowed a platform popup: a `<select>` opened with `showPicker()` and an
+`<input type="color">`. A popup is a window the page does not own. Measured on a scaled canvas the
+list opened at the top-left of the window, it wore the platform's own dress, and the trigger
+switched from MSDF glyphs to a DOM control and back on both edges of every edit. The tick and the
+chevron were two `step`-cut bands with no round caps, which at 500% zoom is a stair. Nothing on a
+node moved.
+
+### The shape
+
+**`src/gl/` is the seam.** Five files — SDF shapes, the glass layers, easing, a transition tracker,
+and the framebuffer copy — none of which imports the store, the theme or a component. A control
+shader in `components/` composes those chunks and adds the part that knows what a widget is. That
+boundary is what makes a `kookie-gl` package a move rather than an extraction.
+
+**Glass is alpha, not a texture, on a node.** The ground behind an on-node control is the flat
+card, whose blur is itself, so a well takes every glass layer but the blur from alpha blending
+alone: a tint the card shows through, a vertical sheen, a rim light along the top edge and a shade
+along the bottom (from the distance field's gradient, so a wide well is lit across its whole top),
+a hairline. A floating panel adds the blur: just before it draws, the pixels under it are copied
+out of the frame with `copyTexSubImage2D` (gl/backdrop.ts) and the shader disc-blurs and saturates
+them — `backdrop-filter`, by hand, for a few hundred pixels a side and only while a panel is open.
+
+**Transitions are per-instance start times.** The shader gets the state it is going to (an
+attribute it already had), the state it came from and the time it changed (`aAnim`), and eases
+between them against a clock uniform. A fade costs one buffer write when the state changes and
+nothing per frame; a change mid-fade retargets from where the eased value is. The clock reaches the
+shader only while something is moving. Every rule in CLAUDE.md about pans costing nothing holds.
+
+**The panel is two draw calls and one record.** `widgetPopover` in the store, plus `popoverIndex`,
+`popoverScroll` and an in-place `popoverHsv`. The renderer, the pointer handlers and the keyboard
+read the same record and lay it out through the same function (`utils/popover-layout.ts`), so a
+row is pressed exactly where it is drawn — the widget-geometry rule, applied to the panels. The
+list flips above its trigger when the bottom of the screen is near, slides left rather than leaving
+the right edge, scrolls past eight rows, and takes arrows, Home/End, PageUp/Down, Enter, Space,
+Escape and type-ahead from the canvas's own keydown, since the container already holds focus.
+
+**Kept from D7.** The text input, for its caret and IME. The accessibility mirror, which paints
+nothing. The release timing on a select, because a press that travels is a drag of the node.
+
+### What was measured
+
+Real Chromium, both appearances: the wells, the checked box, the grip, the swatch, the open list
+with its lit row and selected mark, the picker with both cursors. No `<select>` or colour input in
+the container at any point of the gesture. 30 laws in the `GL widgets` section; 742 unit tests.
+
+### Addendum, 2026-09-12 — the v2 pass
+
+**Owner ruling: "this is functional, but its not pretty. Think iOS liquid glass, think kookie ui
+v2. Also remember squircle for items, like menu etc, since everything is on gl."**
+
+The first cut invented its own glass. This pass reads v2's stylesheet — the vendored
+`styles.css` — and carries the material over number for number in `gl/material.ts`:
+`--material-regular-control-alpha`, the conic `--material-regular-ring-control` (four stops,
+mirrored about the bottom), `--material-control-wash-medium` and `-loud`, `--material-pool-control`,
+`--control-light`, `--control-chrome`, `--grip-cast`, `--material-glass-border`, `--shadow-3`, the
+4.5% fractal-noise rim (a per-pixel hash here), `--material-row-wash`, `--neutral-a7` for the mark's
+edge, and the loud fill's lightness and chroma lift at 80%. Motion is `--motion-hover-in`,
+`--motion-press`, `--motion-mark`, `--motion-ring` and `--floating-fall` on a damped spring that
+matches `--motion-spring-elastic` within a percent. `--press-squash` squashes a pressed mark and
+grip; the focus ring is 2px at 2px, landing from 4px further out over `--motion-ring`.
+
+**Squircles where v2 has them.** A floating-rows surface draws its corner at 1.75x through the L4
+norm, and its rows at 1.613x; the corner is a row's corner plus the panel's inset, as
+`.kui-floating-rows` computes it. Controls on a node stay circular, which is v2's own rule
+(`corner-shape` is on `.kui-surface` and nothing else, D13).
+
+Two GLSL reserved words — `half`, `cast` — each silently emptied a shader once during this work.
+The spike prints the compile log now.
+
+### Addendum, 2026-09-12 — measured, not read
+
+**Owner ruling: "Doesnt even look remotely as neat and polished? Border radius is wrong too for
+things like menus. It needs another one or two pass with YOU checking your own work."**
+
+The v2 pass read the stylesheet's tokens and guessed at how they compose. Reading tokens was not
+the defect. The defect was which tokens each part wears, and how CSS draws them. So this pass
+renders real v2 controls in the same browser, at the same device scale, beside the canvas
+(`harness/spikes/glass-compare.mjs`, `spikes/reference/`), and reads each part's computed style,
+pseudo-elements included (`spikes/v2-probe.mjs`). What that showed, and what changed:
+
+- **A field wears no wash.** Only a button does. The glint band inside every well was invented.
+- **The pool is a whisper.** `inset 0 -6px 12px -10px` grows its hole past every edge, so almost
+  nothing reaches the box. The first cut shrank the hole instead, which shaded every edge and made
+  each well look inflated. Shadows also ramp over the full CSS blur radius, which is two sigma, not
+  half of it.
+- **The ring sits one pixel inside the edge**, because it is an `::after` inside a 1px transparent
+  border. CSS interpolates gradient stops in premultiplied space. Mixed straight, the white-to-black
+  run passed through a half-alpha grey and drew a dark line along the top of every pill. That line
+  was part of the "broken ring" the earlier departure worked around.
+  With premultiplied stops, v2's `#fffffff2` is correct as written. Owner ruling, on a wide field
+  that still showed the notch: "its not divergence from v2, v2 looks a lot better." The fix is to
+  match v2, never to remove its light. The field the owner saw was a stale package build still
+  carrying the straight mix.
+- **A checkbox has no material.** v2 says so in its own types: "a 20px square of blur is a 20px
+  square". It is a solid fill, a 1px `--neutral-a7` edge, radius 6, and when checked the accent with
+  a top light. The tick is 9 by 6 with a stroke under 2px.
+- **A select chevron is 7 by 3.5 at a 1.17px stroke**, neutral-12 at 52% (74% dark), 18px in from
+  the end.
+- **A menu's rows are round, not squircles.** A row is a control, and only the surface wears
+  `corner-shape`. The panel's inset is `--panel-p-2`, 12px. A row is 30px, the control height less
+  the trigger's borders. The panel corner is (15 + 12) × 1.75 through the L4 norm. The tick sits in
+  a leading gutter, in the accent. The panel has the floating wash and its own pool, and no
+  hairline of its own: its ring is the whole edge.
+- **A slider's readout no longer sits on the track.** The track stops 44px short of the box's
+  end. The renderer, the pointer mapping and the readout all use `sliderTrackWidth`.
+
+Size stays the flow's own. The canvas lays widgets out at size 1, where v2's own mark is 16px.
+
+A shader that fails to compile draws nothing and logs nothing in the harness bundle. A renamed
+local in the ring function emptied both layers once during this pass. Compiling the `src/gl`
+chunks in isolation found it in one step.
+
+### Addendum, 2026-09-12 — the standards pass
+
+**Owner ruling: "now that its all on gl, it needs to adhere to standards and ideas etc kookie ui v2
+sets. Let's ensure its there."**
+
+The two passes before this one matched the MATERIAL. This one matches the RULES: v2's own docs
+(`THESIS`, `DECISIONS`, `ENGINEERING`, the package's `AGENTS.md`) and the state machinery in its
+stylesheet. What changed, by v2's own headings:
+
+- **States.** Hover is gated on a pointer that can hover, as `@media (hover:hover)` gates it. The
+  fill ladder is v2's: hover one step, press two, and an open trigger holds the hover step rather
+  than the press one. A press changes colour instantly; hover arrives in 80ms and leaves in 220ms.
+- **Motion.** Colour and movement never share a clock, so they no longer share one here: the press
+  pose runs on `--motion-spring-stiff` over 140ms and recovers on `--motion-spring-lively` over
+  550ms. Both springs, and the mark's and the panel's, are damped-spring fits to the stylesheet's
+  `linear()` tables, each within half a percent at every stop (`gl/ease.ts`). The tick draws on over
+  380ms and clears at once, which is what v2's `stroke-dashoffset` does.
+- **Reduced motion.** `uMotion` is 0 and every tracker duration collapses, so every state lands at
+  once and the panel simply appears.
+- **Focus.** v2 rings a button, a trigger and a checkbox on keyboard focus only, and a field
+  whenever the caret is inside. The canvas had no notion of keyboard focus on a control: the
+  accessibility mirror is the only thing that can hold it, so it now writes `focusVisibleWidgetKey`
+  and the widget layer rings that control. The ring lands from 6px to 2px on a mark or a trigger,
+  and does not travel on a field or a slider's grip, as the CSS has it.
+- **Sizing and radius.** A checkbox's corner is `--radius-mark-N` and a track's is
+  `min(track / 2, control radius)`, so both square at `none` while the grip stays a circle. A
+  control's value prints at `--font-size-N`, and a list row is `line height + 2 × row inset`.
+- **Colour.** The selected tick is `--accent-glyph`. A checked mark steps its accent darker on
+  hover and press rather than taking a filter. Under high contrast the lit row becomes a solid
+  accent with contrast ink, the track re-solves to neutral-6 and the mark's edge to `--control-edge`.
+- **The list.** It opens with the chosen row over the trigger, that row's label on the trigger's
+  label, at least 112px wide, capped by the available height and scrolling inside rather than at
+  eight rows, and it grows out of the trigger's own box.
+
+**What is deliberately not done, and why.**
+
+- **No disabled, read-only or invalid.** v2 has all three, and the flow's widget API has none of
+  them: a socket's widget config carries no such flag, so there is no state to paint. The rules are
+  recorded here for the day the API gains them.
+- **A trigger does not move.** v2 lifts a select trigger 1px on hover and sinks it 2px at 0.975
+  scale when pressed. A control's value on a node is drawn by the text layer, in a different mesh;
+  moving the well without the text reads as broken, and moving the text with it would mean writing
+  glyph buffers every frame of a press, against this package's first rule. The mark and the grip
+  carry no text and keep their squash.
+- **A slider keeps its readout.** v2's Slider ships without one. On a node the value is the point
+  of the control, so it stays — beside the track, never on it.
+- **Digits are not tabular.** v2 sets `font-variant-numeric: tabular-nums` on a number field. The
+  MSDF atlas has one glyph per character and no OpenType features, so the number is centred without
+  it.

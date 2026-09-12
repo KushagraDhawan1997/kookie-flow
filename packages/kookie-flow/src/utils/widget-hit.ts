@@ -18,7 +18,7 @@
  * see widget-hit.test.ts.
  */
 
-import { getWidgetBox, readWidgetBoxInto, isPointInWidget, type WidgetBox } from './widget-geometry';
+import { getWidgetBox, readWidgetBoxInto, isPointInWidget, sliderTrackWidth, type WidgetBox } from './widget-geometry';
 import { resolveWidgetConfig } from './widgets';
 import { readWidgetValue, widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
@@ -164,7 +164,8 @@ export function getWidgetSocketIdAt(
 export function sliderValueAt(hit: WidgetHit, worldX: number): number {
   const min = hit.config.min ?? 0;
   const max = hit.config.max ?? 1;
-  const t = Math.min(1, Math.max(0, (worldX - hit.box.x) / hit.box.width));
+  // Across the TRACK, not the box: the readout owns the trailing end (widget-geometry.ts).
+  const t = Math.min(1, Math.max(0, (worldX - hit.box.x) / sliderTrackWidth(hit.box)));
   const raw = min + t * (max - min);
   const step = hit.config.step;
   if (!step || !Number.isFinite(step) || step <= 0) return raw;

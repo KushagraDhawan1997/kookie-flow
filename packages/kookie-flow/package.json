@@ -64,6 +64,8 @@
     "harness:spike:formats": "node harness/spikes/color-formats.mjs",
     "harness:perf": "node harness/spikes/perf-baseline.mjs",
     "harness:spike:theme": "node harness/spikes/theme-flip.mjs",
+    "harness:spike:glass": "node harness/spikes/glass-look.mjs",
+    "harness:spike:compare": "node harness/spikes/glass-compare.mjs",
     "harness:counts": "node harness/spikes/counts.mjs",
     "harness:tokens": "node harness/spikes/token-census.mjs",
     "test:browser": "node harness/build.mjs && node harness/behaviors.mjs"

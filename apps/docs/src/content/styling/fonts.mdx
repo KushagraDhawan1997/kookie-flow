@@ -1,0 +1,166 @@
+The canvas draws its titles, labels and widget values itself, as glyphs taken from a font atlas.
+An atlas is an image that holds every character, together with the measurements that place each
+one on a line. Your page's CSS fonts don't reach the canvas, so the `font` prop chooses which
+atlas it uses.
+
+## Choose a font
+
+`font` takes a `FontPreset` name or a `FontConfig` object. The default is `'inter'`.
+
+| Value | What the canvas draws with | What it costs |
+| --- | --- | --- |
+| `'inter'` | Inter, in a regular and a semibold weight | A separate chunk, downloaded the first time a canvas uses it |
+| `'system'` | The platform's own interface font, built into an atlas when the canvas mounts | No font file to download. The atlas is built on the main thread at mount. |
+| `'roboto'`, `'source-serif'` | Inter, with a console warning, because these atlases aren't bundled | The same as `'inter'` |
+| Any other string | Inter, with a console warning that lists the valid presets. TypeScript rejects the name, so this happens only in JavaScript. | The same as `'inter'` |
+| A `FontConfig` | Your own atlas | Your atlas images and metrics |
+
+```tsx lineNumbers=false
+<KookieFlow entities={entities} edges={edges} font="system" />
+```
+
+The canvas draws no text until the atlas is ready, so titles and labels appear a moment after
+the nodes. To match the canvas to the rest of your page, point KookieUI's `--font-body` token at
+the same face.
+
+Because Inter loads as its own chunk, an app that uses `'system'` or a `FontConfig` never
+downloads it. A CommonJS build can't split chunks, so with CommonJS the atlas is part of the
+package entry.
+
+## Use the platform font
+
+`font="system"` draws the platform's interface font: `system-ui`, falling back through
+`-apple-system`, `Segoe UI`, `Roboto`, `Helvetica Neue` and `Arial`. The canvas draws each
+character onto a 2D canvas in a regular and a semibold weight, and turns the result into an
+atlas. So the board looks native on every operating system, and it looks different on each one.
+
+The two atlases hold different characters. Both cover ASCII, curly quotes, en and em dashes,
+the ellipsis, `©`, `°`, `×`, `±`, `€`, `£` and `¥`. Beyond that:
+
+- **Inter's atlas adds** accented Latin letters, such as `é` and `ü`, and `®`, `™`, `÷` and `¢`.
+- **The system atlas adds** the four arrows, the bullet, the middle dot, `≤`, `≥`, `∞`, `«` and
+  `»`.
+
+A character that isn't in the atlas doesn't draw, so with `font="system"` a title such as "Café"
+draws as "Caf", and with Inter an arrow in a label is left out.
+
+The system atlas is a single-channel distance field, where Inter's is multi-channel, so sharp
+corners on large glyphs come out slightly rounded. Where no 2D canvas is available, as in some test
+environments, `'system'` logs a warning and uses Inter.
+
+## Bring your own font
+
+A custom font takes two steps: generating an atlas for each weight, and passing a `FontConfig`
+that points at the files.
+
+Generate the atlases with `msdf-bmfont-xml`. These settings match the bundled Inter atlas:
+
+```bash
+npx -p msdf-bmfont-xml msdf-bmfont IBMPlexSans-Regular.ttf -f json -s 48 -r 4 -m 1024,1024 --pot -i charset.txt
+```
+
+The command writes a PNG atlas and a JSON file of metrics. `charset.txt` lists every character
+your labels use, and a character that isn't in it won't draw. Keep each weight on a single
+image, because the canvas loads one image per weight. If the tool writes a second PNG, raise the
+size you pass to `-m`.
+
+Then load the metrics and pass the config. This component waits for both metrics files, and
+falls back to the platform font if they fail to load:
+
+```tsx title="board.tsx"
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  KookieFlow,
+  type FontConfig,
+  type FontMetrics,
+  type FontPreset,
+  type KookieFlowProps,
+} from "@kushagradhawan/kookie-flow";
+
+async function loadMetrics(url: string): Promise<FontMetrics> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  return response.json();
+}
+
+export function Board(props: Omit<KookieFlowProps, "font">) {
+  const [font, setFont] = useState<FontConfig | FontPreset | null>(null);
+
+  useEffect(() => {
+    Promise.all([loadMetrics("/fonts/plex-regular.json"), loadMetrics("/fonts/plex-semibold.json")])
+      .then(([regular, semibold]) =>
+        setFont({
+          name: "IBM Plex Sans",
+          weights: {
+            regular: { metrics: regular, atlasUrl: "/fonts/plex-regular.png" },
+            semibold: { metrics: semibold, atlasUrl: "/fonts/plex-semibold.png" },
+          },
+        }),
+      )
+      .catch((error: unknown) => {
+        console.error("Canvas font failed to load", error);
+        setFont("system");
+      });
+  }, []);
+
+  if (!font) return null;
+  return <KookieFlow {...props} font={font} />;
+}
+```
+
+The component renders nothing until the font is known. If it rendered the canvas straight away,
+the canvas would download Inter first and then replace it.
+
+| `FontConfig` field | Type | What it is |
+| --- | --- | --- |
+| `name` | `string` | A name for the font |
+| `weights.regular` | `FontWeightConfig` | The weight for socket labels, widget values, edge labels, and text below weight 600 |
+| `weights.semibold` | `FontWeightConfig`, optional | The weight for titles, and text at weight 600 or above. Without it, those use `regular`. |
+
+A `FontWeightConfig` has two fields. `metrics` is a `FontMetrics` object, and `atlasUrl` is the
+atlas image, as a URL or a data URL.
+
+`FontMetrics` is the BMFont JSON that `msdf-bmfont-xml` writes, with `pages`, `chars`, `info`,
+`common`, and optional `kernings` and `distanceField`. The canvas places glyphs with the entries
+in `chars` and the pairs in `kernings`, and scales them with `info.size`, `common.lineHeight`,
+`common.scaleW` and `common.scaleH`.
+
+The canvas tells two configs apart by `name` and the atlas URLs, so writing the config inline
+doesn't reload anything. To switch fonts, change the name or a URL. Each atlas image stays
+cached for the life of the page.
+
+## How the canvas draws text
+
+Each glyph is a small square that samples the atlas. The atlas stores the distance to each
+character's outline rather than its pixels, so the canvas works out a sharp edge at any zoom
+level, and zooming in doesn't blur the text the way an enlarged image would.
+
+Text on the canvas is sized in world units, so it scales with the zoom. Titles, socket labels
+and widget values use a 12-pixel font size, and an error message under a node uses 11. Edge
+labels use 11 unless the label sets its own size, which the [Edges](/edges/edges) chapter
+covers. Page CSS, the Theme's type steps and the browser's font size setting don't change these
+sizes.
+
+To keep a zoomed-out board fast and readable, the canvas stops drawing smaller text first:
+
+| Zoom below | What stops drawing |
+| --- | --- |
+| 50% | Widget values |
+| 35% | Socket labels, and the message under a failed node |
+| 25% | Edge labels |
+| 15% | Node titles |
+
+A title or label that's too wide for its node ends in an ellipsis. The canvas measures it with
+the atlas metrics, not with the browser. A character that isn't in the atlas is skipped, and
+characters outside the Basic Multilingual Plane, including most emoji, never draw.
+
+Two parts of the canvas involve DOM text:
+
+- **Editing a widget value** puts a real input over the widget while you type. Whatever `font`
+  is, the input asks for Inter first, then the Theme's `--font-body`. With the default font, load
+  Inter on the page so the value keeps its shape while you edit.
+- **Text entities** draw with the same atlas as everything else. A text entity's `fontWeight`
+  of 600 or more picks the semibold weight, and its `fontFamily` doesn't change the face the
+  canvas draws. The [Text and comments](/entities/text) chapter covers text entities.

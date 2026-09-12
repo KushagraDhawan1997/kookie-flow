@@ -1,0 +1,219 @@
+The selection is the set of entities and edges that the next action applies to. Dragging,
+deleting, aligning, and the selection toolbar all work on it. The canvas keeps the selection in
+its own store rather than in your `entities` array, and it doesn't report selection changes
+through `onEntitiesChange` or `onEdgesChange`.
+
+## Select with the pointer
+
+A press and release that moves no more than 5 pixels is a click. A press that moves further
+is a drag.
+
+| Gesture | Result |
+|---|---|
+| Click an entity | Selects that entity alone, and clears any selected edges. |
+| Cmd-click or Ctrl-click an entity | Adds the entity to the selection, or takes it out if it's already selected. |
+| Drag across empty canvas | Draws a box. When you release, the entities the box touches replace the selected entities. |
+| Hold Cmd or Ctrl as you release a box | Adds the entities in the box to the current selection. |
+| Click empty canvas | Clears the selection. |
+
+Cmd and Ctrl do the same thing on every platform. Shift doesn't add to the selection, because
+Shift locks the aspect ratio while you resize. The [Keyboard](/interaction/keyboard) chapter
+covers selecting with Cmd/Ctrl+A, the arrow keys, and Escape.
+
+Some presses on an entity aren't clicks on it. A press on a socket starts a wire, a press on a
+widget such as a slider or a checkbox changes its value, a press on a video's control bar plays
+or scrubs it, and a press on a 3D model turns it, unless you press the strip along its top.
+None of these changes the selection.
+
+## Select edges
+
+`edgesSelectable` controls whether a click can select an edge.
+
+| Prop | Type | Default | Meaning |
+|---|---|---|---|
+| `edgesSelectable` | `boolean` | `true` | Lets a click select an edge. |
+
+Clicking an edge selects it alone and clears the selected entities. Cmd-click or Ctrl-click
+adds the edge to the selection, but doesn't take a selected edge back out.
+
+A click is tested against entities first, so you can't click the part of an edge that passes
+under a node. A selection box selects entities only, never edges. With `edgesSelectable` set to
+`false`, a click on an edge counts as a click on empty canvas: it clears the selection and
+calls `onPaneClick`.
+
+## Move a selection
+
+What moves depends on whether the entity you drag is already selected.
+
+- **Drag a selected entity** to move the whole selection with it.
+- **Drag an unselected entity** to select it alone and move only that entity.
+- **Cmd-drag or Ctrl-drag an unselected entity** to add it to the selection and move the
+  whole selection.
+
+Near the edge of the canvas the camera pans, so you can drag an entity to a part of the graph
+that's off screen. While you drag, alignment guides show when an edge or centre lines up with
+a nearby entity, and `snapToGrid` rounds the position to the grid instead. The
+[Layout and alignment](/data/arrange) chapter covers both.
+
+The canvas reports a move once, when you release. `onEntitiesChange` receives one `position`
+change for every entity in the drag, and nothing while the drag is in progress. If you hold the
+graph in your own state, apply those changes, or the next `entities` array you pass puts the
+entities back.
+The [Controlled and uncontrolled state](/start/state) chapter explains why.
+
+## Resize an entity
+
+Select an entity to resize it. Only selected entities have resize handles. While the pointer is
+over a selected entity, its four corners show a dot you can drag. The middle of each side also
+resizes, and the cursor changes when you're over one.
+
+| Modifier | Effect while you drag a handle |
+|---|---|
+| Alt (Option on macOS) | Resizes from the centre, so the opposite side moves too. |
+| Shift | Keeps the aspect ratio. Images, videos, and models keep it without Shift, and Shift frees it. |
+
+The `resizable` field on an entity turns handles off. `resizable: false` removes them.
+`{ width: false }` or `{ height: false }` limits the resize to one axis, and you resize the
+entity from the middle of a side, because the corners don't respond. With `snapToGrid` on, the
+size changes in grid steps.
+
+An entity can't shrink below a minimum size for its type.
+
+| Entity | Minimum width × height |
+|---|---|
+| Node | 120 × 40, or taller when its sockets need the room |
+| Frame | 100 × 60 |
+| Comment | 80 × 40 |
+| Text | 40 × 20 |
+| Image or video | 60 × 40 |
+| Model | 80 × 80 |
+
+When you release, `onEntitiesChange` receives a `dimensions` change. It also receives a
+`position` change when the entity's top-left corner moved, which happens when you drag a top or
+left handle or resize from the centre.
+
+## Delete a selection
+
+Press Delete or Backspace while the canvas has focus. The canvas removes the selected entities,
+the selected edges, and every edge attached to a selected entity, then clears the selection.
+
+`onEdgesChange` receives a `remove` change for each of those edges first, then
+`onEntitiesChange` receives a `remove` change for each entity. With history on in `useGraph`,
+the whole delete is one undo step, as the [Undo and redo](/data/history) chapter describes.
+
+The keys do nothing while you're typing in a text entity or a node's field, because focus is
+in that field rather than on the canvas.
+
+## Respond to clicks
+
+Three callbacks tell you what a click landed on.
+
+| Prop | Type | Called when |
+|---|---|---|
+| `onEntityClick` | `(entity: Entity) => void` | A click lands on an entity. |
+| `onEdgeClick` | `(edge: Edge) => void` | A click lands on an edge and `edgesSelectable` is `true`. |
+| `onPaneClick` | `() => void` | A click lands on empty canvas, or on an edge while `edgesSelectable` is `false`. |
+
+Each callback runs after the canvas has updated the selection, so the selection you read inside
+it already reflects the click. A drag calls none of them, and neither does a press on a
+socket, a widget, a resize handle, or a media control. A click inside the text you're editing
+moves the caret and doesn't call `onEntityClick`. After D picks up the pen, a press draws
+instead, as the [Drawing](/interaction/drawing) chapter describes. There's no double-click or
+right-click prop; the [Context menus](/interaction/context-menu) chapter covers right-click.
+
+This inspector shows the node you last clicked and closes when you click empty canvas.
+
+```tsx title="editor.tsx"
+'use client';
+
+import { useState } from 'react';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const inspected = entities.find((entity) => entity.id === inspectedId);
+
+  return (
+    <div style={{ display: 'flex', height: 480 }}>
+      <div style={{ flex: 1 }}>
+        <KookieFlow
+          entities={entities}
+          edges={edges}
+          onEntitiesChange={onEntitiesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onEntityClick={(entity) => setInspectedId(entity.id)}
+          onPaneClick={() => setInspectedId(null)}
+        />
+      </div>
+      {inspected ? <aside style={{ width: 240 }}>{inspected.data.label ?? inspected.id}</aside> : null}
+    </div>
+  );
+}
+```
+
+The panel looks the entity up in your own state by id, rather than keeping the object the
+callback passed, so it shows the entity's latest data after later edits.
+
+## Read and set the selection from code
+
+The ref returns the selection as it is at the moment you call it.
+
+| Method | Signature | Returns |
+|---|---|---|
+| `getSelectedEntities` | `() => Entity[]` | The selected entities, in the order of the `entities` array. |
+| `getSelectedEdges` | `() => Edge[]` | The selected edges, in the order of the `edges` array. |
+
+To change the selection, use the flow store. `useFlowStoreApi` returns it, and it works in any
+component you render as a child of `<KookieFlow>`.
+
+| Store method | What it does |
+|---|---|
+| `selectEntity(id, additive?)` | Selects one entity and clears the edges. With `additive` set to `true`, adds it instead. |
+| `selectEntities(ids)` | Replaces the selected entities. Selected edges stay. |
+| `toggleEntitySelection(id)` | Adds the entity, or takes it out if it's already selected. |
+| `selectEdge(id, additive?)` | Selects one edge and clears the entities. With `additive` set to `true`, adds it instead. |
+| `selectEdges(ids)` | Replaces the selected edges. Selected entities stay. |
+| `selectAll()` | Selects every entity. Selected edges stay. |
+| `deselectAll()` | Clears both. |
+
+A selection you set from code is still not reported through `onEntitiesChange`, and it isn't
+an undo step. The `selected` field on an entity you pass in doesn't select it either; only the
+store does.
+
+This button, rendered inside the canvas, selects every image on the board.
+
+```tsx title="select-images.tsx"
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+
+export function SelectImages() {
+  const store = useFlowStoreApi();
+
+  const selectImages = () => {
+    const { entities, selectEntities } = store.getState();
+    selectEntities(entities.filter((entity) => entity.type === 'image').map((entity) => entity.id));
+  };
+
+  return (
+    <button
+      style={{ position: 'absolute', top: 12, left: 12, pointerEvents: 'auto' }}
+      // Without this, the canvas treats the press as a click on the graph behind the button.
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={selectImages}
+    >
+      Select images
+    </button>
+  );
+}
+```
+
+Render it as `<KookieFlow {...props}><SelectImages /></KookieFlow>`. The canvas draws its
+children in a layer over the graph that has `pointer-events: none`, so a control inside needs
+`pointerEvents: 'auto'` to be pressable. It also needs to stop `pointerdown` from bubbling.
+Otherwise the canvas captures the pointer, treats the press as a click on whatever lies
+underneath, and your button's `onClick` never runs.
+
+To show something that changes with the selection, read `selectedEntityIds` with
+`useFlowStore`, as the chapter on [the flow store](/data/store) describes. The selection doesn't change
+while a drag is in progress, so a component that reads it doesn't render while entities move.

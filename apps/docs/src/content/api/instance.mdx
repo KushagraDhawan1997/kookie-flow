@@ -1,0 +1,201 @@
+A ref on `KookieFlow` gives you an object of methods, typed `KookieFlowInstance`. Use it from the
+component that renders `KookieFlow`, where the flow's hooks don't work: to fit the view, save the
+graph, arrange a selection or run an evaluation from a button of your own.
+
+## Get the instance
+
+Create a ref typed `KookieFlowInstance` and pass it to `KookieFlow`. This editor fits the view and
+downloads a picture of the graph from buttons outside the canvas:
+
+```tsx title="editor.tsx"
+'use client';
+
+import { useRef } from 'react';
+import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+
+export function Editor() {
+  const flowRef = useRef<KookieFlowInstance>(null);
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph();
+
+  const download = () => {
+    const url = flowRef.current?.toImage({ background: '#ffffff' });
+    if (!url) return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'graph.png';
+    link.click();
+  };
+
+  return (
+    <>
+      <button type="button" onClick={() => flowRef.current?.fitView()}>Fit</button>
+      <button type="button" onClick={download}>Download PNG</button>
+      <div style={{ height: 600 }}>
+        <KookieFlow
+          ref={flowRef}
+          entities={entities}
+          edges={edges}
+          onEntitiesChange={onEntitiesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+        />
+      </div>
+    </>
+  );
+}
+```
+
+Inside the flow, in a component you render as a child of `KookieFlow`, the store hooks reach the
+same graph. The [flow store](/data/store) chapter covers them.
+
+## Methods
+
+The **Reports** column says whether a method tells `onEntitiesChange` and `onEdgesChange` what it
+changed. "Reads" means the method changes nothing, and a dash means it changes something that isn't
+in your `entities` or `edges`.
+
+### Camera
+
+| Method | Reports | Meaning | Chapter |
+| --- | --- | --- | --- |
+| `fitView(options?: FitViewOptions): void` | – | Fits the view to every entity, or to the ids in `options.entities`. It doesn't zoom in past 1 unless `options.maxZoom` allows it. | [Camera](/interaction/camera) |
+| `getViewport(): Viewport` | Reads | Returns the current pan and zoom. | [Camera](/interaction/camera) |
+| `setViewport(viewport: Viewport): void` | – | Sets the pan and zoom. | [Camera](/interaction/camera) |
+| `zoomIn(step?: number): void` | – | Adds `step` to the zoom. The default step is `0.25`. | [Camera](/interaction/camera) |
+| `zoomOut(step?: number): void` | – | Subtracts `step` from the zoom. The default step is `0.25`. | [Camera](/interaction/camera) |
+| `setCenter(x: number, y: number, options?: { zoom?: number }): void` | – | Centres the view on a point in the graph, at `options.zoom` or the current zoom. | [Camera](/interaction/camera) |
+
+Only `fitView` reads the `minZoom` prop, as its lowest zoom unless `options.minZoom` sets another.
+`zoomIn` and `zoomOut` keep the zoom between `0.01` and `16` whatever `minZoom` and `maxZoom` say,
+and `setViewport` and `setCenter` take any zoom you pass. Check the zoom yourself when you need a
+tighter range.
+
+`zoomIn` and `zoomOut` change only the zoom, not the pan, so the view scales around the point where
+the graph's `(0, 0)` sits on screen rather than around the middle of the canvas.
+
+### Reading the graph
+
+| Method | Reports | Meaning | Chapter |
+| --- | --- | --- | --- |
+| `getEntities(): Entity[]` | Reads | Returns the canvas's entities, with the sockets, sizes and labels `entityTypes` filled in. | [Saving](/data/saving) |
+| `getEdges(): Edge[]` | Reads | Returns the canvas's edges. | [Saving](/data/saving) |
+| `getSelectedEntities(): Entity[]` | Reads | Returns the selected entities. | [Selection](/interaction/selection) |
+| `getSelectedEdges(): Edge[]` | Reads | Returns the selected edges. | [Selection](/interaction/selection) |
+| `toObject(): FlowObject` | Reads | Returns the entities, edges and viewport, ready to save, without selection or drag state. | [Saving](/data/saving) |
+| `toImage(options?: CaptureOptions): string \| null` | Reads | Returns the WebGL canvas's current view as an image data URL, or `null` when the canvas isn't mounted. | [Saving](/data/saving) |
+
+### Arranging
+
+| Method | Reports | Meaning | Chapter |
+| --- | --- | --- | --- |
+| `autoLayout(options?: LayoutOptions): Array<{ id: string; position: XYPosition }>` | No | Places each visible entity that isn't inside a frame in a column after the entities that feed it, and returns the new positions. | [Layout](/data/arrange) |
+| `alignSelection(edge: AlignEdge): Array<{ id: string; position: XYPosition }>` | Yes | Lines the selection up on one edge or centre line of its bounds, and returns the moves. Needs two or more entities. | [Layout](/data/arrange) |
+| `distributeSelection(axis: DistributeAxis): Array<{ id: string; position: XYPosition }>` | Yes | Spaces the selection evenly along an axis, and returns the moves. Needs three or more entities. | [Layout](/data/arrange) |
+
+### Frames and subgraphs
+
+| Method | Reports | Meaning | Chapter |
+| --- | --- | --- | --- |
+| `getGroupChildren(groupId: string): Entity[]` | Reads | Returns the entities whose `parentId` is the frame. | [Frames](/entities/frames) |
+| `getGroupDescendants(groupId: string): Entity[]` | Reads | Returns the frame's children, their children, and so on. | [Frames](/entities/frames) |
+| `toggleGroupCollapse(groupId: string): void` | No | Collapses the frame if it's open, and opens it if it's collapsed. | [Frames](/entities/frames) |
+| `expandGroup(groupId: string): void` | No | Opens a collapsed frame. | [Frames](/entities/frames) |
+| `collapseGroup(groupId: string): void` | No | Collapses an open frame. | [Frames](/entities/frames) |
+| `isGroupCollapsed(groupId: string): boolean` | Reads | Returns whether the frame is collapsed. | [Frames](/entities/frames) |
+| `getGroupBounds(groupId: string): { x: number; y: number; width: number; height: number } \| null` | Reads | Returns the box around the frame's children, with padding, or `null` when it has none. | [Frames](/entities/frames) |
+| `collapseToSubgraph(entityIds: string[], groupId: string): void` | Yes | Adds a frame with the id `groupId` around the entities and makes them its children. Edges between them are removed, and each edge that crossed the boundary is rerouted through a socket on the frame. | [Frames](/entities/frames) |
+| `expandSubgraph(groupId: string, childEntities: Entity[], internalEdges: Edge[], portMapping: PortMapping): void` | Yes | Removes the frame, puts back the entities and edges you pass, and moves each edge on a frame socket to the inside socket that `portMapping` names. | [Frames](/entities/frames) |
+
+The package doesn't export a `PortMapping` type. The name stands for this shape:
+
+```ts
+type PortMapping = {
+  inputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+  outputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+};
+```
+
+### Evaluation
+
+| Method | Reports | Meaning | Chapter |
+| --- | --- | --- | --- |
+| `evaluate(entityId: string): Promise<void>` | – | Runs one entity now, whatever its evaluation mode. Reactive entities downstream of it then run too. | [Evaluation](/data/evaluation) |
+| `evaluateDirty(): Promise<void>` | – | Runs every entity marked out of date, manual ones included, and resolves when nothing is left to run. | [Evaluation](/data/evaluation) |
+| `evaluateAll(): Promise<void>` | – | Marks every entity out of date and runs all of them. | [Evaluation](/data/evaluation) |
+| `setSocketValue(entityId: string, socketId: string, value: unknown): void` | – | Puts a value on an output socket and marks everything downstream out of date. The entity itself doesn't run. | [Evaluation](/data/evaluation) |
+| `getSocketValue(entityId: string, socketId: string): unknown` | Reads | Returns the value on an output socket. | [Evaluation](/data/evaluation) |
+| `getEvaluationStatus(entityId: string): EvaluationStatus` | Reads | Returns the entity's evaluation status, or `'idle'` if the engine has never been asked to run it. | [Evaluation](/data/evaluation) |
+
+## Methods that report their changes
+
+`KookieFlow` keeps its own copy of the graph. Each time you pass a new `entities` or `edges` array,
+it replaces that copy with yours. A drag changes the copy and reports the change through
+`onEntitiesChange`, so your state catches up and the next array you pass agrees with the canvas.
+
+A method that changes the copy without reporting it works until you next pass a new array. Then
+your array replaces the copy and the change is gone. With `useGraph`, that happens on the next change
+the hook applies, such as a drag. Handle each method according to what it does:
+
+- **`alignSelection`, `distributeSelection`, `collapseToSubgraph` and `expandSubgraph` report.**
+  The two arranging methods send `position` changes, as a drag does. The two subgraph methods send
+  `add`, `remove` and `parent` changes to `onEntitiesChange`, and `add` and `remove` changes to
+  `onEdgesChange`. You don't need to do anything else.
+- **`autoLayout` returns its moves without reporting them.** Pass them to your own change handler.
+- **`toggleGroupCollapse`, `expandGroup` and `collapseGroup` neither report nor return.** In a
+  controlled graph, set `collapsed` on the frame in your own state instead.
+
+This button tidies the graph and reports the moves:
+
+```tsx
+<button
+  type="button"
+  onClick={() => {
+    const moves = flowRef.current?.autoLayout() ?? [];
+    onEntitiesChange(moves.map(({ id, position }) => ({ type: 'position', id, position })));
+  }}
+>
+  Tidy
+</button>
+```
+
+The `onEntitiesChange` that `useGraph` returns doesn't apply `collapse` changes, so collapse a frame
+with `setEntities` from the same hook:
+
+```tsx
+const collapseFrame = (frameId: string) =>
+  setEntities((current) =>
+    current.map((entity) => (entity.id === frameId ? { ...entity, collapsed: true } : entity))
+  );
+```
+
+The camera and evaluation methods have nothing to report. After the first render, the view isn't a
+prop you control, and computed values are held by the evaluation engine rather than written into
+entity `data`.
+
+## Before the canvas mounts
+
+`flowRef.current` is `null` while your component first renders, and again after `KookieFlow`
+unmounts. Call methods from event handlers and effects, and use `?.` so a call made at the wrong
+moment does nothing instead of throwing.
+
+The methods work as soon as `KookieFlow` has mounted, even before its WebGL canvas draws anything,
+because they act on the flow's copy of the graph. A mount effect in your component runs after that,
+so you can fit the view or start an evaluation there:
+
+```tsx
+useEffect(() => {
+  flowRef.current?.fitView({ padding: 80 });
+  void flowRef.current?.evaluateAll();
+}, []);
+```
+
+Keep three limits in mind:
+
+- **`toImage()` returns `null` until the canvas has mounted.** The canvas mounts after it measures
+  its size, which is later than your mount effect. Call `toImage()` from something a person does,
+  such as a button.
+- **`fitView()` and `setCenter()` measure the canvas when you call them.** A canvas with no height
+  fits against zero pixels and zooms out as far as `minZoom` allows, so give its parent a height
+  first.
+- **The instance is replaced when `minZoom` or `maxZoom` changes.** Read `flowRef.current` each time
+  you call a method, rather than keeping the object in state or a variable.

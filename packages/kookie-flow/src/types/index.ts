@@ -199,6 +199,33 @@ export interface WidgetHandle {
   socketId: string;
 }
 
+/**
+ * A widget's floating panel — a select's list or a colour widget's picker — while it is open.
+ *
+ * Drawn in GL by `components/widget-popover.tsx`, pressed by the canvas's pointer handlers and
+ * driven by its keyboard handler, all from this one record. `box` is the trigger's world box as
+ * it was when the panel opened: the panel hangs off it, and it is snapshotted rather than
+ * re-derived so the panel does not jump if the node re-lays itself out under an open list.
+ *
+ * `key` is `widgetKey(entityId, socketId)`, carried so the widget layer can light the trigger
+ * without a concatenation per widget per frame.
+ */
+export interface WidgetPopover {
+  kind: 'select' | 'color';
+  entityId: string;
+  socketId: string;
+  key: string;
+  box: { x: number; y: number; width: number; height: number };
+  /** The list, for a select; empty for a colour picker. */
+  options: string[];
+  /** The value the trigger showed when the panel opened. */
+  value: string;
+  /** The widest option, in world px at the row font size, so the list can outgrow its trigger. */
+  widest: number;
+  /** Motion-clock time the panel opened, for its entrance. */
+  openedAt: number;
+}
+
 /** Entity status for visual feedback */
 /**
  * `dirty` is set by the evaluation engine when an entity's inputs have changed and nothing has

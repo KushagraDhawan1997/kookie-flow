@@ -1,62 +1,111 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
-@import '@kookie-ui/react/styles.css';
-@import 'tailwindcss/preflight';
+/* Docs-app base — consumer CSS, deliberately this small. The page paints --color-page and
+   reads the foreground context. Everything visible beyond this file is @kookie-ui/react —
+   the docs are a real consumer, and the stance is that they use nothing else.
 
-:root {
-  --font-sans: 'system-ui';
+   A page made of CARDS is --color-ground instead; see §10. */
+/* The app states its own face. §15 owns three family SLOTS and leaves the face to the
+   consumer; this is the consumer. The package's default is the system stack, and that is
+   still what anybody who states nothing gets.
+
+   BOTH SLOTS ARE STATED, and they name the SAME face. The site is one face with the ladder
+   doing the separating. Stating only `--font-body` would look right and be wrong anyway:
+   tokens.css declares `--font-heading: var(--font-body)` at `:root`, and a custom property
+   substitutes where it is DECLARED, so the heading slot resolved the system stack at the
+   moment tokens.css was read and a later `--font-body` here would move every paragraph while
+   leaving every heading behind. The slot keeps a line of its own for that reason — the line
+   is what makes the slot the app's rather than the package's, and it is where a second face
+   goes back if one is ever chosen.
+
+   `:root:root` RATHER THAN `:root`, so this wins on rank rather than on source order.
+   `layout.tsx` imports the package's stylesheet first, but webpack (this app's dev bundler)
+   emits globals.css AHEAD of it in the layout chunk, and a plain `:root` here then lost to
+   tokens.css's `:root` — every paragraph, heading and fence fell back to the system stack, and
+   the canvas's edit overlay stopped sitting on the Inter the MSDF atlas is cut from. Doubling
+   the pseudo-class outranks the package's `:root` whichever order the bundler picks.
+
+   THE MONO SLOT IS STATED TOO: a site whose prose is one chosen face and whose code is
+   whichever grotesque mono the OS happens to ship is not one document. All three slots are
+   the app's, and all three are filled.
+
+   THE FACES ARE V2'S: Switzer reads, Neue Montreal Mono sets code, Boska sets the wordmark.
+
+   @FONT-FACE OVER `public/fonts`, NOT `next/font/local`. None of these files may travel in a
+   repository — Switzer and Boska are Fontshare FFL, Neue Montreal Mono is Pangram Pangram — so
+   they are gitignored and a clone or a Vercel build does not have them. `next/font/local` fails
+   the build on a missing file; a url() here 404s and the stack below falls back to system-ui,
+   which is what V2 says a fresh clone should do.
+
+   The canvas keeps Inter through `.kd-canvas`, below. */
+@font-face {
+  font-family: "Switzer";
+  src: url("/fonts/Switzer.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }
 
-/* Minimal global styles - Safari/iOS fixes */
-html,
+@font-face {
+  font-family: "Switzer";
+  src: url("/fonts/Switzer-Italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neue Montreal Mono";
+  src: url("/fonts/NeueMontrealMono.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neue Montreal Mono";
+  src: url("/fonts/NeueMontrealMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Boska";
+  src: url("/fonts/Boska-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root:root {
+  --kd-font-body: "Switzer";
+  --kd-font-mono: "Neue Montreal Mono";
+  --kd-font-wordmark: "Boska";
+  --font-body: var(--kd-font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-body);
+  --font-mono: var(--kd-font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 body {
-  max-width: 100vw;
   margin: 0;
-  /* Safari font scaling fixes */
+  min-height: 100dvh;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+/* Inter under every live canvas: the MSDF labels are cut from it, and the edit overlay inherits
+   its face from here. `--kd-font-canvas` is published by layout.tsx. */
+.kd-canvas {
+  font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* NO TEXT INFLATION ON iOS (2026-09-08, Kushagra: the code wells on component pages "render
+   HUGE" on a phone while the prose fences do not). Safari scales text up inside blocks it
+   judges too small to read once a page lays out wider than the screen, and the header row
+   does exactly that on a phone (measured ~90px of overflow on every page). The inflation is
+   per block, which is how two identical code wells came to render at two sizes. The type
+   ladder already answers the handheld case (§17); Safari's guess is not wanted on top. */
+html {
   -webkit-text-size-adjust: 100%;
-  -moz-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* Prevent Safari from zooming on input focus */
-  -webkit-tap-highlight-color: transparent;
-  /* Prevent page-level horizontal overflow */
-  overflow-x: clip;
-}
-
-/* Safari-specific viewport fixes */
-@supports (-webkit-touch-callout: none) {
-  html {
-    -webkit-text-size-adjust: none;
-  }
-}
-
-* {
-  box-sizing: border-box;
-}
-
-/* Scroll offset for headings when using anchor links */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  scroll-margin-top: 120px;
-}
-
-/*
- * The appearance toggle renders BOTH icons and lets this pick, so the server HTML is identical
- * in every appearance and hydration has nothing to diff. See dark-mode.tsx for the mismatch this
- * replaces. Keyed on <html>, which is where the pre-paint script and the appearance store both
- * write — the same single source of truth `<Theme appearance="inherit">` reads.
- */
-.appearance-icon {
-  display: inline-flex;
-}
-.appearance-icon--dark {
-  display: none;
-}
-html[data-appearance='dark'] .appearance-icon--dark {
-  display: inline-flex;
-}
-html[data-appearance='dark'] .appearance-icon--light {
-  display: none;
 }

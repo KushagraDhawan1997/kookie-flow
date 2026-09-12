@@ -1,0 +1,189 @@
+Kookie Flow can place nodes for you in three ways. `autoLayout()` tidies a whole graph into
+columns that follow the wires. `alignSelection()` and `distributeSelection()` line up the nodes
+someone has selected, or space them evenly. While someone drags a node, alignment guides or a
+grid help them put it where they meant to.
+
+## Tidy the whole graph
+
+Call `autoLayout()` on the ref. Every node moves one column to the right of whatever feeds it,
+so every wire points the same way and you can read the graph from left to right.
+
+<Example name="arrange" />
+
+`autoLayout()` moves the nodes on the canvas straight away and returns the positions it chose, as
+`Array<{ id, position }>`. It doesn't report them through `onEntitiesChange`. In a controlled
+graph, pass them on yourself, as `tidy` does above. If you don't, the canvas keeps the new
+positions only until your entities array next changes. The next drag is enough: `useGraph`
+applies that drag to its own array, which still holds the old positions, and every other node
+jumps back.
+
+`autoLayout()` takes an optional `LayoutOptions` object, the same one `layoutGraph()` takes:
+
+| Option | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `direction` | `'horizontal' \| 'vertical'` | `'horizontal'` | Runs the flow left to right, or top to bottom. |
+| `rankGap` | `number` | `120` | The space between one column and the next. Each column is as deep, along the flow, as its biggest node. |
+| `nodeGap` | `number` | `40` | The space between two nodes in the same column. |
+| `origin` | `{ x: number; y: number }` | `{ x: 0, y: 0 }` | Where the first column starts along the flow. Across the flow, every column is centred on it. |
+
+A few rules decide where each node lands:
+
+- **Only top-level entities move.** An entity with a `parentId`, and anything hidden inside a
+  collapsed frame, keeps the position it has. A frame is placed like any other entity, and its
+  children stay where they were.
+- **Everything else takes part,** including text, pictures and ink. An entity with no wires
+  goes in the first column.
+- **A node sits behind its deepest input.** If a node is fed by column 0 and by column 2, it goes
+  in column 3, so neither wire points backwards.
+- **Nodes in a column are sorted by what feeds them.** Within a column, nodes are ordered by the
+  average position of the nodes that feed them, which cuts down on crossing wires. The first
+  column keeps the order of your entities array.
+- **Loops don't stop it.** A graph with a loop is still laid out. Each node on the loop goes one
+  column past the deepest node already placed that feeds it.
+
+An entity without a `height` is measured from its sockets, as the canvas draws it. An entity
+without a `width` is measured at 240, the library default, even if you set `defaultEntityWidth`.
+If you change `defaultEntityWidth`, give your entities an explicit `width` so columns don't
+overlap. The same measurement applies to aligning and distributing, below.
+
+## Lay out a graph you hold
+
+`layoutGraph(nodes, edges, options)` is the calculation `autoLayout()` runs, with no canvas
+involved. You give it sizes and wires, and it returns positions. Use it to place a graph before
+anyone sees it, such as one imported from a file that has no positions.
+
+```ts title="with-layout.ts"
+import {
+  DEFAULT_ENTITY_HEIGHT,
+  DEFAULT_ENTITY_WIDTH,
+  layoutGraph,
+  type Edge,
+  type Entity,
+} from '@kushagradhawan/kookie-flow';
+
+export function withLayout(entities: Entity[], edges: Edge[]): Entity[] {
+  const nodes = entities
+    .filter((entity) => entity.parentId === undefined)
+    .map((entity) => ({
+      id: entity.id,
+      width: entity.width ?? DEFAULT_ENTITY_WIDTH,
+      height: entity.height ?? DEFAULT_ENTITY_HEIGHT,
+    }));
+  const { positions } = layoutGraph(nodes, edges, { direction: 'vertical', rankGap: 80 });
+  return entities.map((entity) => {
+    const position = positions.get(entity.id);
+    return position ? { ...entity, position } : entity;
+  });
+}
+```
+
+Pass the result to `useGraph({ initialEntities: withLayout(imported, edges), initialEdges: edges })`.
+Your `Edge` objects already have the `source` and `target` that `layoutGraph()` reads, so you can
+pass them as they are.
+
+Without a canvas, nothing knows how tall a node is drawn. `DEFAULT_ENTITY_HEIGHT` is 100, and a
+node with several sockets is taller than that. Give nodes a real `height`, or call `autoLayout()`
+once the graph is on screen, where the height is measured.
+
+| Name | Type | What it is |
+| --- | --- | --- |
+| `LayoutNode` | `{ id: string; width: number; height: number }` | One node to place. |
+| `LayoutEdge` | `{ source: string; target: string }` | One wire. A wire that names an id that isn't in `nodes` is ignored. |
+| `LayoutResult` | `{ positions: Map<string, { x: number; y: number }> }` | The top-left corner of every node, by id. |
+
+If you want your own placement, `rankNodes(nodes, edges)` returns only the first half: a
+`Map<string, number>` from each id to its column, counted from 0. Use it to colour nodes by depth,
+or to place them on a layout of your own. It follows the column rules above, and it ignores a
+wire from a node to itself.
+
+## Align a selection
+
+`alignSelection(edge)` lines up the selected entities on one edge or centre line of the box
+around them. `'left'` moves every entity's left edge to the leftmost left edge in the selection.
+`'center'` moves every entity's centre onto the centre of that box.
+
+| `AlignEdge` | Keys | What lines up |
+| --- | --- | --- |
+| `'left'` | Alt+A | Left edges, on the leftmost one. |
+| `'center'` | Alt+H | Horizontal centres, on a vertical line through the middle of the box. |
+| `'right'` | Alt+D | Right edges, on the rightmost one. |
+| `'top'` | Alt+W | Top edges, on the highest one. |
+| `'middle'` | Alt+V | Vertical centres, on a horizontal line through the middle of the box. |
+| `'bottom'` | Alt+S | Bottom edges, on the lowest one. |
+
+Unlike `autoLayout()`, the ref's `alignSelection()` reports its moves through `onEntitiesChange`
+as `position` changes, the same way a drag does, so a controlled graph keeps them with no extra
+code. The store action of the same name moves the entities without reporting them.
+It also returns them. With `useGraph({ history: true })`, one undo takes the move back.
+
+- **It needs two or more entities.** With fewer selected, nothing moves and it returns an empty
+  array.
+- **Only entities that move are reported.** A selection that's already aligned reports nothing.
+- **A frame carries its contents.** When a selected frame moves, its children move with it. A
+  child whose frame is also selected isn't aligned on its own.
+- **Hidden entities are left out.** An entity inside a collapsed frame isn't aligned on its own.
+
+The keys work while the canvas has focus and two or more entities are selected. On a Mac, Alt is
+the Option key. The [Keyboard](/interaction/keyboard) chapter lists every other key, and the
+`arrange` widget in the [selection toolbar](/interaction/toolbar) offers the same moves as
+buttons.
+
+## Space a selection evenly
+
+`distributeSelection(axis)` makes the gaps between the selected entities equal. The two
+outermost entities stay where they are, and the ones between them move. The gaps are equal, not
+the distances between centres, so nodes of different sizes still look evenly spaced.
+
+| `DistributeAxis` | Keys | What it spaces |
+| --- | --- | --- |
+| `'horizontal'` | Alt+Shift+H | Left to right, by each entity's left edge. |
+| `'vertical'` | Alt+Shift+V | Top to bottom, by each entity's top edge. |
+
+It needs three or more entities, because two have only one gap. If the entities are wider than
+the space between the outer two, the gaps come out negative and the entities overlap by the same
+amount. It reports, returns, carries frames and skips hidden entities the same way
+`alignSelection()` does.
+
+## Line nodes up while dragging
+
+`helperLines` is on by default. While someone drags, the node under the pointer is compared with
+the entities in and around the visible area. When its left edge, centre or right edge comes within
+six screen pixels of another entity's left edge, centre or right edge, the node snaps onto that
+line and a thin guide is drawn along it. Top edges, vertical centres and bottom edges work the same
+way on the other axis.
+
+- **The distance is in screen pixels.** Zoomed out, six pixels still means six pixels on screen,
+  so nodes don't snap to everything nearby.
+- **Each axis snaps once.** The closest line wins, so a node is never pulled two ways.
+- **The rest of the selection follows.** Other selected nodes keep their distance from the one
+  being dragged.
+- **The guides go away** when the drag ends.
+
+Set `helperLines={false}` to turn off both the guides and the snap.
+
+## Snap to a grid
+
+Set `snapToGrid` to make positions land on a grid. `snapGrid` sets the grid's step as
+`[x, y]`, in world units.
+
+- **Dragging:** the node under the pointer lands with its top-left corner on a grid point. Other
+  selected nodes keep their distance from it, so they land on grid points only if they sit a whole
+  number of grid steps away from it.
+- **Resizing:** the edge you drag moves in whole grid steps.
+- **Shift+arrow keys** move the selection one grid step instead of one unit, and Alt+Shift+arrow
+  moves it ten steps.
+- **Alignment guides are off** while `snapToGrid` is on, because the grid and the guides would each
+  try to decide where the node goes.
+
+The dots that `showGrid` draws are always 20 units apart, whatever `snapGrid` is. With the default
+`[20, 20]`, every snap point sits on a dot.
+
+| Prop | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `helperLines` | `boolean` | `true` | Shows guides and snaps a dragged node onto nearby edges and centres. Ignored while `snapToGrid` is on. |
+| `snapToGrid` | `boolean` | `false` | Snaps dragging, resizing and Shift+arrow moves to `snapGrid`. |
+| `snapGrid` | `[number, number]` | `[20, 20]` | The grid step on x and y, in world units. |
+
+Choosing between the two is a judgment. Guides suit a board where people arrange nodes by eye,
+and they stay out of the way until two things nearly line up. A grid suits a diagram where nodes
+have to sit exactly on shared lines.

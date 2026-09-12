@@ -796,7 +796,9 @@ export function MultiWeightTextRenderer({
         zoom >= WIDGET_VALUE_MIN_ZOOM &&
         regularGlyphMap.size > 0
       ) {
-        const glyphScale = 12 / regularFont.metrics.info.size;
+        // v2 prints a control's value at the size's own type step — 14px at size 2, not a constant.
+        const widgetFont = style.widgetFontSize;
+        const glyphScale = widgetFont / regularFont.metrics.info.size;
         for (const entity of entities) {
           if (hiddenEntityIds.has(entity.id)) continue;
           // Not `entity.inputs ?? []` — that mints an empty array for every input-less entity in
@@ -858,7 +860,7 @@ export function MultiWeightTextRenderer({
               : truncateText(
                   placed.text,
                   placed.maxWidth,
-                  12,
+                  widgetFont,
                   regularFont.metrics.info.size,
                   regularGlyphMap,
                   regularKerningMap
@@ -871,10 +873,10 @@ export function MultiWeightTextRenderer({
               // is the same visual centring the socket labels above use.
               position: [
                 placed.x,
-                box.y + Math.min(box.height, socketLayout.widgetHeight) / 2 - 7,
+                box.y + Math.min(box.height, socketLayout.widgetHeight) / 2 - (widgetFont * 7) / 12,
                 depth,
               ],
-              fontSize: 12,
+              fontSize: widgetFont,
               // The value is CONTENT, like the entity header, not chrome like the socket's name —
               // and neutral-12 is exactly what the borrowed input paints with, so opening an edit
               // does not change the ink. A placeholder is not content, and takes the muted ink.

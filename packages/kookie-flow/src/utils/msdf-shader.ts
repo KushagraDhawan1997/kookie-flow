@@ -143,3 +143,12 @@ export const MSDF_SHADER_DEFAULTS = {
   outlineColor: [0, 0, 0] as [number, number, number],
   outlineWidth: 0.1,
 } as const;
+
+/**
+ * The plain fragment shader with one whole-mesh opacity on top of the per-glyph one, for a mesh
+ * that fades as a unit — a panel's rows entering with the panel. A uniform rather than a rewrite
+ * of every glyph's `aOpacity` per frame, which would be a buffer upload for a fade.
+ */
+export const msdfFragmentShaderFaded = msdfFragmentShader
+  .replace('uniform float uAlphaTest;', 'uniform float uAlphaTest;\n  uniform float uOpacity;')
+  .replace('alpha *= vOpacity;', 'alpha *= vOpacity * uOpacity;');

@@ -1,0 +1,204 @@
+People can paste a screenshot, a picture, a video clip, a glTF model or a link to one onto the
+canvas, and it becomes an entity. Dropping a file from the desktop does the same. You don't have
+to wire anything for this. When files need to reach your server before they appear, `onFileDrop`
+hands them to you instead.
+
+## Paste media onto the canvas
+
+A paste goes to the canvas only while the canvas has focus. Pressing anywhere on the canvas
+focuses it, and so does tabbing to it. A paste made while focus is elsewhere on the page is left
+alone, so pasting into your app's search box never adds a node.
+
+The canvas checks the clipboard for files first, because a screenshot arrives as a file. Every
+file that is media becomes an entity, and any other file is skipped. When the clipboard holds no
+files, the canvas checks its plain text instead. If that text is the URL of a picture, a clip or a
+model, the canvas makes an entity that loads from the URL.
+
+The text counts as a media URL when, with spaces trimmed from both ends, it starts with `http://`,
+`https://`, `data:`, `blob:` or `/` and ends in one of the extensions in the table below. A query
+string or a hash after the extension doesn't matter, so a signed URL still counts. A `data:` URL
+gets its kind from its MIME type instead. A sentence that mentions `photo.png` doesn't start like a
+URL, so it makes nothing.
+
+### What each kind becomes
+
+| Media   | Recognised by                                                                                     | `type`  | Opening size | `data`                             |
+| ------- | ------------------------------------------------------------------------------------------------- | ------- | ------------ | ---------------------------------- |
+| Picture | An `image/` MIME type, or a URL ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp` or `.svg` | `image` | 240 × 160    | `{ src }`                          |
+| Clip    | A `video/` MIME type, or a URL ending in `.mp4`, `.webm`, `.ogv`, `.mov` or `.m4v`                | `video` | 320 × 180    | `{ src, autoplay: true, loop: true }` |
+| Model   | A MIME type containing `gltf`, or a file name or URL ending in `.glb` or `.gltf`                  | `mesh`  | 240 × 240    | `{ src }`                          |
+
+A browser often gives a `.glb` file from disk no MIME type, or a generic one, which is why a model
+file is also recognised by its name. Sizes are width by height, in the same units as `position`.
+
+A picture keeps its opening width and takes the picture's own proportions once it decodes. A clip
+is muted and loops, and it plays while it's on screen, up to four clips at a time. The
+[Images, video and models](/entities/media) chapter covers these entities in full.
+
+### Where new entities land
+
+A pasted entity is centred on the middle of the view. When several arrive at once, each one after
+the first sits 24 units further right and further down, so they don't cover each other. The last
+one becomes the selection, and the keyboard cursor moves to it.
+
+The canvas reports the new entities to `onEntitiesChange` as `add` changes, in one call, so a
+controlled graph keeps them. A picture that reshapes itself when it decodes reports that as a
+`dimensions` change. The [Controlled and uncontrolled state](/start/state) chapter explains both
+kinds of change.
+
+## Drop files onto the canvas
+
+Drag files from the desktop or a file manager onto the canvas and let go. Each media file becomes
+an entity centred under the pointer, and several files step 24 units apart, as they do for a
+paste. The kinds and sizes are the ones in the table above. A drop doesn't need the canvas to have
+focus.
+
+A file dropped on the canvas never opens in the browser tab, even when it isn't media and nothing
+is made from it. Dragged text and dragged links are not handled.
+
+## Upload files before they appear
+
+A pasted or dropped file becomes an entity whose `src` is an object URL, which starts with
+`blob:`. An object URL works only until the page closes, so a graph saved with `toObject()` and
+loaded later has lost its pictures. The [Saving and exporting](/data/saving) chapter covers
+`toObject()`. The canvas also never revokes these URLs, because it can't tell when you've
+finished with the entity that holds one.
+
+Pass `onFileDrop` when files need to reach your server first. While it is set, the canvas makes no
+entities from files. It passes every file to your function instead, media or not.
+
+| Prop         | Type                                              | Default | Meaning                                                                                                                                          |
+| ------------ | ------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `onFileDrop` | `(files: File[], position: XYPosition) => void`   | none    | Called with every file dropped on or pasted into the canvas, in place of the entities the canvas would make. `position` is in world coordinates: the drop point, or the centre of the view for a paste. |
+
+This board uploads each dropped or pasted picture and adds it once the server returns a lasting
+URL:
+
+```tsx title="board.tsx"
+'use client';
+
+import { KookieFlow, useGraph, type XYPosition } from '@kushagradhawan/kookie-flow';
+
+async function upload(file: File): Promise<string> {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch('/api/uploads', { method: 'POST', body });
+  if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
+  const { url }: { url: string } = await response.json();
+  return url;
+}
+
+export function Board() {
+  const graph = useGraph();
+
+  const handleFiles = async (files: File[], position: XYPosition) => {
+    const pictures = files.filter((file) => file.type.startsWith('image/'));
+    for (let i = 0; i < pictures.length; i++) {
+      const src = await upload(pictures[i]);
+      graph.addEntity({
+        id: crypto.randomUUID(),
+        type: 'image',
+        // `position` is the entity's top-left corner, so centre it where the file arrived.
+        position: { x: position.x - 120 + i * 24, y: position.y - 80 + i * 24 },
+        width: 240,
+        height: 160,
+        data: { src, alt: pictures[i].name },
+      });
+    }
+  };
+
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow
+        entities={graph.entities}
+        edges={graph.edges}
+        onEntitiesChange={graph.onEntitiesChange}
+        onEdgesChange={graph.onEdgesChange}
+        onConnect={graph.onConnect}
+        onFileDrop={handleFiles}
+      />
+    </div>
+  );
+}
+```
+
+Nothing appears until the upload finishes. To show a picture while it uploads, add the entity with
+`URL.createObjectURL(file)` as its `src`, replace `data.src` with the uploaded URL when the upload
+finishes, and then call `URL.revokeObjectURL()` on the object URL. The entity keeps its place and
+shows its placeholder until the new `src` loads.
+
+The [Canvas and camera](/interaction/camera) chapter explains world coordinates, and
+`screenToWorld` converts a point of your own.
+
+## What the canvas leaves to the page
+
+The canvas makes an entity only when it can tell what the media is. Everything else stays with
+your app:
+
+- **Files that aren't media.** A text file, a PDF or a spreadsheet makes nothing. Without
+  `onFileDrop`, a paste of one continues to the page as if the canvas weren't there. With
+  `onFileDrop`, you receive the file and can make any node you like from it.
+- **Pastes aimed at a text field.** A paste into an `input`, a `textarea` or an editable element is
+  left to that element, including a rich-text editor inside a panel you render as the canvas's
+  `children`.
+- **Text that isn't one media URL.** A pasted sentence or a link to a web page does nothing.
+- **Pasted URLs, while `onFileDrop` is set.** `onFileDrop` receives files only. A media URL on the
+  clipboard still becomes an entity directly.
+- **Cross-origin loading.** The canvas loads a URL from the browser, so a URL on another origin
+  loads only if its server allows cross-origin requests (CORS).
+- **Models spread over several files.** A dropped or pasted `.gltf` file whose buffers or textures are
+  separate files can't find them, because it loads from an object URL with nothing beside it. A `.glb` packs everything into one file and loads on its own.
+- **Object URLs.** Revoke them yourself when an entity that holds one is gone for good.
+
+## Keep paste working with your shortcuts
+
+The browser fires a `paste` event only when the Cmd+V or Ctrl+V key press goes through. A keydown
+handler that calls `preventDefault()` on that key stops every picture and URL from reaching the
+canvas. If you listen for keys yourself, leave Cmd+V alone and handle the `paste` event instead.
+
+`useKeyboardShortcuts` handles this for a `mod+v` binding. It lets the key through and waits to see
+what the clipboard holds. If the clipboard holds any file, or text that is a media URL, the binding
+doesn't run, and the paste goes to the canvas. Otherwise the binding runs, a moment after the key
+press. `preventDefault` is ignored on this binding.
+
+```tsx title="flow-with-shortcuts.tsx"
+'use client';
+
+import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+const entities: Entity[] = [];
+const edges: Edge[] = [];
+
+function Shortcuts() {
+  const { copy, cut, paste } = useClipboard();
+  useKeyboardShortcuts({
+    bindings: {
+      'mod+c': copy,
+      'mod+x': cut,
+      // Skipped when the clipboard holds a file or a media URL.
+      'mod+v': () => paste(),
+    },
+  });
+  return null;
+}
+
+export function FlowWithShortcuts() {
+  return (
+    <div style={{ height: 480 }}>
+      <KookieFlow entities={entities} edges={edges}>
+        <Shortcuts />
+      </KookieFlow>
+    </div>
+  );
+}
+```
+
+Copied nodes go to the library's own clipboard, not the system clipboard. If the system clipboard
+still holds a screenshot from earlier, Cmd+V puts that screenshot on the canvas rather than the
+copied nodes.
+
+Only Cmd+V and Ctrl+V wait like this. A binding with Shift or Alt added, such as `mod+shift+v`,
+cancels the key the way any other binding does, so no `paste` event fires for it. The
+[Keyboard](/interaction/keyboard) chapter covers `useKeyboardShortcuts`, and
+[Clipboard and cloning](/data/clipboard) covers `useClipboard`.

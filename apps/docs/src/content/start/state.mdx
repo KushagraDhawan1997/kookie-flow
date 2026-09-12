@@ -1,0 +1,350 @@
+`KookieFlow` takes your entities and edges as props and keeps its own copy of them. When
+someone edits the graph, the canvas changes that copy and reports most edits to you as a list
+of changes. You choose what happens to those reports: let the canvas keep the graph,
+apply them with `useGraph`, or apply them in a store you already have.
+
+## How the canvas holds your graph
+
+The canvas draws from its own internal store, not from your props on every frame.
+
+- **A new array replaces the copy.** When `entities` or `edges` is a different array from
+  the one the canvas last received, the canvas replaces its copy with it. Passing the same
+  array again does nothing.
+- **An edit changes the copy and is reported.** A moved node is drawn in its new place right
+  away, and the canvas calls `onEntitiesChange` or `onEdgesChange` with what changed.
+- **Your next array wins.** If you apply the changes and pass new arrays back, your state and
+  the canvas agree. If you ignore them, the canvas keeps showing the edit until you next pass
+  a new array, which replaces it.
+
+The canvas reports a drag once, when the pointer comes up, and a resize the same way. Holding
+the graph in React state therefore doesn't re-render your component while someone drags.
+
+Two kinds of edit are the exception to the second rule: text typed into a text entity, and
+styles such as a colour or a font size chosen on the [selection toolbar](/interaction/toolbar).
+The canvas reports these and doesn't apply them itself, so they appear only when you pass them
+back.
+
+| Prop | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `entities` | `Entity[]` | Required | The entities to draw. A new array replaces the canvas's copy. |
+| `edges` | `Edge[]` | Required | The edges to draw. A new array replaces the canvas's copy. |
+| `onEntitiesChange` | `(changes: EntityChange[]) => void` | None | Receives every reported entity edit. |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | None | Receives every reported edge edit. |
+
+## Let the canvas own the graph
+
+`entities` and `edges` are required, but every handler is optional. Pass arrays that never
+change, leave the handlers out, and read the graph back through the ref when you need it:
+
+```tsx
+import { useRef } from "react";
+import { KookieFlow, type Edge, type Entity, type KookieFlowInstance } from "@kushagradhawan/kookie-flow";
+
+const entities: Entity[] = [
+  { id: "idea", type: "note", position: { x: 0, y: 0 }, data: { label: "Idea" } },
+  { id: "plan", type: "note", position: { x: 320, y: 0 }, data: { label: "Plan" } },
+];
+const edges: Edge[] = [];
+
+export function Sketchpad() {
+  const flowRef = useRef<KookieFlowInstance>(null);
+  const save = () => {
+    const graph = flowRef.current?.toObject();
+    if (graph) localStorage.setItem("sketchpad", JSON.stringify(graph));
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: 520 }}>
+      <button onClick={save}>Save</button>
+      <KookieFlow ref={flowRef} entities={entities} edges={edges} />
+    </div>
+  );
+}
+```
+
+People can move, resize and delete nodes, draw with the pen, and drop or paste pictures,
+video and models. `getEntities()`, `getEdges()` and `toObject()` return the canvas's copy, and
+[Saving and exporting](/data/saving) covers the saved shape.
+
+Three things don't work without handlers:
+
+- **New wires.** The canvas calls `onConnect` and creates no edge itself, so a dropped wire
+  disappears.
+- **Typed text.** A text entity loses what you typed when editing ends.
+- **Toolbar styles.** If you render a `Toolbar`, a colour or size chosen on it doesn't stick.
+
+Keep both arrays at module scope, or in `useState` or `useMemo`. If a parent re-renders and
+builds a fresh array, the canvas replaces its copy with that array, and the edits people made
+are gone.
+
+## Hold the graph with useGraph
+
+`useGraph` keeps the entities and edges in React state and applies every change the canvas
+reports. Use it when your component needs to read the graph as it changes, to show a count,
+check the graph, or save on every edit:
+
+```tsx
+import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow";
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const graph = useGraph({ initialEntities, history: true });
+
+  return (
+    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: 560 }}>
+      <header>
+        {graph.entities.length} nodes, {graph.edges.length} wires
+        <button onClick={graph.undo} disabled={!graph.canUndo}>Undo</button>
+      </header>
+      <KookieFlow
+        entities={graph.entities}
+        edges={graph.edges}
+        onEntitiesChange={graph.onEntitiesChange}
+        onEdgesChange={graph.onEdgesChange}
+        onConnect={graph.onConnect}
+      />
+    </div>
+  );
+}
+```
+
+### Options
+
+| Option | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `initialEntities` | `Entity[]` | `[]` | The entities to start with. Read on the first render only. |
+| `initialEdges` | `Edge[]` | `[]` | The edges to start with. Read on the first render only. |
+| `history` | `boolean \| UseGraphHistoryOptions` | `false` | Turns on undo and redo. `true` keeps 50 steps and binds Cmd or Ctrl with Z while the canvas has focus. [Undo and redo](/data/history) covers the options. |
+
+### Return value
+
+| Name | Type | What it does |
+| --- | --- | --- |
+| `entities` | `Entity[]` | The current entities. Pass to `KookieFlow`. |
+| `edges` | `Edge[]` | The current edges. Pass to `KookieFlow`. |
+| `onEntitiesChange` | `(changes: EntityChange[]) => void` | Applies entity changes. Pass to `KookieFlow`. |
+| `onEdgesChange` | `(changes: EdgeChange[]) => void` | Applies edge changes. Pass to `KookieFlow`. |
+| `onConnect` | `(connection: Connection) => void` | Adds an edge for a new connection. Pass to `KookieFlow`. |
+| `setEntities` | `Dispatch<SetStateAction<Entity[]>>` | Replaces the entities, like any React state setter. |
+| `setEdges` | `Dispatch<SetStateAction<Edge[]>>` | Replaces the edges. |
+| `addEntity` | `(entity: Entity) => void` | Appends an entity. |
+| `removeEntity` | `(id: string) => void` | Removes an entity and every edge that starts or ends at it. |
+| `addEdge` | `(edge: Edge) => void` | Appends an edge. |
+| `removeEdge` | `(id: string) => void` | Removes an edge. |
+| `getEntity` | `(id: string) => Entity \| undefined` | Finds an entity by id. |
+| `getEdge` | `(id: string) => Edge \| undefined` | Finds an edge by id. |
+| `getConnectedEdges` | `(entityId: string) => Edge[]` | Returns every edge that starts or ends at the entity. |
+| `undo`, `redo` | `() => void` | Step back or forward. They do nothing while `history` is off. |
+| `canUndo`, `canRedo` | `boolean` | Whether there's a step to take. |
+
+History records the changes the canvas reports and the connections `onConnect` adds. The
+edits you make yourself, through `setEntities`, `setEdges` and the four add and remove
+functions, aren't recorded.
+
+`onConnect` adds an edge every time it runs. It doesn't check whether the same two sockets are
+already wired, or whether the input already has a wire. If your graph allows one wire per
+input, write your own handler, as the next section does.
+
+## Apply changes in your own store
+
+If the graph already lives somewhere else, such as a document store, a server or a
+collaborative model, skip `useGraph` and apply the changes there. Each handler receives an
+array of plain objects. Apply every object, in order:
+
+```ts title="graph-changes.ts"
+import { isTextEntity, resizableForSizingMode } from "@kushagradhawan/kookie-flow";
+import type { Connection, Edge, EdgeChange, Entity, EntityChange } from "@kushagradhawan/kookie-flow";
+
+export function applyEntityChanges(entities: Entity[], changes: EntityChange[]): Entity[] {
+  const byId = new Map(entities.map((entity) => [entity.id, entity]));
+  for (const change of changes) {
+    if (change.type === "add") {
+      byId.set(change.entity.id, change.entity);
+      continue;
+    }
+    const entity = byId.get(change.id);
+    if (!entity) continue;
+    if (change.type === "remove") byId.delete(change.id);
+    if (change.type === "position") byId.set(change.id, { ...entity, position: change.position });
+    if (change.type === "dimensions") byId.set(change.id, { ...entity, ...change.dimensions });
+    if (change.type === "parent") byId.set(change.id, { ...entity, parentId: change.parentId ?? undefined });
+    if (change.type === "data") {
+      // Most toolbar controls send only the fields they change, so merge rather than replace.
+      const next: Entity = { ...entity, data: { ...entity.data, ...change.data } };
+      // A text entity's resize handles follow its sizing mode.
+      if (isTextEntity(next) && "sizingMode" in change.data) {
+        next.resizable = resizableForSizingMode(next.data.sizingMode ?? "auto-height");
+      }
+      byId.set(change.id, next);
+    }
+  }
+  return [...byId.values()];
+}
+
+export function applyEdgeChanges(edges: Edge[], changes: EdgeChange[]): Edge[] {
+  const removed = new Set<string>();
+  const added: Edge[] = [];
+  for (const change of changes) {
+    if (change.type === "remove") removed.add(change.id);
+    if (change.type === "add") added.push(change.edge);
+  }
+  return [...edges.filter((edge) => !removed.has(edge.id)), ...added];
+}
+
+/** One wire per input: a new wire replaces the one already there. */
+export function connect(edges: Edge[], c: Connection): Edge[] {
+  if (!c.source || !c.sourceSocket || !c.target || !c.targetSocket) return edges;
+  const kept = edges.filter((e) => !(e.target === c.target && e.targetSocket === c.targetSocket));
+  const id = `${c.source}.${c.sourceSocket}->${c.target}.${c.targetSocket}`;
+  return [...kept, { id, source: c.source, sourceSocket: c.sourceSocket, target: c.target, targetSocket: c.targetSocket, invalid: c.invalid }];
+}
+```
+
+Then call them from the three handlers. This component keeps the document in `useState`; swap
+`setDoc` for your own store's update function:
+
+```tsx
+import { useCallback, useState } from "react";
+import { KookieFlow, type Connection, type EdgeChange, type EntityChange, type FlowObject } from "@kushagradhawan/kookie-flow";
+import { applyEdgeChanges, applyEntityChanges, connect } from "./graph-changes";
+
+export function DocumentEditor({ initial }: { initial: FlowObject }) {
+  const [doc, setDoc] = useState(initial);
+
+  const onEntitiesChange = useCallback((changes: EntityChange[]) => {
+    setDoc((d) => ({ ...d, entities: applyEntityChanges(d.entities, changes) }));
+  }, []);
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setDoc((d) => ({ ...d, edges: applyEdgeChanges(d.edges, changes) }));
+  }, []);
+  const onConnect = useCallback((connection: Connection) => {
+    setDoc((d) => ({ ...d, edges: connect(d.edges, connection) }));
+  }, []);
+
+  return (
+    <KookieFlow
+      entities={doc.entities}
+      edges={doc.edges}
+      defaultViewport={initial.viewport}
+      onEntitiesChange={onEntitiesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    />
+  );
+}
+```
+
+Three details decide whether a store stays in step with the canvas:
+
+- **Two batches can arrive in one tick.** Delete reports the wires through `onEdgesChange`,
+  then the nodes through `onEntitiesChange`, with no render between them. Update from the
+  latest state, as the functional `setDoc` calls do, so the second batch doesn't overwrite
+  the first.
+- **Merge `data`.** A finished text edit and the sizing-mode control send the entity's whole
+  `data`, but most toolbar controls send only the fields they change.
+- **Derive `resizable` for text.** When a text entity's `sizingMode` changes, `useGraph` also
+  sets its `resizable` with `resizableForSizingMode`, as `applyEntityChanges` does above.
+  [Text and comments](/entities/text) explains the three modes.
+
+## What each change describes
+
+`EntityChange` and `EdgeChange` are unions. The `type` field tells you which fields the object
+carries.
+
+### EntityChange
+
+| `type` | Fields | When the canvas sends it |
+| --- | --- | --- |
+| `position` | `id`, `position: XYPosition` | A node moved. |
+| `dimensions` | `id`, `dimensions: Dimensions` | A node was resized, or sized itself to its content. |
+| `add` | `entity: Entity` | An entity was created on the canvas. |
+| `remove` | `id` | An entity was deleted. |
+| `data` | `id`, `data: EntityData` | Text or a toolbar setting changed. |
+| `parent` | `id`, `parentId: string \| null` | `collapseToSubgraph` or `expandSubgraph` moved an entity into or out of a group. |
+| `select` | `id`, `selected: boolean` | Never. The canvas keeps selection to itself. |
+| `collapse` | `id`, `collapsed: boolean` | Never. |
+
+### EdgeChange
+
+| `type` | Fields | When the canvas sends it |
+| --- | --- | --- |
+| `add` | `edge: Edge` | `collapseToSubgraph` or `expandSubgraph` rewired the graph. A new connection arrives through `onConnect` instead. |
+| `remove` | `id` | A wire was deleted, on its own or with its node. |
+| `select` | `id`, `selected: boolean` | Never. |
+
+## What is reported and what is not
+
+These actions call your handlers. The canvas also applies each one to its own copy, with two
+exceptions: the `data` from a finished text edit, and everything a toolbar style control
+sends.
+
+| Action | Reported as |
+| --- | --- |
+| Dragging nodes, when the pointer comes up | `position` for each node that moved |
+| Shift with an arrow key, adding Alt for a step of ten | `position` |
+| Aligning or distributing, by key, toolbar, `alignSelection` or `distributeSelection` | `position` |
+| Resizing a node | `dimensions`, plus `position` when the top or left edge moved |
+| Delete or Backspace | `remove` for the wires, then `remove` for the nodes |
+| Drawing a stroke, pressing T for a text entity, or dropping or pasting media that the canvas turns into an entity | `add` |
+| Finishing a text edit that changed the text | `data` and `dimensions` |
+| A toolbar style control | `data`, and for some controls `dimensions` and `position` |
+| A picture, video or text entity fitting itself to its content | `dimensions` |
+| `collapseToSubgraph` or `expandSubgraph` | `add`, `remove` and `parent`, and edge `add` and `remove` |
+| Dropping a wire on a socket that accepts it | a call to `onConnect`, not a change |
+
+These change the canvas without calling any handler:
+
+- **Selection**, by click, selection box, Cmd or Ctrl with A, or Escape. Read it with
+  `getSelectedEntities()` and `getSelectedEdges()`. See [Selection](/interaction/selection).
+- **The view**: panning, zooming, `fitView` and `setViewport`. Read it with `getViewport()`.
+- **Widget values.** A slider or text field on an input calls `onWidgetChange`. See
+  [Sockets and widgets](/entities/sockets).
+- **`toggleGroupCollapse`, `expandGroup` and `collapseGroup`.** See [Frames and groups](/entities/frames).
+- **`autoLayout`.** It moves the canvas's copy and returns the positions it chose, so pass
+  them to your handler yourself. See [Layout and alignment](/data/arrange).
+- **`useClipboard`** and every action you call on the store from `useFlowStoreApi`. See
+  [Clipboard and cloning](/data/clipboard) and [The flow store](/data/store).
+- **A dropped or pasted file when you pass `onFileDrop`.** The canvas creates nothing and
+  hands you the files. See [Dropping and pasting media](/interaction/drop-and-paste).
+
+This is how a controlled graph keeps the result of `autoLayout`:
+
+```tsx
+const moves = flowRef.current?.autoLayout() ?? [];
+onEntitiesChange(moves.map(({ id, position }) => ({ type: "position", id, position })));
+```
+
+## Keep config props stable
+
+The canvas compares some props by identity, so a new object on every render makes it redo
+work that changed nothing.
+
+- **`entities` and `edges`.** A new array makes the canvas rebuild its lookup tables, and the
+  index it uses to find what's under the pointer, from scratch. Pass the array you already
+  hold, and don't filter or map it inline.
+- **`socketTypes` and `entityTypes`.** A new `socketTypes` object redraws every wire, socket
+  and widget. `entityTypes` is compared definition by definition, so a new table that holds the
+  same definition objects costs nothing, but a definition written inline resolves every entity
+  again. Define both once, outside the component.
+
+`font` and `entityStyle` are compared by their contents, so writing them inline is fine.
+
+```tsx
+// Rebuilds on every render: a new socketTypes object and a new entities array each time.
+function SlowBoard({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
+  return (
+    <KookieFlow
+      socketTypes={{ texture: { name: "Texture", color: "--purple-10" } }}
+      entities={entities.filter((entity) => !entity.data.archived)}
+      edges={edges}
+    />
+  );
+}
+
+// Rebuilds only when `entities` changes.
+const socketTypes = { texture: { name: "Texture", color: "--purple-10" } };
+
+function Board({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
+  const visible = useMemo(() => entities.filter((entity) => !entity.data.archived), [entities]);
+  return <KookieFlow socketTypes={socketTypes} entities={visible} edges={edges} />;
+}
+```

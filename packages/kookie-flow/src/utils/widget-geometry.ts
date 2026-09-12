@@ -93,6 +93,21 @@ export function readWidgetBoxInto(
   return out;
 }
 
+/**
+ * World px a slider keeps at its trailing end for its readout.
+ *
+ * The readout used to be printed over the track's right end, so a number sat on a 5px bar and
+ * the grip ran underneath it. The track now stops short and the number has its own space.
+ * The renderer draws the track this wide and the pointer maps across the same width, so a grip
+ * is dragged where it is drawn.
+ */
+export const SLIDER_READOUT_RESERVE = 44;
+
+/** The width a slider's track spans inside its box. */
+export function sliderTrackWidth(box: WidgetBox): number {
+  return Math.max(1, box.width - SLIDER_READOUT_RESERVE);
+}
+
 /** Is this world point inside the box? */
 export function isPointInWidget(box: WidgetBox, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;

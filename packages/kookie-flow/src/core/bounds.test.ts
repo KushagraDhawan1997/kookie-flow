@@ -36,6 +36,7 @@ const LAYOUT: ResolvedSocketLayout = {
   borderWidth: 1,
   markSize: 20,
   trackHeight: 4,
+  listRowHeight: 30,
 };
 
 function unsized(id: string, x: number, y: number, extra: Partial<Entity> = {}): Entity {

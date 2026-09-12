@@ -95,6 +95,9 @@ What a future version would take up, none of it a hole in what exists:
 1. ~~**Multi-select alignment**~~ — landed: `alignSelection`, `distributeSelection`, Alt shortcuts, `arrange` widget
 2. ~~**Stroke styling**~~ — landed: `strokeColor` / `strokeWidth` widgets and the `penStyle` prop
 3. **A layered layout that routes edges**, rather than one that only places nodes
+4. ~~**GL panels and glass controls**~~ — landed 2026-09-12: the select list and colour picker draw in
+   GL, every control is glass and animates, and `src/gl/` is the seam a `kookie-gl` package would
+   lift out. See `plans/migration/decisions.md` D20.
 
 ---
 

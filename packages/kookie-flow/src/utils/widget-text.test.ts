@@ -1,3 +1,4 @@
+import { SLIDER_READOUT_RESERVE } from './widget-geometry';
 import { describe, it, expect } from 'vitest';
 import {
   formatWidgetNumber,
@@ -133,16 +134,16 @@ describe('widgetValueText: where the value sits', () => {
     expect(widgetValueText(config('select'), undefined, BOX)?.text).toBe('Select…');
   });
 
-  it('right-aligns a slider readout at the inner trailing edge', () => {
-    // The socket's name owns the gutter left of the box, so the trailing end is the only free
-    // space in the row — and a fixed side means the number does not jump as the fill crosses it.
+  it('right-aligns a slider readout in the space past the track', () => {
+    // The track stops SLIDER_READOUT_RESERVE short of the box's end, and the number lives there:
+    // on a fixed side, so it does not jump as the fill crosses it, and never on the track itself.
     const placed = widgetValueText(config('slider', { min: 0, max: 1, step: 0.01 }), 0.25, BOX);
     expect(placed).toEqual({
       text: '0.25',
-      x: BOX.x + BOX.width - PAD,
+      x: BOX.x + BOX.width,
       anchor: 'right',
       muted: false,
-      maxWidth: BOX.width * 0.5,
+      maxWidth: SLIDER_READOUT_RESERVE - 8,
     });
   });
 

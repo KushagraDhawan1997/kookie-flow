@@ -20,6 +20,7 @@
  * component prints its own. Each of those is stated at its branch below, with what it costs.
  */
 
+import { SLIDER_READOUT_RESERVE } from './widget-geometry';
 import { MIN_WIDGET_ZOOM } from './widget-hit';
 import type { WidgetBox } from './widget-geometry';
 import type { ResolvedWidgetConfig } from '../types';
@@ -59,7 +60,7 @@ export const PAD = 8;
 export const WIDGET_RADIUS = 8;
 
 /**
- * How much of a select's box the chevron owns. The shader draws it centred at `halfSize.x - 10`
+ * How much of a select's box the chevron owns. The shader draws it centred at `halfSize.x - 12`
  * spanning ±4 (widgets-gl.tsx), so 20 from the trailing edge clears it with a little air.
  */
 const CHEVRON_RESERVE = 20;
@@ -70,7 +71,7 @@ export interface WidgetTextPlacement {
   text: string;
   /** World x of the anchor edge. */
   x: number;
-  anchor: 'left' | 'right';
+  anchor: 'left' | 'right' | 'center';
   /** True when this is a placeholder rather than a value, and takes the secondary ink. */
   muted: boolean;
   /** World width the text may occupy before it has to be truncated. */
@@ -164,20 +165,15 @@ export function widgetValueText(
     case 'slider': {
       const n = typeof value === 'number' ? value : Number(value);
       if (!Number.isFinite(n)) return null;
-      // RIGHT-ALIGNED at the box's inner edge, and constant. The socket's name owns the gutter to
-      // the LEFT of the box, so the trailing end is the only free space in the row; the track is
-      // at most 4px tall, so a 12px glyph sits mostly on the node body rather than on the bar; and
-      // a fixed side means the readout does not jump as the value crosses the middle. It does
-      // overlap the grip near a full fill — and that overlap is the most legible pairing in the
-      // palette, neutral-12 over the neutral-1 thumb, so it reads rather than smears.
+      // RIGHT-ALIGNED at the box's end, in the space the track stops short of
+      // (SLIDER_READOUT_RESERVE). A fixed side means the readout does not jump as the value crosses
+      // the middle, and it no longer sits on the track or under the grip.
       return {
         text: formatWidgetNumber(n, config.step),
-        x: box.x + box.width - pad,
+        x: box.x + box.width,
         anchor: 'right',
         muted: false,
-        // Half the box: a readout that could grow across the whole track would cover the fill it
-        // is describing.
-        maxWidth: box.width * 0.5,
+        maxWidth: SLIDER_READOUT_RESERVE - 8,
       };
     }
 
@@ -200,10 +196,11 @@ export function widgetValueText(
           ? { text: config.placeholder, x: box.x + pad, anchor: 'left', muted: true, maxWidth: inner }
           : null;
       }
+      // CENTRED, as v2's number field is: a column of numbers reads down its own middle.
       return {
         text: formatWidgetNumber(n, config.step),
-        x: box.x + pad,
-        anchor: 'left',
+        x: box.x + box.width / 2,
+        anchor: 'center',
         muted: false,
         maxWidth: inner,
       };

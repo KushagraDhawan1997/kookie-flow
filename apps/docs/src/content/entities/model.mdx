@@ -1,0 +1,179 @@
+Everything you place on the canvas is an entity: a node with sockets, a frame, a sticky note, a
+line of text, a picture, a stroke of ink. You pass them all to `KookieFlow` in one `entities`
+array, and each one is a plain object with an `id`, a `type`, a `position` and `data`.
+
+## Every object is an entity
+
+The canvas below holds a node, a frame with a node inside it, a text entity and a comment. All
+five objects sit in the same array, and only their `type` and `data` differ.
+
+<Example name="entity-kinds" />
+
+Because every object has the same shape, you handle them all the same way. Selecting, copying,
+deleting and saving work on a comment exactly as they do on a node, and `onEntitiesChange` reports
+changes to both in the same form.
+
+## The fields every entity has
+
+`Entity` is generic over its data: `Entity<T extends EntityData = EntityData>`. Four fields are
+required, and the rest are optional.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | `string` | required | A unique id. Edges, `parentId` and every change event refer to the entity by it. |
+| `type` | `string` | required | Which kind of entity this is. A built-in name draws that built-in; any other string draws a node. |
+| `position` | `XYPosition` | required | The top-left corner, in world coordinates. `y` grows downward. |
+| `data` | `T` | required | The entity's content. See [Data](#data). |
+| `width` | `number` | depends on the type | The width in world pixels. See [Size and resizing](#size-and-resizing). |
+| `height` | `number` | depends on the type | The height in world pixels. |
+| `inputs` | `Socket[]` | none | Input sockets, drawn down the left edge. See [Sockets and widgets](/entities/sockets). |
+| `outputs` | `Socket[]` | none | Output sockets, drawn down the right edge. |
+| `color` | `AccentColor` | none | A per-entity accent, drawn as a thin light along the top edge. See [Entity styling](/styling/entities). |
+| `resizable` | `boolean \| { width?: boolean; height?: boolean }` | `true` | Whether the resize handles appear, for both axes or for each one. |
+| `preview` | `EntityPreview` | none | A band in the body that shows what an output socket holds. See [Images, video and models](/entities/media). |
+| `parentId` | `string` | none | The frame this entity belongs to. See [Frames and groups](/entities/frames). |
+| `collapsed` | `boolean` | none | Whether a frame is collapsed. Frames only. |
+| `selected` | `boolean` | none | Not read by the canvas. See [Read the selection from the canvas](#read-the-selection-from-the-canvas). |
+| `dragging` | `boolean` | none | Not read by the canvas. |
+
+`position` is always in world coordinates, including for an entity inside a frame. A child's
+position isn't an offset from its frame.
+
+### Data
+
+`EntityData` has three named fields, and it accepts any other key you want to store:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `label` | `string` | The title in a node's header. A node with no label shows its `type` there instead. |
+| `status` | `EntityStatus` | A status drawn on the node's outline. See [Evaluation](/data/evaluation). |
+| `statusMessage` | `string` | A message drawn under the node, in the error colour. |
+
+Other keys belong to you, except the ones a built-in type reads. The text and comment types read
+`data.content`, for example, and the chapter for each built-in type lists its fields. A node keeps
+its widget values in `data.values`, keyed by socket id, which the
+[Sockets and widgets](/entities/sockets) chapter covers.
+
+Pass the data type as the generic argument when you want TypeScript to check it:
+
+```tsx
+import type { Entity, EntityData } from '@kushagradhawan/kookie-flow';
+
+interface ShaderData extends EntityData {
+  source: string;
+  compiled: boolean;
+}
+
+const shader: Entity<ShaderData> = {
+  id: 'shader-1',
+  type: 'gl/shader',
+  position: { x: 120, y: 80 },
+  data: { label: 'Fragment shader', source: 'void main() {}', compiled: false },
+  inputs: [{ id: 'time', name: 'Time', type: 'float' }],
+  outputs: [{ id: 'color', name: 'Color', type: 'color' }],
+  color: 'violet',
+};
+```
+
+### Read the selection from the canvas
+
+`selected` and `dragging` are on the `Entity` type, but the canvas doesn't read or write either
+of them. It keeps the selection itself and doesn't report it through `onEntitiesChange`, so
+setting `selected: true` doesn't select an entity, and an entity someone selects doesn't gain
+`selected: true`. Call `getSelectedEntities()` on the flow's ref to read the selection, as the
+[Selection](/interaction/selection) chapter describes. `toObject()` leaves both fields out when
+you save.
+
+### Entities the canvas creates
+
+Pressing T adds a text entity, and the pen adds one ink entity per stroke. Pasting a picture adds
+an image, unless you pass `onFileDrop` to handle it yourself. Each one arrives through
+`onEntitiesChange` as an `add` change, the same way an entity you add yourself would.
+
+## Nodes and self-drawn types
+
+A node is any entity whose `type` isn't one of the seven self-drawn built-ins. The canvas gives a
+node a body, a header with its `label`, rows for its sockets and widgets, and a status outline.
+`'default'`, `'math/add'` and `'image/blur'` all draw as nodes, because none of them has a
+renderer of its own.
+
+A self-drawn type has its own renderer, and the canvas doesn't put a node body or title on it.
+The seven self-drawn types are `comment`, `reroute`, `text`, `image`, `video`, `mesh` and `draw`.
+
+A `frame` is the one built-in that isn't self-drawn. It uses the node body and header, and it
+holds other entities through their `parentId`.
+
+To give a kind of node its own label, size and sockets once, instead of on every entity, use an
+[entity types](/entities/types) table.
+
+## The built-in types
+
+`BuiltInEntityType` is the union of the eight built-in names.
+
+| `type` | What it is | Data | Chapter |
+| --- | --- | --- | --- |
+| `frame` | A container that holds other entities and can collapse | `FrameEntityData` | [Frames and groups](/entities/frames) |
+| `comment` | A sticky note | `CommentEntityData` | [Text and comments](/entities/text) |
+| `text` | A block of text you can edit on the canvas | `TextEntityData` | [Text and comments](/entities/text) |
+| `image` | A picture | `ImageEntityData` | [Images, video and models](/entities/media) |
+| `video` | A video clip with playback controls | `VideoEntityData` | [Images, video and models](/entities/media) |
+| `mesh` | A 3D model you can turn | `MeshEntityData` | [Images, video and models](/entities/media) |
+| `draw` | One stroke of ink | `DrawEntityData` | [Drawing](/interaction/drawing) |
+| `reroute` | A dot that an edge passes through | `RerouteEntityData` | [Edges](/edges/edges) |
+
+Each built-in also has an entity type, such as `TextEntity`, and most have a type guard, such as
+`isTextEntity`. The [Types](/api/types) chapter lists them.
+
+## Size and resizing
+
+A node with no `width` is 240 pixels wide, which is `DEFAULT_ENTITY_WIDTH`. A node with no
+`height` is exactly as tall as its header, socket rows and preview band need. If you set a
+`height` larger than that, the socket rows are centred vertically in the extra space.
+
+Give every entity that isn't a node an explicit `width` and `height`. Each self-drawn type has a
+drawing size of its own, such as 200 by 100 for a comment, but selection and hit testing fall back
+to the node size. Without both numbers, the area you can click can differ from what you see.
+
+`defaultEntityWidth` on `KookieFlow` defaults to `240`, and changing it doesn't make nodes wider.
+The node's body, selection outline and hit area stay 240 pixels wide, while its widget rows follow
+the prop, so any other value leaves the widgets out of line with the body. Leave the prop at its default. To
+make nodes wider, set `width` on the entity or `defaultWidth` on its
+[type](/entities/types).
+
+### Resize an entity
+
+Selecting an entity shows its resize handles. Drag a handle to resize, hold Shift to keep the
+proportions, and hold Alt to resize from the centre. Images, videos and models keep their
+proportions by default, so Shift frees them instead. When you release the handle, the canvas
+reports a `dimensions` change, plus a `position` change if the top or left edge moved.
+
+`resizable: false` hides the handles, and `resizable: { width: true, height: false }` allows only
+horizontal resizing. When a `data` change sets a text entity's `sizingMode`, `useGraph` updates
+its `resizable` to match, as the [Text and comments](/entities/text) chapter explains.
+
+A resize stops at a minimum size for each type:
+
+| Type | Minimum width | Minimum height |
+| --- | --- | --- |
+| Node | 120 | 40, or the height its header, sockets and preview band need if that is larger |
+| `frame` | 100 | 60 |
+| `comment` | 80 | 40 |
+| `text` | 40 | 20 |
+| `image`, `video` | 60 | 40 |
+| `mesh` | 80 | 80 |
+
+## Stacking order
+
+When entities overlap, the canvas decides which one is on top. `Entity` has no z-index field.
+
+- **Array order sets the starting order.** An entity later in the array draws over one earlier in
+  it. List a frame before the entities inside it.
+- **Pressing an entity brings it to the top.** A click, a drag or a press on a widget all count.
+  Pressing a frame lifts everything inside it too, so a frame never covers its own children.
+- **A new entity starts on top.** This includes pasted entities and ones you add later.
+- **A selected entity draws above every unselected one.**
+- **A comment is always on top.** Comments are HTML laid over the canvas rather than drawn in it.
+
+The canvas keeps the order separately from your entities and doesn't reorder your array, so the
+order isn't saved. A reloaded graph starts again from array order. To bring an entity to the top from code, call the
+store's `bringToFront`, which the [store chapter](/data/store) covers.

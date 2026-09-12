@@ -1,0 +1,210 @@
+An edge is a wire from an output socket on one entity to an input socket on another. You
+describe each edge as a plain object in the `edges` array. The canvas draws it, colours it by
+the sockets it joins, and keeps it attached while the entities move.
+
+## Connect two sockets
+
+An edge names two entities and one socket on each. `sourceSocket` is the `id` of an output on
+the source entity, and `targetSocket` is the `id` of an input on the target entity.
+
+```tsx title="graph.ts"
+import type { Edge, Entity } from '@kushagradhawan/kookie-flow';
+
+export const entities: Entity[] = [
+  {
+    id: 'noise',
+    type: 'default',
+    position: { x: 0, y: 0 },
+    data: { label: 'Noise' },
+    outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+  {
+    id: 'blur',
+    type: 'default',
+    position: { x: 360, y: 40 },
+    data: { label: 'Blur' },
+    inputs: [{ id: 'image', name: 'Image', type: 'image' }],
+  },
+];
+
+export const edges: Edge[] = [
+  { id: 'noise-to-blur', source: 'noise', sourceSocket: 'image', target: 'blur', targetSocket: 'image' },
+];
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | `string` | required | Names the edge in change events and in the selection. Keep it unique. |
+| `source` | `string` | required | The `id` of the entity the edge leaves. |
+| `target` | `string` | required | The `id` of the entity the edge enters. |
+| `sourceSocket` | `string` | none | The `id` of an output socket on `source`. |
+| `targetSocket` | `string` | none | The `id` of an input socket on `target`. |
+| `type` | `EdgeType` | `defaultEdgeType` | The shape of the path. |
+| `label` | `string \| EdgeLabelConfig` | none | Text drawn on the path. |
+| `markerStart` | `EdgeMarkerType \| EdgeMarker` | none | An arrow at the source end. |
+| `markerEnd` | `EdgeMarkerType \| EdgeMarker` | none | An arrow at the target end. |
+| `animated` | `boolean` | `false` | Sends light along the edge from source to target. |
+| `invalid` | `boolean` | calculated | Draws the edge as a dashed error line. |
+| `selected` | `boolean` | none | Not read. The canvas keeps the selection itself, so setting this doesn't select the edge. |
+| `reroutes` | `string[]` | none | Not drawn. See [reroute points](#route-an-edge-through-reroute-points). |
+
+An edge that names no socket attaches halfway down the side of its entity: the right side of
+the source, or the left side of the target. So if an edge starts from the middle of a node, or
+draws as a red dashed line, check its socket ids. A socket id that matches no socket causes
+both, when the edge names both sockets.
+
+The [Sockets and widgets](/entities/sockets) chapter covers sockets, their types and their
+widgets. The [Controlled and uncontrolled state](/start/state) chapter explains how the canvas
+reports new and deleted edges.
+
+## Choose a path
+
+You choose the shape of an edge's path with `type`. Set `defaultEdgeType` on `KookieFlow` to
+choose the shape for every edge, and set `type` on one edge when you want a different shape.
+
+<Example name="edges" />
+
+| `EdgeType` | Path |
+| --- | --- |
+| `bezier` | A curve that leaves and enters its sockets horizontally. The further apart the sockets are, the wider it bends. This is the default. |
+| `straight` | A straight line from socket to socket. |
+| `step` | Horizontal to halfway across, vertical, then horizontal into the target, with square corners. |
+| `smoothstep` | A curve like `bezier`, but its bends stay within 100 world units of each socket, so a long edge runs almost straight between them. |
+
+```tsx
+import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+
+const edges: Edge[] = [
+  // Drawn as a step, because defaultEdgeType says so.
+  { id: 'a', source: 'noise', sourceSocket: 'image', target: 'blur', targetSocket: 'image' },
+  // Drawn as a straight line, because its own type wins.
+  { id: 'b', source: 'blur', sourceSocket: 'image', target: 'save', targetSocket: 'image', type: 'straight' },
+];
+
+export function Pipeline({ entities }: { entities: Entity[] }) {
+  return <KookieFlow entities={entities} edges={edges} defaultEdgeType="step" />;
+}
+```
+
+## Label an edge
+
+`label` takes a string, or an `EdgeLabelConfig` when you want to move or style the text. The
+label is centred on the path, and it has no background.
+
+```tsx
+const edge: Edge = {
+  id: 'mask',
+  source: 'segment',
+  sourceSocket: 'mask',
+  target: 'blur',
+  targetSocket: 'mask',
+  label: { text: 'subject only', position: 0.25, fontSize: 14 },
+};
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `text` | `string` | required | The text of the label. |
+| `position` | `number` | `0.5` | Where the label sits along the path, from `0` at the source to `1` at the target. |
+| `fontSize` | `number` | `11` | The size in world units, the units entity positions use, so the label grows and shrinks with zoom. |
+| `textColor` | `string` | the theme's primary text colour | A hex or `rgb()` colour. |
+| `bgColor` | `string` | none | Not drawn. |
+
+`showEdgeLabels` on `KookieFlow` defaults to `true`. Set it to `false` to hide every label
+without removing labels from your data. Labels also hide while the zoom is below 25%.
+
+## Add arrow markers
+
+When you set `markerEnd`, the canvas draws an arrow at the target end, with its tip on the
+target socket. `markerStart` draws one at the source end, with its tip on the source socket.
+Pass a marker type as a string, or pass an `EdgeMarker` to change the arrow's size.
+
+```tsx
+const edge: Edge = {
+  id: 'save',
+  source: 'blur',
+  sourceSocket: 'image',
+  target: 'save',
+  targetSocket: 'image',
+  markerEnd: { type: 'arrowClosed', width: 16, height: 20 },
+};
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | `EdgeMarkerType` | required | `'arrow'` or `'arrowClosed'`. Both draw a filled triangle. |
+| `width` | `number` | `12` | The width of the arrow's base, in world units. |
+| `height` | `number` | `12` | The length from base to tip, in world units. |
+| `color` | `string` | none | Not drawn. An arrow takes the colour of its edge's target end. |
+
+An arrow is measured in world units, so it grows as you zoom in. The line itself stays the
+same width on screen at every zoom.
+
+## Animate an edge
+
+Set `animated: true` to send two soft spots of light along the edge, from source to target,
+one lap every four seconds. Use it to show which way data moves, or which connection is busy.
+A selected edge shows the same moving light.
+
+## How an edge gets its colour
+
+The canvas colours each edge by the first row of this table that applies to it.
+
+| When the edge is | It's drawn |
+| --- | --- |
+| Selected | In the accent colour, `--accent-9`, from end to end. |
+| Invalid | As a dashed line in the destructive colour, `--destructive-9`, without the soft glow a valid edge has. |
+| Anything else | Fading from the colour of its source socket's type to the colour of its target socket's type. |
+
+A socket type's colour comes from `socketTypes` or the built-in socket types, and a type that
+isn't in either takes the colour of `any`. An edge with no `sourceSocket` starts in
+`--neutral-8`. An edge with no `targetSocket` keeps its source colour all the way along.
+
+### When an edge is invalid
+
+When `invalid` is unset and an edge names both sockets, the canvas calculates `invalid`
+whenever the `edges` or `socketTypes` prop changes. The edge is invalid when either socket id
+matches no socket, when the edge joins an entity to itself, or when the two socket types aren't
+compatible. The [compatibility rules](/entities/sockets#compatibility) apply whatever
+`connectionMode` you set.
+
+Set `invalid` yourself to skip that check. `invalid: false` draws an edge normally even when
+its types don't match, and `invalid: true` marks an edge as wrong for a reason of your own.
+
+## Route an edge through reroute points
+
+A reroute is an entity with `type: 'reroute'`. The canvas draws it as a small dot at its
+`position`, rather than as a card. To bend a wire through a point, place a reroute there and
+split the wire into two edges that meet at it.
+
+Edges attach to sockets rather than to the dot, so give the reroute one input and one output.
+With `width` and `height` set to `0` and each socket at `position: 0.5`, both sockets sit level
+with the dot, one on each side of it.
+
+```tsx
+import type { Edge, RerouteEntity } from '@kushagradhawan/kookie-flow';
+
+const bend: RerouteEntity = {
+  id: 'bend',
+  type: 'reroute',
+  position: { x: 200, y: 240 },
+  width: 0,
+  height: 0,
+  data: {},
+  // Both sockets take the wire's type, so both halves keep its colour.
+  inputs: [{ id: 'in', name: '', type: 'image', position: 0.5 }],
+  outputs: [{ id: 'out', name: '', type: 'image', position: 0.5 }],
+};
+
+const edges: Edge[] = [
+  { id: 'noise-to-bend', source: 'noise', sourceSocket: 'image', target: 'bend', targetSocket: 'in' },
+  { id: 'bend-to-blur', source: 'bend', sourceSocket: 'out', target: 'blur', targetSocket: 'image' },
+];
+```
+
+`RerouteEntity` is an `Entity` whose `type` is `'reroute'`, and its data is a
+`RerouteEntityData`: the same fields as any entity's data, with an optional `label`. The canvas
+doesn't draw a reroute's label.
+
+Don't use the `reroutes` field on `Edge` for this. The canvas doesn't read it, so an edge with
+`reroutes` set still runs from its source socket to its target socket.

@@ -1,0 +1,248 @@
+The canvas is one stop in the page's tab order. While it has focus, it responds to the keys
+listed below. While anything else on the page has focus, it ignores them, so your app's own
+text fields and shortcuts keep working beside it.
+
+## Give the graph focus
+
+Tab moves focus onto the canvas, and a press anywhere on the canvas focuses it too. A screen
+reader announces the canvas by its `ariaLabel`, then reads a short instruction: arrow keys move
+between nodes, Enter reaches the focused node's controls, and Escape comes back.
+
+| Prop | Type | Default | Meaning |
+|---|---|---|---|
+| `ariaLabel` | `string` | `'Flow graph'` | The accessible name of the canvas. |
+
+Give every graph a name that says what it holds, especially when a page has more than one.
+
+```tsx
+<KookieFlow ariaLabel="Image pipeline" entities={entities} edges={edges} />
+```
+
+The canvas is announced as an application, because its arrow keys move between nodes rather
+than through text. Screen readers such as NVDA and JAWS leave browse mode inside it so that
+those keys reach the canvas, and the same applies to any children you render inside
+`<KookieFlow>`. Keep a panel that people should read as ordinary content outside the canvas.
+
+The canvas responds to keys only while the canvas element itself has focus. When a button you
+render inside it, the editor of a text entity, or a field on a node has focus, the keys go to
+that element instead.
+
+## Keys the canvas responds to
+
+The arrow keys move a keyboard cursor from entity to entity, and each move selects the entity
+the cursor lands on. The section on [reaching a node's controls](#reach-a-nodes-controls)
+describes the cursor in full.
+
+| Key | What it does |
+|---|---|
+| Down arrow or Right arrow | Moves the keyboard cursor to the next entity and selects it. |
+| Up arrow or Left arrow | Moves the keyboard cursor to the previous entity and selects it. |
+| Home or End | Moves the keyboard cursor to the first or last entity and selects it. |
+| Enter | Moves focus into the controls on the keyboard cursor's node, when it has any. |
+| Shift+arrow | Moves the selection one world unit, or one grid cell with `snapToGrid` on. With nothing selected, moves the keyboard cursor's entity. |
+| Alt+Shift+arrow | Moves ten steps instead of one. |
+| Alt+A, Alt+D, Alt+W or Alt+S | Lines the selection up on its left, right, top or bottom edge. Needs two or more entities. |
+| Alt+H or Alt+V | Lines the selection's centres up on one vertical or one horizontal line. Needs two or more. |
+| Alt+Shift+H or Alt+Shift+V | Spaces the selection evenly across or down. Needs three or more. |
+| Cmd/Ctrl+A | Selects every entity. |
+| Delete or Backspace | Deletes the selection, as the [Selection](/interaction/selection) chapter describes. |
+| Escape | Stops what's in progress, or clears the selection. |
+| Space, held | Pans while you drag with the primary button. |
+| T | Adds an empty text entity in the middle of the view and starts editing it. |
+| D | Picks up the pen, or puts it down. The [Drawing](/interaction/drawing) chapter covers it. |
+
+Escape handles the first of these that applies: it puts the pen down, stops editing a text
+entity, cancels a wire you're drawing, or cancels a selection box. When none of those is in
+progress, it clears the selection.
+
+Every key that moves or adds something reports it, the same way a pointer does.
+`onEntitiesChange` receives `position` changes for Shift+arrow and the alignment keys, and an
+`add` change for T. The [Layout and alignment](/data/arrange) chapter explains how aligning and
+spacing choose where each entity goes.
+
+The canvas matches letters by their position on the keyboard, so Alt+A works on macOS too,
+where Option changes the character the key types. With history on, `useGraph` also binds Cmd/Ctrl+Z
+to undo and Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y to redo while focus is inside the canvas, as the
+[Undo and redo](/data/history) chapter describes.
+
+## Reach a node's controls
+
+The keyboard cursor is the one entity the keyboard is on. The arrow keys move it in reading
+order: top to bottom, then left to right. It wraps from the last entity to the first, and skips
+entities inside a collapsed frame. A press on an entity also moves the cursor there, so the
+pointer and the keyboard share one position.
+
+Moving the cursor with a key selects that entity, because the selection outline is the only
+mark on the canvas that shows where the cursor is. When the entity isn't fully in view, the
+camera centres it. A screen reader announces the entity's label, or its id when it has no
+label, and how many controls it has: "Sampler, 3 controls".
+
+Press Enter to move focus to the first control. Each widget on the node's unconnected inputs
+has a matching form control that is hidden from view but present for the keyboard and for
+screen readers. A checkbox widget becomes a checkbox input, a slider becomes a range input, and
+a select, number, colour, text, or text-area widget becomes the matching form element. Each
+control is labelled with its socket's name.
+
+| Key, inside the controls | What it does |
+|---|---|
+| Down arrow or Up arrow | Moves to the next or previous control, wrapping at the ends. |
+| Home or End | Moves to the first or last control. |
+| Escape | Returns focus to the canvas. |
+| Any other key | Goes to the control: Space toggles a checkbox, Left and Right move a slider, and typing edits a field. |
+
+A change made this way calls `onWidgetChange` with the same kind of value a pointer sends: a
+boolean for a checkbox, a number for a slider, and a string for a text field. The
+[Sockets and widgets](/entities/sockets) chapter describes those values.
+
+A connected input has no control, because its value arrives along the edge. A widget type you
+replaced with your own component through `widgetTypes`, or an inline widget component, has no
+extra control either, because your component is already a real element. With `showWidgets`
+set to `false` there are no controls to reach.
+
+## Add your own shortcuts
+
+`useKeyboardShortcuts` binds keys to functions. Import it from the plugins subpath.
+
+```tsx lineNumbers=false
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+```
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `bindings` | `Record<string, KeyHandler> \| KeyBinding[]` | required | The keys and what each one runs. |
+| `target` | `HTMLElement \| Document \| null` | `document` | The element that listens. `null` listens on `document`. |
+| `enabled` | `boolean` | `true` | Removes the listener while `false`. |
+| `requireFocus` | `boolean` | `false` | Runs bindings only while focus is inside `containerRef`. |
+| `containerRef` | `React.RefObject<HTMLElement>` | none | The element `requireFocus` checks. While its `current` is empty, bindings run without the check. |
+
+A `KeyHandler` is `(event: KeyboardEvent) => void`. The object form of `bindings` maps a key
+string to a handler and prevents the browser's default action, except for a
+[paste binding](#bind-paste-without-blocking-media). The array form takes `KeyBinding` objects,
+which let you keep the default.
+
+| `KeyBinding` field | Type | Default | Meaning |
+|---|---|---|---|
+| `key` | `string` | required | The key string. |
+| `handler` | `KeyHandler` | required | What the key runs. |
+| `preventDefault` | `boolean` | `true` | Whether to cancel the browser's default action for the key. |
+
+A key string joins modifiers and a key with `+`, such as `mod+shift+k`. The modifiers are
+`mod`, which is Cmd on Apple devices and Ctrl elsewhere, and `ctrl`, `meta`, `alt`, and `shift`.
+The modifiers must match exactly, so `mod+k` doesn't run for Cmd+Shift+K. After the modifiers:
+
+- A letter matches the character the key types, in either case. On macOS, Option changes that
+  character, so an `alt+` letter binding doesn't run there.
+- `delete` matches Delete and Backspace, and `backspace` matches Backspace only.
+- `escape`, `enter`, `space`, `arrowup`, `arrowdown`, `arrowleft`, and `arrowright` name those
+  keys.
+- Any other key matches the lowercase value of `event.key`, such as `/` or `1`.
+
+The hook runs the first binding that matches and stops. It ignores keys typed into an input, a
+text area, or an editable element.
+
+## Scope shortcuts to the canvas
+
+By default the hook listens on `document`, so a binding runs wherever focus is on the page. To
+keep a shortcut to the graph, pass the element that wraps `<KookieFlow>` as `target`. Keys
+pressed on the canvas reach that element on their way up, and keys pressed elsewhere don't.
+
+```tsx title="editor.tsx"
+'use client';
+
+import { useRef, useState } from 'react';
+import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+
+export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const flowRef = useRef<KookieFlowInstance>(null);
+  // State rather than a ref, so the hook renders again once the element exists.
+  const [board, setBoard] = useState<HTMLDivElement | null>(null);
+
+  useKeyboardShortcuts({
+    target: board,
+    enabled: board !== null,
+    bindings: {
+      f: () => flowRef.current?.fitView(),
+      'shift+f': () => {
+        const ids = flowRef.current?.getSelectedEntities().map((entity) => entity.id) ?? [];
+        flowRef.current?.fitView({ entities: ids });
+      },
+    },
+  });
+
+  return (
+    <div ref={setBoard} style={{ height: 480 }}>
+      <KookieFlow
+        ref={flowRef}
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
+    </div>
+  );
+}
+```
+
+`target` takes the element, not a ref, which is why the example keeps it in state. A ref is
+still empty on the first render, and the hook would listen on `document` until something else
+made the component render again. `requireFocus` with `containerRef` checks focus against a ref
+instead, but with React 19's types a `useRef<HTMLDivElement>(null)` doesn't satisfy
+`containerRef`, so `target` is the simpler choice.
+
+Pick keys the canvas doesn't already use. Your binding runs as well as the canvas's own
+handling, not instead of it, and `preventDefault` doesn't stop the canvas. A `delete` binding
+that calls the store's `deleteSelected` runs first, removes the selection without calling
+`onEntitiesChange`, and leaves the canvas's own Delete with nothing to report. Leave Delete,
+Backspace, Escape, Enter, Home, End, the arrows, Space, T, D, Cmd/Ctrl+A, and the Alt alignment
+keys to the canvas.
+
+## Bind paste without blocking media
+
+A paste binding, `mod+v` with no other modifier, works differently from the rest. The hook
+doesn't cancel the key, because a cancelled Cmd/Ctrl+V stops the browser's `paste` event, and
+that event is how a screenshot or an image link reaches the canvas. The hook waits for the
+event instead:
+
+- When the clipboard holds a file of any kind, or a link to a picture, a video, or a model, your
+  handler doesn't run. The canvas turns a picture, a video, or a model into an entity, as the
+  [Dropping and pasting media](/interaction/drop-and-paste) chapter describes.
+- When the clipboard holds anything else, your handler runs.
+- When the browser fires no `paste` event at all, your handler runs a moment later.
+
+`preventDefault` has no effect on a paste binding. This pair copies the selected entities and
+pastes them 40 units down and to the right, while a pasted screenshot still becomes an image.
+It replaces the `useKeyboardShortcuts` call in the editor above.
+
+```tsx
+const copied = useRef<Entity[]>([]);
+
+useKeyboardShortcuts({
+  target: board,
+  enabled: board !== null,
+  bindings: {
+    'mod+c': () => {
+      copied.current = flowRef.current?.getSelectedEntities() ?? [];
+    },
+    'mod+v': () => {
+      onEntitiesChange(
+        copied.current.map((entity) => ({
+          type: 'add' as const,
+          entity: {
+            ...entity,
+            id: crypto.randomUUID(),
+            position: { x: entity.position.x + 40, y: entity.position.y + 40 },
+          },
+        }))
+      );
+    },
+  },
+});
+```
+
+The paste goes through `onEntitiesChange` from `useGraph`, so the new entities land in your own
+state as one batch, and with history on they're one undo step. The
+[Clipboard and cloning](/data/clipboard) chapter covers a clipboard that also copies the edges
+between entities.

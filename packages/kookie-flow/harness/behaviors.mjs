@@ -2454,18 +2454,19 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   check('the borrowed input vanishes when the edit ends', afterEdit === 0, `${afterEdit} remain`);
 
   /**
-   * (f) A SELECT OPENS A LIST, and it opens it on the RELEASE.
+   * (f) A SELECT OPENS A LIST DRAWN IN GL, on the release, and never borrows a `<select>`.
    *
-   * What this replaced: a press advanced to the next option and wrapped, so choosing the fourth of
-   * five took four presses and the five were never on screen together. The list is the platform's
-   * own `<select>`, borrowed through the same overlay the text field borrows an input through.
+   * What this replaced, twice. A press used to advance to the next option and wrap, so choosing
+   * the fourth of five took four presses and the five were never on screen together. Then the
+   * list was the platform's own `<select>`, borrowed through the overlay and opened with
+   * `showPicker()` — and the platform put its popup at the top-left of the window on a scaled
+   * canvas, could not be styled, and switched the trigger from GL glyphs to a DOM control and
+   * back visibly on both edges. The list is now two draw calls (widget-popover.tsx), positioned
+   * off the trigger's own box, and its rows are pressed against the same layout it is drawn
+   * from — which is what `popoverRowPoint` reads.
    *
-   * The half of this that only a real browser can show is the TIMING. The borrowed select opens its
-   * list as soon as it is mounted and focused, so mounting it on pointerdown puts the popup under a
-   * button that is still held: the platform opens the list with the current option beneath the
-   * cursor, the release picks that same option, and the list shuts again — a flash, and no change.
-   * jsdom has no popup and cannot fail that way, so the claim is made here: nothing is borrowed
-   * while the button is down, and the select exists by the time it comes up.
+   * The release timing is kept: a press that travels is someone dragging the node, not opening
+   * a list, and the list must not sit under a button that is still held.
    */
   const selectAt = await page.evaluate(() => window.__harness.widgetPoint('w', 'mode'));
   check('INSTRUMENT: the select has a place on screen', selectAt !== null, JSON.stringify(selectAt));
@@ -2477,38 +2478,41 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
         document.querySelectorAll('[data-kookie-flow-container] select:not([data-a11y-mirror])')
           .length
     );
+  const popover = () => page.evaluate(() => window.__harness.popover());
 
   await page.mouse.move(selectAt.x, selectAt.y);
   await page.mouse.down();
   await page.waitForTimeout(150);
-  const whileHeld = await countSelects();
-  check('a select borrows nothing while the button is still down', whileHeld === 0, `${whileHeld} found`);
+  const whileHeld = await popover();
+  check('a select opens nothing while the button is still down', whileHeld === null, JSON.stringify(whileHeld));
 
   await page.mouse.up();
   await page.waitForTimeout(250);
-  const opened = await page.evaluate(() => {
-    const el = document.querySelector('[data-kookie-flow-container] select:not([data-a11y-mirror])');
-    if (!el) return null;
-    return {
-      focused: document.activeElement === el,
-      options: [...el.options].map((o) => o.value),
-      value: el.value,
-    };
-  });
+  const opened = await popover();
   check(
-    'releasing on a select borrows a real list, focused, holding every option',
+    'releasing on a select opens a GL list holding every option, with the current one lit',
     opened !== null &&
-      opened.focused &&
+      opened.kind === 'select' &&
       opened.value === 'one' &&
+      opened.index === 0 &&
       opened.options.join(',') === 'one,two,three',
     JSON.stringify(opened)
   );
+  const borrowedSelects = await countSelects();
+  check('no <select> is borrowed at any point', borrowedSelects === 0, `${borrowedSelects} found`);
 
   /**
    * Picking the THIRD option, in one gesture. Under the old cycling press this needed two more
    * presses and could not skip; the count of presses is the whole point of the change.
    */
-  await page.selectOption('[data-kookie-flow-container] select:not([data-a11y-mirror])', 'three');
+  const rowThree = await page.evaluate(() => window.__harness.popoverRowPoint(2));
+  check('INSTRUMENT: the third row has a place on screen', rowThree !== null, JSON.stringify(rowThree));
+  await page.mouse.move(rowThree.x, rowThree.y);
+  await page.waitForTimeout(80);
+  const hovered = await popover();
+  check('the row under the pointer is the lit one', hovered !== null && hovered.index === 2, JSON.stringify(hovered));
+  await page.mouse.down();
+  await page.mouse.up();
   await page.waitForTimeout(250);
   const selectAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'mode'));
   check(
@@ -2516,8 +2520,64 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
     selectAfter === 'three' && selectBefore !== 'three',
     `${selectBefore} -> ${selectAfter}`
   );
-  const afterPick = await countSelects();
-  check('the borrowed list vanishes once a choice is made', afterPick === 0, `${afterPick} remain`);
+  const afterPick = await popover();
+  check('the list closes once a choice is made', afterPick === null, JSON.stringify(afterPick));
+
+  /**
+   * The keyboard half. A platform list is driven with arrows and Enter, and dismissed with
+   * Escape, so the GL list is too — from the canvas's own keydown, since nothing else holds focus.
+   */
+  await page.mouse.move(selectAt.x, selectAt.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const reopened = await popover();
+  check('the list reopens on the new value', reopened !== null && reopened.index === 2, JSON.stringify(reopened));
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(80);
+  const arrowed = await popover();
+  check('ArrowUp moves the lit row without picking', arrowed !== null && arrowed.index === 1, JSON.stringify(arrowed));
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
+  const keyed = await page.evaluate(() => window.__harness.widgetValue('w', 'mode'));
+  check('Enter picks the lit row and closes the list', keyed === 'two' && (await popover()) === null, String(keyed));
+
+  await page.mouse.move(selectAt.x, selectAt.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(120);
+  const escaped = await popover();
+  const valueKept = await page.evaluate(() => window.__harness.widgetValue('w', 'mode'));
+  check('Escape closes the list and changes nothing', escaped === null && valueKept === 'two', `${valueKept}`);
+
+  /**
+   * (g) A COLOUR WIDGET OPENS A GL PICKER, and a drag in its square writes a hex.
+   *
+   * It used to borrow `<input type="color">` and open the platform's picker, which is a window
+   * the harness cannot see into and a person cannot style. The picker is the same panel as the
+   * list with a different body, and its square is pressed against the same layout it is drawn
+   * from.
+   */
+  const tintAt = await page.evaluate(() => window.__harness.widgetPoint('w', 'tint'));
+  check('INSTRUMENT: the colour widget has a place on screen', tintAt !== null, JSON.stringify(tintAt));
+  const tintBefore = await page.evaluate(() => window.__harness.widgetValue('w', 'tint'));
+  await page.mouse.move(tintAt.x, tintAt.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const picker = await popover();
+  check('pressing a colour widget opens a GL picker', picker !== null && picker.kind === 'color', JSON.stringify(picker));
+  const colorInputs = await page.evaluate(
+    () => document.querySelectorAll('[data-kookie-flow-container] input[type="color"]:not([data-a11y-mirror])').length
+  );
+  check('no colour input is borrowed', colorInputs === 0, `${colorInputs} found`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(120);
+  check('Escape closes the picker', (await popover()) === null);
+  const tintAfter = await page.evaluate(() => window.__harness.widgetValue('w', 'tint'));
+  check('opening and closing the picker changes nothing', tintAfter === tintBefore, `${tintBefore} -> ${tintAfter}`);
 });
 
 // ---------------------------------------------------------------- accessibility mirror
@@ -2987,9 +3047,12 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   // (b) THE GPU is told — and told about the right instance. The position is compared against
   //     `widgetBox`, the geometry both the renderer and the hit test read, so a flag set on the
   //     wrong instance fails here rather than looking like a pass.
-  const box = await page.evaluate(() => window.__harness.widgetBox('w', 'amount'));
+  // The centre comes from `widgetSockets`, which states where each widget's instance is drawn — a
+  // slider's instance is its track, which stops short of the readout, so it is not the box centre.
+  const drawnAt = (await page.evaluate(() => window.__harness.widgetSockets()))
+    .find((w) => w.entityId === 'w' && w.socketId === 'amount');
   const lit = await flagged();
-  const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const centre = { x: drawnAt.x, y: drawnAt.y };
   check(
     'the hovered widget, and only it, reaches the shader flagged',
     lit.length === 1 && Math.hypot(lit[0].x - centre.x, lit[0].y - centre.y) < 2,

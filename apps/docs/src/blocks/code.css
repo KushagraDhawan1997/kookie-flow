@@ -1,0 +1,191 @@
+/* ── The author's annotations ──────────────────────────────────────────────────────────────
+   The pane, the scroller, the mono family, the bound and the syntax token contract are
+   `CodeBlock`'s; this file is the block's own half — the markup `code-sample.tsx` paints
+   around the highlighter's tokens, and the five ways an author says "look here".
+
+   The colours the tokens themselves resolve to are NOT here and must not come back: they are
+   the package's, declared on the element, and Shiki is pointed at that prefix in
+   `highlight.ts`. A copy of them in this file would be the same decision in two homes.
+
+   Each line is a block-level span (the renderer emits no "\n" between them), because a line
+   is the unit the author points at: a wash, a marker gutter and a number all belong to the
+   LINE, and an inline run has no box to carry them.
+
+   The wash reaches the well's edges through the surface-padding hook — the `m="bleed"`
+   mechanism (§3) said in CSS: the negative margin undoes the pane's inset, the padding puts
+   the text back, so an unwashed line renders byte-identically and a washed one paints edge to
+   edge.
+
+   NO `inline-size: max-content` HERE, and it must not come back: a max-content box is sized
+   to its longest unbroken run, so it never wraps, and the element would overrule the
+   `pre-wrap` the package states one file over. What it buys, stated honestly, is a wash
+   covering the full SCROLLED width rather than stopping at the viewport. Wrapping removes
+   almost every scroll, so the case is the rare one (a line with no space in it), and there
+   the wash stops at the viewport's edge.
+
+   A WRAP CONTINUES UNDER THE LINE'S OWN INDENT, and that is three distances rather than one.
+   `text-indent` pulls the FIRST row back out of the padding, so row one starts exactly where
+   it always did; every row after it begins at the padding, which is the sum of what row one
+   spends before its glyphs — the number gutter, the line's own leading whitespace — plus the
+   hang. All three are stated in `ch` for the reason `Code`'s own padding is stated in `em`:
+   these are distances measured in characters, because the thing they indent is measured in
+   characters.
+
+   `--kd-indent` IS THE HALF CSS CANNOT WORK OUT, so the renderer writes it per line (see
+   `code-sample.tsx`). Hanging from a fixed distance instead puts every continuation at column
+   zero: it then reads as a SHALLOWER nesting level than the line it belongs to, which is a
+   worse failure than not hanging at all — measured, a line indented seven columns began at
+   x=525 and continued at 467, back at the code's own left wall.
+
+   AND THE GUTTER IS NOT THE HANG. Spending one number on both makes the digits and the hang
+   the same distance, which sounds economical and means a numbered fence has no hang left: the
+   whole of it goes under the numbers, and every continuation lands flush at column zero — the
+   defect the hang exists to prevent, on the only fences that carry numbers. They are two
+   facts, so they are two numbers, and only one of them is conditional on anything.
+
+   `min-block-size: 1lh` is what keeps an EMPTY line one line tall — a block span with no text
+   has no line box of its own. */
+.kd-line {
+  /* How far a continuation hangs PAST the line's own indent. Two columns: enough to say "this
+     is not a new statement" at a glance, and small enough that a wrapped row never travels far
+     from the words it continues. A row's missing line number is the other half of the cue. */
+  --kd-line-hang: 2ch;
+  /* The line's own leading whitespace, written by the renderer on the lines that have any. */
+  --kd-indent: 0ch;
+  /* The number column, present only on a numbered fence — see the counter at the foot of this
+     file, which is the one rule that sets it. */
+  --kd-gutter: 0ch;
+  /* WHERE A CONTINUATION BEGINS, and the one name the three declarations below share — a sum
+     written three times is three chances to write it differently, and the box arithmetic only
+     holds while the padding, the indent and the width bound agree to the pixel. */
+  --kd-run: calc(var(--kd-gutter) + var(--kd-indent) + var(--kd-line-hang));
+  display: block;
+  /* THE HANG COMES OUT OF THE CONTENT WIDTH, or it is added to the BOX. This element is
+     content-box, so `min-inline-size: 100%` sizes the content and the padding lands on top of
+     it — measured, every well on the site kept 34px of sideways scroll after the wrap landed,
+     which is the hang exactly. Subtracting it here keeps the border box at the pane's padding
+     box, which is what makes a wash reach both edges. */
+  min-inline-size: calc(100% - var(--kd-run));
+  min-block-size: 1lh;
+  margin-inline: calc(-1 * var(--kui-sf-p, 0px));
+  padding-inline-end: var(--kui-sf-p, 0px);
+  padding-inline-start: calc(var(--kui-sf-p, 0px) + var(--kd-run));
+  text-indent: calc(-1 * var(--kd-run));
+}
+
+/* Five ways to say "look here", every colour a token. The washes are the families' own alpha
+   steps so they composite against the well's local ground; a diff's added and removed lines
+   are the status families — the same vocabulary the token colours speak (inserted, deleted,
+   changed). */
+.kd-line-highlight {
+  background: var(--neutral-a3);
+}
+.kd-line-add {
+  background: var(--success-a3);
+}
+.kd-line-remove {
+  background: var(--destructive-a3);
+}
+.kd-line-error {
+  background: var(--destructive-a3);
+}
+.kd-line-warning {
+  background: var(--warning-a3);
+}
+
+/* Focus stands the OTHER lines down rather than raising the focused ones — the same shape as
+   every stand-down in the system, and `--disabled-dim` is the one token that already means
+   "present, not current". A hover restores the whole block, because a reader leaning in has
+   asked to inspect. */
+.kd-focused .kd-line:not(.kd-line-focus) {
+  opacity: var(--disabled-dim);
+}
+.kd-focused:hover .kd-line {
+  opacity: 1;
+}
+
+/* A pointed-at word. The pad-and-negative-margin pair keeps the glyph advance untouched, so
+   the mono grid does not shift around the chip; `em` because the chip's breathing room is a
+   property of the glyphs inside it (the atoms' rule, §15). */
+.kd-word {
+  background: var(--accent-a3);
+  border-radius: 0.25em;
+  padding-inline: 0.2em;
+  margin-inline: -0.2em;
+}
+
+/* The diff gutter. A real span rather than a pseudo — ::before belongs to the line-number
+   counter — hidden from AT by the renderer and from selection here, so the clipboard never
+   grows a column of plus signs. Every line in a diff block carries one (context lines get an
+   empty span) so marked and unmarked lines stay aligned. */
+.kd-line-marker {
+  display: inline-block;
+  inline-size: 2ch;
+  user-select: none;
+}
+.kd-line-add > .kd-line-marker {
+  color: var(--success-ink);
+}
+.kd-line-remove > .kd-line-marker {
+  color: var(--destructive-ink);
+}
+
+/* ── Line numbers ──────────────────────────────────────────────────────────────────────────
+   CSS counters, never markup — the ecosystem's one unanimous answer — which is also what
+   keeps a number out of every selection and every copy. Faint: a number is wayfinding, not
+   content. */
+.kd-numbered {
+  counter-reset: kd-line;
+}
+/* Declared on the LINE rather than on the block, because `--kd-run` is substituted where it is
+   declared (§6) — set on the ancestor, the line's own padding would resolve it to the 0ch
+   default and reserve nothing for digits that are painted anyway. */
+.kd-numbered .kd-line {
+  --kd-gutter: 4ch;
+}
+.kd-numbered .kd-line::before {
+  counter-increment: kd-line;
+  content: counter(kd-line);
+  display: inline-block;
+  /* The digits and the space after them, which together are `--kd-gutter` — declared on the
+     LINE, because that is the box whose padding has to reserve it, and read here so the two
+     cannot disagree. The gutter is not the hang: see the head of this file. */
+  inline-size: calc(var(--kd-gutter) - 1.5ch);
+  margin-inline-end: 1.5ch;
+  text-align: end;
+  color: var(--color-text-faint);
+}
+
+/* THE FIGURE'S CHROME, and its two facts.
+ *
+ * THE INSET HAS ONE HOME HERE, and it must be the one the package's code well uses: a figure
+ * holds a well, so two chrome rows are visible at once and a reader sees them against each
+ * other. They disagreed once already — 12 against 24 — because each side picked a value nobody
+ * could compare, and these now take the package's own choice.
+ *
+ * IT FLOATS, so the code starts at the pane's top edge and the row sits over the band the well
+ * reserves for it. It was revealed on hover for one iteration — see the rule below for why that
+ * went — and while it was, it had to be keyed on the FIGURE rather than on the well: the tab
+ * bar's copy button sits outside the well, so a well-keyed rule could never reach it.
+ */
+.kd-figure {
+  --kd-chrome-p: var(--layout-space-4);
+  position: relative;
+}
+
+/* THE CHROME IS ALWAYS DRAWN, and it was revealed on hover for one iteration.
+
+   Two things are wrong with revealing it, once you read a page rather than one figure: a
+   control that appears when the pointer arrives cannot be seen from anywhere else on the page,
+   so a reader has to suspect it before they can find it — and the band the well reserves is
+   held whether or not anything is drawn in it, so hiding the one thing in that band buys
+   nothing back.
+
+   It stays legible over the code because it is GLASS, which is the arrangement §10 exists for:
+   a floating control over content that passes behind it. */
+.kd-figure-chrome {
+  padding: var(--kd-chrome-p);
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+}

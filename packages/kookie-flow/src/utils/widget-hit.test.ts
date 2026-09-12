@@ -11,6 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { getWidgetAt, getWidgetSocketIdAt, sliderValueAt, type WidgetHit } from './widget-hit';
+import { SLIDER_READOUT_RESERVE } from './widget-geometry';
 import { getWidgetBox } from './widget-geometry';
 import { widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
@@ -26,6 +27,7 @@ const layout: ResolvedSocketLayout = {
   borderWidth: 1,
   markSize: 20,
   trackHeight: 4,
+  listRowHeight: 30,
 };
 
 const socketTypes: Record<string, SocketType> = {
@@ -144,7 +146,8 @@ function sliderHit(config: Partial<ResolvedWidgetConfig>): WidgetHit {
     socketId: 's',
     socketName: 'S',
     index: 0,
-    box: { x: 0, y: 0, width: 100, height: 32 },
+    // The TRACK is 100 wide; the box also holds the readout's reserve past it.
+    box: { x: 0, y: 0, width: 100 + SLIDER_READOUT_RESERVE, height: 32 },
     config: { type: 'slider', ...config },
     value: 0,
   };
