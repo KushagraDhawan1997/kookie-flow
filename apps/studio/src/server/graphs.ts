@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { emptyDocument, parseDocument, type GraphDocument } from 'studio-core';
+import { documentFingerprint, emptyDocument, parseDocument, type GraphDocument } from 'studio-core';
 import { getDb } from './db';
 import { graphs, LOCAL_WORKSPACE } from './db/schema';
 
@@ -59,34 +59,61 @@ export type UpdateResult =
   | { kind: 'stale'; revision: number }
   | { kind: 'missing' };
 
+/** What a write expects of the row it lands on. */
+export interface WritePrecondition {
+  /** The revision the caller loaded. Omitted means "write regardless", for a first save. */
+  revision?: number;
+  /**
+   * Fingerprints of documents the caller sent and never heard back about. A write based on an
+   * older revision still lands when the row holds one of them: the change it missed was its own.
+   */
+  supersedes?: readonly string[];
+}
+
 /**
  * Write a graph, optionally only if it is still at the revision the caller loaded.
  *
  * The precondition and the bump are one statement, so two writers cannot both pass it.
+ *
+ * A STALE WRITE CAN STILL BE THE CALLER'S OWN. A reloaded page is rendered before the old page's
+ * last save arrives, so its first write is based on the revision that save moved past. When the row
+ * holds exactly a document the caller names as sent without an answer, nobody else has written, and
+ * the write goes ahead — conditional again, on the revision just read, so a writer landing in
+ * between still wins. Any other document is someone else's work, and it stands.
  */
 export async function updateGraph(
   id: string,
   patch: { name?: string; doc?: GraphDocument },
-  expectedRevision?: number,
+  expected: WritePrecondition = {},
   workspaceId = LOCAL_WORKSPACE
 ): Promise<UpdateResult> {
   const db = await getDb();
-  const where =
-    expectedRevision === undefined
-      ? and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId))
-      : and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId), eq(graphs.revision, expectedRevision));
+  const write = (revision: number | undefined) =>
+    db
+      .update(graphs)
+      .set({ ...patch, revision: sql`${graphs.revision} + 1`, updatedAt: new Date() })
+      .where(
+        revision === undefined
+          ? and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId))
+          : and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId), eq(graphs.revision, revision))
+      )
+      .returning({ revision: graphs.revision, updatedAt: graphs.updatedAt });
 
-  const [row] = await db
-    .update(graphs)
-    .set({ ...patch, revision: sql`${graphs.revision} + 1`, updatedAt: new Date() })
-    .where(where)
-    .returning({ revision: graphs.revision, updatedAt: graphs.updatedAt });
-
+  const [row] = await write(expected.revision);
   if (row) return { kind: 'updated', revision: row.revision, updatedAt: row.updatedAt };
 
   // Nothing was written: either the graph is gone, or it is no longer at that revision.
   const current = await getGraph(id, workspaceId);
-  return current ? { kind: 'stale', revision: current.revision } : { kind: 'missing' };
+  if (!current) return { kind: 'missing' };
+
+  if (expected.supersedes && expected.supersedes.length > 0) {
+    const stored = parseDocument(current.doc);
+    if (stored && expected.supersedes.includes(documentFingerprint(stored))) {
+      const [again] = await write(current.revision);
+      if (again) return { kind: 'updated', revision: again.revision, updatedAt: again.updatedAt };
+    }
+  }
+  return { kind: 'stale', revision: current.revision };
 }
 
 export async function deleteGraph(id: string, workspaceId = LOCAL_WORKSPACE): Promise<boolean> {

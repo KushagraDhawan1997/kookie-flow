@@ -88,7 +88,16 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   React.useEffect(() => {
     const flow = flowRef.current;
     if (!flow) return;
-    if (initial.entities.length > 0) flow.setViewport(initial.viewport);
+    // The canvas already starts on the stored view (`defaultViewport`). A reload that outran this
+    // tab's last save opens on what the tab last had instead, since the render is a revision
+    // behind it; see `useAutosave`.
+    const { carried } = autosave;
+    if (carried) {
+      graph.setEntities(carried.doc.entities);
+      graph.setEdges(carried.doc.edges);
+      setName(carried.name);
+      flow.setViewport(carried.doc.viewport);
+    }
     // A loaded graph is marked stale by nothing: the store is created holding these same entities
     // and edges, so the first sync diffs to nothing. Run all of it once so the board opens with
     // every value on screen rather than every node waiting.
@@ -319,6 +328,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             bus={bus}
             entities={entities}
             edges={edges}
+            defaultViewport={initial.viewport}
             onEntitiesChange={onEntitiesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

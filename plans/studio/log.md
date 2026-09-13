@@ -129,6 +129,38 @@ own two lines. And the search ran off the pane; it grows into the row now, which
 clipped at 167 px. Measured rather than eyeballed: zero separators, zero header elements, the
 list's first label below the band, the field inside the pane.
 
+### Refreshing stops locking the editor out
+
+Asked about "this graph changed elsewhere" on refresh. Reproduced in a browser against a clone of
+the graph. It was two bugs.
+
+- **Opening a graph wrote the origin over its saved view.** The canvas started at the origin and
+  was moved to the stored view one effect later, so autosave read the origin as a pan. Strict
+  mode's cleanup sent that as a beacon and never learned the new revision, so the corrective save
+  was refused. This is why the user's graph sat at 0,0. Fixed: the canvas starts on the stored
+  view (`defaultViewport`), and the unmount path sends an ordinary save whose answer is read.
+- **A refresh inside the save window renders the new page before the old page's last save
+  lands.** The beacon goes at `pagehide`, which a reload fires only after the server has rendered
+  the new page. The new page opened a revision behind, without the last edit, and its first save
+  was refused. Fixed with a handover: the old page leaves its graph, and fingerprints of the writes
+  it never heard back about, in session storage. The new page opens on that graph when its render
+  is the tab's own history. Saves name the fingerprints (`supersedes`), and the server lets a stale
+  write land only when the row holds one of them, conditional again on the revision it read.
+  `documentFingerprint` is in studio-core, so browser and server compute the same value.
+
+Also: a 409 logs a warning, not an error, since the status line already says it. A save whose
+request failed counts as unanswered, so its retry is not refused if it landed. The autosave seed
+is serialised once rather than on every render.
+
+Verified by a browser script, 16 of 16. Opening a panned graph writes nothing and keeps the view. A
+plain refresh writes nothing. Pan then refresh carries the pan and saves over its own beacon (base
+2, answered revision 4). Two quick refreshes do the same. A second tab with its own session is
+still refused and overwrites nothing. `tsc` is clean for studio and studio-core; studio-core has
+27 tests, 3 new.
+
+Open: every open runs both generation nodes again. `evaluateAll` on mount posts two jobs per
+refresh — free against the mock, billed against a provider.
+
 ---
 
 ## 2026-09-12, the ultracode audit and its fixes

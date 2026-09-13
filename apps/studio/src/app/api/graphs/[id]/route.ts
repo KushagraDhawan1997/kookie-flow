@@ -25,6 +25,8 @@ const PutBody = z.object({
   doc: z.unknown().optional(),
   /** The revision the client loaded. Omitted means "write regardless", for a first save. */
   revision: z.number().int().positive().optional(),
+  /** Fingerprints of documents the client sent without an answer. See `updateGraph`. */
+  supersedes: z.array(z.string().max(64)).max(16).optional(),
 });
 
 /**
@@ -54,7 +56,10 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'nothing to write' }, { status: 400 });
   }
 
-  const result = await updateGraph(id, patch, body.data.revision);
+  const result = await updateGraph(id, patch, {
+    revision: body.data.revision,
+    supersedes: body.data.supersedes,
+  });
   if (result.kind === 'missing') return NextResponse.json({ error: 'not found' }, { status: 404 });
   if (result.kind === 'stale') {
     // Someone else wrote this graph since the client loaded it. Refusing is the whole point:

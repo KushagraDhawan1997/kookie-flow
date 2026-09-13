@@ -139,6 +139,52 @@ export function parseDocument(raw: unknown): GraphDocument | null {
   };
 }
 
+/**
+ * A short name for what a document holds: equal for equal documents whatever order their keys were
+ * written in, which matters because Postgres hands jsonb keys back in an order of its own.
+ *
+ * It is how a save recognises the tab's own earlier write on the far side of a reload, so the
+ * browser and the server must compute it identically — plain arithmetic, not a platform hash. Two
+ * independent 53-bit hashes and the length make an accidental match a non-event. It guards a race,
+ * not an adversary: a client that wants to overwrite a graph can already just send one.
+ */
+export function documentFingerprint(doc: GraphDocument): string {
+  const text = canonicalJson({ entities: doc.entities, edges: doc.edges, viewport: doc.viewport });
+  return `${text.length.toString(36)}-${hash53(text, 0x9e3779b9)}-${hash53(text, 0x85ebca6b)}`;
+}
+
+/** JSON with every object's keys sorted, and undefined fields skipped as `JSON.stringify` skips them. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    const fields: string[] = [];
+    for (const key of Object.keys(record).sort()) {
+      if (record[key] !== undefined) fields.push(`${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+    }
+    return `{${fields.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** cyrb53: a small, well-mixed 53-bit string hash. */
+function hash53(text: string, seed: number): string {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 /** `n7` when the highest existing `n<number>` is `n6`. Short ids keep the agent's context small. */
 export function nextNodeId(entities: readonly Entity[]): string {
   let max = 0;

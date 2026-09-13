@@ -27,6 +27,12 @@ interface CanvasProps {
   bus: EditorBus;
   entities: Entity[];
   edges: Edge[];
+  /**
+   * The stored view, which the canvas starts on. Moved there after mount instead, the canvas spent
+   * its first commit at the origin, autosave read that as a pan, and opening a graph wrote the
+   * origin over the view it was saved with.
+   */
+  defaultViewport: Viewport;
   onEntitiesChange: (changes: EntityChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
@@ -56,6 +62,7 @@ function CanvasImpl(props: CanvasProps) {
         edges={props.edges}
         entityTypes={entityTypes}
         socketTypes={SOCKET_TYPES}
+        defaultViewport={props.defaultViewport}
         onEntitiesChange={props.onEntitiesChange}
         onEdgesChange={props.onEdgesChange}
         onConnect={props.onConnect}
