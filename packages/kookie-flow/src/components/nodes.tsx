@@ -6,7 +6,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
-import { MATERIAL } from '../gl';
+import { MATERIAL, AURA_GLSL } from '../gl';
 import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
@@ -228,6 +228,9 @@ export function Entities() {
         uCastColor: { value: cast.map((l) => new THREE.Vector4(...l.color)) },
         uShadowPad: { value: castPad },
         uTopLight: { value: resolvedStyle.topLightAlpha },
+        uAuraAlpha: { value: MATERIAL[tokens.appearance].auraAlpha },
+        uAuraGrain: { value: MATERIAL[tokens.appearance].auraGrain },
+        uRimLight: { value: MATERIAL[tokens.appearance].rimLight },
         // Status rendering
         // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
         // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
@@ -285,6 +288,9 @@ export function Entities() {
         uniform vec4 uCast[3];
         uniform vec4 uCastColor[3];
         uniform float uTopLight;
+        uniform float uAuraAlpha;
+        uniform float uAuraGrain;
+        uniform float uRimLight;
         // Status uniforms
         uniform vec3 uAccentColor;
         uniform vec3 uStatusErrorColor;
@@ -299,6 +305,7 @@ export function Entities() {
         varying float vProgress;
 
         ${squircleBoxSDF}
+        ${AURA_GLSL}
 
         // Straight-alpha "over", as gl/glass.ts defines it. Inlined rather than pulling GLASS_GLSL
         // in whole: this shader needs two of its fifteen functions and runs on every node.
@@ -451,6 +458,17 @@ export function Entities() {
             }
           }
 
+          // The accent (per-entity, else the global accentHeader) is light, not trim: the rim glows
+          // (below) and this is its reflection in the glass, diffusing down from top-centre. Its
+          // reach is capped in world units so a tall card does not wash to the middle.
+          bool accented = vAccentColor.r >= 0.0;
+          bool globalAccent = uHeaderColor.r >= 0.0;
+          if (accented || globalAccent) {
+            vec3 hue = accented ? vAccentColor : uHeaderColor;
+            vec4 aura = glassAura(vec2(p.x + b.x, b.y - p.y), vSize, min(vSize.y * 0.45, 140.0), hue, gl_FragCoord.xy, uAuraGrain);
+            bgColor = mix(bgColor, aura.rgb, aura.a * uAuraAlpha);
+          }
+
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
 
@@ -466,8 +484,8 @@ export function Entities() {
           float alpha = max(bgAlpha, borderMask * fillMask);
 
           // Top light: the 1.5px just inside the shape, weighted to the top edge, dying through
-          // the corners. An accent (per-entity, else the global accentHeader) is the same band in
-          // its hue, near-solid: one thin line of colour is the whole statement.
+          // the corners. White on every card, accented or not — the glass's own rim; the accent
+          // lives in the aura above.
           // d runs negative inward: the band is d in [-1.5, 0], softened over the next 1.5px so
           // it reads as light and not as a second hairline. (Written the other way round, this
           // lit the whole top-radius zone of every card: a 12px accent bar, not a 1.5px line.)
@@ -478,11 +496,16 @@ export function Entities() {
           // is legal.
           float cr = min(uCornerRadius, min(b.x, b.y));
           float up = smoothstep(b.y - max(cr, 1.0), b.y, p.y);
-          bool accented = vAccentColor.r >= 0.0;
-          bool globalAccent = uHeaderColor.r >= 0.0;
-          vec3 lightColor = accented ? vAccentColor : (globalAccent ? uHeaderColor : vec3(1.0));
-          float lightAlpha = (accented || globalAccent) ? 0.9 : uTopLight;
-          color = mix(color, lightColor, rim * up * lightAlpha);
+          if (accented || globalAccent) {
+            // The accented card's rim glows in the accent, brightest at top-centre, drifting to the
+            // aura's neighbour hue toward the shoulders so the edge and its reflection agree.
+            vec3 rimHue = accented ? vAccentColor : uHeaderColor;
+            vec2 lit = glassRimLight(p, b, d, 1.5, aa, cr);
+            vec3 rimColor = mix(rimHue, auraHueTurn(rimHue, -0.4), smoothstep(0.2, 0.9, lit.y) * 0.6);
+            color = mix(color, rimColor, lit.x * uRimLight);
+          } else {
+            color = mix(color, vec3(1.0), rim * up * uTopLight);
+          }
 
           // For transparent backgrounds, only show border
           if (uBackgroundAlpha < 0.01) {

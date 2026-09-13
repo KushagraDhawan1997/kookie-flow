@@ -74,6 +74,14 @@ export interface Material {
   floatingCast: readonly CastLayer[];
   /** `--material-regular-rim`: fractal-noise white at 4.5% over every material. */
   grain: number;
+  /**
+   * An accented card's aura (gl/glass.ts AURA_GLSL): its peak strength, and how hard the grain
+   * breaks it up. Not a v2 token — v2 has no per-surface accent — so these are set by eye.
+   */
+  auraAlpha: number;
+  auraGrain: number;
+  /** The accented card's lit rim at top-centre, in the accent (gl/glass.ts glassRimLight). */
+  rimLight: number;
   /** `--material-row-wash`: a lit row. */
   rowWash: RGBA;
   /** `--material-regular-alpha-floating` wash on a floating surface: its radial glint and top-down white. */
@@ -131,6 +139,9 @@ const LIGHT: Material = {
     { y: 18, blur: 48, spread: -14, color: hex('#00000017') },
   ],
   grain: 0.045,
+  auraAlpha: 0.16,
+  auraGrain: 0.9,
+  rimLight: 0.6,
   rowWash: hex('#0000000d'),
   floatingWashRadial: 0x49 / 255,
   floatingWashLinear: 0x34 / 255,
@@ -178,6 +189,9 @@ const DARK: Material = {
     { y: 18, blur: 48, spread: -14, color: hex('#0000004d') },
   ],
   grain: 0.045,
+  auraAlpha: 0.18,
+  auraGrain: 0.9,
+  rimLight: 0.6,
   rowWash: hex('#ffffff1f'),
   floatingWashRadial: 0x0e / 255,
   floatingWashLinear: 0x0a / 255,

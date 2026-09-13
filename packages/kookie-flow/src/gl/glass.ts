@@ -135,3 +135,88 @@ export const GLASS_GLSL = /* glsl */ `
     return g / max(length(g), 1e-6);
   }
 `;
+
+/**
+ * The aura: an accent that is LIGHT in the glass rather than trim on its edge.
+ *
+ * A uniform solid band at the top edge reads as trim. Here the rim itself glows in the accent,
+ * brightest at top-centre, and the glass beneath carries that glow's reflection — a faint, grained
+ * cast that diffuses as it travels down. The grain is the controls' own, so it is light on a surface
+ * and not a gradient on a screen.
+ *
+ * Self-contained — it does not need `GLASS_GLSL` or `SDF_GLSL`, so a shader that runs on every
+ * node pays for these three functions and nothing else.
+ */
+export const AURA_GLSL = /* glsl */ `
+  // A turn about the grey axis (Rodrigues). Keeps a hue's lightness near where it was, which a
+  // channel swap does not.
+  vec3 auraHueTurn(vec3 c, float a) {
+    const vec3 k = vec3(0.57735027);
+    float ca = cos(a);
+    return clamp(c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca), 0.0, 1.0);
+  }
+
+  float auraHash(vec2 px) {
+    vec3 p3 = fract(vec3(px.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
+  // Smooth value noise, for bending the field so its blobs are not compass circles.
+  float auraNoise(vec2 x) {
+    vec2 i = floor(x);
+    vec2 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = auraHash(i);
+    float b = auraHash(i + vec2(1.0, 0.0));
+    float c = auraHash(i + vec2(0.0, 1.0));
+    float d = auraHash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  /**
+   * The wash is a REFLECTION of the lit rim, not a paint of its own. The rim (glassRimLight) is an
+   * accent emitter along the top edge with a gaussian profile; what it casts into the glass below is
+   * that same profile diffusing as it travels — wider and fainter with depth (a gaussian whose sigma
+   * grows, its peak scaled by s0/sigma so the light spreads rather than multiplies) and decaying away
+   * from the edge. So the wash is brightest just under top-centre and nowhere the rim is not.
+   *
+   * q: world units from the box's top-left, y down. size: the box. reach: where it must be gone, in
+   * world units. px: the screen pixel, so the grain is one device pixel at any zoom. Returns colour
+   * and coverage for the caller to scale and mix.
+   */
+  vec4 glassAura(vec2 q, vec2 size, float reach, vec3 hue, vec2 px, float grain) {
+    if (q.y > reach) return vec4(hue, 0.0);
+    float w = max(size.x, 1.0);
+    // A low-frequency bend so the cast reads as light through glass, not a perfect bell. Scaled by
+    // the box, so a card keeps its shape of light at every zoom.
+    vec2 warp = vec2(auraNoise(q / (w * 0.4) + 3.1), auraNoise(q / (w * 0.4) + 7.7)) - 0.5;
+    vec2 k = q + warp * vec2(w * 0.12, reach * 0.2);
+    float y = max(k.y, 0.0);
+    // s0 matches the rim's own profile: exp(-along^2 * 3.2) is a sigma of ~0.2 of the width.
+    float s0 = w * 0.2;
+    float sigma = s0 + y * 0.9;
+    float dx = k.x - w * 0.5;
+    float cover = (s0 / sigma) * exp(-(dx * dx) / (2.0 * sigma * sigma)) * exp(-y / (reach * 0.38));
+    cover *= 1.0 - smoothstep(reach * 0.6, reach, q.y);
+    // Toward its edges the cast drifts to a neighbour hue — much past 0.4 rad a blue is green.
+    vec3 c = mix(hue, auraHueTurn(hue, -0.4), clamp(abs(dx) / (w * 0.5), 0.0, 1.0) * 0.6);
+    // Grain modulates coverage, so it lives inside the light and vanishes with it.
+    cover *= 1.0 + (auraHash(floor(px)) - 0.5) * grain;
+    return vec4(c, clamp(cover, 0.0, 1.0));
+  }
+
+  /**
+   * The lit rim: brightest at top-centre, falling off along the top edge, wrapping a little way
+   * over the shoulders and gone before the sides — the controls' conic ring, expressed on a box of
+   * any aspect. Covers the hairline too, so the edge itself is what lights up. p centred, y up; d the shape's distance; w the band's width.
+   * Returns the mask and, in .y, how far toward the shoulders the point is (0 centre, 1 corner).
+   */
+  vec2 glassRimLight(vec2 p, vec2 b, float d, float w, float aa, float cr) {
+    float band = smoothstep(-w - aa, -w + aa * 0.5, d) * (1.0 - smoothstep(0.0, aa, d));
+    float along = clamp(abs(p.x) / max(b.x, 1.0), 0.0, 1.0);
+    float across = smoothstep(b.y - max(cr, 1.0) * 1.6, b.y, p.y);
+    float centre = exp(-along * along * 3.2);
+    return vec2(band * across * centre, along);
+  }
+`;

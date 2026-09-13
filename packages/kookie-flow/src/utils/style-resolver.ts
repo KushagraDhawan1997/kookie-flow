@@ -288,7 +288,7 @@ export interface ResolvedEntityStyle {
    * longer reads this; it stays a real colour because it is public and consumers read it as one.
    */
   headerBackground: RGBColor;
-  /** The top-edge accent band (`--accent-9`) when `accentHeader` is set, or null for none. */
+  /** The aura's hue (`--accent-9`) when `accentHeader` is set, or null for none. */
   accentBand: RGBColor | null;
   /** Header position: 0=none, 1=inside, 2=outside */
   headerPosition: 0 | 1 | 2;

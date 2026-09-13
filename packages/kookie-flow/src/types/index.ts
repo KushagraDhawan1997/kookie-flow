@@ -1081,8 +1081,9 @@ export interface KookieFlowProps {
   /** Where the entity title is drawn ('none' draws none). Default: 'inside' */
   header?: HeaderPosition;
   /**
-   * Draw a thin `--accent-9` light along every entity's top edge, whatever `header` is. An
-   * entity's own `color` draws the same band in its hue. Default: false
+   * Show `--accent-9` through every entity's glass: a soft, grained mesh of the hue along the top,
+   * fading into the body, whatever `header` is. An entity's own `color` draws the same aura in its
+   * hue. Default: false
    */
   accentHeader?: boolean;
   /** Fine-grained style overrides */

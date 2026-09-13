@@ -7,7 +7,7 @@
  */
 
 export { SDF_GLSL } from './sdf';
-export { GLASS_GLSL } from './glass';
+export { GLASS_GLSL, AURA_GLSL } from './glass';
 export { LENS, LENS_GLSL, GLINT, type LensRung } from './lens';
 export {
   EASE_GLSL,

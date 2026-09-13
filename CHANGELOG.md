@@ -7,6 +7,12 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **`accentHeader` is an aura, not a stripe.** The accent used to be a solid 1.5px line along the
+  top edge, which read as trim on a glass card. Now the rim glows in the accent, brightest at
+  top-centre and fading over the shoulders, and the glass beneath carries a faint reflection of it —
+  diffusing wider and dimmer as it travels down, broken by the same grain the controls wear. An
+  entity's own `color` draws its aura in its hue. Nothing moves: no geometry, no hit box, one
+  shader branch per accented fragment.
 - **An edge starts at the socket's rim, not its centre.** It leaves along the socket's own axis —
   an output to the right, an input to the left — for a short straight leader before the curve
   begins, and a connected socket drops the ring of canvas colour that used to separate the two, so

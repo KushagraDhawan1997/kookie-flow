@@ -1387,3 +1387,32 @@ Measured on a frame of the demo clip, both appearances, at 3x:
 - Bent OUTWARD the lip sampled past the media edge and drew a white band the split printed orange. The
   bend samples inward, clamped to the picture.
 - Body: 2px blur, a third of the floating tint, a third of the saturation boost. The rim does the work.
+
+### D22, 2026-09-13 — the accent is an aura
+
+D10's `accentHeader` drew a near-solid 1.5px accent line at the top edge. On a glass card it read as
+trim. The owner asked for a glassy look instead: a slight mesh gradient with noise at the top.
+
+The first cut (three smoothstep blobs, a white top line) was the right direction but read as a flat
+gradient. The owner asked for it to behave like the controls' glass: a rim highlight at top-centre,
+more diffusion. Then, on seeing a white rim and glint: the rim should be the accent itself, and the
+wash only its reflection. So (`src/gl/glass.ts`, `AURA_GLSL`):
+
+- **Rim.** `glassRimLight`: the 1.5px band plus the hairline, in the accent, brightest at top-centre
+  on a gaussian along the edge (sigma ~0.2 of the width), wrapping the shoulders, gone by the sides,
+  drifting to the hue turned -0.4 rad about the grey axis toward the corners.
+- **Wash = the rim's reflection.** The rim's own gaussian cast down into the glass: sigma grows with
+  depth and the peak scales by s0/sigma so the light spreads rather than multiplies, times an
+  exponential decay from the edge. Looked up through a low-frequency value-noise warp so it is not a
+  perfect bell; colour drifts to the same neighbour hue toward its edges. Brightest just under
+  top-centre and nowhere the rim is not.
+- **Reach and grain.** Gone by 45% of the card height capped at 140 world units; coverage modulated
+  by a per-device-pixel hash, the controls' grain.
+
+Numbers in `gl/material.ts`, set by eye (no v2 token): rim 0.6 both (0.9 read as a stripe again); wash 0.16 light, 0.18 dark;
+grain 0.9. Unaccented cards keep D10's top light. Rejected on the way: a -0.7 hue turn (blue arrived
+at green); a three-blob mesh with a white glint and white rim (read as a painted header, and the
+light did not come from anywhere).
+
+Cost: skipped entirely for unaccented cards; for accented ones, the fragments below the reach return
+before the blobs. No buffers, no geometry, no hit box moved.

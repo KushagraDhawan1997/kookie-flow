@@ -247,6 +247,8 @@ function params() {
     // Socket i shares a type on both sides and edges connect out-i to in-i, so generated edges
     // are valid and hued by type instead of all red. Off by default, like `values`.
     typed: q.get('typed') === '1',
+    // The accent aura on every card, so its look can be shot.
+    accentHeader: q.get('accentHeader') === '1',
     // Mount N KookieFlow instances. Two is the reentrancy case: module-level state in the store
     // used to make the second instance break dragging in the first.
     instances: Math.max(1, Math.min(3, num('instances', 1))),
@@ -1447,6 +1449,7 @@ function App() {
         helperLines={p.helperLines}
         {...(p.font ? { font: p.font as 'inter' | 'system' } : {})}
         showMinimap={false}
+        accentHeader={p.accentHeader}
         {...(p.entityRadius ? { radius: p.entityRadius } : {})}
       >
         <Probe />
