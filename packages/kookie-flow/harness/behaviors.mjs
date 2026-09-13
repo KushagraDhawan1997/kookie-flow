@@ -3715,6 +3715,83 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
 
 
 /**
+ * MEDIA CHROME SAYS WHAT A PRESS WILL DO, BEFORE IT IS PRESSED.
+ *
+ * A model's body turns it and the strip along its top moves the node; the corner button opens the
+ * viewer; a clip's bar plays and scrubs. Every region answers a press differently, and the cursor
+ * was `default` over all of them — the owner only learned the strip existed by asking what the
+ * pill on it was. Read the way a person sees it: from the element under the pointer.
+ */
+await withPage('scene=media&grid=0', async (page) => {
+  await page.waitForTimeout(1500);
+
+  /** A point on an entity, as a fraction of its box plus a world offset, in page pixels. */
+  const pointOn = (id, ax, dx, ay, dy) =>
+    page.evaluate(
+      ([entityId, fx, ox, fy, oy]) => {
+        const h = window.__harness;
+        const s = h.store.getState();
+        const e = s.entityMap.get(entityId);
+        if (!e || e.width === undefined || e.height === undefined) return null;
+        const rect = h.canvas().getBoundingClientRect();
+        return {
+          x: (e.position.x + e.width * fx + ox) * s.viewport.zoom + s.viewport.x + rect.left,
+          y: (e.position.y + e.height * fy + oy) * s.viewport.zoom + s.viewport.y + rect.top,
+        };
+      },
+      [id, ax, dx, ay, dy]
+    );
+  const cursorAt = async (p) => {
+    await page.mouse.move(p.x, p.y, { steps: 3 });
+    await page.waitForTimeout(80);
+    return page.evaluate(({ x, y }) => getComputedStyle(document.elementFromPoint(x, y)).cursor, p);
+  };
+
+  const model = await page.evaluate(() => {
+    const e = window.__harness.store.getState().entityMap.get('media-mesh');
+    return e ? { orbit: e.data?.orbit ?? true, height: e.height } : null;
+  });
+  check(
+    'INSTRUMENT: the scene has a model that turns and is tall enough for a strip',
+    model !== null && model.orbit === true && model.height >= 72,
+    JSON.stringify(model)
+  );
+  if (!model) return;
+
+  // The corner button is 28px, inset 8, so its centre is 22 in from the top and right.
+  const expand = await pointOn('media-mesh', 1, -22, 0, 22);
+  const strip = await pointOn('media-mesh', 0.5, 0, 0, 12);
+  const body = await pointOn('media-mesh', 0.5, 0, 0.5, 0);
+  // A quarter of the way along, not the middle: the scene parks media-neighbour over the right half
+  // of the clip on purpose, and a pointer there is over that node, where the plain cursor is right.
+  const bar = await pointOn('media-video', 0.25, 0, 1, -22);
+  const picture = await pointOn('media-image', 1, -22, 0, 22);
+
+  check('the corner button on a model is a pointer', (await cursorAt(expand)) === 'pointer', await cursorAt(expand));
+  const stripCursor = await cursorAt(strip);
+  check('the strip along a model top, which moves the node, is a move cursor', stripCursor === 'move', stripCursor);
+  const bodyCursor = await cursorAt(body);
+  check('and the body, which turns the model, is a grab', bodyCursor === 'grab', bodyCursor);
+  const barCursor = await cursorAt(bar);
+  const barOwner = await page.evaluate(() => window.__harness.store.getState().hoveredEntityId);
+  check('INSTRUMENT: the bar point is on the clip, not on a node above it', barOwner === 'media-video', String(barOwner));
+  check('a clip bar is a pointer', barCursor === 'pointer', barCursor);
+  const pictureCursor = await cursorAt(picture);
+  check('the corner button on a picture is a pointer', pictureCursor === 'pointer', pictureCursor);
+
+  await page.mouse.move(body.x, body.y);
+  await page.mouse.down();
+  await page.mouse.move(body.x + 30, body.y + 6, { steps: 5 });
+  await page.waitForTimeout(80);
+  const turning = await page.evaluate(({ x, y }) => getComputedStyle(document.elementFromPoint(x, y)).cursor, { x: body.x + 30, y: body.y + 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+  const released = await page.evaluate(({ x, y }) => getComputedStyle(document.elementFromPoint(x, y)).cursor, { x: body.x + 30, y: body.y + 6 });
+  check('a turn in progress is a closed hand', turning === 'grabbing', turning);
+  check('and it opens again on release, without the pointer having to move', released === 'grab', released);
+});
+
+/**
  * A media entity is a SURFACE, so it takes the same squircle corner as a node body.
  *
  * It did not, for as long as image entities have existed: the quad in media-quad.ts was a plain
@@ -4486,7 +4563,32 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
     const e = window.__harness.store.getState().entityMap.get('media-mesh');
     return { x: e.position.x, y: e.position.y, w: e.width, h: e.height };
   });
-  const bodyBefore = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  /**
+   * The model's middle as a 5x5 grid of pixels, read in one round trip.
+   *
+   * One pixel was the old witness, and it went blind without anything being broken: after a media
+   * pass the sample at the model's centre landed on a face whose tone the turn barely moves, and it
+   * read [121,100,161] before a 45-degree turn and [122,102,159] after — while a screenshot of the
+   * same two frames showed a cube face-on and then a cube on its corner. A grid over the central
+   * 60% cannot all land on one flat tone. The top edge and the corner stay out of it: the drag strip
+   * and the expand button fade in there once the pointer is over the model, and they would read as
+   * a redraw that never happened.
+   */
+  const modelGrid = () =>
+    page.evaluate(([mx, my, mw, mh]) => {
+      const h = window.__harness;
+      const v = h.store.getState().viewport;
+      const out = [];
+      for (let j = 0; j < 5; j++) {
+        for (let i = 0; i < 5; i++) {
+          const wx = mx + mw * (0.2 + 0.15 * i);
+          const wy = my + mh * (0.2 + 0.15 * j);
+          out.push(h.readPixel(Math.round(wx * v.zoom + v.x), Math.round(wy * v.zoom + v.y)));
+        }
+      }
+      return out;
+    }, [mesh.x, mesh.y, mesh.w, mesh.h]);
+  const bodyBefore = await modelGrid();
   const orbitBefore = await page.evaluate(() => window.__harness.orbit('media-mesh'));
   const bodyStart = await toScreen(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.6);
   await page.mouse.move(bodyStart.x, bodyStart.y);
@@ -4494,7 +4596,7 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
   await page.mouse.move(bodyStart.x + 60, bodyStart.y, { steps: 6 });
   await page.mouse.up();
   await page.waitForTimeout(500);
-  const bodyAfter = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  const bodyAfter = await modelGrid();
   const orbitAfter = await page.evaluate(() => window.__harness.orbit('media-mesh'));
   const meshAfterTurn = await page.evaluate(() => {
     const e = window.__harness.store.getState().entityMap.get('media-mesh');
@@ -4511,15 +4613,23 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
     orbitAfter.yaw !== orbitBefore.yaw || orbitAfter.pitch !== orbitBefore.pitch,
     `before=${JSON.stringify(orbitBefore)} after=${JSON.stringify(orbitAfter)}`
   );
-  check(
-    'and the picture is redrawn from the new angle',
-    bodyBefore &&
-      bodyAfter &&
-      (Math.abs(bodyBefore[0] - bodyAfter[0]) > 4 ||
-        Math.abs(bodyBefore[1] - bodyAfter[1]) > 4 ||
-        Math.abs(bodyBefore[2] - bodyAfter[2]) > 4),
-    `before=${JSON.stringify(bodyBefore)} after=${JSON.stringify(bodyAfter)}`
-  );
+  {
+    let changed = 0;
+    let largest = 0;
+    for (let k = 0; k < bodyBefore.length; k++) {
+      const a = bodyBefore[k];
+      const b = bodyAfter[k];
+      if (!a || !b) continue;
+      const delta = Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+      largest = Math.max(largest, delta);
+      if (delta > 12) changed++;
+    }
+    check(
+      'and the picture is redrawn from the new angle',
+      changed >= 3,
+      `${changed} of ${bodyBefore.length} samples changed, largest channel delta ${largest}`
+    );
+  }
   check(
     'and turning it does not move it',
     meshAfterTurn.x === mesh.x && meshAfterTurn.y === mesh.y,

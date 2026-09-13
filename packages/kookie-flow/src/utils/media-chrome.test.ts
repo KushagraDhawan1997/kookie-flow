@@ -11,8 +11,11 @@ import {
   fitsControls,
   fitsExpand,
   hitExpandButton,
+  bandCursor,
   hitVideoControls,
   isMeshDragStrip,
+  isOnVideoControls,
+  mediaEntityCursor,
   orbitDirection,
   orbitFromDirection,
   orbitFromDrag,
@@ -167,5 +170,55 @@ describe('turning a model', () => {
     expect(d.z).toBeCloseTo(1, 10);
     expect(d.x).toBeCloseTo(0, 10);
     expect(d.y).toBeCloseTo(0, 10);
+  });
+});
+
+describe('the cursor over media chrome', () => {
+  const MW = 320;
+  const MH = 240;
+  const inset = CONTROL_BAR_INSET;
+  const expandX = MW - inset - EXPAND_BUTTON_SIZE / 2;
+  const expandY = inset + EXPAND_BUTTON_SIZE / 2;
+  const barY = MH - inset - CONTROL_BAR_HEIGHT / 2;
+
+  it('is a pointer on the corner button, on every kind of media with something to open', () => {
+    for (const kind of ['image', 'video', 'mesh'] as const) {
+      expect(mediaEntityCursor(kind, expandX, expandY, MW, MH, true, true, true)).toBe('pointer');
+    }
+  });
+
+  it('is plain on media with no source, or with its controls turned off', () => {
+    expect(mediaEntityCursor('image', expandX, expandY, MW, MH, false, true, true)).toBeNull();
+    expect(mediaEntityCursor('image', expandX, expandY, MW, MH, true, false, true)).toBeNull();
+  });
+
+  it('is a pointer anywhere on a clip bar, and plain above it', () => {
+    expect(mediaEntityCursor('video', MW / 2, barY, MW, MH, true, true, true)).toBe('pointer');
+    expect(mediaEntityCursor('video', MW / 2, MH / 2, MW, MH, true, true, true)).toBeNull();
+  });
+
+  it('tells the two regions of a model apart: the strip moves the node, the body turns the model', () => {
+    expect(mediaEntityCursor('mesh', MW / 2, MESH_DRAG_STRIP_HEIGHT / 2, MW, MH, true, true, true)).toBe('move');
+    expect(mediaEntityCursor('mesh', MW / 2, MH / 2, MW, MH, true, true, true)).toBe('grab');
+  });
+
+  it('is plain on a model with orbit off, whose body drags like any node', () => {
+    expect(mediaEntityCursor('mesh', MW / 2, MH / 2, MW, MH, true, true, false)).toBeNull();
+  });
+
+  it('agrees with the press on a clip bar at every point, so it never promises a press that misses', () => {
+    for (let y = 0; y <= MH; y += 4) {
+      for (let x = 0; x <= MW; x += 4) {
+        expect(isOnVideoControls(x, y, MW, MH)).toBe(hitVideoControls(x, y, MW, MH) !== null);
+      }
+    }
+  });
+
+  it('in a preview band: a pointer on the corner button and a clip bar, a grab on the whole of a model', () => {
+    expect(bandCursor('image', expandX, expandY, MW, MH)).toBe('pointer');
+    expect(bandCursor('none', expandX, expandY, MW, MH)).toBeNull();
+    expect(bandCursor('video', MW / 2, barY, MW, MH)).toBe('pointer');
+    expect(bandCursor('mesh', MW / 2, 10, MW, MH)).toBe('grab');
+    expect(bandCursor('image', MW / 2, MH / 2, MW, MH)).toBeNull();
   });
 });

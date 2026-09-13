@@ -86,15 +86,18 @@ import { DEFAULT_STROKE_WIDTH } from './draw-entities';
 import {
   hitExpandButton,
   hitVideoControls,
+  bandCursor,
   isMeshDragStrip,
+  mediaEntityCursor,
   orbitFromDirection,
   orbitFromDrag,
   seekPositionAt,
+  type ChromeCursor,
   type OrbitAngles,
 } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, setOrbit, videoOps, type VideoSurface } from '../utils/media-runtime';
 import { previewBandRect, type BandRect } from '../utils/preview-band';
-import { classifyPreviewValue } from '../utils/preview-source';
+import { classifyPreviewValue, type PreviewSource } from '../utils/preview-source';
 import { BAND_MODEL_DIRECTION } from './preview-entities';
 import { MediaViewer, type MediaView } from './media-viewer';
 import { capture } from '../utils/canvas-runtime';
@@ -1422,6 +1425,12 @@ function InputHandler({
   const baseCursorRef = useRef('default');
   const widgetCursorRef = useRef(false);
   /**
+   * The cursor media chrome asks for (see `mediaEntityCursor`). Kept apart from the widget flag
+   * because the two are decided in different places; a widget row and a piece of chrome never
+   * occupy the same point, so they never compete.
+   */
+  const chromeCursorRef = useRef<ChromeCursor | null>(null);
+  /**
    * The widget's pointer wins only over `default`.
    *
    * Every other base cursor names a mode that is either running or armed — grabbing a node,
@@ -1433,12 +1442,22 @@ function InputHandler({
     const el = containerRef.current;
     if (!el) return;
     const base = baseCursorRef.current;
-    el.style.cursor = widgetCursorRef.current && base === 'default' ? 'pointer' : base;
+    // Media chrome, like a widget, only speaks over `default`: every other base names a mode.
+    el.style.cursor =
+      base !== 'default' ? base : widgetCursorRef.current ? 'pointer' : chromeCursorRef.current ?? base;
   }, []);
   const setWidgetCursor = useCallback(
     (wantPointer: boolean) => {
       if (wantPointer === widgetCursorRef.current) return;
       widgetCursorRef.current = wantPointer;
+      applyCursor();
+    },
+    [applyCursor]
+  );
+  const setChromeCursor = useCallback(
+    (cursor: ChromeCursor | null) => {
+      if (cursor === chromeCursorRef.current) return;
+      chromeCursorRef.current = cursor;
       applyCursor();
     },
     [applyCursor]
@@ -1781,6 +1800,65 @@ function InputHandler({
   }, [store, socketLayout]);
 
   // Handle pointer down
+  /**
+   * Which media chrome the pointer is over on one entity, as a cursor: the hover-side twin of the
+   * MEDIA CHROME press branches, in their order and through their hit tests.
+   *
+   * Allocation-free on a steady hover. Widths come from two ternaries rather than the press path's
+   * destructured pair, which builds an array, and a band's source is classified only when its
+   * socket value changes — classifying a URL builds an object, and this runs on every move.
+   */
+  const bandKindMemoRef = useRef<{ entityId: string | null; value: unknown; kind: PreviewSource['kind'] }>({
+    entityId: null,
+    value: undefined,
+    kind: 'none',
+  });
+  const chromeCursorAt = useCallback(
+    (entityId: string, worldX: number, worldY: number): ChromeCursor | null => {
+      const entity = store.getState().entityMap.get(entityId);
+      if (!entity) return null;
+      if (entity.type === 'image' || entity.type === 'video' || entity.type === 'mesh') {
+        const data = entity.data as ImageEntityData | VideoEntityData | MeshEntityData;
+        const width =
+          entity.width ??
+          (entity.type === 'image' ? DEFAULT_IMAGE_WIDTH : entity.type === 'video' ? DEFAULT_VIDEO_WIDTH : DEFAULT_MESH_WIDTH);
+        const height =
+          entity.height ??
+          (entity.type === 'image' ? DEFAULT_IMAGE_HEIGHT : entity.type === 'video' ? DEFAULT_VIDEO_HEIGHT : DEFAULT_MESH_HEIGHT);
+        return mediaEntityCursor(
+          entity.type,
+          worldX - entity.position.x,
+          worldY - entity.position.y,
+          width,
+          height,
+          Boolean(data.src),
+          data.controls ?? true,
+          entity.type === 'mesh' ? ((data as MeshEntityData).orbit ?? true) : false
+        );
+      }
+      const preview = entity.preview;
+      if (preview && (preview.controls ?? true)) {
+        const band = bandScratchRef.current;
+        if (
+          previewBandRect(entity, socketLayout, band) &&
+          worldX >= band.x && worldX <= band.x + band.width &&
+          worldY >= band.y && worldY <= band.y + band.height
+        ) {
+          const value = store.getState().getSocketValue(entity.id, preview.socket);
+          const memo = bandKindMemoRef.current;
+          if (memo.entityId !== entity.id || memo.value !== value) {
+            memo.entityId = entity.id;
+            memo.value = value;
+            memo.kind = classifyPreviewValue(value).kind;
+          }
+          return bandCursor(memo.kind, worldX - band.x, worldY - band.y, band.width, band.height);
+        }
+      }
+      return null;
+    },
+    [store, socketLayout]
+  );
+
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!containerRef.current) return;
@@ -2172,6 +2250,7 @@ function InputHandler({
 
             if (source.kind === 'mesh') {
               claimMediaPress(clickedEntity.id);
+              setChromeCursor('grabbing');
               orbitDragRef.current = {
                 entityId: clickedEntity.id,
                 start: hasOrbit(store, clickedEntity.id)
@@ -2224,6 +2303,7 @@ function InputHandler({
           const onStrip = isMeshDragStrip(worldPos.y - clickedEntity.position.y, mh);
           if ((data.orbit ?? true) && !onStrip) {
             claimMediaPress(clickedEntity.id);
+            setChromeCursor('grabbing');
             const cam = data.cameraPosition;
             orbitDragRef.current = {
               entityId: clickedEntity.id,
@@ -2308,7 +2388,7 @@ function InputHandler({
         containerRef.current?.setPointerCapture(e.pointerId);
       }
     },
-    [isSpaceDown, store, socketLayout, onConnectStart, getResizeHandleAt, getMinSize, setWidgetCursor]
+    [isSpaceDown, store, socketLayout, onConnectStart, getResizeHandleAt, getMinSize, setWidgetCursor, setChromeCursor]
   );
 
   // Handle pointer move
@@ -2438,6 +2518,7 @@ function InputHandler({
       if (orbitDrag) {
         if ((e.buttons & 1) === 0) {
           orbitDragRef.current = null;
+          setChromeCursor(null);
         } else {
           const rect = cachedRectRef.current;
           const { viewport } = store.getState();
@@ -3127,9 +3208,14 @@ function InputHandler({
             : { entityId: newHoveredId, socketId: hoveredWidgetSocketId }
         );
         setWidgetCursor(hoveredWidgetSocketId !== null);
+        setChromeCursor(
+          hoveredWidgetSocketId === null && newHoveredId !== null && newHoveredSocket === null && newHandle === null
+            ? chromeCursorAt(newHoveredId, worldPos.x, worldPos.y)
+            : null
+        );
       }
     },
-    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout, getResizeHandleAt, showWidgets, defaultEntityWidth, socketLabelWidth, setWidgetCursor]
+    [snapToGrid, snapGrid, socketTypes, allowCycles, store, updateViewport, runAutoScroll, socketLayout, getResizeHandleAt, showWidgets, defaultEntityWidth, socketLabelWidth, setWidgetCursor, setChromeCursor, chromeCursorAt]
   );
 
   // Handle pointer up
@@ -3199,8 +3285,30 @@ function InputHandler({
         return;
       }
       if (orbitDragRef.current) {
+        const turned = orbitDragRef.current.entityId;
         orbitDragRef.current = null;
         containerRef.current?.releasePointerCapture(e.pointerId);
+        // Put back what the pointer is over NOW, for the reason a slider release asks: a person who
+        // lets go and keeps still would otherwise be looking at a closed hand on a finished turn.
+        const rect = cachedRectRef.current;
+        const releaseWorld = screenToWorld(
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          store.getState().viewport
+        );
+        const over = store.getState().entityMap.get(turned);
+        let cursor: ChromeCursor | null = null;
+        if (over) {
+          // A band checks its own rectangle; a standalone model has to be checked against its box,
+          // because the turn may have carried the pointer off it.
+          const inside =
+            over.type !== 'mesh' ||
+            (releaseWorld.x >= over.position.x &&
+              releaseWorld.x <= over.position.x + (over.width ?? DEFAULT_MESH_WIDTH) &&
+              releaseWorld.y >= over.position.y &&
+              releaseWorld.y <= over.position.y + (over.height ?? DEFAULT_MESH_HEIGHT));
+          if (inside) cursor = chromeCursorAt(turned, releaseWorld.x, releaseWorld.y);
+        }
+        setChromeCursor(cursor);
         return;
       }
 
@@ -3643,6 +3751,8 @@ function InputHandler({
       socketLayout,
       openWidgetEdit,
       setWidgetCursor,
+      setChromeCursor,
+      chromeCursorAt,
     ]
   );
 

@@ -148,6 +148,64 @@ export function isMeshDragStrip(localY: number, height: number): boolean {
   return localY >= 0 && localY <= MESH_DRAG_STRIP_HEIGHT;
 }
 
+/** `hitVideoControls` without the answer object, for a pointer that is only hovering. */
+export function isOnVideoControls(localX: number, localY: number, width: number, height: number): boolean {
+  if (!fitsControls(width, height)) return false;
+  const barTop = height - CONTROL_BAR_INSET - CONTROL_BAR_HEIGHT;
+  const barBottom = height - CONTROL_BAR_INSET;
+  if (localY < barTop || localY > barBottom) return false;
+  return localX >= CONTROL_BAR_INSET && localX <= width - CONTROL_BAR_INSET;
+}
+
+/** A cursor media chrome can ask for. `grabbing` is only ever set by a turn in progress. */
+export type ChromeCursor = 'pointer' | 'grab' | 'grabbing' | 'move';
+
+/**
+ * What the pointer should look like over a media entity, before anything is pressed.
+ *
+ * The press already answers each region differently — the corner button opens the viewer, a
+ * clip's bar plays and scrubs, a model's body turns it while the strip along its top moves the
+ * node — but the cursor was `default` over all of them, so the only way to learn which region did
+ * what was to press it. Each answer here mirrors a MEDIA CHROME press branch in kookie-flow.tsx,
+ * in the same order and through the same hit tests, so the cursor cannot promise a gesture the
+ * press will not give.
+ *
+ * A constant or null, and no allocation: it runs on every pointer move over media.
+ */
+export function mediaEntityCursor(
+  kind: 'image' | 'video' | 'mesh',
+  localX: number,
+  localY: number,
+  width: number,
+  height: number,
+  hasSrc: boolean,
+  controls: boolean,
+  orbit: boolean
+): ChromeCursor | null {
+  if (hasSrc && controls && hitExpandButton(localX, localY, width, height)) return 'pointer';
+  if (kind === 'video') return controls && isOnVideoControls(localX, localY, width, height) ? 'pointer' : null;
+  // A model with orbit off drags from its body like any node, so it gets the plain cursor.
+  if (kind === 'mesh' && orbit) return isMeshDragStrip(localY, height) ? 'move' : 'grab';
+  return null;
+}
+
+/**
+ * The same, inside a node's preview band. The band has no strip: its node moves from everywhere
+ * else on the card, so a model in a band turns from all of it.
+ */
+export function bandCursor(
+  source: 'image' | 'video' | 'mesh' | 'bitmap' | 'none',
+  localX: number,
+  localY: number,
+  width: number,
+  height: number
+): ChromeCursor | null {
+  if (source !== 'none' && hitExpandButton(localX, localY, width, height)) return 'pointer';
+  if (source === 'video') return isOnVideoControls(localX, localY, width, height) ? 'pointer' : null;
+  if (source === 'mesh') return 'grab';
+  return null;
+}
+
 /** The camera direction after a drag, as yaw around the model and pitch above it. */
 export interface OrbitAngles {
   yaw: number;

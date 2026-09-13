@@ -27,7 +27,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { frozenHue } from '../../src/core/palette';
 import { getWidgetBox, sliderTrackWidth } from '../../src/utils/widget-geometry';
 import { popoverLayoutFor, POPOVER_PAD } from '../../src/utils/popover-layout';
-import { EDGE_SOCKET_RIM } from '../../src/components/edges';
+import { EDGE_SOCKET_RIM } from '../../src/utils/edge-curve';
 import { useResolvedStyle } from '../../src/contexts/StyleContext';
 import { resolveWidgetConfig } from '../../src/utils/widgets';
 import { DEFAULT_SOCKET_TYPES } from '../../src/core/constants';

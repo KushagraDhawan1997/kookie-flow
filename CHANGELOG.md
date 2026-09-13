@@ -74,6 +74,11 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Fixed
 
+- **Media controls show what a press will do.** The cursor was the plain arrow over all of a media
+  node's chrome, so the strip that moves a model — as opposed to the body that turns it — could
+  only be found by being told about it. It is now a pointer on the corner button and a clip's bar,
+  a grab on a model's body that closes while it turns, and a move cursor on the strip along a
+  model's top; a preview band answers the same way.
 - **The wire a drag draws started at the socket's centre.** Moving a resting edge to the rim left
   the DRAGGED wire untouched — a different mesh with its own geometry code — so a drag still ran a
   line out of the middle of the dot, visible through the hole of the hollow socket it was leaving.
