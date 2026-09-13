@@ -217,14 +217,28 @@ function TextEntityWeightMesh({ fontData, entriesRef, renderOrder }: TextEntityW
       capacity
     );
 
-    // Update GPU buffers
+    /**
+     * Update GPU buffers, over the glyphs this pass wrote.
+     *
+     * The arrays are sized to CAPACITY, which is grown ahead of demand and never shrinks, so a
+     * bare `needsUpdate` hands three the whole thing — three's `updateBuffer` falls back to
+     * `bufferSubData(type, 0, array)` when no range is declared. The instance matrix alone is
+     * capacity * 64 bytes, re-sent to move a handful of glyphs. Only `[0, count)` is ever drawn
+     * (`mesh.count` below), so the tail past the range is unread.
+     */
     const safeGlyphCount = Math.min(glyphCount, capacity);
-    mesh.instanceMatrix.needsUpdate = true;
+    if (safeGlyphCount > 0) {
+      mesh.instanceMatrix.addUpdateRange(0, safeGlyphCount * 16);
+      mesh.instanceMatrix.needsUpdate = true;
 
-    if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
-      buffers.uvOffsetAttr.needsUpdate = true;
-      buffers.colorAttr.needsUpdate = true;
-      buffers.opacityAttr.needsUpdate = true;
+      if (buffers.uvOffsetAttr && buffers.colorAttr && buffers.opacityAttr) {
+        buffers.uvOffsetAttr.addUpdateRange(0, safeGlyphCount * 4);
+        buffers.uvOffsetAttr.needsUpdate = true;
+        buffers.colorAttr.addUpdateRange(0, safeGlyphCount * 3);
+        buffers.colorAttr.needsUpdate = true;
+        buffers.opacityAttr.addUpdateRange(0, safeGlyphCount);
+        buffers.opacityAttr.needsUpdate = true;
+      }
     }
 
     mesh.count = safeGlyphCount;

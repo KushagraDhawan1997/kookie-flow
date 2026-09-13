@@ -825,6 +825,11 @@ export function Edges({
       // would clip the tail off a selected edge mid-drag. Starts are monotonic, so the next
       // edge's start is the slot boundary and never moves.
       let fgVertexMax = 0;
+      // The span of `aLayer` this pass actually flipped. Without it the upload below is the whole
+      // capacity-sized array — which at two thousand edges is about 4.8 MB, to change the layer of
+      // however many edges a click moved between the two meshes.
+      let flippedMin = Number.POSITIVE_INFINITY;
+      let flippedMax = -1;
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
         const newLayer = (selectedEntityIds.has(edge.source) || selectedEntityIds.has(edge.target)) ? 1 : 0;
@@ -835,12 +840,17 @@ export function Edges({
           for (let v = 0; v < count; v++) {
             buffers.layers[start + v] = newLayer;
           }
+          if (count > 0) {
+            if (start < flippedMin) flippedMin = start;
+            if (start + count > flippedMax) flippedMax = start + count;
+          }
         }
         if (newLayer === 1) {
           fgVertexMax = i + 1 < edges.length ? evStarts[i + 1] : buffers.lastVertexCount;
         }
       }
-      if (buffers.layerAttr) {
+      if (buffers.layerAttr && flippedMax > flippedMin) {
+        buffers.layerAttr.addUpdateRange(flippedMin, flippedMax - flippedMin);
         buffers.layerAttr.needsUpdate = true;
       }
       fgMeshRef.current.geometry.setDrawRange(0, fgVertexMax);
@@ -1730,13 +1740,35 @@ export function Edges({
         buffers.perpAttr.needsUpdate = true;
       }
     } else {
-      // Full upload (existing behavior)
-      if (buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
+      /**
+       * Full upload, ranged to the vertices this rebuild WROTE.
+       *
+       * These five arrays are sized to `capacity * VERTICES_PER_EDGE`, and capacity is grown 1.5x
+       * ahead of the edge count — so at two thousand edges they hold 1.2 million vertices between
+       * them whatever is on screen. A bare `needsUpdate` with no range hands three all of it:
+       * `WebGLAttributes.updateBuffer` falls back to `bufferSubData(type, 0, array)` when
+       * `updateRanges` is empty, which is about 53 MB per rebuild.
+       *
+       * That was invisible while nothing a CAMERA did could reach this path — it fired on a
+       * topology or selection change and no more. Culling the layer gave a zoom band crossing a
+       * reason to rebuild, and the counts spike measured the result at 13 MB per frame of a wheel
+       * zoom. The draw range below stops at `vertexIndex`, so every byte past it is unread; a
+       * freshly grown attribute still gets a full `bufferData` on its first upload, which is what
+       * keeps the untouched tail from being garbage.
+       */
+      if (vertexIndex > 0 && buffers.positionAttr && buffers.uvAttr && buffers.colorAttr && buffers.perpAttr) {
+        buffers.positionAttr.addUpdateRange(0, vertexIndex * 3);
         buffers.positionAttr.needsUpdate = true;
+        buffers.uvAttr.addUpdateRange(0, vertexIndex * 2);
         buffers.uvAttr.needsUpdate = true;
+        buffers.colorAttr.addUpdateRange(0, vertexIndex * 3);
         buffers.colorAttr.needsUpdate = true;
+        buffers.perpAttr.addUpdateRange(0, vertexIndex * 2);
         buffers.perpAttr.needsUpdate = true;
-        if (buffers.layerAttr) buffers.layerAttr.needsUpdate = true;
+        if (buffers.layerAttr) {
+          buffers.layerAttr.addUpdateRange(0, vertexIndex);
+          buffers.layerAttr.needsUpdate = true;
+        }
       }
     }
 
