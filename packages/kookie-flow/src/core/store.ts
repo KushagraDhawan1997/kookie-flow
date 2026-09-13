@@ -661,6 +661,78 @@ function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
   return collapsed;
 }
 
+/**
+ * What a new `entities` array changed, against the derived state already built for the old one —
+ * or `null` when the answer is "too much, rebuild everything".
+ *
+ * WHY THIS EXISTS. `setEntities` is the door the consumer's own array comes back through, and in a
+ * controlled setup that happens on EVERY FRAME OF A DRAG: the pointer moves one node, the app is
+ * told, the app re-renders, and the whole array arrives here. Having no idea what moved, this used
+ * to assume the worst and call `rebuildDerivedState` — a fresh entityMap, a fresh quadtree and a
+ * fresh socket quadtree, built from every entity in the graph, sixty times a second, to account
+ * for one node moving twelve pixels. `updateEntityPositions` had already updated both indices
+ * incrementally moments earlier; this threw that away and did it again the expensive way. Measured
+ * at two thousand nodes: about 24 KB of garbage per frame, dominated by the two trees subdividing.
+ *
+ * THE ONLY THING THE FAST PATH ALLOWS IS A MOVE. The derived state is built from a short, exact
+ * list of fields, and every one of them except `position` forces the full rebuild:
+ *
+ *   type, collapsed   -> buildCollapsedGroupIds
+ *   parentId          -> isEntityHidden, which walks the ancestor chain
+ *   width, height     -> quadtree bounds; width also sets the socket column (getSocketWorldX)
+ *   inputs, outputs   -> the socket quadtree, and the computed height when none is stated
+ *   preview           -> the computed height, same reason
+ *
+ * `data` is deliberately absent: nothing derived reads it, so a widget value changing is free.
+ * The four object-valued fields are compared BY REFERENCE, which is what `getEntitySocketLayout`
+ * already keys its own cache on, and what an immutable consumer update produces anyway.
+ *
+ * Returns the ids whose position moved and the ids whose object changed at all — the second is a
+ * superset of the first, because an entity can change its `data` without moving. It is `null`, and
+ * only null, when the caller must fall back.
+ */
+function planDerivedUpdate(
+  next: Entity[],
+  prevMap: ReadonlyMap<string, Entity>
+): { moved: string[]; changed: Entity[] } | null {
+  // A different count means something was added or removed. Combined with every entity below
+  // being found in `prevMap`, and ids being unique, this settles that the id SET is identical.
+  if (next.length !== prevMap.size) return null;
+
+  const moved: string[] = [];
+  const changed: Entity[] = [];
+
+  for (let i = 0; i < next.length; i++) {
+    const entity = next[i];
+    const prev = prevMap.get(entity.id);
+    if (prev === undefined) return null;
+    // The common case by far: the consumer's update preserved this entity's identity because
+    // nothing about it changed. `resolveEntities` preserves identity too where the type table
+    // fills in nothing new, so this stays a pointer compare all the way through.
+    if (prev === entity) continue;
+
+    if (
+      prev.type !== entity.type ||
+      prev.collapsed !== entity.collapsed ||
+      prev.parentId !== entity.parentId ||
+      prev.width !== entity.width ||
+      prev.height !== entity.height ||
+      prev.inputs !== entity.inputs ||
+      prev.outputs !== entity.outputs ||
+      prev.preview !== entity.preview
+    ) {
+      return null;
+    }
+
+    changed.push(entity);
+    if (prev.position.x !== entity.position.x || prev.position.y !== entity.position.y) {
+      moved.push(entity.id);
+    }
+  }
+
+  return { moved, changed };
+}
+
 // Helper to rebuild derived state from entities
 // collapsedGroupIds is used to filter children of collapsed groups from quadtrees
 // socketLayout is used for correct entity height in quadtree bounds
@@ -1153,7 +1225,56 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           }
           if (external) changedInputs.push(next.id);
         }
-        const derived = rebuildDerivedState(entities, undefined, state.socketLayout);
+        /**
+         * A move, or a rebuild — see `planDerivedUpdate` for the exact list that decides.
+         *
+         * On the fast path the indices are UPDATED IN PLACE rather than replaced: the entityMap
+         * takes the entities whose objects changed, and the two quadtrees take the ones that
+         * actually moved, through the same calls `updateEntityPositions` makes. `collapsedGroupIds`
+         * and `hiddenEntityIds` are handed back untouched, which is not a shortcut but the answer:
+         * nothing on the fast path can change either, and a fresh Set would be a fresh identity
+         * that four layers subscribe to as "something was hidden or shown".
+         *
+         * The layers still hear about the move: `entities` is a new array on every path through
+         * here, and `positionVersion` is bumped below.
+         */
+        const plan = planDerivedUpdate(entities, state.entityMap);
+        let derived: ReturnType<typeof rebuildDerivedState>;
+        if (plan) {
+          for (const entity of plan.changed) state.entityMap.set(entity.id, entity);
+          for (const id of plan.moved) {
+            // A hidden entity is in neither index — `rebuildDerivedState` only ever inserted the
+            // visible ones — and `quadtree.update` would INSERT one that is absent rather than
+            // skip it, putting a node nobody can see in front of the hit test.
+            if (state.hiddenEntityIds.has(id)) continue;
+            const entity = state.entityMap.get(id);
+            if (!entity) continue;
+            state.quadtree.update(id, getEntityBounds(entity, state.socketLayout ?? undefined));
+            const inputX = getSocketWorldX(entity, true);
+            const outputX = getSocketWorldX(entity, false);
+            if (entity.inputs) {
+              for (let i = 0; i < entity.inputs.length; i++) {
+                const yOffset = getSocketYOffset(entity, i, true, state.socketLayout);
+                state.socketQuadtree.update(id, entity.inputs[i].id, true, inputX, entity.position.y + yOffset);
+              }
+            }
+            if (entity.outputs) {
+              for (let i = 0; i < entity.outputs.length; i++) {
+                const yOffset = getSocketYOffset(entity, i, false, state.socketLayout);
+                state.socketQuadtree.update(id, entity.outputs[i].id, false, outputX, entity.position.y + yOffset);
+              }
+            }
+          }
+          derived = {
+            entityMap: state.entityMap,
+            quadtree: state.quadtree,
+            socketQuadtree: state.socketQuadtree,
+            collapsedGroupIds: state.collapsedGroupIds,
+            hiddenEntityIds: state.hiddenEntityIds,
+          };
+        } else {
+          derived = rebuildDerivedState(entities, undefined, state.socketLayout);
+        }
         cachedAnalysis = null;
         rebuildIdToIndex(entities);
         // Bump both topologyVersion and positionVersion so ALL downstream
