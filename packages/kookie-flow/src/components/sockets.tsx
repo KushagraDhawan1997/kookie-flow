@@ -1,10 +1,12 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { ViewportCuller } from '../utils/viewport-culler';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import {
+  DEFAULT_ENTITY_WIDTH,
   DEFAULT_SOCKET_TYPES,
   SOCKET_RADIUS,
 } from '../core/constants';
@@ -20,6 +22,15 @@ import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
 const BUFFER_GROWTH_FACTOR = 1.5;
+
+/**
+ * How far outside the screen an entity is still given socket instances, in world units.
+ *
+ * Sockets sit OUTSIDE the body — half a dot's width past each vertical edge — and the magnet
+ * leans one further still, so the padding has to cover the dot and its lean, not just the card.
+ * Generous rather than tight: an instance collected and never seen costs one quad.
+ */
+const SOCKET_CULL_PADDING = 200;
 const MIN_CAPACITY = 512;
 
 // Render order constants for z-index layering across components
@@ -224,6 +235,16 @@ export function Sockets({
   const [capacity, setCapacity] = useState(MIN_CAPACITY);
   const dirtyRef = useRef(true);
   const positionDirtyRef = useRef(false);
+  /**
+   * The camera moved, and whether that matters. Sockets used to answer "never" — this layer had
+   * NO viewport cull at all: it wrote every socket of every entity in the graph, set both meshes'
+   * `count` to the total, and let the GPU clip. On forty thousand sockets that is forty thousand
+   * instances of vertex work every frame to draw the few hundred on screen, plus a full rebuild
+   * of all of them whenever anything at all changed.
+   */
+  const viewMovedRef = useRef(false);
+  const cullerRef = useRef<ViewportCuller | null>(null);
+  if (cullerRef.current === null) cullerRef.current = new ViewportCuller();
   /**
    * Hover gets its own flag, because it used to share `dirtyRef` with structural change.
    *
@@ -598,13 +619,26 @@ export function Sockets({
         if (currentPosVersion !== lastPosVersionRef.current) {
           lastPosVersionRef.current = currentPosVersion;
           positionDirtyRef.current = true;
+          // NOT `invalidate()`. A re-collect forces the full rebuild this layer's position fast
+          // path exists to avoid, and a drag bumps this on every frame. What a move can do to the
+          // cull — bring an entity that had no instances into view — is caught exactly, and only
+          // when it happens, by the missing-range check in that fast path.
         } else {
           dirtyRef.current = true;
+          cullerRef.current?.invalidate();
         }
       }
     );
-    // Note: viewport changes no longer trigger dirty - GPU handles clipping efficiently
-    // This allows zoom/pan without geometry rebuilds.
+    /**
+     * The camera, as a question. This layer had no viewport subscription at all, which was correct
+     * only while it drew EVERY socket in the graph and let the GPU clip; now that the set is culled
+     * it has to hear about a pan that takes the screen out of the margin the set was collected for.
+     * On every other frame of a pan `refresh` answers no and nothing is rebuilt.
+     */
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => { viewMovedRef.current = true; }
+    );
     //
     // `hiddenEntityIds` is different, and is subscribed: it changes only when a group is collapsed
     // or expanded, so there is no per-frame cost, and without it a collapsed group's children keep
@@ -615,6 +649,7 @@ export function Sockets({
       (state) => state.hiddenEntityIds,
       () => {
         dirtyRef.current = true;
+        cullerRef.current?.invalidate();
       }
     );
     const unsubHoveredSocket = store.subscribe(
@@ -637,6 +672,7 @@ export function Sockets({
       (state) => state.connectionDraft?.source ?? null,
       () => {
         dirtyRef.current = true;
+        cullerRef.current?.invalidate();
       }
     );
     const unsubEdges = store.subscribe(
@@ -647,6 +683,7 @@ export function Sockets({
         connectedOutputsRef.current.clear();
         indexConnectedSockets(edges, connectedInputsRef.current, connectedOutputsRef.current);
         dirtyRef.current = true;
+        cullerRef.current?.invalidate();
       }
     );
     /**
@@ -664,6 +701,7 @@ export function Sockets({
       (state) => state.selectedEntityIds,
       () => {
         dirtyRef.current = true;
+        cullerRef.current?.invalidate();
       }
     );
 
@@ -677,12 +715,13 @@ export function Sockets({
     // A press moved something to the front: every socket's depth may have changed.
     const unsubStack = store.subscribe(
       (state) => state.stackVersion,
-      () => { dirtyRef.current = true; }
+      () => { dirtyRef.current = true; cullerRef.current?.invalidate(); }
     );
 
     return () => {
       unsubStack();
       unsubEntities();
+      unsubViewport();
       unsubHoveredSocket();
       unsubHidden();
       unsubConnectionDraft();
@@ -945,6 +984,32 @@ export function Sockets({
       lastSizeRef.current.width = size.width;
       lastSizeRef.current.height = size.height;
       dirtyRef.current = true;
+      cullerRef.current?.invalidate();
+    }
+
+    const culler = cullerRef.current as ViewportCuller;
+
+    /**
+     * The camera. `refresh` re-collects only once the screen has left the margin the current set
+     * was collected for, or the zoom has crossed a band — so most frames of a pan cost one rect
+     * comparison and stop here.
+     */
+    if (viewMovedRef.current) {
+      viewMovedRef.current = false;
+      const { viewport, quadtree } = store.getState();
+      if (
+        culler.refresh(
+          quadtree,
+          viewport.x,
+          viewport.y,
+          viewport.zoom,
+          size.width,
+          size.height,
+          SOCKET_CULL_PADDING
+        )
+      ) {
+        dirtyRef.current = true;
+      }
     }
 
     // Hover fast path. Deliberately does not return: a frame can carry both a hover change and a
@@ -965,6 +1030,7 @@ export function Sockets({
       if (movedIds.size > 0 && socketRanges.size > 0) {
         const { entityMap, stackOrder, selectedEntityIds } = store.getState();
         tempMatrix.identity();
+        const cullRect = culler.rect;
 
         // The span of instances this frame actually rewrote. Without it, `needsUpdate` alone made
         // three re-send the whole instance matrix — sized to CAPACITY, so over half a megabyte at
@@ -976,7 +1042,36 @@ export function Sockets({
 
         for (const entityId of movedIds) {
           const range = socketRanges.get(entityId);
-          if (!range) continue;
+          if (!range) {
+            /**
+             * A moved entity with no instances of its own. Normally that is an entity the cull left
+             * out, and moving it off screen changes nothing — but a multi-select drag, or an
+             * auto-scroll, can carry one INTO the collected rect, and there is nothing else in this
+             * layer that would notice: a position change deliberately does not re-collect, or the
+             * fast path would never run.
+             *
+             * So the rect is asked directly, per moved entity, which is O(moved) and exact. Only
+             * when one has actually arrived is the layout marked stale, and the next frame relays
+             * it — the remaining moved entities go unwritten for that one frame, which the full
+             * rebuild then covers anyway.
+             */
+            const arriving = entityMap.get(entityId);
+            if (arriving) {
+              const w = arriving.width ?? DEFAULT_ENTITY_WIDTH;
+              const h = arriving.height ?? getEntitySocketLayout(arriving, socketLayout).computedHeight;
+              if (
+                arriving.position.x + w >= cullRect.left &&
+                arriving.position.x <= cullRect.right &&
+                arriving.position.y + h >= cullRect.top &&
+                arriving.position.y <= cullRect.bottom
+              ) {
+                dirtyRef.current = true;
+                culler.invalidate();
+                break;
+              }
+            }
+            continue;
+          }
           // A hidden entity holds a zero-count range. Writing its matrices anyway would put them
           // at `range.start`, which is where the NEXT visible entity's instances live — dragging a
           // node inside a collapsed group would move a different node's sockets.
@@ -1034,8 +1129,19 @@ export function Sockets({
 
     if (!dirtyRef.current) return;
 
-    const { entities, entityMap, hoveredSocketId, connectionDraft, selectedEntityIds, hiddenEntityIds } =
+    const { entityMap, hoveredSocketId, connectionDraft, selectedEntityIds, hiddenEntityIds, viewport, quadtree } =
       store.getState();
+
+    // Collect, if something other than the camera asked for this rebuild and left the set stale.
+    culler.refresh(
+      quadtree,
+      viewport.x,
+      viewport.y,
+      viewport.zoom,
+      size.width,
+      size.height,
+      SOCKET_CULL_PADDING
+    );
 
     // Get source socket type with caching (O(1) after first lookup per connection draft)
     const sourceSocketType = resolveSourceSocketType(connectionDraft, entityMap);
@@ -1045,14 +1151,20 @@ export function Sockets({
     socketRanges.clear();
     const matrixArray = bgMesh.instanceMatrix.array as Float32Array;
 
-    for (const entity of entities) {
+    const visibleIds = culler.ids;
+    const visibleCount = culler.count;
+
+    for (let vi = 0; vi < visibleCount; vi++) {
+      const entity = entityMap.get(visibleIds[vi]);
+      if (!entity) continue;
       const isSelected = selectedEntityIds.has(entity.id);
       const entitySocketStart = totalCount;
 
       // A hidden entity records an EXPLICIT ZERO-COUNT range rather than being skipped outright.
       // The position fast path indexes by these ranges and writes `inputs.length + outputs.length`
       // matrices from `range.start`; without a range that says zero, a hidden entity being dragged
-      // would overwrite its neighbour's instances.
+      // would overwrite its neighbour's instances. (A culled entity has NO range at all, which the
+      // fast path handles on its own — see the missing-range branch there.)
       if (hiddenEntityIds.has(entity.id)) {
         socketRanges.set(entity.id, { start: entitySocketStart, count: 0 });
         continue;

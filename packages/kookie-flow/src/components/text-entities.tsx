@@ -15,6 +15,7 @@
 
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
@@ -248,6 +249,9 @@ interface TextEntitiesProps {
   onEntitiesChange?: (changes: EntityChange[]) => void;
 }
 
+/** How far outside the screen a text entity is still laid out, in world units. */
+const TEXT_CULL_PADDING = 100;
+
 export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
@@ -296,7 +300,14 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     const markDirty = () => { dirtyRef.current = true; };
     const unsubPositions = store.subscribe((s) => s.positionVersion, markDirty);
     const unsubEntities = store.subscribe((s) => s.entities, markDirty);
-    const unsubViewport = store.subscribe((s) => s.viewport, markDirty);
+    /**
+     * NO `viewport` SUBSCRIPTION, deliberately. This layer's dirty pass RE-WRAPS AND RE-KERNS every
+     * visible string — word wrap, per-glyph advances, kerning pairs, then a full instance rebuild —
+     * and the subscription it replaces ran all of that on every pointermove of a pan, to move a
+     * camera that moves on its own: every glyph transform written here is world space. The gate at
+     * the top of the frame loop asks the narrower question instead, and answers no on most frames
+     * of a pan.
+     */
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markDirty);
     const unsubEditing = store.subscribe((s) => s.editingEntityId, markDirty);
@@ -306,7 +317,6 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     return () => {
       unsubPositions();
       unsubEntities();
-      unsubViewport();
       unsubSelection();
       unsubHidden();
       unsubEditing();
@@ -320,12 +330,29 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
     dirtyRef.current = true;
   }, [primaryTextColor]);
 
+  /**
+   * See the `unsubViewport` note: the camera is asked here, once a frame, rather than through a
+   * subscription that would re-lay-out every string on every pointermove of a pan.
+   */
+  const cameraRef = useRef<CameraGate | null>(null);
+  if (cameraRef.current === null) cameraRef.current = new CameraGate();
+
   useFrame(({ size }) => {
-    if (!regularFont || !dirtyRef.current) return;
+    if (!regularFont) return;
+
+    // The camera, before the dirty gate: only a move that leaves the collected rect wakes the pass.
+    const camera = cameraRef.current as CameraGate;
+    {
+      const vp = store.getState().viewport;
+      if (camera.moved(vp.x, vp.y, vp.zoom, size.width, size.height, TEXT_CULL_PADDING)) {
+        dirtyRef.current = true;
+      }
+    }
+
+    if (!dirtyRef.current) return;
 
     const {
       entities,
-      viewport,
       hiddenEntityIds,
       editingEntityId,
       editingContent,
@@ -333,13 +360,12 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       stackOrder,
     } = store.getState();
 
-    // Viewport frustum bounds for culling
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
-    const cullPadding = 100;
+    // The rect the gate collected for, which already carries TEXT_CULL_PADDING and the margin.
+    const cullRect = camera.rect;
+    const viewLeft = cullRect.left;
+    const viewRight = cullRect.right;
+    const viewTop = cullRect.top;
+    const viewBottom = cullRect.bottom;
 
     // Collect multi-line text entries, split by weight and by selection layer
     const regularBgEntries: MultiLineTextEntry[] = [];
@@ -431,10 +457,10 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
       const entityRight = entity.position.x + w;
       const entityBottom = entity.position.y + h;
       if (
-        entityRight < viewLeft - cullPadding ||
-        entity.position.x > viewRight + cullPadding ||
-        entityBottom < viewTop - cullPadding ||
-        entity.position.y > viewBottom + cullPadding
+        entityRight < viewLeft ||
+        entity.position.x > viewRight ||
+        entityBottom < viewTop ||
+        entity.position.y > viewBottom
       ) continue;
 
       // Resolve text color

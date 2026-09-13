@@ -120,3 +120,86 @@ describe('SocketQuadtree', () => {
     expect(sq.remove('n7', 's0', false)).toBe(false);
   });
 });
+
+/**
+ * `queryRangeInto` is what every GL layer now culls with, so the laws it has to satisfy are the
+ * ones a render loop silently depends on: the same answer as the allocating `queryRange` it
+ * replaces, each entity ONCE however many quadrants it spans, and a caller-owned array that is
+ * written from zero and never read past the returned count.
+ *
+ * The dedup law is the one with teeth. The stamp lives on the entry object, which only works
+ * because a multi-quadrant entity is stored as ONE object shared between quadrants; reintroduce
+ * the per-quadrant copy and an entity straddling a boundary is drawn twice, which on the instanced
+ * layers means a wasted slot and, at capacity, a node that does not appear at all.
+ */
+describe('Quadtree.queryRangeInto', () => {
+  const bounds = { x: -10000, y: -10000, width: 20000, height: 20000 };
+
+  function grid(n: number): Entity[] {
+    const out: Entity[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push(entity(`e${i}`, (i % 40) * 300, Math.floor(i / 40) * 200));
+    }
+    return out;
+  }
+
+  it('agrees with queryRange', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+    const range = { x: 500, y: 400, width: 1200, height: 900 };
+
+    const out: string[] = [];
+    const count = qt.queryRangeInto(range, out);
+
+    expect(out.slice(0, count).sort()).toEqual(qt.queryRange(range).sort());
+  });
+
+  it('reports an entity spanning several quadrants exactly once', () => {
+    const qt = new Quadtree(bounds);
+    // Enough neighbours to force subdivision, plus one entity wide enough to straddle the splits.
+    const entities = grid(200);
+    entities.push({
+      id: 'wide',
+      type: 'default',
+      position: { x: -4000, y: -4000 },
+      data: {},
+      width: 9000,
+      height: 9000,
+    });
+    qt.rebuild(entities);
+
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: -5000, y: -5000, width: 11000, height: 11000 }, out);
+    const seen = out.slice(0, count).filter((id) => id === 'wide');
+
+    expect(seen).toEqual(['wide']);
+  });
+
+  it('reuses the caller array and never reads past the count', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+
+    const out: string[] = [];
+    const wide = qt.queryRangeInto({ x: 0, y: 0, width: 12000, height: 12000 }, out);
+    const narrow = qt.queryRangeInto({ x: 0, y: 0, width: 100, height: 100 }, out);
+
+    expect(narrow).toBeLessThan(wide);
+    // The array keeps its high-water length; only `count` is authoritative.
+    expect(out.length).toBe(wide);
+    expect(out.slice(0, narrow)).toEqual(['e0']);
+  });
+
+  it('starts each query from a clean slate', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+    const range = { x: 500, y: 400, width: 1200, height: 900 };
+
+    const out: string[] = [];
+    const first = qt.queryRangeInto(range, out);
+    const second = qt.queryRangeInto(range, out);
+
+    // A stamp that was not advanced between queries would report zero the second time.
+    expect(second).toBe(first);
+    expect(first).toBeGreaterThan(0);
+  });
+});

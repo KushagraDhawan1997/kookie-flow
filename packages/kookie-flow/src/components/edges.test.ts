@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planEdgeUpdate, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom } from './edges';
+import { planEdgeUpdate, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom, segmentsForZoom } from './edges';
 
 /**
  * The edge renderer's four dirty flags do not compose into four independent passes, and the
@@ -119,5 +119,56 @@ describe('edgeHalfWidthAtZoom', () => {
       prev = next;
     }
     expect(edgeHalfWidthAtZoom(0.625)).toBeCloseTo(1.75 + (4 - 1.75) / 2);
+  });
+});
+
+/**
+ * How finely a curve is sampled, and the two things that must stay true of it whatever the number.
+ *
+ * THE CEILING IS LOAD-BEARING. The vertex buffers, the point scratch array and the per-edge slot
+ * arithmetic are all sized from SEGMENTS_PER_EDGE, and the drag path writes into the slot the last
+ * full rebuild laid out — so a count above the ceiling is a buffer overrun into the next edge's
+ * vertices, which draws as a wire suddenly growing a second tail. The floor matters for the
+ * opposite reason: below about eight segments a bezier reads as a polyline, and the whole point of
+ * the LOD is that nobody can tell.
+ *
+ * MONOTONIC, because the LOD has to get coarser as the camera pulls back and never the reverse.
+ * The quantisation is by octave, so the interesting cases are the boundaries themselves.
+ */
+describe('segmentsForZoom', () => {
+  it('stays inside the ceiling the buffers are sized for, at any zoom', () => {
+    for (const zoom of [0.001, 0.01, 0.1, 0.25, 0.5, 0.99, 1, 2, 10, 1000]) {
+      expect(segmentsForZoom(zoom)).toBeLessThanOrEqual(64);
+      expect(segmentsForZoom(zoom)).toBeGreaterThanOrEqual(8);
+    }
+  });
+
+  it('never samples more finely as the camera pulls back', () => {
+    let previous = Infinity;
+    for (let zoom = 4; zoom > 0.01; zoom -= 0.01) {
+      const segments = segmentsForZoom(zoom);
+      expect(segments).toBeLessThanOrEqual(previous);
+      previous = segments;
+    }
+  });
+
+  it('gives a full-detail curve at natural size and above', () => {
+    expect(segmentsForZoom(1)).toBe(64);
+    expect(segmentsForZoom(4)).toBe(64);
+  });
+
+  it('halves with each halving of zoom, down to the floor', () => {
+    expect(segmentsForZoom(0.5)).toBe(32);
+    expect(segmentsForZoom(0.25)).toBe(16);
+    expect(segmentsForZoom(0.125)).toBe(8);
+    expect(segmentsForZoom(0.01)).toBe(8);
+  });
+
+  it('answers with the ceiling for a zoom that is not a positive number', () => {
+    // A degenerate viewport must not produce NaN segments — that is a loop that never terminates
+    // and a buffer written at index NaN.
+    expect(segmentsForZoom(0)).toBe(64);
+    expect(segmentsForZoom(-1)).toBe(64);
+    expect(segmentsForZoom(Number.NaN)).toBe(64);
   });
 });

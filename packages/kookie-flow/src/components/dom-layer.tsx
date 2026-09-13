@@ -217,13 +217,36 @@ function CommentsContainer() {
       const scaledFontSize = baseFontSize * viewport.zoom;
 
       el.style.visibility = 'visible';
+      // The transform is the one thing a pan really does change, so it is written unguarded.
       el.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
-      el.style.width = `${screenWidth}px`;
-      el.style.height = `${screenHeight}px`;
-      el.style.fontSize = `${scaledFontSize}px`;
-      el.style.boxShadow = isSelected
-        ? '0 0 0 2px var(--indigo-9, #5c5ce0), 0 2px 8px rgba(0,0,0,0.15)'
-        : '0 2px 8px rgba(0,0,0,0.15)';
+
+      /**
+       * The other four are guarded, because a PAN changes none of them.
+       *
+       * This block runs on every pointermove of a pan, and it used to assign width, height,
+       * font-size and a two-part box-shadow every time — four style writes per comment per frame
+       * whose values were, on a pan, identical to the ones already there. An assignment to
+       * `el.style` invalidates style for that element whether or not the value differs, so the
+       * browser was re-resolving and re-laying-out every comment on screen to move a layer that a
+       * single transform moves.
+       *
+       * The shadow is the dear one — a multi-part value with a `var()` in it, re-parsed on every
+       * write — and it is also the one that changes least: twice in the life of a selection.
+       */
+      const sizeKey = `${screenWidth}|${screenHeight}|${scaledFontSize}`;
+      if (el.dataset.size !== sizeKey) {
+        el.dataset.size = sizeKey;
+        el.style.width = `${screenWidth}px`;
+        el.style.height = `${screenHeight}px`;
+        el.style.fontSize = `${scaledFontSize}px`;
+      }
+      const shadowKey = isSelected ? '1' : '0';
+      if (el.dataset.sel !== shadowKey) {
+        el.dataset.sel = shadowKey;
+        el.style.boxShadow = isSelected
+          ? '0 0 0 2px var(--indigo-9, #5c5ce0), 0 2px 8px rgba(0,0,0,0.15)'
+          : '0 2px 8px rgba(0,0,0,0.15)';
+      }
     });
   }, [store]);
 

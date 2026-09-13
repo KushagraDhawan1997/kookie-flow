@@ -63,13 +63,24 @@ export const DEFAULT_PREVIEW_HEIGHT = 160;
 // Cache Implementation
 // ============================================================================
 
-// WeakMap for automatic cleanup when entities are GC'd
-const entityLayoutCache = new WeakMap<Entity, EntitySocketLayoutCache>();
+/**
+ * One WeakMap, not three.
+ *
+ * The layout, the config key it was computed for, and the generation it was computed under used to
+ * live in three separate WeakMaps — so the FAST PATH, the one every render layer takes for every
+ * visible entity every rebuild, did three hash lookups to answer a question about one entity. They
+ * are three fields of one record; storing them as one makes the hit a single lookup, and makes it
+ * impossible for the three to fall out of step with each other.
+ */
+interface CachedLayout {
+  /** `buildCacheKey`'s answer, or the `'_'` sentinel when reuse came through the id cache. */
+  key: string;
+  gen: number;
+  layout: EntitySocketLayoutCache;
+}
 
-// Stable cache key to detect config changes within same entity reference
-const entityCacheKeys = new WeakMap<Entity, string>();
-/** Generation each WeakMap entry was computed under; a mismatch means the layout moved. */
-const entityCacheGen = new WeakMap<Entity, number>();
+// WeakMap for automatic cleanup when entities are GC'd
+const entityLayoutCache = new WeakMap<Entity, CachedLayout>();
 
 // ID-based cache for cross-reference reuse (e.g. entity spread during resize).
 // When updateEntityDimensions creates { ...existing, width, height }, the new
@@ -303,10 +314,9 @@ export function getEntitySocketLayout(
   noteLayout(socketLayout);
 
   // Fast path 1: WeakMap hit (same entity reference, e.g. during pan/zoom)
-  const existingKey = entityCacheKeys.get(entity);
-  if (existingKey && entityCacheGen.get(entity) === layoutGeneration) {
-    const cached = entityLayoutCache.get(entity);
-    if (cached) return cached;
+  const cachedEntry = entityLayoutCache.get(entity);
+  if (cachedEntry && cachedEntry.key && cachedEntry.gen === layoutGeneration) {
+    return cachedEntry.layout;
   }
 
   // Fast path 2: ID-based reference check (entity spread during resize).
@@ -319,11 +329,15 @@ export function getEntitySocketLayout(
       idCached.outputs === entity.outputs &&
       idCached.preview === entity.preview &&
       idCached.type === entity.type) {
-    // Socket config unchanged — reuse layout, update WeakMap for future hits
-    entityLayoutCache.set(entity, idCached.layout);
+    // Socket config unchanged — reuse layout, update WeakMap for future hits.
     // Use '_' sentinel (truthy) so WeakMap fast path 1 fires on subsequent same-ref lookups
-    entityCacheKeys.set(entity, existingKey ?? '_');
-    entityCacheGen.set(entity, layoutGeneration);
+    if (cachedEntry) {
+      cachedEntry.key = cachedEntry.key || '_';
+      cachedEntry.gen = layoutGeneration;
+      cachedEntry.layout = idCached.layout;
+    } else {
+      entityLayoutCache.set(entity, { key: '_', gen: layoutGeneration, layout: idCached.layout });
+    }
     return idCached.layout;
   }
 
@@ -332,15 +346,18 @@ export function getEntitySocketLayout(
 
   // Check if key matches a previous computation for this entity ref
   // (handles the case where WeakMap entry existed but cache was cleared)
-  if (existingKey === currentKey && entityCacheGen.get(entity) === layoutGeneration) {
-    const cached = entityLayoutCache.get(entity);
-    if (cached) return cached;
+  if (cachedEntry && cachedEntry.key === currentKey && cachedEntry.gen === layoutGeneration) {
+    return cachedEntry.layout;
   }
 
   const layout = computeEntitySocketLayout(entity, socketLayout);
-  entityLayoutCache.set(entity, layout);
-  entityCacheKeys.set(entity, currentKey);
-  entityCacheGen.set(entity, layoutGeneration);
+  if (cachedEntry) {
+    cachedEntry.key = currentKey;
+    cachedEntry.gen = layoutGeneration;
+    cachedEntry.layout = layout;
+  } else {
+    entityLayoutCache.set(entity, { key: currentKey, gen: layoutGeneration, layout });
+  }
 
   // Prevent unbounded growth from deleted entities (Map doesn't auto-GC like WeakMap).
   // Entries are tiny (~100 bytes each), but clear if unreasonably large. Entries for
@@ -364,8 +381,6 @@ export function getEntitySocketLayout(
  */
 export function clearEntityLayoutCache(entity: Entity): void {
   entityLayoutCache.delete(entity);
-  entityCacheKeys.delete(entity);
-  entityCacheGen.delete(entity);
   entityIdCache.delete(entity.id);
 }
 

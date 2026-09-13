@@ -63,6 +63,7 @@
     "harness:behaviors": "node harness/behaviors.mjs",
     "harness:spike:formats": "node harness/spikes/color-formats.mjs",
     "harness:perf": "node harness/spikes/perf-baseline.mjs",
+    "harness:cull": "node harness/spikes/cull-bench.mjs",
     "harness:spike:theme": "node harness/spikes/theme-flip.mjs",
     "harness:spike:glass": "node harness/spikes/glass-look.mjs",
     "harness:spike:compare": "node harness/spikes/glass-compare.mjs",

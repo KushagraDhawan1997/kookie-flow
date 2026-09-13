@@ -34,12 +34,13 @@
 
 import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { ViewportCuller } from '../utils/viewport-culler';
+import { indexConnectedSockets } from './sockets';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { sliderTrackWidth, wellRadius, getWidgetBox } from '../utils/widget-geometry';
-import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
@@ -69,6 +70,14 @@ import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types';
 const BUFFER_GROWTH_FACTOR = 1.5;
 const INITIAL_CAPACITY = 64;
 const MAX_CAPACITY = 20000;
+
+/**
+ * How far outside the screen a widget's entity is still collected, in SCREEN pixels.
+ *
+ * Screen rather than world, and divided by zoom at the call site, because what it is covering is a
+ * control's own size on screen — the same reach the hand-rolled cull this replaces used.
+ */
+const WIDGET_CULL_PAD_PX = 200;
 
 /**
  * Widgets stop drawing below this zoom — at that size they are noise, not controls. Imported
@@ -536,6 +545,26 @@ export function WidgetsGL({
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
+  /**
+   * The camera moved, as a question rather than a verdict — see nodes.tsx. Widget quads are world
+   * space, so a pan changes only which of them survive the cull, and the culler says whether it
+   * actually did.
+   */
+  const viewMovedRef = useRef(false);
+  const cullerRef = useRef<ViewportCuller | null>(null);
+  if (cullerRef.current === null) cullerRef.current = new ViewportCuller();
+  const lastSizeRef = useRef({ width: 0, height: 0 });
+  /**
+   * Which input sockets have an edge on them, by entity then by socket id.
+   *
+   * The store's own `connectedSockets` answers the same question, but it is keyed by the joined
+   * string `"entityId:socketId:input"` — so asking it meant BUILDING that string, once per input
+   * socket of every visible entity, on every rebuild. The concatenation was the cost, not the
+   * lookup. Two map hops answer it with no allocation at all, from the same edges, rebuilt on the
+   * same subscription.
+   */
+  const connectedInputsRef = useRef<Map<string, Set<string>>>(new Map());
+  const connectedOutputsRef = useRef<Map<string, Set<string>>>(new Map());
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
 
   const c = THEME_COLORS.widget;
@@ -663,12 +692,28 @@ export function WidgetsGL({
   // Everything that can change what is drawn marks the layer dirty. Deliberately NOT a React
   // re-render: the whole point of this layer is that a pan costs no React work at all.
   useEffect(() => {
-    const markDirty = () => { dirtyRef.current = true; };
+    const reindexConnected = () => {
+      connectedInputsRef.current.clear();
+      connectedOutputsRef.current.clear();
+      indexConnectedSockets(store.getState().edges, connectedInputsRef.current, connectedOutputsRef.current);
+    };
+    reindexConnected();
+
+    // Both, always: the visible set comes from the quadtree and may only survive a CAMERA move.
+    const markDirty = () => {
+      dirtyRef.current = true;
+      cullerRef.current?.invalidate();
+    };
     const unsubs = [
-      store.subscribe((s) => s.viewport, markDirty),
+      // The camera alone. It used to call `markDirty`, so every pointermove of a pan rewrote and
+      // re-uploaded every visible widget's instance — to move a camera the GPU moves by itself.
+      store.subscribe((s) => s.viewport, () => { viewMovedRef.current = true; }),
       store.subscribe((s) => s.positionVersion, markDirty),
       store.subscribe((s) => s.topologyVersion, markDirty),
-      store.subscribe((s) => s.connectedSockets, markDirty),
+      store.subscribe((s) => s.connectedSockets, () => {
+        reindexConnected();
+        markDirty();
+      }),
       store.subscribe((s) => s.hiddenEntityIds, markDirty),
       // A value is entity DATA, and a data change bumps neither version above. Before this line
       // the layer repainted a changed value only by the accident of `hiddenEntityIds` being a
@@ -790,25 +835,47 @@ export function WidgetsGL({
     const checkMoving = checkTrack.active(now);
     const moving = colourMoving || pressMoving || ringMoving || checkMoving;
     if (moving || dirtyRef.current) material.uniforms.uTime.value = now;
-    if (!dirtyRef.current) return;
-    dirtyRef.current = false;
+
+    const sizeChanged =
+      size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height;
+    if (sizeChanged) {
+      lastSizeRef.current.width = size.width;
+      lastSizeRef.current.height = size.height;
+      // A resize reveals world the collected rect never covered, and `viewport` does not move.
+      cullerRef.current?.invalidate();
+    }
+    if (!dirtyRef.current && !viewMovedRef.current && !sizeChanged) return;
+    viewMovedRef.current = false;
 
     const state = store.getState();
     const {
-      entities, viewport, connectedSockets, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder,
+      entityMap, viewport, hiddenEntityIds, selectedEntityIds, widgetValues, stackOrder, quadtree,
     } = state;
     if (viewport.zoom < minWidgetZoom) {
       bgMesh.count = 0;
       fgMesh.count = 0;
+      dirtyRef.current = false;
       return;
     }
 
-    // Cull to the viewport, in world units, the way every other layer here does.
-    const pad = 200 / viewport.zoom;
-    const left = -viewport.x / viewport.zoom - pad;
-    const top = -viewport.y / viewport.zoom - pad;
-    const right = left + size.width / viewport.zoom + pad * 2;
-    const bottom = top + size.height / viewport.zoom + pad * 2;
+    /**
+     * The cull, from the quadtree, with the 200 screen-pixel reach this loop used to apply by
+     * hand. `refresh` returns false on the frames of a pan that stay inside the collected margin,
+     * and with nothing else dirty the whole layer is skipped: widget quads are world space, so
+     * the camera moves without them.
+     */
+    const culler = cullerRef.current as ViewportCuller;
+    const recollected = culler.refresh(
+      quadtree,
+      viewport.x,
+      viewport.y,
+      viewport.zoom,
+      size.width,
+      size.height,
+      WIDGET_CULL_PAD_PX / viewport.zoom
+    );
+    if (!recollected && !dirtyRef.current) return;
+    dirtyRef.current = false;
 
     let bgCount = 0;
     let fgCount = 0;
@@ -816,31 +883,25 @@ export function WidgetsGL({
     let neededBg = 0;
     let neededFg = 0;
 
-    for (const entity of entities) {
+    const visibleIds = culler.ids;
+    const visibleCount = culler.count;
+    // Individual widgets are culled against the rect the SET was collected for, not the screen —
+    // see ViewportCuller.rect for why the difference matters on a pan.
+    const cullTop = culler.rect.top;
+    const cullBottom = culler.rect.bottom;
+    const connectedInputs = connectedInputsRef.current;
+
+    for (let vi = 0; vi < visibleCount; vi++) {
+      const entity = entityMap.get(visibleIds[vi]);
+      if (!entity) continue;
       if (hiddenEntityIds.has(entity.id)) continue;
       // Not `entity.inputs ?? []`: that minted an empty array for every entity in the graph that
       // has no inputs, on every frame of a pan, purely to ask its length.
       const inputs = entity.inputs;
       if (!inputs || inputs.length === 0) continue;
-      if (
-        entity.position.x > right ||
-        entity.position.y > bottom ||
-        entity.position.x + (entity.width ?? defaultEntityWidth) < left
-      ) continue;
-      // The fourth side, which this cull was missing while every other layer had it. An entity
-      // entirely ABOVE the viewport got all the way into the socket loop, and its widgets were
-      // rejected one at a time by the per-widget vertical test further down — but only AFTER
-      // being counted as needed, so a downward pan through a tall graph ratcheted the capacity up
-      // toward MAX_CAPACITY on widgets that were never drawn, remounting both InstancedMeshes and
-      // re-allocating both buffer sets on each step, mid-gesture.
-      //
-      // The height comes through the layout rather than a default, for the reason geometry.ts
-      // states about the hit test: an auto-sized entity is routinely taller than the assumed
-      // height, and guessing here would cull widgets that are still on screen. The lookup is a
-      // cached O(1) WeakMap hit, and it is paid only by entities that survived the three cheap
-      // tests above.
-      const entityLayout = getEntitySocketLayout(entity, socketLayout);
-      if (entity.position.y + (entity.height ?? entityLayout.computedHeight) < top) continue;
+      // No socket layout is read here any more: the entity's own box was needed only by the
+      // hand-rolled cull the quadtree replaced, and `getWidgetBox` resolves the layout itself for
+      // the rows that survive. One cache lookup per visible entity per rebuild, gone.
 
       // Route to the foreground mesh when selected, so the widgets ride above the selected body.
       const isSelected = selectedEntityIds.has(entity.id);
@@ -850,14 +911,14 @@ export function WidgetsGL({
 
       for (let i = 0; i < inputs.length; i++) {
         const socket = inputs[i];
-        if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+        if (connectedInputs.get(entity.id)?.has(socket.id)) continue;
 
         const config = resolveWidgetConfig(socket, socketTypes);
         if (!config) continue;
 
         const box = getWidgetBox(entity, i, socketLayout, defaultEntityWidth, socketLabelWidth);
         if (!box) continue;
-        if (box.y > bottom || box.y + box.height < top) continue;
+        if (box.y > cullBottom || box.y + box.height < cullTop) continue;
 
         // Counted here, below every test, so the count is the number of widgets that were eligible
         // to draw. It used to be taken above the two lines before this one, which handed the

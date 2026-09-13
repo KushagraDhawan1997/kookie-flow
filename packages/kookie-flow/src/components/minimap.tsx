@@ -92,21 +92,6 @@ function calculateMinimapTransform(
   return true;
 }
 
-/**
- * Generate a hash of entity positions for change detection.
- * Uses a simple checksum approach - fast but not cryptographic.
- */
-function hashEntityPositions(entities: Entity[]): number {
-  let hash = entities.length;
-  for (let i = 0; i < entities.length; i++) {
-    const entity = entities[i];
-    // Combine position into hash (bitwise ops are fast)
-    hash = ((hash << 5) - hash + (entity.position.x | 0)) | 0;
-    hash = ((hash << 5) - hash + (entity.position.y | 0)) | 0;
-  }
-  return hash;
-}
-
 /** Position styles for each corner */
 const POSITION_STYLES: Record<string, CSSProperties> = {
   'top-left': { top: 10, left: 10 },
@@ -184,7 +169,7 @@ export function Minimap({
   const hasValidTransformRef = useRef(false);
 
   // Change detection
-  const lastPositionHashRef = useRef<number>(0);
+  const lastPositionVersionRef = useRef<number>(-1);
   const lastEntitiesRef = useRef<Entity[] | null>(null);
   const lastSelectionRef = useRef<Set<string> | null>(null);
 
@@ -240,35 +225,38 @@ export function Minimap({
     const ctx = ctxRef.current;
     if (!canvas || !ctx) return;
 
-    const { entities, viewport, selectedEntityIds } = store.getState();
+    const { entities, viewport, selectedEntityIds, positionVersion } = store.getState();
     const containerWidth = containerSizeRef.current.width;
     const containerHeight = containerSizeRef.current.height;
 
     /**
-     * What actually changed.
+     * What actually changed — two O(1) comparisons, where there used to be an O(n) checksum.
      *
-     * Array identity is the primary signal now, because every store path that touches entities
-     * rebuilds the array. It catches what the position hash cannot see — a resize, a socket added
+     * Array identity is the primary signal, because every store path that touches entities
+     * rebuilds the array. It catches what a position hash cannot see — a resize, a socket added
      * or removed, an entity added or deleted, `fitEntityToContent` stripping an explicit
-     * width/height — and all of those change the pixels the cached layer holds. Missing them was
-     * free while the loop repainted unconditionally; behind a cache it would show as a stale
-     * minimap, so the cheaper signal is also the stricter one.
+     * width/height — and all of those change the pixels the cached layer holds.
      *
-     * The hash stays because it is the only thing that notices a position mutated in place, behind
-     * the store's back, without the array being replaced.
+     * `positionVersion` is the second, and it is what the checksum was for. The checksum walked
+     * EVERY entity's position and mixed it into an integer, on every frame this renders — and
+     * this renders on any store write at all, so a pan across a large graph was paying a full
+     * sweep of the graph per frame to be told, every time, that nothing had moved. The store bumps
+     * `positionVersion` on every write that moves or resizes anything (`updateEntityPositions`,
+     * `updateEntityDimensions`, `fitEntityToContent`, `applyEntityChanges`), so the counter answers
+     * the same question exactly, for every mutation that goes through the store.
      *
-     * The second clause here used to read `entities.length !== (lastPositionHashRef.current === 0 ?
-     * 0 : entities.length)`, which compares a value with itself and is therefore always false. It
-     * was meant to catch a count change and never could; identity does.
+     * WHAT IS GIVEN UP, stated rather than smuggled: a position mutated IN PLACE on an entity
+     * object, behind the store's back, with the array left alone. Nothing in the package does that
+     * — the entities here are the store's own resolved copies, rebuilt on every change — and a
+     * consumer cannot: they hand entities in as a prop and get them back through callbacks.
      */
-    const currentHash = hashEntityPositions(entities);
     const entitiesChanged =
-      entities !== lastEntitiesRef.current || currentHash !== lastPositionHashRef.current;
+      entities !== lastEntitiesRef.current || positionVersion !== lastPositionVersionRef.current;
     const selectionChanged = selectedEntityIds !== lastSelectionRef.current;
 
     if (entitiesChanged) {
       lastEntitiesRef.current = entities;
-      lastPositionHashRef.current = currentHash;
+      lastPositionVersionRef.current = positionVersion;
       dirtyRef.current.entities = true;
     }
     if (selectionChanged) {

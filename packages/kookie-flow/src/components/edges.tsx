@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,12 +16,62 @@ import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '.
 const BUFFER_GROWTH_FACTOR = 1.5;
 const INITIAL_EDGE_CAPACITY = 512;
 
-// Tessellation settings
+/**
+ * Tessellation, and the LOD that decides how much of it an edge gets.
+ *
+ * SEGMENTS_PER_EDGE is the CEILING, not the working number: it sizes the buffers and bounds the
+ * point array, and a curve is actually sampled at `segmentsForZoom`. Sixty-four segments is right
+ * for a curve a few hundred pixels across and absurd for the same curve at zoom 0.1, where the
+ * whole edge is thirty pixels long and fifty of its sixty-four segments are shorter than a pixel.
+ * The cost is paid twice over — the CPU tessellates them and the GPU shades six vertices each —
+ * so the count halves with each halving of zoom, down to a floor that still reads as a curve.
+ *
+ * It is a function of ZOOM ALONE, deliberately, and not of the edge's own length. Every edge in a
+ * frame therefore gets the same count, which is what keeps the vertex-slot arithmetic stable: the
+ * partial (drag) path writes into the slot the last full rebuild laid out, so a per-edge count
+ * that changed as an edge was stretched would overrun its neighbour. Zoom changes the count for
+ * every edge at once, and a band crossing forces a full rebuild, which relays every slot.
+ */
 const SEGMENTS_PER_EDGE = 64;
+const MIN_SEGMENTS_PER_EDGE = 8;
+
+/**
+ * How many segments a curve is sampled at, at this zoom.
+ *
+ * Doubling per octave of zoom, clamped to [MIN, MAX]. Quantised to powers of two so that a slow
+ * wheel crosses a boundary a handful of times rather than continuously — each crossing is a full
+ * rebuild.
+ */
+export function segmentsForZoom(zoom: number): number {
+  if (!(zoom > 0)) return SEGMENTS_PER_EDGE;
+  // 64 at zoom >= 1, 32 at 0.5, 16 at 0.25, 8 below 0.125.
+  const scaled = SEGMENTS_PER_EDGE * Math.pow(2, Math.ceil(Math.log2(Math.min(zoom, 1))));
+  return Math.max(MIN_SEGMENTS_PER_EDGE, Math.min(SEGMENTS_PER_EDGE, scaled));
+}
 // Each segment = 1 quad = 2 triangles = 6 vertices
 // Plus up to 2 arrows (3 vertices each) = 6 extra vertices
 // Two more segments than the curve has: the straight leader at each end (see the rim anchor below).
 const VERTICES_PER_EDGE = (SEGMENTS_PER_EDGE + 2) * 6 + 6;
+
+/**
+ * How far past the screen an edge is still tessellated, in SCREEN pixels.
+ *
+ * It covers the glow, which is a screen-space reach either side of the core, and a little slack
+ * for an arrowhead sitting on the border. Divided by zoom at the call site.
+ */
+const EDGE_CULL_PADDING = 64;
+
+/** What the geometry pass needs to know about one socket: which row it is on, and its type. */
+interface EdgeSocketInfo {
+  index: number;
+  socket: { id: string; type: string; position?: number };
+}
+
+/** One entity's sockets, by direction then by id. `null` where the entity has none. */
+interface EntitySocketIndex {
+  inputs: Map<string, EdgeSocketInfo> | null;
+  outputs: Map<string, EdgeSocketInfo> | null;
+}
 
 // Max points per edge (bezier has SEGMENTS+1, step has 4, straight has 2)
 const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 3;
@@ -322,14 +373,42 @@ export function Edges({
   // Entity map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
   const entityMapRef = useRef<Map<string, Entity>>(new Map());
 
-  // Socket index map for O(1) lookups: "${entityId}:${socketId}:input|output" -> { index, socket }
-  // Rebuilt only when entities are added/removed (not on position changes)
+  /**
+   * Socket lookup for the geometry pass, NESTED rather than keyed by a joined string.
+   *
+   * The flat `"${entityId}:${socketId}:input"` form this replaces is still what `SocketIndexMap`
+   * is in the public API, and it is fine everywhere it is asked once. Here it was asked TWICE PER
+   * EDGE PER REBUILD — once for the source, once for the target — and each ask built the key
+   * first. At a couple of thousand edges that is four thousand throwaway strings per rebuild, in
+   * the pass that runs on every frame of a drag; the map lookup was never the cost, the
+   * concatenation was.
+   *
+   * Two map hops instead, no allocation. Rebuilt exactly where the flat one used to be, on
+   * add/remove, so nothing about invalidation changes.
+   */
   const socketIndexMapRef = useRef<
-    Map<string, { index: number; socket: { id: string; type: string; position?: number } }>
+    Map<string, EntitySocketIndex>
   >(new Map());
 
   // Dirty flags - separate geometry vs color-only vs layer-only updates
   const geometryDirtyRef = useRef(true);
+  /**
+   * The camera moved, and the rect the current vertex layout was built for.
+   *
+   * This layer had NO viewport cull whatever: every edge in the graph was tessellated into the
+   * buffer and drawn, whether or not any part of it could reach the screen. At a few thousand
+   * edges that is well over a million vertices a frame for a screenful of maybe fifty wires, and
+   * the CPU paid for all of it again on every rebuild.
+   *
+   * Culling is only possible at a FULL rebuild, because the vertex slots it hands out are what the
+   * drag path writes into — so the rect gets the same hysteresis every other layer uses, and a pan
+   * inside the margin still costs nothing at all.
+   */
+  const viewMovedRef = useRef(false);
+  const cameraRef = useRef<CameraGate | null>(null);
+  if (cameraRef.current === null) cameraRef.current = new CameraGate();
+  /** Segments the current layout was tessellated at; a change relays every slot. */
+  const segmentsRef = useRef(SEGMENTS_PER_EDGE);
   const colorDirtyRef = useRef(true);
   const layerDirtyRef = useRef(false); // entity selection changed (edges move between bg/fg layers)
 
@@ -342,6 +421,14 @@ export function Edges({
 
   // Per-edge layer cache: 0=bg, 1=fg (for detecting layer changes on selection)
   const edgeLayersRef = useRef<Uint8Array>(new Uint8Array(0));
+  /**
+   * Which edges the last full rebuild CULLED, as opposed to drew or found degenerate.
+   *
+   * The drag path needs to tell those three apart, and `evCounts[i] === 0` cannot: a culled edge
+   * and a zero-length one both record no vertices, and only the first has to force a relayout when
+   * it comes back into view. A flag written by the pass that made the decision says exactly which.
+   */
+  const edgeCulledRef = useRef<Uint8Array>(new Uint8Array(0));
 
   // Position-only dirty flag (enables partial update path, avoids full rebuild)
   const positionDirtyRef = useRef(false);
@@ -492,18 +579,27 @@ export function Edges({
     const rebuildSocketIndexMap = (entities: Entity[]) => {
       socketIndexMapRef.current.clear();
       for (const n of entities) {
+        const hasInputs = n.inputs !== undefined && n.inputs.length > 0;
+        const hasOutputs = n.outputs !== undefined && n.outputs.length > 0;
+        if (!hasInputs && !hasOutputs) continue;
+        const entry: EntitySocketIndex = { inputs: null, outputs: null };
         if (n.inputs) {
+          const m = new Map<string, EdgeSocketInfo>();
           for (let i = 0; i < n.inputs.length; i++) {
-            const s = n.inputs[i];
-            socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
+            const sock = n.inputs[i];
+            m.set(sock.id, { index: i, socket: sock });
           }
+          entry.inputs = m;
         }
         if (n.outputs) {
+          const m = new Map<string, EdgeSocketInfo>();
           for (let i = 0; i < n.outputs.length; i++) {
-            const s = n.outputs[i];
-            socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
+            const sock = n.outputs[i];
+            m.set(sock.id, { index: i, socket: sock });
           }
+          entry.outputs = m;
         }
+        socketIndexMapRef.current.set(n.id, entry);
       }
     };
 
@@ -561,6 +657,17 @@ export function Edges({
       }
     );
 
+    /**
+     * The camera, as a question — see `viewMovedRef`. The frame loop decides whether the move took
+     * the screen out of the rect the current layout was culled for; marking geometry dirty here
+     * would re-tessellate every edge on every pointermove of a pan, which is exactly what having
+     * no viewport subscription at all was avoiding before there was a cull to keep honest.
+     */
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      () => { viewMovedRef.current = true; }
+    );
+
     // Initialize entityMap ref and socket index map
     const { entities, entityMap } = store.getState();
     entityMapRef.current = entityMap;
@@ -573,6 +680,7 @@ export function Edges({
     return () => {
       unsubEntitiesLength();
       unsubPositions();
+      unsubViewport();
       unsubHidden();
       unsubEdges();
       unsubSelection();
@@ -595,6 +703,7 @@ export function Edges({
   // RAF-synchronized updates
   useFrame(({ size, clock }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
+    const camera = cameraRef.current as CameraGate;
 
     const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap, hiddenEntityIds } =
       store.getState();
@@ -620,6 +729,37 @@ export function Edges({
       lastSizeRef.current.width = size.width;
       lastSizeRef.current.height = size.height;
       geometryDirtyRef.current = true;
+    }
+
+    /**
+     * Has the camera left the rect the current layout was culled for, or crossed a tessellation
+     * band? Either answer relays every vertex slot, so both mean a full rebuild — and on every
+     * other frame of a pan this costs four comparisons and changes nothing.
+     */
+    if (viewMovedRef.current) {
+      viewMovedRef.current = false;
+      if (
+        camera.moved(
+          viewport.x,
+          viewport.y,
+          viewport.zoom,
+          size.width,
+          size.height,
+          EDGE_CULL_PADDING / viewport.zoom
+        ) ||
+        /**
+         * The tessellation, asked separately from the gate's band.
+         *
+         * The two quantise zoom differently — the gate at eight steps per octave, this at one —
+         * and an octave boundary can fall INSIDE one of the gate's bands, so crossing z = 0.5
+         * halves the right segment count without moving the band. Nothing is corrupted when that
+         * is missed (the slots and the count stay in step; only the LOD is stale until the next
+         * rebuild), but the curve quality would be a frame behind the wheel for no reason.
+         */
+        segmentsForZoom(viewport.zoom) !== segmentsRef.current
+      ) {
+        geometryDirtyRef.current = true;
+      }
     }
 
     // Skip if nothing is dirty
@@ -653,6 +793,9 @@ export function Edges({
       const grownLayers = new Uint8Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
       grownLayers.set(edgeLayersRef.current);
       edgeLayersRef.current = grownLayers;
+      const grownCulled = new Uint8Array(grownLayers.length);
+      grownCulled.set(edgeCulledRef.current);
+      edgeCulledRef.current = grownCulled;
     }
 
     const plan = planEdgeUpdate({
@@ -737,10 +880,10 @@ export function Edges({
             cb = tb = invalidColor.b;
           } else {
             const sourceInfo = edge.sourceSocket
-              ? socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`)
+              ? socketIndexMap.get(edge.source)?.outputs?.get(edge.sourceSocket)
               : undefined;
             const targetInfo = edge.targetSocket
-              ? socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`)
+              ? socketIndexMap.get(edge.target)?.inputs?.get(edge.targetSocket)
               : undefined;
             const sourceTypeColor = sourceInfo
               ? socketTypeColors.get(sourceInfo.socket.type) ?? socketTypeColors.get('any')
@@ -794,6 +937,26 @@ export function Edges({
     // Determine update mode: partial (position-only) vs full rebuild
     const isPartialUpdate = plan.geometry === 'partial';
 
+    /**
+     * A full rebuild re-cuts the cull rect and re-picks the tessellation; a partial one inherits
+     * both, because the slots it writes into were laid out under them.
+     */
+    if (!isPartialUpdate) {
+      // The pad covers a bezier's bulge past its endpoints and the glow's screen-space reach; the
+      // gate adds the hysteresis fraction on top of it.
+      camera.moved(
+        viewport.x,
+        viewport.y,
+        viewport.zoom,
+        size.width,
+        size.height,
+        EDGE_CULL_PADDING / viewport.zoom
+      );
+      segmentsRef.current = segmentsForZoom(viewport.zoom);
+    }
+    const cullRect = camera.rect;
+    const segments = segmentsRef.current;
+
     // Ensure endpoint cache and layout arrays have capacity
     const neededCacheSize = edges.length * 4;
     if (endpointCacheRef.current.length < neededCacheSize) {
@@ -841,6 +1004,7 @@ export function Edges({
     // only as far as the last selected edge. See the layer pass above for why it exists.
     let fgVertexMax = 0;
     const edgeLayers = edgeLayersRef.current;
+    const edgeCulled = edgeCulledRef.current;
     // Whether any edge visited wants the clock. Only a full rebuild sees every edge, so only a
     // full rebuild is allowed to write it back.
     let anyLive = false;
@@ -867,7 +1031,10 @@ export function Edges({
           hiddenEntityIds.has(edge.source) ||
           hiddenEntityIds.has(edge.target)
         ) {
-          // Record zero-vertex layout for this edge
+          // Record zero-vertex layout for this edge. Deliberately NOT flagged as culled: a
+          // hidden endpoint becomes visible only through a collapse or expand, which is a topology
+          // change and already a full rebuild — and flagging it would force one on every frame of
+          // a collapsed group being dragged, since its hidden children move with it.
           evStarts[i] = vertexIndex;
           evCounts[i] = 0;
           continue;
@@ -891,7 +1058,7 @@ export function Edges({
         // socket index map is rebuilt from the store, never cached per edge, so nothing here can
         // outlive a socket being added, removed or reordered.
         const sourceSocketInfo = edge.sourceSocket
-          ? socketIndexMap.get(`${edge.source}:${edge.sourceSocket}:output`)
+          ? socketIndexMap.get(edge.source)?.outputs?.get(edge.sourceSocket)
           : undefined;
 
         // Fallback to the entity's centre for an edge that names no socket.
@@ -902,7 +1069,7 @@ export function Edges({
 
         // Hoisted for the same reason as the source: the gradient's far end is this socket's hue.
         const targetSocketInfo = edge.targetSocket
-          ? socketIndexMap.get(`${edge.target}:${edge.targetSocket}:input`)
+          ? socketIndexMap.get(edge.target)?.inputs?.get(edge.targetSocket)
           : undefined;
 
         let targetYOffset = targetHeight / 2;
@@ -1014,6 +1181,66 @@ export function Edges({
           cy2 = y1;
         }
 
+        /**
+         * THE CULL, and the only place it can happen.
+         *
+         * A cubic lies inside the convex hull of its control points, so the box spanned by the two
+         * endpoints and the two control points bounds the whole ribbon — bulge included, which is
+         * why this waits until after the control points are known. `cullRect` already carries the
+         * glow's reach and the hysteresis margin.
+         *
+         * A culled edge records a ZERO-LENGTH SLOT and writes nothing. That is safe only on a full
+         * rebuild, which is why a pan that leaves the margin forces one: the drag path writes into
+         * the slots this pass hands out, and it is guarded below for the case where one it needs
+         * has no room.
+         */
+        {
+          const boxLeft = Math.min(x0, x1, cx1, cx2);
+          const boxRight = Math.max(x0, x1, cx1, cx2);
+          const boxTop = Math.min(y0, y1, cy1, cy2);
+          const boxBottom = Math.max(y0, y1, cy1, cy2);
+          if (
+            boxRight < cullRect.left ||
+            boxLeft > cullRect.right ||
+            boxBottom < cullRect.top ||
+            boxTop > cullRect.bottom
+          ) {
+            if (!isPartialUpdate) {
+              evStarts[i] = vertexIndex;
+              evCounts[i] = 0;
+              edgeLayers[i] = 0;
+              edgeCulled[i] = 1;
+            }
+            continue;
+          }
+        }
+
+        /**
+         * An edge ARRIVING, on a drag.
+         *
+         * The partial path writes into the layout the last full rebuild produced, and a culled
+         * edge was given no room in it. Reaching this line with the culled flag set means the drag
+         * has carried the edge INTO the rect since that rebuild — one still outside it left at the
+         * cull above — so the layout has to be relaid before it can be drawn. The rebuild is asked
+         * for and this frame leaves the edge alone.
+         *
+         * The cull above is what keeps this cheap: a multi-select drag of mostly off-screen edges
+         * never reaches here, so it does not force a rebuild on every frame — which is the whole
+         * reason the position path exists.
+         *
+         * THE FLAG, NOT A VERTEX BUDGET. The first cut of this compared the worst-case vertex
+         * count for the current tessellation against the room between this edge's start and the
+         * next one's — and the slots a rebuild hands out are TIGHT, sized to what each edge
+         * actually wrote, so an edge with no arrowheads is always a few vertices short of the
+         * worst case. It tripped for nearly every edge, on every frame of every drag, and turned
+         * the fast path into a full rebuild each time: the exact cost this whole file is arranged
+         * to avoid, added by the guard meant to protect it.
+         */
+        if (isPartialUpdate && edgeCulled[i]) {
+          geometryDirtyRef.current = true;
+          continue;
+        }
+
         // Edge colour is a gradient, source-socket hue at u=0 to target-socket hue at u=1, so a
         // float feeding an image reads as blue becoming purple. Selected and invalid are one hue
         // at both ends. edge.invalid is set when edges are created via UI (no runtime type checking
@@ -1087,8 +1314,8 @@ export function Edges({
            */
           const lx0 = x0 + lead0;
           const lx1 = x1 - lead1;
-          for (let s = 0; s <= SEGMENTS_PER_EDGE; s++) {
-            const t = s / SEGMENTS_PER_EDGE;
+          for (let s = 0; s <= segments; s++) {
+            const t = s / segments;
             const mt = 1 - t;
             const mt2 = mt * mt;
             const mt3 = mt2 * mt;
@@ -1102,10 +1329,10 @@ export function Edges({
           // The two leader ends, in front of and behind the sampled curve.
           points[0] = x0;
           points[1] = y0;
-          const tail = (SEGMENTS_PER_EDGE + 2) * 2;
+          const tail = (segments + 2) * 2;
           points[tail] = x1;
           points[tail + 1] = y1;
-          pointsCount = SEGMENTS_PER_EDGE + 3;
+          pointsCount = segments + 3;
         }
 
         // Generate ribbon geometry from points
@@ -1429,6 +1656,9 @@ export function Edges({
         // Record edge vertex layout for partial updates
         evStarts[i] = edgeVertexStart;
         evCounts[i] = vertexIndex - edgeVertexStart;
+        // Drawn, so not culled — including the degenerate case, which writes nothing and must not
+        // be mistaken for an edge that was left out of the layout.
+        if (!isPartialUpdate) edgeCulled[i] = 0;
 
         // Write layer attribute for this edge's vertices (full rebuild only)
         if (!isPartialUpdate) {

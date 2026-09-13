@@ -19,6 +19,7 @@
 
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
@@ -39,6 +40,9 @@ import {
   setMediaBox,
   setMediaChrome,
 } from '../utils/media-quad';
+
+/** How far outside the screen an image is still positioned and textured, in world units. */
+const CULL_PADDING = 100;
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -270,7 +274,11 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       }
       markFullDirty();
     });
-    const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
+    /**
+     * NO `viewport` SUBSCRIPTION, deliberately. The camera is asked once a frame by the gate at the
+     * top of the frame loop instead — a subscription could only say "it changed", and what this
+     * layer needs to know is the narrower "it changed enough to matter".
+     */
     // Selection moves the mesh in DEPTH (see utils/entity-depth.ts), so it is a full pass now,
     // not the renderOrder-only flip it used to be.
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markFullDirty);
@@ -284,7 +292,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       unsubTopology();
       unsubPositions();
       unsubEntities();
-      unsubViewport();
       unsubSelection();
       unsubStack();
       unsubHidden();
@@ -318,7 +325,31 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   // - fullDirtyRef: positions, culling, LOD, textures (viewport/entity/texture changes)
   // - selectionDirtyRef: only renderOrder (selection click)
   // - hiddenDirtyRef: only visibility (hide/show toggle)
+  /**
+   * The camera, as a question rather than a verdict.
+   *
+   * This layer used to mark itself fully dirty from a `viewport` subscription, so every pointermove
+   * of a pan re-ran the whole pass — every matrix, every uniform, every texture and LOD decision —
+   * to move a camera that moves on its own: every transform written here is world space. The gate
+   * answers "has the screen left the rect we last collected for, or has the zoom crossed a band",
+   * and on most frames of a pan the answer is no and the pass is skipped outright. Culling below
+   * is against `camera.rect`, which already carries the padding and the hysteresis margin, so
+   * nothing can scroll into view during a frame that was skipped.
+   */
+  const cameraRef = useRef<CameraGate | null>(null);
+  if (cameraRef.current === null) cameraRef.current = new CameraGate();
+
   useFrame(({ size }, delta) => {
+    // The camera, before the dirty gate below: a pan that has left the collected rect is the one
+    // thing that has to wake this pass, and a pan that has not is the thing that must not.
+    const camera = cameraRef.current as CameraGate;
+    {
+      const vp = store.getState().viewport;
+      if (camera.moved(vp.x, vp.y, vp.zoom, size.width, size.height, CULL_PADDING)) {
+        fullDirtyRef.current = true;
+      }
+    }
+
     // Drain texture upload queue: 1-2 per frame to avoid GPU stalls.
     // Runs before dirty-flag check so queue drains even when nothing else changed.
     if (texManager.hasQueuedUploads) {
@@ -347,16 +378,12 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     // O(k) iteration over image entity IDs only, with O(1) entityMap lookups
     const ids = imageEntityIdsRef.current;
 
-    // Viewport bounds only needed for full update (frustum culling)
-    let viewLeft = 0, viewRight = 0, viewTop = 0, viewBottom = 0;
-    if (full) {
-      const invZoom = 1 / viewport.zoom;
-      viewLeft = -viewport.x * invZoom;
-      viewRight = (size.width - viewport.x) * invZoom;
-      viewTop = -viewport.y * invZoom;
-      viewBottom = (size.height - viewport.y) * invZoom;
-    }
-    const cullPadding = 100;
+    // The rect the gate collected for, which already carries CULL_PADDING and the margin.
+    const cullRect = camera.rect;
+    const viewLeft = cullRect.left;
+    const viewRight = cullRect.right;
+    const viewTop = cullRect.top;
+    const viewBottom = cullRect.bottom;
 
     for (let i = 0; i < ids.length; i++) {
       const entity = entityMap.get(ids[i]);
@@ -393,10 +420,10 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       const entityRight = entity.position.x + w;
       const entityBottom = entity.position.y + h;
       if (
-        entityRight < viewLeft - cullPadding ||
-        entity.position.x > viewRight + cullPadding ||
-        entityBottom < viewTop - cullPadding ||
-        entity.position.y > viewBottom + cullPadding
+        entityRight < viewLeft ||
+        entity.position.x > viewRight ||
+        entityBottom < viewTop ||
+        entity.position.y > viewBottom
       ) {
         mesh.visible = false;
         continue;

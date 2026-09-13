@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts';
@@ -23,6 +24,14 @@ const tempScale = new THREE.Vector3();
 // Buffer sizes
 const OUTLINE_MIN_CAPACITY = 64;
 const HANDLE_MIN_CAPACITY = 4; // the four corners of the one selected entity under the pointer
+/**
+ * How far outside the screen a selected entity still gets an outline instance, in world units.
+ *
+ * The 300 the two culls here used by hand: enough for the halo, which reaches past the outline,
+ * which reaches past the body.
+ */
+const SELECTION_CULL_PADDING = 300;
+
 const BUFFER_GROWTH_FACTOR = 1.5;
 
 /**
@@ -54,6 +63,8 @@ export function EntitySelection() {
 
   // --- Outline mesh ---
   const outlineMeshRef = useRef<THREE.InstancedMesh>(null);
+  const cameraRef = useRef<CameraGate | null>(null);
+  if (cameraRef.current === null) cameraRef.current = new CameraGate();
   const outlineDirtyRef = useRef(true);
   const outlineInitializedRef = useRef(false);
   const [outlineCapacity, setOutlineCapacity] = useState(OUTLINE_MIN_CAPACITY);
@@ -336,7 +347,25 @@ export function EntitySelection() {
 
     // These affect both outline and handle meshes
     const unsubEntities = store.subscribe((state) => state.entities, markBothDirty);
-    const unsubViewport = store.subscribe((state) => state.viewport, markBothDirty);
+    /**
+     * A ZOOM is a rebuild; a PAN is a question for the gate.
+     *
+     * Everything this layer draws is sized in screen pixels and written as `px / zoom`, so a zoom
+     * of any size really does change every instance and there is no margin to hide inside — that
+     * half stays exactly as it was. A pan changes nothing but which outlines are on screen, and
+     * this used to rebuild all of them on every pointermove of one; with a select-all on a large
+     * graph that is the whole selection re-derived sixty times a second to move a camera.
+     */
+    const unsubViewport = store.subscribe(
+      (state) => state.viewport,
+      (viewport, previous) => {
+        // A pan is the gate's business and nothing happens here. A zoom is not: see above.
+        if (viewport.zoom !== previous.zoom) {
+          cameraRef.current?.invalidate();
+          markBothDirty();
+        }
+      }
+    );
     const unsubSelection = store.subscribe((state) => state.selectedEntityIds, markBothDirty);
     const unsubHovered = store.subscribe((state) => state.hoveredEntityId, markBothDirty);
     const unsubHidden = store.subscribe((state) => state.hiddenEntityIds, markBothDirty);
@@ -366,6 +395,26 @@ export function EntitySelection() {
     const outlineMesh = outlineMeshRef.current;
     const handleMesh = handleMeshRef.current;
 
+    /**
+     * A pan, asked once rather than answered sixty times. `moved` re-cuts the rect and returns
+     * true only when the screen has left the margin the current instances were collected for.
+     *
+     * ASKED UNCONDITIONALLY, on every frame, and that is not laziness. Both blocks below cull
+     * against `camera.rect`, so a gate that has not been asked holds a zeroed box and culls
+     * everything — and the two obvious ways to ask it less both have a hole: behind a "the camera
+     * moved" flag, a selection made before the first pan has no outline at all; behind a "has it
+     * ever been asked" flag, the first frame arms it with a canvas that is still 0x0 and the real
+     * size never re-arms it. The call is a state read, four divisions and four comparisons.
+     */
+    const camera = cameraRef.current as CameraGate;
+    {
+      const vp = store.getState().viewport;
+      if (camera.moved(vp.x, vp.y, vp.zoom, size.width, size.height, SELECTION_CULL_PADDING)) {
+        outlineDirtyRef.current = true;
+        handleDirtyRef.current = true;
+      }
+    }
+
     // --- Outline mesh ---
     if (outlineMesh && outlineInitializedRef.current && outlineDirtyRef.current) {
       const {
@@ -376,13 +425,13 @@ export function EntitySelection() {
         entityMap,
       } = store.getState();
 
-      // Viewport culling bounds
-      const invZoom = 1 / viewport.zoom;
-      const viewLeft = -viewport.x * invZoom;
-      const viewRight = (size.width - viewport.x) * invZoom;
-      const viewTop = -viewport.y * invZoom;
-      const viewBottom = (size.height - viewport.y) * invZoom;
-      const cullPadding = 300;
+      // The rect the gate collected for — never the bare screen, or an outline that scrolled in
+      // during a frame the pan was allowed to skip would be missing. It already carries the pad.
+      const gateRect = camera.rect;
+      const viewLeft = gateRect.left;
+      const viewRight = gateRect.right;
+      const viewTop = gateRect.top;
+      const viewBottom = gateRect.bottom;
 
       const selOutlineWidth = SELECTION_OUTLINE_WIDTH / viewport.zoom;
       const hoverOutlineWidth = HOVER_OUTLINE_WIDTH / viewport.zoom;
@@ -405,10 +454,10 @@ export function EntitySelection() {
         const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
         const h = entity.height ?? getEntitySocketLayout(entity, socketLayout).computedHeight;
         return !(
-          entity.position.x + w < viewLeft - cullPadding ||
-          entity.position.x > viewRight + cullPadding ||
-          entity.position.y + h < viewTop - cullPadding ||
-          entity.position.y > viewBottom + cullPadding
+          entity.position.x + w < viewLeft ||
+          entity.position.x > viewRight ||
+          entity.position.y + h < viewTop ||
+          entity.position.y > viewBottom
         );
       };
 
@@ -526,13 +575,13 @@ export function EntitySelection() {
         return;
       }
 
-      const invZoom = 1 / viewport.zoom;
-      const viewLeft = -viewport.x * invZoom;
-      const viewRight = (size.width - viewport.x) * invZoom;
-      const viewTop = -viewport.y * invZoom;
-      const viewBottom = (size.height - viewport.y) * invZoom;
-      const cullPadding = 300;
+      const gateRect = camera.rect;
+      const viewLeft = gateRect.left;
+      const viewRight = gateRect.right;
+      const viewTop = gateRect.top;
+      const viewBottom = gateRect.bottom;
 
+      const invZoom = 1 / viewport.zoom;
       const halfHandle = RESIZE_HANDLE_SIZE / (2 * viewport.zoom);
       let handleCount = 0;
 
@@ -559,10 +608,10 @@ export function EntitySelection() {
 
         // Frustum culling
         const offscreen =
-          x + width < viewLeft - cullPadding ||
-          x > viewRight + cullPadding ||
-          y + height < viewTop - cullPadding ||
-          y > viewBottom + cullPadding;
+          x + width < viewLeft ||
+          x > viewRight ||
+          y + height < viewTop ||
+          y > viewBottom;
 
         // Check per-axis resizability
         const resizable = entity.resizable;

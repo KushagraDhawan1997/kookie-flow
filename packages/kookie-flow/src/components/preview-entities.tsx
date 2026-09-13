@@ -26,6 +26,7 @@
 
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
@@ -205,7 +206,12 @@ export function PreviewEntities() {
     });
     const unsubPositions = store.subscribe((s) => s.positionVersion, markFullDirty);
     const unsubEntities = store.subscribe((s) => s.entities, markFullDirty);
-    const unsubViewport = store.subscribe((s) => s.viewport, markFullDirty);
+    /**
+     * NO `viewport` SUBSCRIPTION, deliberately. The camera is asked once a frame by the gate at the
+     * top of the frame loop instead — a subscription could only say "it changed", and what this
+     * layer needs to know is the narrower "it changed enough to matter", which is a question only
+     * answerable at the moment it can be acted on.
+     */
     const unsubSelection = store.subscribe((s) => s.selectedEntityIds, markFullDirty);
     const unsubStack = store.subscribe((s) => s.stackVersion, markFullDirty);
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, markFullDirty);
@@ -221,7 +227,6 @@ export function PreviewEntities() {
       unsubTopology();
       unsubPositions();
       unsubEntities();
-      unsubViewport();
       unsubSelection();
       unsubStack();
       unsubHidden();
@@ -386,8 +391,33 @@ export function PreviewEntities() {
     chromeActiveRef.current = fading || hovered !== null;
   }
 
+  /**
+   * The camera, as a question rather than a verdict.
+   *
+   * This layer used to mark itself fully dirty from a `viewport` subscription, so every pointermove
+   * of a pan re-ran the whole pass — every matrix, every uniform, every texture decision — to move
+   * a camera that moves on its own: every transform written here is world space. The gate answers
+   * "has the screen left the rect we last collected for, or has the zoom crossed a band", and on
+   * most frames of a pan the answer is no and the pass is skipped outright. Culling below is
+   * against `camera.rect`, which already carries CULL_PADDING and the hysteresis margin, so
+   * nothing can scroll into view during a frame that was skipped.
+   */
+  const cameraRef = useRef<CameraGate | null>(null);
+  if (cameraRef.current === null) cameraRef.current = new CameraGate();
+
   useFrame(({ gl, size, viewport: glViewport }, delta) => {
     const frame = ++frameRef.current;
+
+    // The camera, before the dirty gate below: a pan that has left the collected rect is the one
+    // thing that has to wake this pass, and a pan that has not is the thing that must not.
+    const camera = cameraRef.current as CameraGate;
+    {
+      const vp = store.getState().viewport;
+      if (camera.moved(vp.x, vp.y, vp.zoom, size.width, size.height, CULL_PADDING)) {
+        fullDirtyRef.current = true;
+      }
+    }
+
     if (!fullDirtyRef.current && !animatingRef.current) {
       if (chromeActiveRef.current) chromePass(delta);
       return;
@@ -410,11 +440,11 @@ export function PreviewEntities() {
     let chromeFading = false;
     const band = bandRef.current;
 
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
+    const cullRect = camera.rect;
+    const viewLeft = cullRect.left;
+    const viewRight = cullRect.right;
+    const viewTop = cullRect.top;
+    const viewBottom = cullRect.bottom;
     const dpr = glViewport.dpr;
 
     let rendered = false;

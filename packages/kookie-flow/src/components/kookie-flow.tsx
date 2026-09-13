@@ -102,7 +102,7 @@ import { BAND_MODEL_DIRECTION } from './preview-entities';
 import { MediaViewer, type MediaView } from './media-viewer';
 import { capture } from '../utils/canvas-runtime';
 import type { SocketEntry } from '../core/spatial';
-import { getSocketPosition, socketKey, screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
+import { getSocketPosition, socketKey, screenToWorld, screenToWorldInto, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { isPointInWidget } from '../utils/widget-geometry';
 import {
   getWidgetAt,
@@ -2433,12 +2433,10 @@ function InputHandler({
       {
         const rectNow = cachedRectRef.current;
         const { viewport: vpNow, pointerWorld } = store.getState();
-        const world = screenToWorld(
-          { x: e.clientX - rectNow.left, y: e.clientY - rectNow.top },
-          vpNow
-        );
-        pointerWorld[0] = world.x;
-        pointerWorld[1] = world.y;
+        // Straight into the store's pair. The `screenToWorld` this replaces built an argument
+        // object and returned another, twice per move, for two numbers that go into an array that
+        // already exists.
+        screenToWorldInto(pointerWorld, e.clientX - rectNow.left, e.clientY - rectNow.top, vpNow);
       }
 
       /**
@@ -4876,7 +4874,13 @@ function CameraController() {
       return;
     }
 
-    lastRef.current = { x, y, zoom, width, height };
+    // Mutated, not replaced: this runs on every frame of every pan and zoom, and a fresh record
+    // per frame is a fresh record per frame.
+    last.x = x;
+    last.y = y;
+    last.zoom = zoom;
+    last.width = width;
+    last.height = height;
 
     camera.left = -x / zoom;
     camera.right = (width - x) / zoom;

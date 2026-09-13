@@ -15,7 +15,25 @@ export interface Bounds {
 interface QuadtreeEntry {
   id: string;
   bounds: Bounds;
+  /**
+   * The last query that already collected this entry, for `queryRangeInto`'s dedup.
+   *
+   * A large entity is inserted into every quadrant it overlaps, so a range query meets it more
+   * than once and has to drop the repeats. `queryRange` does that with a `Set<string>` built per
+   * call — an allocation plus a hash per candidate, in a function the render layers now call
+   * every time the camera escapes their margin. A monotonically increasing stamp answers the same
+   * question with one integer compare and no allocation at all. Entries are shared between the
+   * quadrants an entity spans (the same object is pushed into each), so stamping one stamps all.
+   */
+  stamp: number;
 }
+
+/**
+ * The query counter `QuadtreeEntry.stamp` is compared against. Module-scope so that separate
+ * trees cannot hand each other a stale stamp, and never reset: at one query per layer per frame
+ * it would take longer than the age of the universe to reach Number.MAX_SAFE_INTEGER.
+ */
+let queryStamp = 0;
 
 /** Socket entry for socket spatial index */
 export interface SocketEntry {
@@ -68,17 +86,29 @@ export class Quadtree {
    * Insert an entity into the quadtree.
    */
   insert(id: string, bounds: Bounds): boolean {
+    return this.insertEntry({ id, bounds, stamp: 0 });
+  }
+
+  /**
+   * Insert an entry object, which every quadrant it lands in SHARES.
+   *
+   * The recursion used to pass `(id, bounds)` down and mint a fresh `{ id, bounds }` in each
+   * quadrant it reached, so one entity spanning a boundary left four unrelated objects behind at
+   * every level it descended. Two things follow from sharing one instead: inserting is a single
+   * allocation whatever the fan-out, and `stamp` becomes a property of the ENTITY rather than of
+   * one quadrant's copy of it — which is what lets `queryRangeInto` dedup a multi-quadrant entity
+   * with an integer compare instead of a Set.
+   */
+  private insertEntry(entry: QuadtreeEntry): boolean {
     // Check if bounds intersect with this quadrant
-    if (!this.intersects(bounds)) {
+    if (!this.intersects(entry.bounds)) {
       return false;
     }
-
-    const entry: QuadtreeEntry = { id, bounds };
 
     // If we have capacity and haven't subdivided, store here
     if (this.entries.length < this.capacity && !this.divided) {
       this.entries.push(entry);
-      this.idToEntry.set(id, entry);
+      this.idToEntry.set(entry.id, entry);
       return true;
     }
 
@@ -90,20 +120,20 @@ export class Quadtree {
     // If at max depth, just store here regardless of capacity
     if (this.depth >= MAX_DEPTH) {
       this.entries.push(entry);
-      this.idToEntry.set(id, entry);
+      this.idToEntry.set(entry.id, entry);
       return true;
     }
 
     // Try to insert into children
     // Note: Large entities may be inserted into multiple quadrants
     let inserted = false;
-    if (this.nw!.insert(id, bounds)) inserted = true;
-    if (this.ne!.insert(id, bounds)) inserted = true;
-    if (this.sw!.insert(id, bounds)) inserted = true;
-    if (this.se!.insert(id, bounds)) inserted = true;
+    if (this.nw!.insertEntry(entry)) inserted = true;
+    if (this.ne!.insertEntry(entry)) inserted = true;
+    if (this.sw!.insertEntry(entry)) inserted = true;
+    if (this.se!.insertEntry(entry)) inserted = true;
 
     if (inserted) {
-      this.idToEntry.set(id, entry);
+      this.idToEntry.set(entry.id, entry);
     }
 
     return inserted;
@@ -184,6 +214,52 @@ export class Quadtree {
     this.queryRangeInternal(range, results, seen);
 
     return results;
+  }
+
+  /**
+   * Every entity intersecting `range`, written into a CALLER-OWNED array.
+   *
+   * This is what the GL layers cull with, so it is called inside `useFrame` and must not allocate:
+   * no results array, no dedup Set, no closure. `out` is written from index 0 and the return value
+   * says how much of it is live — the array is never truncated, so it settles at the high-water
+   * mark of the busiest frame and stops growing.
+   *
+   * What it replaces, layer by layer, is `for (const entity of entities)` plus a per-entity box
+   * test: O(graph) on every frame the layer was dirty, to find the few hundred entities on screen.
+   * Here the tree skips whole quadrants at once, so the cost is proportional to what is visible
+   * plus the depth walked to reach it.
+   */
+  queryRangeInto(range: Bounds, out: string[]): number {
+    const stamp = ++queryStamp;
+    return this.queryRangeIntoInternal(range, out, 0, stamp);
+  }
+
+  private queryRangeIntoInternal(
+    range: Bounds,
+    out: string[],
+    count: number,
+    stamp: number
+  ): number {
+    if (!this.intersects(range)) {
+      return count;
+    }
+
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      if (entry.stamp === stamp) continue;
+      if (!this.boundsIntersect(range, entry.bounds)) continue;
+      entry.stamp = stamp;
+      out[count++] = entry.id;
+    }
+
+    if (this.divided) {
+      count = this.nw!.queryRangeIntoInternal(range, out, count, stamp);
+      count = this.ne!.queryRangeIntoInternal(range, out, count, stamp);
+      count = this.sw!.queryRangeIntoInternal(range, out, count, stamp);
+      count = this.se!.queryRangeIntoInternal(range, out, count, stamp);
+    }
+
+    return count;
   }
 
   private queryRangeInternal(
@@ -310,7 +386,9 @@ export class Quadtree {
       // against a caller that inserts the same id twice, which would otherwise leave a duplicate
       // entry that only one `remove` can reach.
       if (entry.id !== id) {
-        this.insert(entry.id, entry.bounds);
+        // The existing object, not a copy of its fields: a re-index is not a change of identity,
+        // and re-using it keeps a grow allocation-free per entity rather than one object each.
+        this.insertEntry(entry);
       }
     }
     this.insert(id, bounds);
@@ -395,11 +473,12 @@ export class Quadtree {
     const oldEntries = this.entries;
     this.entries = [];
 
+    // The SAME entry object into each quadrant it belongs in — see insertEntry.
     for (const entry of oldEntries) {
-      this.nw.insert(entry.id, entry.bounds);
-      this.ne.insert(entry.id, entry.bounds);
-      this.sw.insert(entry.id, entry.bounds);
-      this.se.insert(entry.id, entry.bounds);
+      this.nw.insertEntry(entry);
+      this.ne.insertEntry(entry);
+      this.sw.insertEntry(entry);
+      this.se.insertEntry(entry);
     }
   }
 
@@ -660,7 +739,23 @@ export class SocketQuadtree {
    */
   update(entityId: string, socketId: string, isInput: boolean, x: number, y: number): void {
     const key = SocketQuadtree.getKey(entityId, socketId, isInput);
+    /**
+     * The entry object is REUSED, its coordinates rewritten, and then re-inserted.
+     *
+     * Still remove-then-insert, because the reverse-insertion order is load-bearing: a dragged
+     * socket wins the hit test against whatever it is dropped on precisely because it is
+     * re-appended (spatial.test.ts fences this). What goes is the fresh record per call — and
+     * this is called once per socket of every entity that moves, on every frame of a drag, so at
+     * a thousand selected nodes it was thousands of throwaway objects a frame.
+     */
+    const existing = this.keyToEntry.get(key);
     this.removeWithKey(entityId, socketId, isInput, key);
+    if (existing) {
+      existing.x = x;
+      existing.y = y;
+      this.insertWithKey(existing, key);
+      return;
+    }
     this.insertWithKey({ entityId, socketId, isInput, x, y }, key);
   }
 

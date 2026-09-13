@@ -9,14 +9,19 @@ One-question measurements, each answering something a behaviour test cannot.
 | `label-zoom.mjs` | Does a label stay legible and correctly placed across the zoom range? |
 | `theme-flip.mjs` | Does a light→dark→light round trip return the scene to where it started? |
 | `perf-baseline.mjs` | Frame intervals at 1k / 10k / 50k. **Needs a quiet machine.** |
+| `cull-bench.mjs` | What does deciding WHAT to draw cost per frame, walking the graph versus asking the quadtree — and how many of a pan's frames does the hysteresis let a layer skip? |
 | `counts.mjs` | How much WORK does an interaction cost — React commits, draw calls, instances rewritten, bytes allocated? |
 | `token-census.mjs` | Which theme tokens does the GL layer actually get, and which silently fall back? |
 
 ## Why counts.mjs and not a stopwatch
 
-Everything here runs on SwiftShader. A millisecond on a software rasteriser says nothing about a
-real GPU, so `perf-baseline.mjs` is the only spike that reports time and it is the one that needs a
-machine doing nothing else.
+Everything that renders here runs on SwiftShader. A millisecond on a software rasteriser says
+nothing about a real GPU, so `perf-baseline.mjs` is the only spike that reports the time of a
+rendered frame, and it is the one that needs a machine doing nothing else.
+
+`cull-bench.mjs` reports microseconds too, and for the opposite reason to `perf-baseline.mjs`: it
+measures JS in node with no renderer at all, so SwiftShader is not in the number. It is still a
+ratio between two shapes of the same loop on one machine, never a frame budget.
 
 What DOES transfer is work. How many draw calls a pan issues, how many instances get rewritten per
 pointermove, how many times React commits during a drag, and how many bytes the handlers allocate
