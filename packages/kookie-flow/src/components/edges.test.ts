@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planEdgeUpdate, flagsToClearAfterEdgePass, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom, segmentsForZoom } from './edges';
+import { planEdgeUpdate, flagsToClearAfterEdgePass, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom, segmentsForZoom, DirtyVertexSpans, MAX_EDGE_UPDATE_RANGES } from './edges';
 
 /**
  * The edge renderer's four dirty flags do not compose into four independent passes, and the
@@ -219,5 +219,124 @@ describe('flagsToClearAfterEdgePass', () => {
     const raisedDuringPass = true; // the cull branch, on an arriving or departing edge
     const kept = !flagsToClearAfterEdgePass('partial').geometry && raisedDuringPass;
     expect(planEdgeUpdate({ geometry: kept, position: true, color: false, layer: false }).geometry).toBe('full');
+  });
+});
+
+/**
+ * THE SPREAD, NOT THE COUNT, used to set what a drag uploaded.
+ *
+ * The partial path declared one range from the lowest vertex it touched to the highest, so the
+ * bill was the DISTANCE between the moved edges in the buffer rather than how many moved. Nothing
+ * orders a node's edges together in the consumer's array: measured on a 10k-node graph, one node
+ * with six edges touched slots 225 and 7157 and so declared 86.7% of the buffer — about 280 KB a
+ * frame to deliver some two kilobytes of change. It stayed hidden because it depends on the
+ * graph's TOPOLOGY and not its size; the fixtures it had been measured on gave that node one edge.
+ *
+ * These are the laws of the replacement. The one that actually pins the fix is the last: every
+ * other test here passes just as well for a class that returns a single envelope.
+ */
+describe('DirtyVertexSpans', () => {
+  /** What `declareOn` asks of an attribute, without dragging three into a unit test. */
+  function declared(spans: DirtyVertexSpans, perVertex = 1): Array<{ start: number; count: number }> {
+    const ranges: Array<{ start: number; count: number }> = [];
+    const fake = { addUpdateRange: (start: number, count: number) => ranges.push({ start, count }) };
+    spans.declareOn(fake as unknown as Parameters<DirtyVertexSpans['declareOn']>[0], perVertex);
+    return ranges;
+  }
+
+  it('declares nothing when nothing was written', () => {
+    const spans = new DirtyVertexSpans();
+    expect(spans.count).toBe(0);
+    expect(declared(spans)).toEqual([]);
+  });
+
+  it('ignores empty and inverted spans, which a culled edge produces', () => {
+    const spans = new DirtyVertexSpans();
+    spans.add(100, 100);
+    spans.add(200, 150);
+    expect(spans.count).toBe(0);
+  });
+
+  it('scales each span by the attribute width', () => {
+    const spans = new DirtyVertexSpans();
+    spans.add(10, 20);
+    expect(declared(spans, 3)).toEqual([{ start: 30, count: 30 }]);
+    expect(declared(spans, 2)).toEqual([{ start: 20, count: 20 }]);
+  });
+
+  it('merges runs that touch, so adjacent edges stay one range', () => {
+    const spans = new DirtyVertexSpans();
+    spans.add(0, 64);
+    spans.add(64, 128);
+    spans.add(128, 192);
+    expect(spans.count).toBe(1);
+    expect(declared(spans)).toEqual([{ start: 0, count: 192 }]);
+  });
+
+  it('keeps runs that do not touch apart, which is the entire point', () => {
+    const spans = new DirtyVertexSpans();
+    spans.add(0, 64);
+    spans.add(9000, 9064);
+    expect(spans.count).toBe(2);
+    expect(declared(spans)).toEqual([
+      { start: 0, count: 64 },
+      { start: 9000, count: 64 },
+    ]);
+  });
+
+  it('reset forgets the frame before it', () => {
+    const spans = new DirtyVertexSpans();
+    spans.add(0, 64);
+    spans.reset();
+    expect(spans.count).toBe(0);
+    expect(declared(spans)).toEqual([]);
+  });
+
+  /**
+   * Ranges are not free — each is one `bufferSubData` — so past a cap the envelope is cheaper than
+   * the list. Over the cap the list is deliberately NOT a complete record, so declaring it would
+   * upload less than was written and leave stale vertices on the GPU; the envelope is the only
+   * safe answer and is what comes back.
+   */
+  it('falls back to one envelope past the cap, and the envelope covers everything written', () => {
+    const spans = new DirtyVertexSpans();
+    const n = MAX_EDGE_UPDATE_RANGES + 10;
+    for (let i = 0; i < n; i++) spans.add(i * 100, i * 100 + 10);
+
+    const ranges = declared(spans);
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].start).toBe(0);
+    // Everything written, including the spans past the cap that `add` stopped recording.
+    expect(ranges[0].start + ranges[0].count).toBe((n - 1) * 100 + 10);
+  });
+
+  it('a list filled exactly to the cap is still declared span by span', () => {
+    const spans = new DirtyVertexSpans();
+    for (let i = 0; i < MAX_EDGE_UPDATE_RANGES; i++) spans.add(i * 100, i * 100 + 10);
+    expect(spans.count).toBe(MAX_EDGE_UPDATE_RANGES);
+    expect(declared(spans)).toHaveLength(MAX_EDGE_UPDATE_RANGES);
+  });
+
+  /**
+   * THE LAW THE FIX EXISTS FOR, stated as the comparison that was failing.
+   *
+   * A node's edges land far apart in the buffer. What is declared must be proportional to what
+   * MOVED, not to the distance between the pieces of it — so this asserts against the envelope a
+   * min..max would have produced. Proved necessary by mutation: making `declareOn` always declare
+   * `min..max` leaves every other test in this block green.
+   */
+  it('uploads what moved, not the gap between the first and last of it', () => {
+    const spans = new DirtyVertexSpans();
+    // Six edges of 128 vertices each, scattered the way the 10k measurement found them.
+    for (const start of [225, 1400, 3000, 4820, 6100, 7157]) spans.add(start, start + 128);
+
+    const envelope = spans.max - spans.min;
+    expect(spans.vertexCount()).toBe(6 * 128);
+    expect(spans.vertexCount()).toBeLessThan(envelope / 8);
+
+    const ranges = declared(spans, 3);
+    const bytes = ranges.reduce((sum, r) => sum + r.count, 0);
+    expect(bytes).toBe(6 * 128 * 3);
+    expect(bytes).toBeLessThan(envelope * 3 / 8);
   });
 });

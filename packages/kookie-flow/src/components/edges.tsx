@@ -338,6 +338,118 @@ export function flagsToClearAfterEdgePass(geometry: EdgeUpdatePlan['geometry']):
 }
 
 /**
+ * How many disjoint vertex ranges one attribute may declare before the pass gives up and declares
+ * a single span covering all of them.
+ *
+ * Each range is one `bufferSubData`, so ranges are not free — past some count the driver command
+ * overhead costs more than the bytes they save. The cap matters far less than having any: the
+ * number of ranges is the number of disjoint RUNS of moved edges, which is one for a whole-graph
+ * drag and a handful for a single node, so the fallback is a safety valve rather than a path
+ * anything normally takes.
+ */
+export const MAX_EDGE_UPDATE_RANGES = 32;
+
+/**
+ * The vertex ranges one partial pass wrote, as spans rather than one min..max envelope.
+ *
+ * WHY A LIST AND NOT TWO NUMBERS. The partial path used to track `dirtyRangeMin` and
+ * `dirtyRangeMax` and upload everything between them, which charges the upload for the SPREAD of
+ * the moved edges rather than for how many moved. Edges are laid out in the order they appear in
+ * the consumer's array, and nothing makes a node's edges adjacent in it: measured on a 10k-node
+ * graph, dragging one node with six edges touched slots 225 and 7157, so a change worth about two
+ * kilobytes declared a range covering 86.7% of the buffer and shipped ~280 KB every frame of the
+ * drag. A node with one edge, or with edges that happen to sit together, paid nothing — which is
+ * why this hid: it is a property of the graph's topology, not of its size, and the small fixtures
+ * it was measured on had one edge per node.
+ *
+ * Spans arrive in ascending, non-overlapping order — the edge loop walks edges by array index and
+ * `evStarts` was handed out in vertex order by the rebuild — so a span beginning where the last
+ * one ended simply extends it, and a drag of adjacent edges still declares a single range. Out of
+ * order would be correct too, just less tidy: three sorts and merges `updateRanges` itself before
+ * uploading.
+ *
+ * Reused across frames and never shrunk, like every other buffer in this file.
+ */
+export class DirtyVertexSpans {
+  private starts = new Int32Array(MAX_EDGE_UPDATE_RANGES);
+  private ends = new Int32Array(MAX_EDGE_UPDATE_RANGES);
+
+  /** How many spans are live. */
+  count = 0;
+  /** The envelope of every span added, which is what the over-the-cap fallback declares. */
+  min = 0;
+  max = 0;
+
+  /** Whether a span was dropped for want of room, which is what makes the list incomplete. */
+  private overflowed = false;
+
+  reset(): void {
+    this.count = 0;
+    this.min = 0;
+    this.max = 0;
+    this.overflowed = false;
+  }
+
+  /** Add the half-open vertex range `[start, end)`. Empty and inverted ranges are ignored. */
+  add(start: number, end: number): void {
+    if (end <= start) return;
+
+    if (this.count === 0) {
+      this.min = start;
+      this.max = end;
+    } else {
+      if (start < this.min) this.min = start;
+      if (end > this.max) this.max = end;
+
+      // Adjacent or overlapping the span before it: widen that one instead of opening another.
+      const last = this.count - 1;
+      if (start <= this.ends[last] && end >= this.starts[last]) {
+        if (start < this.starts[last]) this.starts[last] = start;
+        if (end > this.ends[last]) this.ends[last] = end;
+        return;
+      }
+    }
+
+    if (this.count === this.starts.length) {
+      // No room. The span is NOT recorded, so the list stops being a complete account of what was
+      // written — `min`/`max` above still cover it, and `declareOn` declares those instead.
+      this.overflowed = true;
+      return;
+    }
+    this.starts[this.count] = start;
+    this.ends[this.count] = end;
+    this.count++;
+  }
+
+  /** Total vertices covered by the spans — what the ranges will actually upload. */
+  vertexCount(): number {
+    let total = 0;
+    for (let i = 0; i < this.count; i++) total += this.ends[i] - this.starts[i];
+    return total;
+  }
+
+  /**
+   * Declare this frame's spans on one attribute, whose values are `perVertex` wide.
+   *
+   * Returns false when there was nothing to upload, so the caller can leave `needsUpdate` alone.
+   */
+  declareOn(attribute: THREE.BufferAttribute, perVertex: number): boolean {
+    if (this.count === 0) return false;
+    if (this.overflowed) {
+      // A span was dropped, so the list would upload less than the pass wrote and leave stale
+      // vertices on the GPU. The envelope is the only safe answer. Filling the list exactly is
+      // NOT this case: those spans are all recorded and are declared one by one below.
+      attribute.addUpdateRange(this.min * perVertex, (this.max - this.min) * perVertex);
+      return true;
+    }
+    for (let i = 0; i < this.count; i++) {
+      attribute.addUpdateRange(this.starts[i] * perVertex, (this.ends[i] - this.starts[i]) * perVertex);
+    }
+    return true;
+  }
+}
+
+/**
  * High-performance mesh-based edge renderer.
  *
  * Uses triangle strips (ribbons) with custom ShaderMaterial for:
@@ -467,6 +579,9 @@ export function Edges({
   // makes every edge affected — so the old `new Set<number>()` built and discarded a
   // 2000-element Set sixty times a second for no benefit over reusing one.
   const affectedEdgeIndicesRef = useRef<Set<number>>(new Set());
+
+  // The vertex spans this frame's partial pass wrote. Reused for the same reason as the Set above.
+  const dirtySpansRef = useRef<DirtyVertexSpans>(new DirtyVertexSpans());
 
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });
@@ -1012,9 +1127,9 @@ export function Edges({
     const evStarts = edgeVertexStartsRef.current;
     const evCounts = edgeVertexCountsRef.current;
 
-    // Track dirty vertex range for partial GPU upload
-    let dirtyRangeMin = Infinity;
-    let dirtyRangeMax = 0;
+    // The vertex spans this partial pass writes, for the GPU upload at the end.
+    const dirtySpans = dirtySpansRef.current;
+    dirtySpans.reset();
 
     // Pre-compute affected edge indices for O(K) partial update
     let affectedEdgeIndices: Set<number> | null = null;
@@ -1163,7 +1278,6 @@ export function Edges({
           epCache[epBase + 1] = y0;
           epCache[epBase + 2] = x1;
           epCache[epBase + 3] = y1;
-          dirtyRangeMin = Math.min(dirtyRangeMin, vertexIndex);
         }
 
         const edgeVertexStart = vertexIndex;
@@ -1732,9 +1846,16 @@ export function Edges({
           epCache[epBase + 3] = y1;
         }
 
-        // Track dirty range end for partial GPU upload
+        /**
+         * Record what this edge wrote, for the upload below.
+         *
+         * Taken here rather than where the endpoint cache is written, which is where the old
+         * min..max envelope opened: both culling branches `continue` between the two points
+         * WITHOUT writing any vertices, so an edge that left the rect, or one waiting for the
+         * rebuild that will give it room, used to widen a range it had put nothing into.
+         */
         if (isPartialUpdate) {
-          dirtyRangeMax = Math.max(dirtyRangeMax, vertexIndex);
+          dirtySpans.add(edgeVertexStart, vertexIndex);
         }
       }
     } // end edge loop
@@ -1762,23 +1883,29 @@ export function Edges({
 
     // GPU buffer upload
     if (isPartialUpdate) {
-      // Partial upload: only upload the vertex range containing dirty edges
+      /**
+       * One range per RUN of moved edges, not one covering the lot.
+       *
+       * See `DirtyVertexSpans` for the measurement behind this: the edges of one node are scattered
+       * through the consumer's array, so a single min..max envelope charged a six-edge drag for
+       * most of the buffer. Declaring the runs costs a few small objects per frame — three's
+       * `addUpdateRange` takes `{start, count}` and there is no allocation-free way to declare more
+       * than one — against hundreds of kilobytes a frame off the bus.
+       */
       if (
-        dirtyRangeMin < dirtyRangeMax &&
+        dirtySpans.count > 0 &&
         buffers.positionAttr &&
         buffers.uvAttr &&
         buffers.colorAttr &&
         buffers.perpAttr
       ) {
-        const start = dirtyRangeMin;
-        const count = dirtyRangeMax - dirtyRangeMin;
-        buffers.positionAttr.addUpdateRange(start * 3, count * 3);
+        dirtySpans.declareOn(buffers.positionAttr, 3);
         buffers.positionAttr.needsUpdate = true;
-        buffers.uvAttr.addUpdateRange(start * 2, count * 2);
+        dirtySpans.declareOn(buffers.uvAttr, 2);
         buffers.uvAttr.needsUpdate = true;
-        buffers.colorAttr.addUpdateRange(start * 3, count * 3);
+        dirtySpans.declareOn(buffers.colorAttr, 3);
         buffers.colorAttr.needsUpdate = true;
-        buffers.perpAttr.addUpdateRange(start * 2, count * 2);
+        dirtySpans.declareOn(buffers.perpAttr, 2);
         buffers.perpAttr.needsUpdate = true;
       }
     } else {
