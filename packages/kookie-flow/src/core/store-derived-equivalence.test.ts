@@ -349,8 +349,9 @@ describe('setEntities derived state: the in-place path answers what a full rebui
    * one from before the edit.
    */
   it('a data-only change keeps the map current without a rebuild', () => {
-    const store = freshStore(grid(6));
-    const next = patch(grid(6), 'e2', { data: { values: { in: 7 } } });
+    const base = grid(6);
+    const store = freshStore(base);
+    const next = patch(base, 'e2', { data: { values: { in: 7 } } });
     store.getState().setEntities(next);
 
     const held = store.getState().entityMap.get('e2');
@@ -432,4 +433,254 @@ describe('setEntities derived state: randomised agreement', () => {
       }
     });
   }
+});
+
+/**
+ * THE GHOSTS, and the three writers that made them.
+ *
+ * Both spatial indices hold VISIBLE entities only, but `Quadtree.update` is remove-then-insert and
+ * `SocketQuadtree.update` inserts an absent key — so calling either on a HIDDEN entity adds one.
+ * Every path that moves a collapsed frame moves its hidden descendants with it, so they reached
+ * those calls routinely.
+ *
+ * It never showed while `setEntities` rebuilt both trees from the visible entities on every echo:
+ * the ghost was swept within a frame. The in-place path removed the sweep and made it permanent —
+ * nothing is drawn there, because every renderer gates on `hiddenEntityIds`, and yet a press inside
+ * the collapsed frame hit-tests the quadtree and selects a node that is not on screen.
+ *
+ * Stated against the store's own actions rather than against the guard, so they hold whichever end
+ * a future edit changes.
+ */
+describe('hidden entities never enter the spatial indices', () => {
+  function collapsedFixture(): Entity[] {
+    return [
+      entity('frame', 300, 300, { type: 'frame', width: 900, height: 700, collapsed: true }),
+      entity('child', 400, 400, { parentId: 'frame' }),
+      entity('outside', -400, -400),
+    ];
+  }
+
+  it('updateEntityPositions does not index a hidden child moved with its frame', () => {
+    const store = freshStore(collapsedFixture());
+    expect(store.getState().hiddenEntityIds.has('child')).toBe(true);
+    expect(store.getState().quadtree.queryPoint(460, 460)).not.toContain('child');
+
+    // What alignSelection / moveGroup / select-all-plus-arrow all do: the frame's move is expanded
+    // over its descendants, hidden ones included.
+    store.getState().updateEntityPositions([
+      { id: 'frame', position: { x: 310, y: 310 } },
+      { id: 'child', position: { x: 410, y: 410 } },
+    ]);
+
+    expect(store.getState().quadtree.queryPoint(470, 470)).not.toContain('child');
+    expect(
+      store.getState().socketQuadtree.queryPoint(410, 440, 80, []).map((e) => e.entityId)
+    ).not.toContain('child');
+    // The position still travelled, so showing it again puts it in the right place.
+    expect(store.getState().entityMap.get('child')?.position).toEqual({ x: 410, y: 410 });
+  });
+
+  it('and the echo that follows leaves the index agreeing with a rebuild', () => {
+    const store = freshStore(collapsedFixture());
+    store.getState().updateEntityPositions([
+      { id: 'frame', position: { x: 310, y: 310 } },
+      { id: 'child', position: { x: 410, y: 410 } },
+    ]);
+    const echoed = collapsedFixture().map((e) =>
+      e.id === 'frame'
+        ? ({ ...e, position: { x: 310, y: 310 } } as Entity)
+        : e.id === 'child'
+          ? ({ ...e, position: { x: 410, y: 410 } } as Entity)
+          : e
+    );
+    store.getState().setEntities(echoed);
+
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(echoed));
+  });
+
+  it('updateEntityDimensions does not index a hidden entity either', () => {
+    const store = freshStore(collapsedFixture());
+    store.getState().updateEntityDimensions('child', 500, 400);
+    expect(store.getState().quadtree.queryPoint(500, 500)).not.toContain('child');
+  });
+
+  it('fitEntityToContent does not index a hidden entity either', () => {
+    const store = freshStore(collapsedFixture());
+    store.getState().fitEntityToContent('child');
+    expect(store.getState().quadtree.queryPoint(440, 440)).not.toContain('child');
+  });
+
+  it('expanding the frame brings the child back into both indices', () => {
+    const store = freshStore(collapsedFixture());
+    store.getState().updateEntityPositions([{ id: 'child', position: { x: 410, y: 410 } }]);
+    const shown = collapsedFixture().map((e) =>
+      e.id === 'frame'
+        ? ({ ...e, collapsed: false } as Entity)
+        : e.id === 'child'
+          ? ({ ...e, position: { x: 410, y: 410 } } as Entity)
+          : e
+    );
+    store.getState().setEntities(shown);
+
+    expect(store.getState().hiddenEntityIds.has('child')).toBe(false);
+    expect(store.getState().quadtree.queryPoint(470, 470)).toContain('child');
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(shown));
+  });
+});
+
+/**
+ * `addElements` maintains entityMap and both trees incrementally and has never maintained the two
+ * visibility Sets. The echo used to recompute them a moment later; the in-place path hands the same
+ * Sets back, so the miss became permanent — a node pasted into a collapsed frame stayed drawn and
+ * clickable inside a frame that was supposed to have swallowed it.
+ */
+describe('addElements keeps the visibility sets honest', () => {
+  it('an entity added inside a collapsed frame is hidden', () => {
+    const base: Entity[] = [
+      entity('frame', 300, 300, { type: 'frame', width: 900, height: 700, collapsed: true }),
+      entity('child', 400, 400, { parentId: 'frame' }),
+    ];
+    const store = freshStore(base);
+    store.getState().addElements({ entities: [entity('pasted', 500, 500, { parentId: 'frame' })] });
+
+    expect(store.getState().hiddenEntityIds.has('pasted')).toBe(true);
+    expect(store.getState().quadtree.queryPoint(560, 560)).not.toContain('pasted');
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(store.getState().entities));
+  });
+
+  it('a collapsed frame added with its child hides the child', () => {
+    const store = freshStore([entity('loose', 0, 0)]);
+    store.getState().addElements({
+      entities: [
+        entity('f2', 1000, 100, { type: 'frame', width: 600, height: 500, collapsed: true }),
+        entity('c2', 1100, 200, { parentId: 'f2' }),
+      ],
+    });
+
+    expect([...store.getState().collapsedGroupIds]).toContain('f2');
+    expect(store.getState().hiddenEntityIds.has('c2')).toBe(true);
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(store.getState().entities));
+  });
+
+  it('an ordinary add still takes the cheap path and stays correct', () => {
+    const store = freshStore(grid(6));
+    store.getState().addElements({ entities: [entity('plain', 1500, 900)] });
+    expect(store.getState().quadtree.queryPoint(1560, 960)).toContain('plain');
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(store.getState().entities));
+  });
+});
+
+/**
+ * A move that arrives ONLY through `setEntities` — an undo, an inspector field, a collaborative
+ * edit — has never been reported through `movedEntityIds`, which only the pointer-driven actions
+ * write. The edge layer builds its partial pass from that set, and used to be rescued by accident:
+ * the full rebuild minted a fresh `hiddenEntityIds` Set, whose identity the edge layer reads as
+ * "something changed". Keeping the Set took the accident away, and the node repainted at its new
+ * position with its wires still tessellated at the old one.
+ */
+describe('a prop-driven move is reported to the layers that need it', () => {
+  it('reports the moved id even though no pointer action ran', () => {
+    const base = grid(6);
+    const store = freshStore(base);
+    store.getState().updateEntityPositions([{ id: 'e0', position: { x: 10, y: 10 } }]);
+    expect([...store.getState().getMovedEntityIds()]).toEqual(['e0']);
+
+    // e3 moves through the consumer's array alone.
+    store.getState().setEntities(patch(base, 'e3', { position: { x: 777, y: 555 } }));
+
+    expect([...store.getState().getMovedEntityIds()]).toContain('e3');
+  });
+
+  it('a drag echo adds nothing, because the position is already applied', () => {
+    const base = grid(6);
+    const store = freshStore(base);
+    store.getState().updateEntityPositions([{ id: 'e1', position: { x: 60, y: 60 } }]);
+    const echoed = patch(base, 'e1', { position: { x: 60, y: 60 } });
+    store.getState().setEntities(echoed);
+
+    expect([...store.getState().getMovedEntityIds()]).toEqual(['e1']);
+  });
+});
+
+/**
+ * The optimisation has to actually be taken. The first draft of this file proved only that the two
+ * paths AGREE — which is just as true when the fast path never runs, so the whole thing could be
+ * disabled and the suite would stay green.
+ */
+describe('the fast path is actually taken', () => {
+  /** The full rebuild replaces both trees; the in-place path keeps them. */
+  function tookFastPath(before: FlowState, after: FlowState): boolean {
+    return before.quadtree === after.quadtree && before.socketQuadtree === after.socketQuadtree;
+  }
+
+  it('a pure move keeps the existing indices rather than rebuilding them', () => {
+    const base = grid(8);
+    const store = freshStore(base);
+    const before = store.getState();
+    store.getState().setEntities(patch(base, 'e2', { position: { x: 12, y: 34 } }));
+    expect(tookFastPath(before, store.getState())).toBe(true);
+  });
+
+  it('a data-only change keeps them too, and still updates the map', () => {
+    const base = grid(8);
+    const store = freshStore(base);
+    const before = store.getState();
+    const next = patch(base, 'e2', { data: { values: { in: 7 } } });
+    store.getState().setEntities(next);
+
+    expect(tookFastPath(before, store.getState())).toBe(true);
+    expect(
+      (store.getState().entityMap.get('e2')?.data as { values?: Record<string, unknown> })?.values?.in
+    ).toBe(7);
+  });
+
+  /**
+   * A REORDER alone stays on the fast path — nothing derived reads the array's order — but it does
+   * invalidate the id -> slot map, which is the one piece of bookkeeping the fast path still
+   * rebuilds.
+   *
+   * That rebuild cannot be caught by any behavioural test, and it is worth saying so rather than
+   * leaving what looks like an oversight: `resolveIndex` checks that the slot it cached still
+   * holds the id it wants and rescans when it does not, so a stale map costs one O(n) walk per
+   * lookup and corrupts nothing. The rebuild is a performance guard standing on a correctness net.
+   * What IS observable, and asserted here, is that a reorder does not fall off the fast path, and
+   * that the actions reading that map still land on the entity they named.
+   */
+  it('a reorder stays on the fast path and still resolves the right entity', () => {
+    const base = grid(8);
+    const store = freshStore(base);
+    const before = store.getState();
+    const shuffled = [...base].reverse();
+    store.getState().setEntities(shuffled);
+
+    expect(tookFastPath(before, store.getState())).toBe(true);
+    expect(store.getState().entities.map((e) => e.id)).toEqual(shuffled.map((e) => e.id));
+
+    // `updateEntityPositions` finds its target through the slot map; a stale one writes to the
+    // wrong node, or spreads `undefined` past the end of the array.
+    store.getState().updateEntityPositions([{ id: 'e6', position: { x: 999, y: 888 } }]);
+    expect(store.getState().entityMap.get('e6')?.position).toEqual({ x: 999, y: 888 });
+    expect(store.getState().entities.filter((e) => e.position.x === 999)).toHaveLength(1);
+    expect(indexAnswers(store.getState())).toBe(referenceAnswers(store.getState().entities));
+  });
+
+  it('every structural change rebuilds instead', () => {
+    const cases: Array<[string, (e: Entity[]) => Entity[]]> = [
+      ['resize', (e) => patch(e, 'e2', { width: 600 })],
+      ['reparent', (e) => patch(e, 'e2', { parentId: 'e1' })],
+      ['collapse', (e) => patch(e, 'e2', { collapsed: true })],
+      ['type', (e) => patch(e, 'e2', { type: 'frame' })],
+      ['sockets', (e) => patch(e, 'e2', { inputs: [] })],
+      ['preview', (e) => patch(e, 'e2', { preview: { socket: 'out' } } as Partial<Entity>)],
+      ['add', (e) => [...e, entity('extra', 2000, 2000)]],
+      ['remove', (e) => e.filter((x) => x.id !== 'e3')],
+    ];
+    for (const [name, mutate] of cases) {
+      const base = grid(8);
+      const store = freshStore(base);
+      const before = store.getState();
+      store.getState().setEntities(mutate(base));
+      expect(tookFastPath(before, store.getState()), name + ' must rebuild').toBe(false);
+    }
+  });
 });

@@ -687,25 +687,36 @@ function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
  * The four object-valued fields are compared BY REFERENCE, which is what `getEntitySocketLayout`
  * already keys its own cache on, and what an immutable consumer update produces anyway.
  *
- * Returns the ids whose position moved and the ids whose object changed at all — the second is a
- * superset of the first, because an entity can change its `data` without moving. It is `null`, and
- * only null, when the caller must fall back.
+ * Returns the ids whose position moved, the ids whose object changed at all (a superset of the
+ * first, since an entity can change its `data` without moving) and whether the ARRAY ORDER moved,
+ * which is the one thing the caller still has to rebuild an index for. It is `null`, and only null,
+ * when the caller must fall back to the full rebuild.
  */
 function planDerivedUpdate(
   next: Entity[],
-  prevMap: ReadonlyMap<string, Entity>
-): { moved: string[]; changed: Entity[] } | null {
+  prevMap: ReadonlyMap<string, Entity>,
+  /**
+   * The id -> array-index map as it stands. Only read to answer whether the ORDER moved: the array
+   * index is how `resolveIndex` finds an entity, so a reorder invalidates it even though every
+   * other piece of derived state is untouched. Reordering without adding or removing is rare
+   * (`bringToFront` works on `stackOrder`, not on the array), so the common answer is false and the
+   * rebuild is skipped.
+   */
+  prevIndex: ReadonlyMap<string, number>
+): { moved: string[]; changed: Entity[]; reordered: boolean } | null {
   // A different count means something was added or removed. Combined with every entity below
   // being found in `prevMap`, and ids being unique, this settles that the id SET is identical.
   if (next.length !== prevMap.size) return null;
 
   const moved: string[] = [];
   const changed: Entity[] = [];
+  let reordered = false;
 
   for (let i = 0; i < next.length; i++) {
     const entity = next[i];
     const prev = prevMap.get(entity.id);
     if (prev === undefined) return null;
+    if (prevIndex.get(entity.id) !== i) reordered = true;
     // The common case by far: the consumer's update preserved this entity's identity because
     // nothing about it changed. `resolveEntities` preserves identity too where the type table
     // fills in nothing new, so this stays a pointer compare all the way through.
@@ -730,7 +741,7 @@ function planDerivedUpdate(
     }
   }
 
-  return { moved, changed };
+  return { moved, changed, reordered };
 }
 
 // Helper to rebuild derived state from entities
@@ -1238,10 +1249,29 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
          * The layers still hear about the move: `entities` is a new array on every path through
          * here, and `positionVersion` is bumped below.
          */
-        const plan = planDerivedUpdate(entities, state.entityMap);
+        const plan = planDerivedUpdate(entities, state.entityMap, idToIndex);
         let derived: ReturnType<typeof rebuildDerivedState>;
         if (plan) {
           for (const entity of plan.changed) state.entityMap.set(entity.id, entity);
+          /**
+           * REPORT WHAT MOVED, or the edge layer never hears about a move that arrives ONLY here.
+           *
+           * `movedEntityIds` is the side channel the edge layer's partial pass builds its affected
+           * set from, and until now only `updateEntityPositions` and `updateEntityDimensions` wrote
+           * it — which covers a pointer drag, because that calls one of them first. It does not
+           * cover a move that arrives purely through the consumer's array: an undo, an inspector
+           * field, a collaborative edit. Those used to be caught by accident, because the full
+           * rebuild minted a fresh `hiddenEntityIds` Set and the edge layer treats that identity as
+           * "something changed". Keeping the Set — which is the right answer, nothing was hidden —
+           * took that accident away, and the node would repaint at its new position with its wires
+           * still tessellated at the old one.
+           *
+           * Added, never cleared: that is the lifetime `updateEntityDimensions` documents. On a
+           * drag echo the position is already applied, so `plan.moved` is empty and the live
+           * gesture's ids are untouched. Over-reporting costs a redundant re-tessellation of edges
+           * that were already right; under-reporting leaves wires behind.
+           */
+          for (const id of plan.moved) movedEntityIds.add(id);
           for (const id of plan.moved) {
             // A hidden entity is in neither index — `rebuildDerivedState` only ever inserted the
             // visible ones — and `quadtree.update` would INSERT one that is absent rather than
@@ -1276,15 +1306,31 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           derived = rebuildDerivedState(entities, undefined, state.socketLayout);
         }
         cachedAnalysis = null;
-        rebuildIdToIndex(entities);
+        /**
+         * Three passes the fast path can prove it does not need — about two thirds of its cost.
+         *
+         * The plan guarantees the id SET is unchanged (same count, every id found), so: the index
+         * from id to array position is already right unless the ORDER moved, which `planDerivedUpdate`
+         * reports; every id already has a stack index, so `reconcileStackOrder` has nothing to add or
+         * drop — and it allocates an n-element array and an n-entry Set to work that out, on a path
+         * that runs every frame of a drag, which is the allocation rule this package leads with; and
+         * the `gone` scan iterates `state.entityMap` asking `derived.entityMap.has(id)` when the two
+         * are THE SAME OBJECT on this path, so it is true for every key by construction.
+         *
+         * Measured at ten thousand entities, one node moved per frame: 2.4 ms of the 3.6 ms this
+         * function spent.
+         */
+        if (!plan || plan.reordered) rebuildIdToIndex(entities);
         // Bump both topologyVersion and positionVersion so ALL downstream
         // renderers (edges, sockets, widgets) detect the full replacement
-        reconcileStackOrder(state.stackOrder, entities);
-        // An entity the new array no longer holds is gone for the engine too: its run stopped, its
-        // outputs released.
-        const gone: string[] = [];
-        for (const id of state.entityMap.keys()) if (!derived.entityMap.has(id)) gone.push(id);
-        if (gone.length > 0) evaluator.forget(gone);
+        if (!plan) {
+          reconcileStackOrder(state.stackOrder, entities);
+          // An entity the new array no longer holds is gone for the engine too: its run stopped, its
+          // outputs released. Unreachable on the fast path, where the id set is unchanged.
+          const gone: string[] = [];
+          for (const id of state.entityMap.keys()) if (!derived.entityMap.has(id)) gone.push(id);
+          if (gone.length > 0) evaluator.forget(gone);
+        }
         // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
         // a key left behind for an id that is no longer here comes back to life if that id does,
         // and shows a value the restored entity never held.
@@ -2031,7 +2077,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       // Updates positions and quadtree incrementally without full rebuild
       // O(n+k) where n=entities, k=updates (builds index map once, then O(1) per update)
       updateEntityPositions: (updates) => {
-        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout, hiddenEntityIds } = get();
         const nextEntities = [...entities];
 
         // Populate moved entity IDs side-channel for renderers
@@ -2047,6 +2093,26 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             const entity = { ...nextEntities[index], position };
             nextEntities[index] = entity;
             entityMap.set(id, entity);
+            /**
+             * THE TWO INDICES HOLD VISIBLE ENTITIES ONLY, and `quadtree.update` does not know that.
+             *
+             * `update` is remove-then-insertOrGrow, and `SocketQuadtree.update` inserts when the key is
+             * absent — so calling either on an entity that was legitimately NOT in the tree ADDS it.
+             * A hidden entity reaches here whenever it travels with its collapsed frame:
+             * `arrangeSelectionUpdates` expands a frame's move over its descendants, `moveGroup` does
+             * the same, and select-all plus an arrow nudge moves every id in the selection.
+             *
+             * It used to be swept away again by the consumer's echo, because `setEntities` rebuilt both
+             * trees from the visible entities on every call. Now that the echo updates them in place,
+             * nothing sweeps: the ghost stays, nothing is drawn there (every renderer gates on
+             * `hiddenEntityIds`) and yet a press inside the collapsed frame hit-tests the quadtree and
+             * selects a node that is not on screen. Guarding the WRITER fixes the uncontrolled case too,
+             * where no echo was ever going to arrive.
+             *
+             * The position still travels: `entityMap` is written above, so the entity moves with its
+             * frame and is indexed correctly the moment it is shown again.
+             */
+            if (hiddenEntityIds.has(id)) continue;
             quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
             // Update socket positions in socketQuadtree
@@ -2074,7 +2140,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       updateEntityDimensions: (id, width, height, position) => {
-        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout, hiddenEntityIds } = get();
 
         // O(1) existence check via entityMap
         const existing = entityMap.get(id);
@@ -2092,6 +2158,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         };
         nextEntities[index] = entity;
         entityMap.set(id, entity);
+        // Both indices hold VISIBLE entities only, and `update` INSERTS an absent id rather than
+        // skipping it — see updateEntityPositions for the ghost that produces. The entityMap write
+        // above still carries the change, so the entity is indexed correctly when it is shown again.
+        if (hiddenEntityIds.has(id)) {
+          set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+          return;
+        }
         quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
         // Accumulate (don't clear) moved entity IDs so that multiple
@@ -2125,7 +2198,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       fitEntityToContent: (id) => {
-        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout } = get();
+        const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout, hiddenEntityIds } = get();
         const existing = entityMap.get(id);
         if (!existing) return;
 
@@ -2138,6 +2211,13 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const entity = rest as Entity;
         nextEntities[index] = entity;
         entityMap.set(id, entity);
+        // Both indices hold VISIBLE entities only, and `update` INSERTS an absent id rather than
+        // skipping it — see updateEntityPositions for the ghost that produces. The entityMap write
+        // above still carries the change, so the entity is indexed correctly when it is shown again.
+        if (hiddenEntityIds.has(id)) {
+          set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+          return;
+        }
         quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
 
         // Dropping the explicit size is a resize, so it has to finish like one. This used to set
@@ -2255,7 +2335,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       },
 
       addElements: (batch) => {
-        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout, stackOrder, stackVersion } = get();
+        const { entities: currentEntities, edges: currentEdges, entityMap, quadtree, socketQuadtree, socketLayout, stackOrder, stackVersion, collapsedGroupIds: liveCollapsed } = get();
         // Resolved on the way in, like the prop sync: a node added by a plugin or a paste gets
         // its type's sockets the same way one that arrived as a prop does.
         const newEntities = resolve(batch.entities ?? []);
@@ -2276,6 +2356,37 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Single state update with all new elements
         const nextEntities = [...currentEntities, ...newEntities];
         const nextEdges = [...currentEdges, ...newEdges];
+
+        /**
+         * A batch that touches VISIBILITY has to relay it; everything else takes the cheap path.
+         *
+         * This function maintains `entityMap` and both quadtrees incrementally and has never
+         * maintained `collapsedGroupIds` or `hiddenEntityIds` — its `set()` below simply omits
+         * them. That was survivable while the consumer's echo through `setEntities` rebuilt them a
+         * moment later; now that the echo updates derived state in place and hands the same Sets
+         * back, nothing recomputes them and the miss is permanent. Measured: paste a node whose
+         * parent is a collapsed frame and it is drawn and hit-testable inside a frame that is
+         * supposed to have swallowed it, for ever; paste a collapsed frame and `isGroupCollapsed`
+         * answers false against its own `collapsed: true`.
+         *
+         * Two shapes make a batch structural: an arriving frame that is already collapsed (which
+         * hides entities that may ALREADY be in both trees, so no incremental update of
+         * `hiddenEntityIds` would be equivalent), and an arriving entity whose parent chain reaches
+         * a frame that is collapsed now. Both are rebuilt outright.
+         *
+         * This is not a hot path — an add is a paste, a drop or a node button, never a drag frame —
+         * so the fallback costs the optimisation nothing.
+         */
+        // `liveCollapsed`, from get(), NOT the module-scope `collapsedGroupIds` — that name is
+        // bound to the derived state computed once at construction (see the destructure near the
+        // top of createFlowStore) and is empty for the life of the store on most graphs. Reading it
+        // here compiled, and answered the wrong question the moment anything was collapsed.
+        const structural = newEntities.some(
+          (e) =>
+            (e.type === 'frame' && e.collapsed) ||
+            isEntityHidden(e, entityMap, liveCollapsed) ||
+            (e.parentId !== undefined && liveCollapsed.has(e.parentId))
+        );
 
         // Incremental update: add new entities to existing data structures
         // O(k log n) instead of O(n log n) full rebuild
@@ -2328,6 +2439,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({
           entities: nextEntities,
           edges: nextEdges,
+          // A structural batch relays the visibility sets and, with them, both trees — the
+          // incremental inserts above are thrown away rather than corrected, because a newly
+          // collapsed frame can hide entities that were already indexed.
+          ...(structural ? rebuildDerivedState(nextEntities, undefined, socketLayout) : {}),
           connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
           topologyVersion: get().topologyVersion + 1,
