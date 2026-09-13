@@ -49,6 +49,7 @@ import {
   createMediaMaterial,
   applyObjectFitUV,
   setMediaBox,
+  setMediaMap,
   setMediaChrome,
 } from '../utils/media-quad';
 
@@ -675,7 +676,7 @@ export function PreviewEntities() {
         fit,
         w, h, naturalW, naturalH
       );
-      if (mat.uniforms.map.value !== texture) mat.uniforms.map.value = texture;
+      setMediaMap(mat, texture);
       mat.uniforms.opacity.value = 1;
       if (writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld, delta)) chromeFading = true;
       quad.material = mat;

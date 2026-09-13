@@ -59,7 +59,22 @@ export interface EdgeLabelConfig {
 // ============================================================================
 
 /** Built-in widget types for socket inputs */
-export type WidgetType = 'slider' | 'number' | 'select' | 'checkbox' | 'text' | 'color' | 'textarea';
+export type WidgetType =
+  | 'slider'
+  | 'number'
+  | 'select'
+  | 'checkbox'
+  | 'text'
+  | 'color'
+  | 'textarea'
+  /** An on/off toggle at the row's trailing edge. Value: `boolean`. */
+  | 'switch'
+  /** Two to four `options` side by side, one pressed. Value: `string`. */
+  | 'segmented'
+  /** `dimensions` numbers in one field, each dragged or typed. Value: `number[]`. */
+  | 'vector'
+  /** An integer field with a button that rolls a new one. Value: `number`. */
+  | 'seed';
 
 /** Socket layout mode for widget positioning */
 export type SocketLayoutMode = 'inline' | 'stacked';
@@ -111,6 +126,8 @@ export interface ResolvedWidgetConfig {
   step?: number;
   /** Options for select */
   options?: string[];
+  /** How many components a vector has, 2 to 4 */
+  dimensions?: number;
   /** Placeholder for text input */
   placeholder?: string;
   /** Default value */
@@ -135,6 +152,8 @@ export interface SocketType {
   max?: number;
   /** Default step value for slider/number widgets */
   step?: number;
+  /** Default component count for vector widgets. Default: 3 */
+  dimensions?: 2 | 3 | 4;
 }
 
 /** Socket definition on an entity */
@@ -152,8 +171,10 @@ export interface Socket {
   max?: number;
   /** Step value override for slider/number */
   step?: number;
-  /** Options for select widget */
+  /** Options for select and segmented widgets */
   options?: string[];
+  /** Component count override for a vector widget */
+  dimensions?: 2 | 3 | 4;
   /** Placeholder for text widget */
   placeholder?: string;
   /** Default value when unconnected */

@@ -65,6 +65,7 @@ import { shallow } from 'zustand/shallow';
 import { useFlowStoreApi } from './context';
 import { listEntityWidgets, mirrorDisplayValue, sameMirrorShape, type MirrorEntry } from '../utils/widget-mirror';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { VECTOR_AXES, parseVectorText, vectorDimensions } from '../utils/widget-parts';
 import type { Entity, SocketType } from '../types';
 
 /** Any control this file mounts. */
@@ -225,7 +226,7 @@ export function WidgetA11yMirror({
         widgetKey(entity.id, entry.socketId),
         bag?.[entry.socketId] ?? entry.config.defaultValue
       );
-      if (entry.config.type === 'checkbox') {
+      if (entry.config.type === 'checkbox' || entry.config.type === 'switch') {
         if (el instanceof HTMLInputElement) {
           const next = Boolean(shown);
           if (el.checked !== next) el.checked = next;
@@ -290,7 +291,7 @@ export function WidgetA11yMirror({
       if (!entityId || !socketId) return;
       const entry = visible.find((en) => en.socketId === socketId);
       if (!entry) return;
-      if (entry.config.type === 'checkbox' && el instanceof HTMLInputElement) {
+      if ((entry.config.type === 'checkbox' || entry.config.type === 'switch') && el instanceof HTMLInputElement) {
         onChange(entityId, socketId, el.checked);
         return;
       }
@@ -298,7 +299,13 @@ export function WidgetA11yMirror({
         onChange(entityId, socketId, Number(el.value));
         return;
       }
-      if (entry.config.type === 'number') {
+      // The pointer path writes a number array; so does this, once the text parses as one.
+      if (entry.config.type === 'vector') {
+        const parsed = parseVectorText(el.value, vectorDimensions(entry.config));
+        if (parsed) onChange(entityId, socketId, parsed);
+        return;
+      }
+      if (entry.config.type === 'number' || entry.config.type === 'seed') {
         onChange(entityId, socketId, el.value === '' ? '' : Number(el.value));
         return;
       }
@@ -495,5 +502,31 @@ function MirrorControlElement({
       return <textarea {...common} ref={onMount} rows={config.rows ?? 2} placeholder={config.placeholder} />;
     case 'text':
       return <input {...common} ref={onMount} type="text" placeholder={config.placeholder} />;
+    case 'switch':
+      // A real checkbox the platform announces as a switch: the element still supplies the state,
+      // Space, and the change event. The role only changes what it is called.
+      return <input {...common} ref={onMount} type="checkbox" role="switch" />;
+    case 'segmented':
+      return (
+        <select {...common} ref={onMount}>
+          {(config.options ?? []).map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      );
+    case 'seed':
+      return <input {...common} ref={onMount} type="number" min={config.min} max={config.max} step={1} />;
+    case 'vector':
+      // One text input for the whole vector, read and written as "x, y, z" — see parseVectorText.
+      return (
+        <input
+          {...common}
+          ref={onMount}
+          type="text"
+          placeholder={VECTOR_AXES.slice(0, vectorDimensions(config)).join(', ')}
+        />
+      );
   }
 }

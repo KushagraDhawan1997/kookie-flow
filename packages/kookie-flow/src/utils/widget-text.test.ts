@@ -1,8 +1,9 @@
-import { SLIDER_READOUT_RESERVE } from './widget-geometry';
+import { SLIDER_READOUT_RESERVE, COLOR_SWATCH_GAP, colorSwatchEnd, seedButtonWidth } from './widget-geometry';
 import { describe, it, expect } from 'vitest';
 import {
   formatWidgetNumber,
   widgetValueText,
+  widgetPartTexts,
   WIDGET_VALUE_MIN_ZOOM,
   MIN_WIDGET_ZOOM,
   PAD,
@@ -67,8 +68,47 @@ describe('widgetValueText: what prints nothing', () => {
     expect(widgetValueText(config('checkbox'), false, BOX)).toBeNull();
   });
 
-  it('prints nothing for a colour — the swatch fills the whole box', () => {
-    expect(widgetValueText(config('color'), '#8e4ec6', BOX)).toBeNull();
+  it('prints a colour as its uppercase hex, without the #, just past the swatch', () => {
+    const placed = widgetValueText(config('color'), '#8e4ec6', BOX);
+    expect(placed?.text).toBe('8E4EC6');
+    expect(placed?.anchor).toBe('left');
+    expect(placed?.x).toBe(BOX.x + colorSwatchEnd(BOX.height) + COLOR_SWATCH_GAP);
+    expect(placed?.muted).toBe(false);
+  });
+
+  it('prints nothing for a switch — the thumb is the value', () => {
+    expect(widgetValueText(config('switch'), true, BOX)).toBeNull();
+  });
+
+  it('centres a seed in the field left of its button', () => {
+    const placed = widgetValueText(config('seed'), 42, BOX);
+    expect(placed?.text).toBe('42');
+    expect(placed?.anchor).toBe('center');
+    expect(placed?.x).toBe(BOX.x + (BOX.width - seedButtonWidth(BOX)) / 2);
+  });
+
+  it('prints each segmented option in its part, the chosen one as content', () => {
+    const parts = widgetPartTexts(config('segmented', { options: ['Fit', 'Fill', 'Crop'] }), 'Fill', BOX);
+    expect(parts?.map((p) => p.text)).toEqual(['Fit', 'Fill', 'Crop']);
+    expect(parts?.map((p) => p.muted)).toEqual([true, false, true]);
+    expect(parts?.[1].x).toBe(BOX.x + BOX.width / 2);
+  });
+
+  it('prints a vector as axis letters and values, leaving out the part being typed', () => {
+    const vec = config('vector', { dimensions: 2, step: 0.1 });
+    expect(widgetPartTexts(vec, [1, 2.5], BOX)?.map((p) => p.text)).toEqual(['X', '1.0', 'Y', '2.5']);
+    expect(widgetPartTexts(vec, [1, 2.5], BOX, 0)?.map((p) => p.text)).toEqual(['X', 'Y', '2.5']);
+  });
+
+  it('prints no parts for a widget that is not made of them', () => {
+    expect(widgetPartTexts(config('number'), 3, BOX)).toBeNull();
+    expect(widgetValueText(config('vector'), [1, 2, 3], BOX)).toBeNull();
+  });
+
+  it('prints nothing for a colour that is not six hex digits', () => {
+    expect(widgetValueText(config('color'), 'purple', BOX)).toBeNull();
+    expect(widgetValueText(config('color'), '#fff', BOX)).toBeNull();
+    expect(widgetValueText(config('color'), 42, BOX)).toBeNull();
   });
 
   it('prints nothing when the consumer supplied the component, whatever its type', () => {

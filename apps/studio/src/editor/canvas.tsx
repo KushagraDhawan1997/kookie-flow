@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Box, Theme } from '@kookie-ui/react';
 import {
   KookieFlow,
+  Toolbar,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -18,6 +19,7 @@ import { registry, SOCKET_TYPES } from 'studio-core';
 
 import { CanvasShortcuts } from './canvas-shortcuts';
 import type { EditorBus } from './editor-bus';
+import { withRunToolbar } from './node-toolbar';
 import { SelectionBridge } from './selection-bridge';
 import { ViewportBridge } from './viewport-bridge';
 
@@ -53,11 +55,12 @@ interface CanvasProps {
  * so the boundary actually holds.
  */
 function CanvasImpl(props: CanvasProps) {
-  const entityTypes = React.useMemo(() => registry.entityTypes(), []);
+  const { flowRef, bus } = props;
+  const entityTypes = React.useMemo(() => withRunToolbar(registry.entityTypes(), flowRef, bus), [flowRef, bus]);
   return (
     <Box ref={props.containerRef} className="kd-canvas" position="absolute" inset="0">
       <KookieFlow
-        ref={props.flowRef}
+        ref={flowRef}
         entities={props.entities}
         edges={props.edges}
         entityTypes={entityTypes}
@@ -75,17 +78,17 @@ function CanvasImpl(props: CanvasProps) {
         showMinimap
         minimapProps={{ position: 'bottom-right', width: 160, height: 112 }}
         header="inside"
-        accentHeader
         ThemeComponent={Theme}
         ariaLabel="Studio graph"
       >
+        <Toolbar />
         <CanvasShortcuts
           onEntitiesChange={props.onEntitiesChange}
           onEdgesChange={props.onEdgesChange}
           onUndo={props.onUndo}
           onRedo={props.onRedo}
         />
-        <SelectionBridge bus={props.bus} />
+        <SelectionBridge bus={bus} />
         <ViewportBridge onViewport={props.onViewport} />
       </KookieFlow>
     </Box>

@@ -98,6 +98,8 @@ What a future version would take up, none of it a hole in what exists:
 4. ~~**GL panels and glass controls**~~ — landed 2026-09-12: the select list and colour picker draw in
    GL, every control is glass and animates, and `src/gl/` is the seam a `kookie-gl` package would
    lift out. See `plans/migration/decisions.md` D20.
+5. ~~**Node-editor basics**~~ — landed 2026-09-13: `switch`, `segmented`, `vector` (2–4 components, drag
+   to scrub, click to type) and `seed` widgets, with `seed` / `vec2` / `vec3` / `vec4` socket types.
 
 ---
 

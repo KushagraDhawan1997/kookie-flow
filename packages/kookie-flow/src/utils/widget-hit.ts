@@ -56,6 +56,12 @@ export interface WidgetHit {
   config: ResolvedWidgetConfig;
   /** The value the widget is SHOWING — the entity's, with a pending local write on top. */
   value: unknown;
+  /**
+   * Which part of a many-part widget this hit is for — a vector's component — once the press has
+   * decided. Unset for every whole-widget hit. When set, `box` is that part's box, so the borrowed
+   * input lands on the one number being typed.
+   */
+  part?: number;
 }
 
 /**

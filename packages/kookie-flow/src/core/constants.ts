@@ -51,6 +51,10 @@ export const DEFAULT_SOCKET_TYPES = {
   // Numeric — blue
   float: { name: 'Float', color: '--blue-10', widget: 'slider' as const, min: 0, max: 1, step: 0.01 },
   int: { name: 'Integer', color: '--blue-10', widget: 'number' as const, min: 0, max: 100, step: 1 },
+  seed: { name: 'Seed', color: '--blue-10', widget: 'seed' as const, min: 0, step: 1 },
+  vec2: { name: 'Vector 2', color: '--blue-10', widget: 'vector' as const, dimensions: 2 as const, step: 0.01 },
+  vec3: { name: 'Vector 3', color: '--blue-10', widget: 'vector' as const, dimensions: 3 as const, step: 0.01 },
+  vec4: { name: 'Vector 4', color: '--blue-10', widget: 'vector' as const, dimensions: 4 as const, step: 0.01 },
   // Text — amber
   string: { name: 'String', color: '--amber-10', widget: 'text' as const },
   enum: { name: 'Enum', color: '--amber-10', widget: 'select' as const },

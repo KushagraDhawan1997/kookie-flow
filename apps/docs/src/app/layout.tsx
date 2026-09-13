@@ -2,7 +2,7 @@ import "@kookie-ui/react/styles.css";
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Inter_Tight } from "next/font/google";
 import { TooltipProvider } from "@kookie-ui/react";
 
 import { appearanceScript } from "./appearance-script";
@@ -10,18 +10,26 @@ import { DevOutlineGate } from "./dev-outline";
 import { DocsTheme } from "./theme-store";
 
 /**
- * THE CANVAS'S FACE, AND ONLY THE CANVAS'S.
+ * THE SITE'S FACE, AND THE CANVAS'S.
  *
- * The site reads in V2's faces — Switzer, Neue Montreal Mono and Boska, declared in globals.css.
- * The canvas is the exception: kookie-flow draws every label as MSDF glyphs cut from Inter, and
- * the edit overlay is a real <textarea> that lands on those glyphs and inherits its face from the
- * DOM around it. Set in Switzer, the text would jump the moment a field is focused. So Inter
- * publishes `--kd-font-canvas` and `.kd-canvas` (globals.css) spends it on the specimens and the
- * demo routes — nowhere else.
+ * Inter reads everywhere: globals.css spends `--kd-font-canvas` on the body and heading slots and
+ * on `.kd-canvas`. The canvas has to be Inter whatever the site uses — kookie-flow draws every
+ * label as MSDF glyphs cut from Inter, and the edit overlay is a real <textarea> that lands on
+ * those glyphs and inherits its face from the DOM around it, so another face would make the text
+ * jump the moment a field is focused. Neue Montreal Mono still sets code, and PP Playground the
+ * wordmark.
  */
 const canvas = Inter({
   subsets: ["latin"],
   variable: "--kd-font-canvas",
+  display: "swap",
+  fallback: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+});
+
+/** The heading face. globals.css spends `--kd-font-heading` on the heading slot. */
+const heading = Inter_Tight({
+  subsets: ["latin"],
+  variable: "--kd-font-heading",
   display: "swap",
   fallback: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
 });
@@ -133,7 +141,7 @@ export default function RootLayout({
     // globals.css is the one place that decides where each face lands.
     <html
       lang="en"
-      className={canvas.variable}
+      className={`${canvas.variable} ${heading.variable}`}
       suppressHydrationWarning
     >
       <head>

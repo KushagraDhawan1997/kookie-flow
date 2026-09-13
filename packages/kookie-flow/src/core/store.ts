@@ -176,6 +176,12 @@ export interface FlowState {
    * a scalar. Same shape and same reason as `editingEntityId` above.
    */
   editingWidgetKey: string | null;
+  /**
+   * Which part of the widget under `editingWidgetKey` has the input — a vector's component — or -1
+   * for the whole widget. The text layer suppresses only that part's value, so the other
+   * components of a vector stay on screen while one is typed. Set with the key, never alone.
+   */
+  editingWidgetPart: number;
 
   /**
    * The slider being dragged, for the length of the gesture — the one widget press with any
@@ -387,7 +393,7 @@ export interface FlowState {
   disposeEvaluation: () => void;
 
   /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
-  setEditingWidgetKey: (key: string | null) => void;
+  setEditingWidgetKey: (key: string | null, part?: number) => void;
   setPressedWidgetKey: (key: string | null) => void;
   setFocusVisibleWidgetKey: (key: string | null) => void;
 
@@ -1126,6 +1132,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       widgetValuesVersion: 0,
       evaluationVersion: 0,
       editingWidgetKey: null,
+      editingWidgetPart: -1,
       pressedWidgetKey: null,
       focusVisibleWidgetKey: null,
       widgetPopover: null,
@@ -1581,7 +1588,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       getEvaluationRecord: (entityId) => evaluator.record(entityId),
       disposeEvaluation: () => evaluator.dispose(),
 
-      setEditingWidgetKey: (editingWidgetKey) => set({ editingWidgetKey }),
+      setEditingWidgetKey: (editingWidgetKey, part = -1) =>
+        set({ editingWidgetKey, editingWidgetPart: editingWidgetKey === null ? -1 : part }),
 
       setPressedWidgetKey: (pressedWidgetKey) => {
         if (get().pressedWidgetKey === pressedWidgetKey) return;

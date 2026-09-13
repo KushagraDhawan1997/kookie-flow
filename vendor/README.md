@@ -19,8 +19,12 @@ that was tested.
 ```
 cd /path/to/kookie-ui-v2 && pnpm --filter @kookie-ui/react run build
 cd packages/ui && npm pack --pack-destination /path/to/kookie-flow/vendor
-cd /path/to/kookie-flow && pnpm install
+cd /path/to/kookie-flow && pnpm update -r @kookie-ui/react
 ```
+
+`update`, not `install`. The new tarball keeps the old name and version, so `pnpm install` finds the
+lockfile current and keeps the old copy in `node_modules`. `update` reads the tarball again and
+writes its new integrity to the lockfile. All three steps need Node 24 and pnpm 12 (`engines`).
 
 The version in the filename is v2's own, so a rebuild at the same version overwrites in place. If
 v2 ever bumps, the filename changes and `package.json` has to change with it — which is the point:

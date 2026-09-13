@@ -31,6 +31,7 @@
  */
 
 import { resolveWidgetConfig } from './widgets';
+import { vectorComponents, vectorDimensions } from './widget-parts';
 import type { Entity, ResolvedWidgetConfig, SocketType } from '../types';
 
 /** One widget on one entity, as the accessibility mirror needs it. */
@@ -101,6 +102,7 @@ export function sameMirrorShape(a: MirrorEntry[], b: MirrorEntry[]): boolean {
     if (x.config.max !== y.config.max) return false;
     if (x.config.step !== y.config.step) return false;
     if (x.config.rows !== y.config.rows) return false;
+    if (x.config.dimensions !== y.config.dimensions) return false;
     if (x.config.placeholder !== y.config.placeholder) return false;
     const ao = x.config.options;
     const bo = y.config.options;
@@ -143,9 +145,13 @@ export function mirrorDisplayValue(config: ResolvedWidgetConfig, value: unknown)
     const s = typeof value === 'string' ? value : '';
     return /^#[0-9a-f]{6}$/i.test(s) ? s.toLowerCase() : '#000000';
   }
-  if (config.type === 'select') {
+  if (config.type === 'select' || config.type === 'segmented') {
     const s = value === undefined || value === null ? '' : String(value);
     return config.options?.includes(s) ? s : '';
+  }
+  // A vector's one text input reads "x, y, z" — parseVectorText is the way back in.
+  if (config.type === 'vector') {
+    return vectorComponents(value, vectorDimensions(config)).join(', ');
   }
   return value === undefined || value === null ? '' : String(value);
 }

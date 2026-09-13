@@ -5,7 +5,7 @@ hand.
 
 <Example name="nodes" />
 
-The Render node's inputs show six of the seven built-in widgets. Drag a wire from Value into
+The Render node's inputs show ten of the eleven built-in widgets. Drag a wire from Value into
 Strength and the slider disappears, because the value now comes down the wire.
 
 ## Add inputs and outputs
@@ -128,9 +128,9 @@ An input shows a widget when its socket names one in `widget`, or when its socke
 default `widget`. Only inputs have widgets. When an edge lands on the input, the widget disappears
 and the input takes its value from the edge.
 
-The socket's own settings win over the type's. `min`, `max` and `step` fall back to the socket
-type, while `options`, `placeholder`, `defaultValue` and `rows` come only from the socket. Set
-`widget: false` on a socket to show no widget even when its type has one.
+The socket's own settings win over the type's. `min`, `max`, `step` and `dimensions` fall back to
+the socket type, while `options`, `placeholder`, `defaultValue` and `rows` come only from the
+socket. Set `widget: false` on a socket to show no widget even when its type has one.
 
 | `WidgetType` | What a person does | Value |
 | --- | --- | --- |
@@ -141,10 +141,14 @@ type, while `options`, `placeholder`, `defaultValue` and `rows` come only from t
 | `select` | Picks from a list of `options`. A select with no options doesn't open. | `string` |
 | `checkbox` | Presses to toggle. | `boolean` |
 | `color` | Picks a colour in the browser's colour picker. | `string`, such as `'#3e63dd'` |
+| `switch` | Presses anywhere on the row to toggle. | `boolean` |
+| `segmented` | Presses one of the `options`, shown side by side. Best with two to four. | `string` |
+| `vector` | Drags a component sideways to change it, or clicks it to type. `dimensions` sets 2, 3 or 4 components. | `number[]` |
+| `seed` | Types a whole number, or presses the die to roll one between `min` and `max`. | `number` |
 
-The canvas draws every built-in widget itself. A text, text area, number, select or colour widget
-opens a real input over itself while a person edits it, and closes it when they press Enter or
-Escape or click elsewhere. In a text area, Enter adds a new line. Built-in widgets aren't drawn,
+The canvas draws every built-in widget itself. A text, text area, number or seed widget, or one
+component of a vector, opens a real input over itself while a person edits it, and closes it when
+they press Enter or Escape or click elsewhere. In a text area, Enter adds a new line. Built-in widgets aren't drawn,
 and can't be pressed, below 40% zoom.
 
 `showWidgets` on `KookieFlow` defaults to `true`. Set it to `false` to hide every widget on the

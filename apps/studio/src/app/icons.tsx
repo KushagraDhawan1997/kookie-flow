@@ -7,18 +7,17 @@
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import { iconStroke } from '@kookie-ui/react';
 import {
-  ArrowTurnBackwardIcon,
-  ArrowTurnForwardIcon,
   ComputerIcon,
   Delete02Icon,
   Home01Icon,
   Moon02Icon,
   PlayIcon,
   PlusSignIcon,
+  RedoIcon as RedoDrawing,
   Search01Icon,
-  SidebarLeftIcon,
   SidebarRightIcon,
   Sun03Icon,
+  UndoIcon as UndoDrawing,
 } from '@hugeicons/core-free-icons';
 
 const glyph = (icon: IconSvgElement) =>
@@ -32,9 +31,8 @@ export const SystemIcon = glyph(ComputerIcon);
 export const HomeIcon = glyph(Home01Icon);
 export const PlusIcon = glyph(PlusSignIcon);
 export const SearchIcon = glyph(Search01Icon);
-export const PanelLeftIcon = glyph(SidebarLeftIcon);
 export const PanelRightIcon = glyph(SidebarRightIcon);
-export const UndoIcon = glyph(ArrowTurnBackwardIcon);
-export const RedoIcon = glyph(ArrowTurnForwardIcon);
+export const UndoIcon = glyph(UndoDrawing);
+export const RedoIcon = glyph(RedoDrawing);
 export const RunIcon = glyph(PlayIcon);
 export const TrashIcon = glyph(Delete02Icon);

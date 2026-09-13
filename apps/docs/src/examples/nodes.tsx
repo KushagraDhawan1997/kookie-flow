@@ -17,7 +17,10 @@ const initialEntities: Entity[] = [
     type: 'image/render',
     position: { x: 240, y: 0 },
     width: 300,
-    data: { label: 'Render', values: { steps: 30, mode: 'Cubic' } },
+    data: {
+      label: 'Render',
+      values: { steps: 30, mode: 'Cubic', live: true, fit: 'Fill', offset: [0, 1.5, -2], size: [1024, 768], seed: 42 },
+    },
     inputs: [
       {
         id: 'prompt',
@@ -34,6 +37,12 @@ const initialEntities: Entity[] = [
       { id: 'mode', name: 'Mode', type: 'enum', options: ['Linear', 'Cubic'] },
       { id: 'tiled', name: 'Tiled', type: 'boolean' },
       { id: 'tint', name: 'Tint', type: 'color', defaultValue: '#3e63dd' },
+      { id: 'live', name: 'Live', type: 'boolean', widget: 'switch' },
+      { id: 'fit', name: 'Fit', type: 'enum', widget: 'segmented', options: ['Fit', 'Fill', 'Crop'] },
+      // Drag a component sideways to change it, or click it to type.
+      { id: 'offset', name: 'Offset', type: 'vec3', step: 0.1 },
+      { id: 'size', name: 'Size', type: 'vec2', step: 1, min: 64, max: 4096 },
+      { id: 'seed', name: 'Seed', type: 'seed' },
     ],
     outputs: [{ id: 'image', name: 'Image', type: 'image' }],
   },
@@ -48,7 +57,7 @@ export default function NodesExample() {
   }, []);
 
   return (
-    <div style={{ width: '100%', height: 400 }}>
+    <div style={{ width: '100%', height: 640 }}>
       <KookieFlow
         ref={flowRef}
         entities={entities}

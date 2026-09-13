@@ -15,6 +15,15 @@ describe('readWidgetValue', () => {
     expect(readWidgetValue(new Map(), k, 0.25)).toBe(0.25);
   });
 
+  it('compares a vector by its components, so a fresh echoed array is not an answer', () => {
+    // A consumer re-renders with a new array holding the same numbers: the drag is still in flight.
+    const local = map([1, 2, 3], [0, 0, 0]);
+    expect(readWidgetValue(local, k, [0, 0, 0])).toEqual([1, 2, 3]);
+    expect(local.has(k)).toBe(true);
+    expect(readWidgetValue(local, k, [1, 2, 3])).toEqual([1, 2, 3]);
+    expect(local.has(k)).toBe(false);
+  });
+
   it('shows what the person set while the consumer has not echoed it yet', () => {
     // A slider dragged to 0.8 in a consumer that debounces: the entity still says 0.25.
     const local = map(0.8, 0.25);

@@ -640,3 +640,42 @@ export function makeWidgets(): Fixture {
     edges: [],
   };
 }
+
+/**
+ * The controls made of parts, and the switch, on a node of their own.
+ *
+ * A separate scene rather than more rows on `makeWidgets`: a great many laws measure that node's
+ * rows and glyph counts, and every one of them would move with a new input. Widget types are
+ * stated on the sockets, so the scene does not lean on the default socket-type table.
+ */
+export function makeControls(): Fixture {
+  return {
+    entities: [
+      {
+        id: 'c',
+        type: 'default',
+        position: { x: 120, y: 120 },
+        width: 320,
+        data: {
+          label: 'Controls',
+          values: {
+            live: true,
+            fit: 'Fill',
+            offset: [0, 1.5, -2],
+            size: [512, 768],
+            seed: 42,
+          },
+        },
+        inputs: [
+          { id: 'live', name: 'Live', type: 'boolean', widget: 'switch' },
+          { id: 'fit', name: 'Fit', type: 'enum', widget: 'segmented', options: ['Fit', 'Fill', 'Crop'] },
+          { id: 'offset', name: 'Offset', type: 'vec3', widget: 'vector', dimensions: 3, step: 0.1 },
+          { id: 'size', name: 'Size', type: 'vec2', widget: 'vector', dimensions: 2, step: 1, min: 64, max: 4096 },
+          { id: 'seed', name: 'Seed', type: 'seed', widget: 'seed', min: 0, max: 999999 },
+        ],
+        outputs: [{ id: 'out', name: 'Out', type: 'any' }],
+      },
+    ] as Entity[],
+    edges: [],
+  };
+}

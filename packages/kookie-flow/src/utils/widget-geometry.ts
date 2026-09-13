@@ -108,6 +108,74 @@ export function sliderTrackWidth(box: WidgetBox): number {
   return Math.max(1, box.width - SLIDER_READOUT_RESERVE);
 }
 
+/**
+ * A colour widget's swatch: a square inset by this much on every side of the field's height, at
+ * the leading end. The shader draws it (widgets-gl.tsx) and the hex readout starts past it
+ * (widget-text.ts), so both read these rather than keeping their own numbers.
+ */
+export const COLOR_SWATCH_INSET = 6;
+/** Air between the swatch and the hex. */
+export const COLOR_SWATCH_GAP = 8;
+
+/** Where the swatch ends, measured from the box's leading edge. */
+export function colorSwatchEnd(height: number): number {
+  return COLOR_SWATCH_INSET + Math.max(0, height - COLOR_SWATCH_INSET * 2);
+}
+
+/**
+ * A switch's track, at the row's trailing edge: one mark step taller than a checkbox, and v2's
+ * size-3 proportion wide (`--switch-w-3` over `--mark-3`, 44 over 24). As tall as the checkbox it
+ * read as squat beside 32px fields; this is v2's own next switch up, 24 × 44 at size 2. The shader
+ * reads both; nothing presses the track alone — the whole box toggles.
+ */
+export const SWITCH_HEIGHT_STEP = 4;
+export const SWITCH_TRACK_RATIO = 44 / 24;
+
+/**
+ * A vector's axis letter: inset from its part's leading edge, and the width it may take. The value
+ * sits right-aligned in what is left. The GL text layer and the borrowed input both read these.
+ */
+export const VECTOR_LABEL_INSET = 8;
+export const VECTOR_LABEL_WIDTH = 12;
+
+/** Air either side of a segmented control's option text. */
+export const SEGMENT_TEXT_INSET = 6;
+
+/**
+ * Part `index` of `count` equal parts across a box — a vector's component, a segment — written
+ * into a rectangle the caller owns, for the same no-allocation reason `readWidgetBoxInto` exists.
+ */
+export function readPartBoxInto(out: WidgetBox, box: WidgetBox, count: number, index: number): WidgetBox {
+  const w = box.width / Math.max(1, count);
+  out.x = box.x + w * index;
+  out.y = box.y;
+  out.width = w;
+  out.height = box.height;
+  return out;
+}
+
+/** Which of `count` equal parts a world x falls in, clamped to the box. */
+export function partIndexAt(box: WidgetBox, count: number, x: number): number {
+  const n = Math.max(1, count);
+  const i = Math.floor(((x - box.x) / box.width) * n);
+  return Math.min(n - 1, Math.max(0, i));
+}
+
+/** A seed's roll button: a square as tall as the field, at its trailing end. */
+export function seedButtonWidth(box: WidgetBox): number {
+  return Math.min(box.height, box.width / 2);
+}
+
+/** Is a world x on the seed's roll button? */
+export function isOnSeedButton(box: WidgetBox, x: number): boolean {
+  return x >= box.x + box.width - seedButtonWidth(box);
+}
+
+/** The seed's typing area: the box less its button. For a press, so it may allocate. */
+export function seedFieldBox(box: WidgetBox): WidgetBox {
+  return { x: box.x, y: box.y, width: box.width - seedButtonWidth(box), height: box.height };
+}
+
 /** Is this world point inside the box? */
 export function isPointInWidget(box: WidgetBox, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;

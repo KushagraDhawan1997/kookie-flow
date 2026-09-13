@@ -75,7 +75,7 @@ export function SiteFooter() {
                 signs a page off rather than heading it, but the masthead sits in a narrow
                 sidebar and this sits in the page's own column, so the step that reads as a mark
                 there reads as a caption here. */}
-            <Wordmark form="full" size="8" />
+            <Wordmark form="full" size="9" />
           </Link>
         }
         groups={[

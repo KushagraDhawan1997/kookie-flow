@@ -135,12 +135,26 @@ ${LENS_GLSL}
 vec2 gUvDx;
 vec2 gUvDy;
 
+/**
+ * 1 when \`map\` is a video. three uploads a VideoTexture as plain RGBA8 — no sRGB decode on the GPU
+ * — and decodes it in its OWN materials' shader chunk (DECODE_VIDEO_TEXTURE). A ShaderMaterial gets
+ * no such define, so a clip went out encoded twice: pale, lifted blacks. An image is uploaded as
+ * SRGB8_ALPHA8 and arrives linear already.
+ */
+uniform float uDecodeVideo;
+
+// The map, linear, at a media UV.
+vec4 sampleMap(vec2 s) {
+  vec4 t = textureGrad(map, s, gUvDx, gUvDy);
+  return uDecodeVideo > 0.5 ? sRGBTransferEOTF(t) : t;
+}
+
 // The media's own pixels, output-encoded, over the ground, at a quad UV. Outside the picture — a
 // contain letterbox, a model's transparent background — it is the ground.
 vec3 mediaAt(vec2 q) {
   vec2 s = q * uvScale + uvOffset;
   if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) return uGround;
-  vec4 t = linearToOutputTexel(textureGrad(map, s, gUvDx, gUvDy));
+  vec4 t = linearToOutputTexel(sampleMap(s));
   return mix(uGround, t.rgb, t.a);
 }
 
@@ -226,7 +240,7 @@ void main() {
   gUvDx = dFdx(sampledUV);
   gUvDy = dFdy(sampledUV);
   bool outside = sampledUV.x < 0.0 || sampledUV.x > 1.0 || sampledUV.y < 0.0 || sampledUV.y > 1.0;
-  vec4 texColor = outside ? vec4(0.0) : textureGrad(map, sampledUV, gUvDx, gUvDy);
+  vec4 texColor = outside ? vec4(0.0) : sampleMap(sampledUV);
 
   // Encoded first, so the glass composites in the same space CSS blends in.
   gl_FragColor = vec4(texColor.rgb, texColor.a * opacity);
@@ -393,6 +407,8 @@ export function createMediaMaterial(glass: MediaGlass): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: null },
+      // Written by setMediaMap alongside the map, never on its own.
+      uDecodeVideo: { value: 0 },
       opacity: { value: 1.0 },
       // A render target is already framed to its entity's box, so the mesh renderer leaves these
       // at the identity; the image and video renderers write them for object-fit.
@@ -431,6 +447,18 @@ export function setMediaChrome(
   const v = material.uniforms.uChrome.value as THREE.Vector4;
   v.set(kind, progress, playing ? 1 : 0, presence);
   material.uniforms.uExpand.value = expand;
+}
+
+/**
+ * Bind a media material's texture. The one way to set `map`, because a video needs the shader to
+ * decode it (see `uDecodeVideo`) and a map set without that flag is a pale clip again.
+ */
+export function setMediaMap(material: THREE.ShaderMaterial, texture: THREE.Texture | null): void {
+  const u = material.uniforms;
+  if (u.map.value === texture) return;
+  u.map.value = texture;
+  u.uDecodeVideo.value =
+    texture instanceof THREE.VideoTexture && THREE.ColorManagement.getTransfer(texture.colorSpace) === THREE.SRGBTransfer ? 1 : 0;
 }
 
 /**

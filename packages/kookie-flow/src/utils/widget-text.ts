@@ -16,11 +16,20 @@
  * `text-renderer.tsx` then does one thing: turn a placement into an entry.
  *
  * WHAT DELIBERATELY PRINTS NOTHING, because "show the value" is not the same claim for every kind:
- * a checkbox's tick IS its value, a colour swatch's fill IS its value, and a consumer's own widget
- * component prints its own. Each of those is stated at its branch below, with what it costs.
+ * a checkbox's tick IS its value, and a consumer's own widget component prints its own. (A colour
+ * used to be a third — a swatch across the whole box — and now prints its hex beside a swatch.) Each of those is stated at its branch below, with what it costs.
  */
 
-import { SLIDER_READOUT_RESERVE } from './widget-geometry';
+import {
+  SLIDER_READOUT_RESERVE,
+  COLOR_SWATCH_GAP,
+  colorSwatchEnd,
+  seedButtonWidth,
+  VECTOR_LABEL_INSET,
+  VECTOR_LABEL_WIDTH,
+  SEGMENT_TEXT_INSET,
+} from './widget-geometry';
+import { VECTOR_AXES, segmentIndex, vectorComponent, vectorDimensions } from './widget-parts';
 import { MIN_WIDGET_ZOOM } from './widget-hit';
 import type { WidgetBox } from './widget-geometry';
 import type { ResolvedWidgetConfig } from '../types';
@@ -123,6 +132,72 @@ function printable(value: unknown): string | null {
 }
 
 /**
+ * The readings of a widget made of parts, or null for every other kind.
+ *
+ * A segmented control prints each option centred in its segment, the chosen one in content ink
+ * and the rest muted. A vector prints each component's axis letter, muted, at the part's leading
+ * edge and its value right-aligned at the trailing edge — `skipPart` leaves out the one value a
+ * borrowed input is standing on, and keeps its letter, which the input does not draw.
+ *
+ * Allocates an array per call. Its only caller is the text layer's dirty rebuild, which already
+ * mints an entry object per string it prints.
+ */
+export function widgetPartTexts(
+  config: ResolvedWidgetConfig,
+  value: unknown,
+  box: WidgetBox,
+  skipPart: number = -1
+): WidgetTextPlacement[] | null {
+  if (config.customComponent) return null;
+
+  if (config.type === 'segmented') {
+    const options = config.options;
+    if (!options || options.length === 0) return null;
+    const w = box.width / options.length;
+    const chosen = segmentIndex(options, value);
+    const out: WidgetTextPlacement[] = [];
+    for (let i = 0; i < options.length; i++) {
+      if (options[i] === '') continue;
+      out.push({
+        text: options[i],
+        x: box.x + w * (i + 0.5),
+        anchor: 'center',
+        muted: i !== chosen,
+        maxWidth: Math.max(0, w - SEGMENT_TEXT_INSET * 2),
+      });
+    }
+    return out;
+  }
+
+  if (config.type === 'vector') {
+    const n = vectorDimensions(config);
+    const w = box.width / n;
+    const out: WidgetTextPlacement[] = [];
+    for (let i = 0; i < n; i++) {
+      const x0 = box.x + w * i;
+      out.push({
+        text: VECTOR_AXES[i],
+        x: x0 + VECTOR_LABEL_INSET,
+        anchor: 'left',
+        muted: true,
+        maxWidth: VECTOR_LABEL_WIDTH,
+      });
+      if (i === skipPart) continue;
+      out.push({
+        text: formatWidgetNumber(vectorComponent(value, i), config.step),
+        x: x0 + w - VECTOR_LABEL_INSET,
+        anchor: 'right',
+        muted: false,
+        maxWidth: Math.max(0, w - VECTOR_LABEL_INSET * 2 - VECTOR_LABEL_WIDTH),
+      });
+    }
+    return out;
+  }
+
+  return null;
+}
+
+/**
  * Where this widget's value should print inside its box, or null if it should not print at all.
  *
  * `box` is the same rectangle `widgets-gl.tsx` draws the chrome into and `widget-hit.ts` presses —
@@ -155,12 +230,42 @@ export function widgetValueText(
     case 'checkbox':
       return null;
 
-    // The swatch IS the value, and it fills the WHOLE box here — the GL widget paints `vTint`
-    // across it, where the DOM widget had a 32px swatch with room for a hex string beside it.
-    // Printing over an arbitrary user hue would also need per-instance luminance-picked ink to
-    // guarantee any contrast at all, which the MSDF batch has no notion of.
-    case 'color':
+    // A leading swatch and the hex beside it, as Figma and Blender print a colour. The text sits on
+    // the field's own neutral ground, never on the user's hue, so ordinary ink has contrast. No
+    // '#': six glyphs say it, and uppercase reads as a code rather than a word. A value that is not
+    // six hex digits prints nothing — the swatch already shows the grey it fell back to.
+    case 'color': {
+      if (typeof value !== 'string') return null;
+      const hex = value.trim().replace(/^#/, '');
+      if (!/^[0-9a-f]{6}$/i.test(hex)) return null;
+      const x = box.x + colorSwatchEnd(box.height) + COLOR_SWATCH_GAP;
+      const maxWidth = box.x + box.width - pad - x;
+      if (maxWidth <= 0) return null;
+      return { text: hex.toUpperCase(), x, anchor: 'left', muted: false, maxWidth };
+    }
+
+    // A switch's thumb IS its value, as a checkbox's tick is.
+    case 'switch':
       return null;
+
+    // One reading per part, not one per widget — see widgetPartTexts.
+    case 'segmented':
+    case 'vector':
+      return null;
+
+    // Centred in the field left of the roll button, as a number field centres in its whole box.
+    case 'seed': {
+      const n = typeof value === 'number' ? value : Number(value);
+      if (value === '' || value === null || value === undefined || !Number.isFinite(n)) return null;
+      const field = box.width - seedButtonWidth(box);
+      return {
+        text: String(Math.trunc(n)),
+        x: box.x + field / 2,
+        anchor: 'center',
+        muted: false,
+        maxWidth: Math.max(0, field - pad * 2),
+      };
+    }
 
     case 'slider': {
       const n = typeof value === 'number' ? value : Number(value);

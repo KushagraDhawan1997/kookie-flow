@@ -56,6 +56,8 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { THEME_COLORS, resolveColor, type ColorTokenRef } from '../core/theme-colors';
 import { themeRoot } from '../utils/theme-root';
 
+import { VECTOR_LABEL_INSET, VECTOR_LABEL_WIDTH } from '../utils/widget-geometry';
+import { vectorComponent, vectorDimensions, withComponent } from '../utils/widget-parts';
 import type { WidgetHit } from '../utils/widget-hit';
 
 /**
@@ -133,7 +135,8 @@ export interface WidgetEditOverlayProps {
  * reach this file: the canvas opens their GL panel instead (kookie-flow.tsx).
  */
 function inputTypeFor(type: string): 'text' | 'number' | 'textarea' {
-  if (type === 'number') return 'number';
+  // A seed and a vector's component are numbers typed into a number field.
+  if (type === 'number' || type === 'seed' || type === 'vector') return 'number';
   if (type === 'textarea') return 'textarea';
   return 'text';
 }
@@ -173,12 +176,19 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
    *
    * Seeded once per edit, keyed on the widget's identity so opening a different field re-seeds.
    */
-  const editKey = hit ? `${hit.entityId}:${hit.socketId}` : '';
+  // The part is in the key: typing X then pressing Y re-seeds with Y's number.
+  const editKey = hit ? `${hit.entityId}:${hit.socketId}:${hit.part ?? ''}` : '';
   const [draft, setDraft] = useState('');
   const seededFor = useRef('');
   if (hit && seededFor.current !== editKey) {
     seededFor.current = editKey;
-    setDraft(hit.value === undefined || hit.value === null ? '' : String(hit.value));
+    setDraft(
+      hit.part !== undefined
+        ? String(vectorComponent(hit.value, hit.part))
+        : hit.value === undefined || hit.value === null
+          ? ''
+          : String(hit.value)
+    );
   }
 
   /**
@@ -255,7 +265,11 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     fontWeight: 400,
     letterSpacing: 0,
     lineHeight: `${rowHeight}px`,
-    padding: `${OVERLAY_PADDING_TOP}px ${resolvedStyle.widgetPad}px 0`,
+    // A vector component's number is right-aligned past its axis letter, which GL keeps drawing.
+    padding:
+      hit.part !== undefined
+        ? `${OVERLAY_PADDING_TOP}px ${VECTOR_LABEL_INSET}px 0 ${VECTOR_LABEL_INSET + VECTOR_LABEL_WIDTH + 4}px`
+        : `${OVERLAY_PADDING_TOP}px ${resolvedStyle.widgetPad}px 0`,
     border: 0,
     outline: 'none',
     boxShadow: 'none',
@@ -265,8 +279,13 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     // `full` level the caret and the selection highlight are clipped to a pill and not to a
     // rectangle sitting inside one.
     borderRadius: `${Math.min(resolvedStyle.widgetRadius, rowHeight / 2)}px`,
-    // A number is centred in its box, as v2's number field is.
-    textAlign: (hit.config.type === 'number' ? 'center' : 'left') as CSSProperties['textAlign'],
+    // A number is centred in its box, as v2's number field is; a vector component sits where GL
+    // printed it, at the part's trailing edge.
+    textAlign: (hit.part !== undefined
+      ? 'right'
+      : hit.config.type === 'number' || hit.config.type === 'seed'
+        ? 'center'
+        : 'left') as CSSProperties['textAlign'],
     color: rgb(THEME_COLORS.text.primary),
     caretColor: rgb(THEME_COLORS.widget.active),
     resize: 'none',
@@ -282,12 +301,14 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
 
   const commit = (raw: string) => {
     setDraft(raw);
-    const next =
-      hit.config.type === 'number'
-        ? raw === ''
-          ? ''
-          : Number(raw)
-        : raw;
+    let next: unknown = raw;
+    if (hit.config.type === 'vector') {
+      // The whole vector goes out with one component replaced; a half-typed "-" holds 0.
+      const n = Number(raw);
+      next = withComponent(hit.value, vectorDimensions(hit.config), hit.part ?? 0, raw !== '' && Number.isFinite(n) ? n : 0);
+    } else if (hit.config.type === 'number' || hit.config.type === 'seed') {
+      next = raw === '' ? '' : Number(raw);
+    }
     onChange?.(hit.entityId, hit.socketId, next);
   };
 

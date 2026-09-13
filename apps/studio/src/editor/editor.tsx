@@ -5,17 +5,17 @@ import NextLink from 'next/link';
 import {
   Box,
   Flex,
+  MenuItem,
   Shell,
   ShellContent,
   ShellInspector,
   ShellPaneFooter,
   ShellPaneHeader,
-  ShellSidebar,
   ShellTrigger,
+  SplitButton,
   TextField,
   Toolbar,
   ToolbarButton,
-  ToolbarGroup,
 } from '@kookie-ui/react';
 import {
   screenToWorld,
@@ -36,7 +36,8 @@ import {
 } from 'studio-core';
 
 import { AppearanceToggle } from '@/app/appearance-toggle';
-import { HomeIcon, PanelLeftIcon, PanelRightIcon, RedoIcon, RunIcon, UndoIcon } from '@/app/icons';
+import { PanelRightIcon, RedoIcon, RunIcon, UndoIcon } from '@/app/icons';
+import { Wordmark } from '@/app/wordmark';
 import { ports } from '@/runtime/ports';
 import { Canvas } from './canvas';
 import { Inspector } from './inspector';
@@ -253,39 +254,25 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     <Box height="100dvh">
       {/* NO HEADER, as the docs site has none. Everything that row held was either the frame's
           own chrome or a control for the graph on the canvas, and neither belongs in a band
-          across the whole window: the way home and the appearance go to the sidebar's pinned
-          rows, and the graph's controls float over the graph. */}
+          across the whole window: the mark leads the graph's own row and is the way home, and
+          the graph's controls float over the graph. */}
       <Shell>
-        <ShellSidebar aria-label="Node library" defaultOpen width={264}>
-          <NodeLibrary
-            onAdd={onAdd}
-            leading={
-              <ToolbarButton iconOnly aria-label="All graphs" render={<NextLink href="/" />}>
-                <HomeIcon />
-              </ToolbarButton>
-            }
-          />
-          <ShellPaneFooter float>
-            <Toolbar backdrop>
-              <AppearanceToggle inToolbar />
-            </Toolbar>
-          </ShellPaneFooter>
-        </ShellSidebar>
-
+        {/* NO SIDEBAR. A catalog of a few dozen nodes is reached for, not read, so it is a menu
+            and a search on a strip at the canvas's edge, and the canvas has the column's width. */}
         {/* A canvas takes the whole box, and the pane's controls float over it: the graph passes
             behind them, as a docs page passes behind its band. */}
         <ShellContent flush style={{ position: 'relative', overflow: 'hidden' }}>
           <ShellPaneHeader float>
             <Toolbar backdrop>
-              <Flex gap="2" align="center">
-                <ShellTrigger
-                  target="sidebar"
-                  render={
-                    <ToolbarButton iconOnly aria-label="Toggle node library">
-                      <PanelLeftIcon />
-                    </ToolbarButton>
-                  }
-                />
+              {/* The mark is the way home, as the docs site's is. The link carries the name: the
+                  word inside it is a picture of the name and hidden from assistive tech. */}
+              <NextLink href="/" aria-label="Studio, all graphs" style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Wordmark />
+              </NextLink>
+              {/* NO SEPARATORS, as the docs band has none: each control is its own capsule and the
+                  air between capsules does the separating. The gap is one step wider than the
+                  row's own, or two neighbouring capsules read as one long capsule with a seam. */}
+              <Flex gap="3" align="center">
                 <TextField
                   aria-label="Graph name"
                   value={name}
@@ -293,24 +280,18 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
                   onChange={(e) => setName(e.target.value)}
                   style={{ inlineSize: 240 }}
                 />
-                <SaveStatus store={autosave.status} />
-              </Flex>
-              {/* NO SEPARATORS, as the docs band has none: each cluster is its own capsule and the
-                  air between capsules does the separating. The gap is one step wider than the
-                  row's own, or two neighbouring groups read as one long capsule with a seam. */}
-              <Flex gap="3" align="center">
-                <ToolbarGroup>
-                  <ToolbarButton iconOnly aria-label="Undo" disabled={!canUndo} onClick={stepBack}>
-                    <UndoIcon />
-                  </ToolbarButton>
-                  <ToolbarButton iconOnly aria-label="Redo" disabled={!canRedo} onClick={stepForward}>
-                    <RedoIcon />
-                  </ToolbarButton>
-                </ToolbarGroup>
-                <ToolbarButton emphasis="loud" tone="accent" leading={<RunIcon />} onClick={() => void flowRef.current?.evaluateDirty()}>
+                {/* Run is what changed, the common case; running everything again is the rarer ask,
+                    so it waits behind the chevron. */}
+                <SplitButton
+                  emphasis="loud"
+                  tone="accent"
+                  leading={<RunIcon />}
+                  onClick={() => void flowRef.current?.evaluateDirty()}
+                  menuLabel="More run options"
+                  menu={<MenuItem onClick={() => void flowRef.current?.evaluateAll()}>Run all</MenuItem>}
+                >
                   Run
-                </ToolbarButton>
-                <ToolbarButton onClick={() => void flowRef.current?.evaluateAll()}>Run all</ToolbarButton>
+                </SplitButton>
                 <ShellTrigger
                   target="inspector"
                   render={
@@ -339,6 +320,34 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             onUndo={stepBack}
             onRedo={stepForward}
           />
+          {/* Halfway down the left edge, in line with the header's own inset. */}
+          <Box
+            position="absolute"
+            style={{
+              insetInlineStart: 'calc(var(--kui-sf-p) + var(--kui-shell-inset-inline-start, 0px))',
+              insetBlockStart: '50%',
+              transform: 'translateY(-50%)',
+              zIndex: 1,
+            }}
+          >
+            <NodeLibrary onAdd={onAdd} />
+          </Box>
+          {/* The bottom row: appearance, undo and redo each as its own button, then the save line,
+              muted, out of the way of the graph's own controls. */}
+          <ShellPaneFooter float>
+            <Toolbar backdrop>
+              <Flex gap="3" align="center">
+                <AppearanceToggle inToolbar />
+                <ToolbarButton iconOnly aria-label="Undo" disabled={!canUndo} onClick={stepBack}>
+                  <UndoIcon />
+                </ToolbarButton>
+                <ToolbarButton iconOnly aria-label="Redo" disabled={!canRedo} onClick={stepForward}>
+                  <RedoIcon />
+                </ToolbarButton>
+                <SaveStatus store={autosave.status} />
+              </Flex>
+            </Toolbar>
+          </ShellPaneFooter>
         </ShellContent>
 
         <ShellInspector aria-label="Inspector" defaultOpen width={320}>

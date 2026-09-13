@@ -1,8 +1,8 @@
 import { Heading } from "@kookie-ui/react";
 
 /**
- * The mark. `layout.tsx` is the one file that knows which face is loaded (`--kd-font-wordmark`,
- * which here points at the body face); this one knows the word, the weight and the trimmed box.
+ * The mark. `globals.css` is the one file that knows which face is loaded (`--kd-font-wordmark`,
+ * PP Playground); this one knows the word, the weight and the trimmed box.
  *
  * It is a component because it is in two places — the sidebar's masthead and the footer — and
  * three facts travel together (the face, the weight, the collapsed line box). Two of them are
@@ -23,9 +23,10 @@ import { Heading } from "@kookie-ui/react";
  * this is a mark, not a heading, so it must not put an entry in the document outline.
  */
 /**
- * TWO FORMS OF ONE NAME. A masthead is glanced at and a footer is arrived at, so the short form
- * is what sits above the navigation all day and the long form is what signs the page off —
- * which is the arrangement every foundry and every newspaper uses.
+ * TWO FORMS OF ONE NAME. A masthead is glanced at and a footer is arrived at, so the short form,
+ * just "Flow" (2026-09-14, Kushagra), is what sits above the navigation all day, and the long
+ * form is what signs the page off — which is the arrangement every foundry and every newspaper
+ * uses.
  *
  * A CLOSED PROP RATHER THAN `children`, because a mark is not a text component: taking children
  * would let any call site set any words in this face, and then the brand is whatever somebody
@@ -51,7 +52,7 @@ export function Wordmark({
       className="kd-wordmark"
       render={<span aria-hidden="true" />}
     >
-      {form === "full" ? "Kookie© Flow" : "Kookie Flow"}
+      {form === "full" ? "Kookie© Flow" : "Flow"}
     </Heading>
   );
 }
