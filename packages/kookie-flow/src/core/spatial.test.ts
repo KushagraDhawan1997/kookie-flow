@@ -120,3 +120,145 @@ describe('SocketQuadtree', () => {
     expect(sq.remove('n7', 's0', false)).toBe(false);
   });
 });
+
+/**
+ * `queryRangeInto` is what every GL layer now culls with, so the laws it has to satisfy are the
+ * ones a render loop silently depends on: the same answer as the allocating `queryRange` it
+ * replaces, each entity ONCE however many quadrants it spans, and a caller-owned array that is
+ * written from zero and never read past the returned count.
+ *
+ * The dedup law is the one with teeth. The stamp lives on the entry object, which only works
+ * because a multi-quadrant entity is stored as ONE object shared between quadrants; reintroduce
+ * the per-quadrant copy and an entity straddling a boundary is drawn twice, which on the instanced
+ * layers means a wasted slot and, at capacity, a node that does not appear at all.
+ */
+describe('Quadtree.queryRangeInto', () => {
+  const bounds = { x: -10000, y: -10000, width: 20000, height: 20000 };
+
+  function grid(n: number): Entity[] {
+    const out: Entity[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push(entity(`e${i}`, (i % 40) * 300, Math.floor(i / 40) * 200));
+    }
+    return out;
+  }
+
+  it('agrees with queryRange', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+    const range = { x: 500, y: 400, width: 1200, height: 900 };
+
+    const out: string[] = [];
+    const count = qt.queryRangeInto(range, out);
+
+    expect(out.slice(0, count).sort()).toEqual(qt.queryRange(range).sort());
+  });
+
+  it('reports an entity spanning several quadrants exactly once', () => {
+    const qt = new Quadtree(bounds);
+    // Enough neighbours to force subdivision, plus one entity wide enough to straddle the splits.
+    const entities = grid(200);
+    entities.push({
+      id: 'wide',
+      type: 'default',
+      position: { x: -4000, y: -4000 },
+      data: {},
+      width: 9000,
+      height: 9000,
+    });
+    qt.rebuild(entities);
+
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: -5000, y: -5000, width: 11000, height: 11000 }, out);
+    const seen = out.slice(0, count).filter((id) => id === 'wide');
+
+    expect(seen).toEqual(['wide']);
+  });
+
+  it('reuses the caller array and never reads past the count', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+
+    const out: string[] = [];
+    const wide = qt.queryRangeInto({ x: 0, y: 0, width: 12000, height: 12000 }, out);
+    const narrow = qt.queryRangeInto({ x: 0, y: 0, width: 100, height: 100 }, out);
+
+    expect(narrow).toBeLessThan(wide);
+    // The array keeps its high-water length; only `count` is authoritative.
+    expect(out.length).toBe(wide);
+    expect(out.slice(0, narrow)).toEqual(['e0']);
+  });
+
+  it('starts each query from a clean slate', () => {
+    const qt = new Quadtree(bounds);
+    qt.rebuild(grid(400));
+    const range = { x: 500, y: 400, width: 1200, height: 900 };
+
+    const out: string[] = [];
+    const first = qt.queryRangeInto(range, out);
+    const second = qt.queryRangeInto(range, out);
+
+    // A stamp that was not advanced between queries would report zero the second time.
+    expect(second).toBe(first);
+    expect(first).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * THE INDEX MUST BE TOTAL EVEN FOR AN ENTITY THAT OVERHANGS THE ROOT.
+ *
+ * `rebuild` narrows the root to the content bounding box plus slack, and `insertEntry` returns true
+ * as soon as bounds merely OVERLAP a quadrant. So `insertOrGrow`'s fast path, which trusted that
+ * boolean, accepted an entity hanging over the root's edge: it went into `idToEntry` and into the
+ * quadrants it happened to overlap, while the part outside the root had nowhere to live — and every
+ * query bails at the root's own bounds check before reaching it. The entity was in the index and
+ * reachable by nothing.
+ *
+ * This is why it is stated against the QUERIES rather than against `size` or `idToEntry`: the index
+ * remembering an entity is not the property anything depends on. It predates the render cull and
+ * used to cost only a missed click; now that the renderers walk the index, an entity it cannot
+ * return is an entity that is not drawn — body, sockets and label together.
+ */
+describe('Quadtree keeps an entity that overhangs the root reachable', () => {
+  const wide = { x: -10000, y: -10000, width: 20000, height: 20000 };
+
+  it('finds a tall entity dragged past the top of the narrowed root', () => {
+    const qt = new Quadtree(wide);
+    qt.rebuild([entity('a', 0, 0), entity('b', 400, 0), entity('tall', 800, 0)]);
+
+    // Up and out: the box now reaches far above the root rebuild left behind.
+    qt.update('tall', { x: 800, y: -5500, width: 240, height: 5000 });
+
+    expect(qt.queryPoint(900, -4000)).toContain('tall');
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: 700, y: -4500, width: 900, height: 1500 }, out);
+    expect(out.slice(0, count)).toContain('tall');
+    expect(qt.queryRange({ x: 700, y: -4500, width: 900, height: 1500 })).toContain('tall');
+  });
+
+  it('keeps every other entity reachable across the re-index the growth forces', () => {
+    const qt = new Quadtree(wide);
+    qt.rebuild([entity('a', 0, 0), entity('b', 400, 0), entity('tall', 800, 0)]);
+
+    qt.update('tall', { x: 800, y: -5500, width: 240, height: 5000 });
+
+    expect(qt.queryPoint(10, 10)).toContain('a');
+    expect(qt.queryPoint(410, 10)).toContain('b');
+    // And no duplicate left behind by growing around a half-filed entry.
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: -9000, y: -9000, width: 18000, height: 18000 }, out);
+    const seen = out.slice(0, count);
+    expect(seen.length).toBe(new Set(seen).size);
+    expect(seen.sort()).toEqual(['a', 'b', 'tall']);
+  });
+
+  it('finds an entity that overhangs on each of the four sides', () => {
+    for (const [dx, dy] of [[-9000, 0], [9000, 0], [0, -9000], [0, 9000]]) {
+      const qt = new Quadtree(wide);
+      qt.rebuild([entity('anchor', 0, 0), entity('mover', 400, 0)]);
+      qt.update('mover', { x: dx, y: dy, width: 6000, height: 6000 });
+      expect(qt.queryPoint(dx + 10, dy + 10)).toContain('mover');
+      expect(qt.queryPoint(10, 10)).toContain('anchor');
+    }
+  });
+});

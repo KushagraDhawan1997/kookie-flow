@@ -91,6 +91,18 @@ export const DEPTH_LAYER = {
 } as const;
 
 /**
+ * The last stack size `entityDepth` was asked about, and the two numbers derived from it.
+ *
+ * `capacity` and `scale` depend on NOTHING but `stackOrder.size`, and `entityDepth` is called once
+ * per part of every visible entity on every rebuild of four different layers — so the division was
+ * being done tens of thousands of times a second to produce the same quotient. The size changes
+ * when a node is added or removed; between those, every call is a single integer compare.
+ */
+let cachedStackSize = -1;
+let cachedCapacity = 0;
+let cachedScale = 0;
+
+/**
  * The depth of one part of an entity: its body by default, or a `DEPTH_LAYER` drawn on it. The
  * layer is passed in rather than added by the caller, because past the compaction point it is
  * squeezed with the step it has to stay inside.
@@ -101,8 +113,13 @@ export function entityDepth(
   selectedEntityIds: ReadonlySet<string>,
   layer: number = DEPTH_LAYER.body
 ): number {
-  const capacity = stackCapacity(stackOrder.size);
-  const scale = STACK_COMPACT_AT / capacity;
+  if (stackOrder.size !== cachedStackSize) {
+    cachedStackSize = stackOrder.size;
+    cachedCapacity = stackCapacity(cachedStackSize);
+    cachedScale = STACK_COMPACT_AT / cachedCapacity;
+  }
+  const capacity = cachedCapacity;
+  const scale = cachedScale;
   const index = Math.min(stackOrder.get(id) ?? 0, capacity);
   return (
     BASE_DEPTH +

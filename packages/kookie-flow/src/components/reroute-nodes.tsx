@@ -279,11 +279,17 @@ export function RerouteNodes() {
       visibleCount++;
     }
 
-    // Update GPU buffers
-    mesh.instanceMatrix.needsUpdate = true;
-    if (buffers.selectedAttr && buffers.hoveredAttr) {
-      buffers.selectedAttr.needsUpdate = true;
-      buffers.hoveredAttr.needsUpdate = true;
+    // Update GPU buffers, over the instances this pass wrote. The arrays are capacity-sized and
+    // a bare `needsUpdate` uploads all of it; only `[0, visibleCount)` is drawn.
+    if (visibleCount > 0) {
+      mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (buffers.selectedAttr && buffers.hoveredAttr) {
+        buffers.selectedAttr.addUpdateRange(0, visibleCount);
+        buffers.selectedAttr.needsUpdate = true;
+        buffers.hoveredAttr.addUpdateRange(0, visibleCount);
+        buffers.hoveredAttr.needsUpdate = true;
+      }
     }
 
     mesh.count = visibleCount;

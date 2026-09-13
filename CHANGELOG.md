@@ -78,6 +78,49 @@ still moving, and a `!` on a heading means something that was there changed shap
 - **Stroke styling.** `strokeColor` and `strokeWidth` toolbar widgets for ink (a width change re-fits
   the stroke's box), and a `penStyle` prop for what the pen draws with.
 
+### Performance
+
+- **A pan costs almost nothing now.** Every GL layer used to mark itself dirty from the viewport,
+  so one pointermove of a pan rewrote and re-uploaded every instance of every layer — bodies,
+  sockets, widgets, labels, pictures, models — to move a camera the GPU moves on its own: every
+  transform in this package is world space, and a pan changes none of them. The only thing a pan
+  can change is which instances survive the cull, and that answer does not change frame to frame.
+  So a set is now collected for a rect WIDER than the screen and re-collected only once the screen
+  slides out of it or the zoom crosses a band (`src/utils/viewport-cull.ts`). The text layer had
+  this already; the other nine did not.
+- **The render loops read the quadtree instead of the graph.** `for (const entity of entities)`
+  followed by a box test was how four layers decided what to draw, so the cost of a frame scaled
+  with the SIZE OF THE GRAPH rather than with what was on screen — at ten thousand nodes, forty
+  thousand box tests a frame for a screenful of a few dozen cards. They now ask the spatial index
+  that hit testing has always used, through an allocation-free range query
+  (`Quadtree.queryRangeInto`). Measured on `harness/spikes/cull-bench.mjs`: 3x fewer CPU
+  microseconds per collect at 10k nodes, 160x at 50k, and roughly a hundredfold over the frames of
+  a pan once the two are combined.
+- **Edges are culled and take their detail from the zoom.** The edge layer had no viewport cull at
+  all: every edge in the graph was tessellated into the buffer and drawn whether or not any part of
+  it could reach the screen, at a fixed sixty-four segments each — over a million vertices a frame
+  at a few thousand edges, for a screenful of maybe fifty wires. An edge whose curve cannot touch
+  the collected rect now writes no vertices, and the sampling halves with each halving of zoom down
+  to a floor of eight, where the whole edge is thirty pixels long and the rest of the segments were
+  shorter than a pixel.
+- **Sockets are culled.** The socket layer drew every socket of every entity — forty thousand
+  instances on a ten-thousand-node graph — and let the GPU clip. It now draws the ones near the
+  screen.
+- **The per-frame string keys are gone from the hot paths.** Asking "which socket is this" or "is
+  this socket connected" meant BUILDING a `"entityId:socketId:input"` key first, twice per edge and
+  once per widget row, on every rebuild — thousands of throwaway strings a frame, where the map
+  lookup was never the cost. Those asks are nested map hops now. A dragged socket's index entry is
+  rewritten in place rather than rebuilt, the socket layout cache answers from one WeakMap instead
+  of three, `entityDepth` divides once per stack size instead of once per call, and the pointer's
+  world position is written straight into the store's pair.
+- **The minimap stopped hashing the whole graph every frame.** It repainted on any store write and
+  checksummed every entity's position to decide whether anything had moved — a full sweep of the
+  graph per frame, to be told each time that a pan had moved nothing. It reads the store's
+  position counter instead.
+- **A comment's styles are written when they change.** The DOM overlay assigned width, height,
+  font-size and a two-part box-shadow to every comment on every frame of a pan, re-invalidating
+  style for values identical to the ones already there. Only the transform is unguarded now.
+
 ### Fixed
 
 - **A click on the canvas drew the browser's focus ring around all of it.** The canvas focuses

@@ -27,6 +27,26 @@ export function screenToWorld(
 }
 
 /**
+ * The same conversion, writing into a caller-owned pair instead of returning a fresh point.
+ *
+ * `screenToWorld` costs TWO objects per call — the literal a caller builds for the argument and
+ * the record it returns — which is nothing in a click handler and is not nothing on the pointermove
+ * path, where it runs on every event of every gesture and, on a high-rate mouse, a thousand times
+ * a second. This takes the screen coordinates as numbers so there is no argument to build either.
+ */
+export function screenToWorldInto(
+  /** Any indexable pair — the store's `pointerWorld` is a Float32Array, callers may pass a tuple. */
+  out: { [index: number]: number },
+  screenX: number,
+  screenY: number,
+  viewport: Viewport
+): void {
+  const invZoom = 1 / viewport.zoom;
+  out[0] = (screenX - viewport.x) * invZoom;
+  out[1] = (screenY - viewport.y) * invZoom;
+}
+
+/**
  * Convert world coordinates to screen coordinates.
  */
 export function worldToScreen(

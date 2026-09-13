@@ -16,6 +16,7 @@ import { THEME_COLORS } from '../core/theme-colors';
 import { SUCCESS_HOLD_MS } from '../core/evaluation';
 import { entityDepth } from '../utils/entity-depth';
 import { easeProgress, progressEaseAlpha } from '../utils/progress-ease';
+import { ViewportCuller } from '../utils/viewport-culler';
 
 // Status enum encoding for GPU (matches aStatus attribute)
 const STATUS_NONE = 0;
@@ -41,6 +42,15 @@ const tempMatrix = new THREE.Matrix4();
 
 /** What uHeaderColor carries when there is no global accent band: the shader reads r < 0 as none. */
 const NO_ACCENT_BAND: readonly [number, number, number] = [-1, -1, -1];
+
+/**
+ * How far outside the screen a body is still collected, in world units.
+ *
+ * It covers the halo, which reaches past the body's own box, and it is the margin the hysteresis
+ * adds its fraction on top of — so nothing pops in at the border on the frames a pan is allowed
+ * to skip.
+ */
+const CULL_PADDING = 300;
 
 // Buffer growth factor
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -158,6 +168,17 @@ export function Entities() {
   // Dirty flag for updates
   const dirtyRef = useRef(true);
   const initializedRef = useRef(false);
+
+  /**
+   * The camera moved. Unlike `dirtyRef` this is a QUESTION rather than a verdict: instance
+   * transforms are world space, so a pan moves none of them and the only thing it can change is
+   * which bodies survive the cull. The culler answers whether it actually did.
+   */
+  const viewMovedRef = useRef(false);
+  /** Which entities are on screen, from the quadtree, re-collected only when it has to be. */
+  const cullerRef = useRef<ViewportCuller | null>(null);
+  if (cullerRef.current === null) cullerRef.current = new ViewportCuller();
+  const lastSizeRef = useRef({ width: 0, height: 0 });
 
   // Each mesh needs its own geometry (attributes are per-geometry)
   const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -575,39 +596,43 @@ export function Entities() {
 
   // Subscribe to store changes
   useEffect(() => {
+    /**
+     * Anything but the camera. Both flags, always: the visible set is collected from the quadtree
+     * and is only allowed to survive a CAMERA move, so every change to the graph underneath it —
+     * a node added, moved, hidden, restacked — has to send the culler back to the tree. Setting
+     * `dirtyRef` alone would leave a node dragged in from off-screen undrawn until the camera
+     * happened to escape the collected margin.
+     */
+    const markDirty = () => {
+      dirtyRef.current = true;
+      cullerRef.current?.invalidate();
+    };
     const unsubEntities = store.subscribe(
       (state) => state.entities,
       (entities) => {
-        dirtyRef.current = true;
+        markDirty();
         // Check if we need more capacity
         if (entities.length > capacity) {
           setCapacity(Math.ceil(entities.length * BUFFER_GROWTH_FACTOR));
         }
       }
     );
+    /**
+     * The camera, and ONLY a question. See `viewMovedRef`: this used to set `dirtyRef`, so every
+     * pointermove of a pan rewrote every instance matrix of every visible body and re-uploaded
+     * them — to move a camera that the GPU moves by itself.
+     */
     const unsubViewport = store.subscribe(
       (state) => state.viewport,
-      () => { dirtyRef.current = true; }
+      () => { viewMovedRef.current = true; }
     );
     // Subscribe to hidden entity changes (Phase 7C) - O(1) lookup in hot path
-    const unsubHidden = store.subscribe(
-      (state) => state.hiddenEntityIds,
-      () => { dirtyRef.current = true; }
-    );
+    const unsubHidden = store.subscribe((state) => state.hiddenEntityIds, markDirty);
     // Subscribe to selection changes so selected entities render in foreground mesh
-    const unsubSelection = store.subscribe(
-      (state) => state.selectedEntityIds,
-      () => { dirtyRef.current = true; }
-    );
+    const unsubSelection = store.subscribe((state) => state.selectedEntityIds, markDirty);
     // A press moved something to the front: every body's depth may have changed.
-    const unsubStack = store.subscribe(
-      (state) => state.stackVersion,
-      () => { dirtyRef.current = true; }
-    );
-    const unsubEvaluation = store.subscribe(
-      (state) => state.evaluationVersion,
-      () => { dirtyRef.current = true; }
-    );
+    const unsubStack = store.subscribe((state) => state.stackVersion, markDirty);
+    const unsubEvaluation = store.subscribe((state) => state.evaluationVersion, markDirty);
 
     return () => {
       unsubEntities();
@@ -668,52 +693,62 @@ export function Entities() {
 
     if (hasMovingRingRef.current) dirtyRef.current = true;
 
-    if (!dirtyRef.current) return;
+    const resized =
+      size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height;
+    if (resized) {
+      lastSizeRef.current.width = size.width;
+      lastSizeRef.current.height = size.height;
+      // A resize reveals world the collected rect never covered, and nothing in `viewport` says so.
+      cullerRef.current?.invalidate();
+    }
 
-    const { entities, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, getEvaluationStatus, getEvaluationRecord } = store.getState();
+    if (!dirtyRef.current && !viewMovedRef.current && !resized) return;
+    viewMovedRef.current = false;
+
+    const { entityMap, viewport, hiddenEntityIds, selectedEntityIds, stackOrder, quadtree, getEvaluationStatus, getEvaluationRecord } = store.getState();
+
+    /**
+     * The cull, from the quadtree, and the frame this layer is allowed to skip.
+     *
+     * `refresh` re-collects only when the screen has escaped the margin the last set was collected
+     * for or the zoom has crossed a band; on every other frame of a pan it returns false, and with
+     * nothing else dirty there is simply nothing to do — the bodies are already on the GPU, in
+     * world space, and the camera moved without them.
+     *
+     * The padding is the 300 world units this loop used to apply by hand, which covers the halo a
+     * body casts outside its own box.
+     */
+    const culler = cullerRef.current as ViewportCuller;
+    const recollected = culler.refresh(
+      quadtree,
+      viewport.x,
+      viewport.y,
+      viewport.zoom,
+      size.width,
+      size.height,
+      CULL_PADDING
+    );
+    if (!recollected && !dirtyRef.current) return;
+
     // One clock read per pass, for the arc and the dissolve; the engine stamps in the same clock.
     const passNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
     // Frame-rate independent: the same fraction of the remaining gap is closed per second
     // whether the display runs at 60Hz or 120Hz.
     const easeAlpha = progressEaseAlpha(delta);
     const progressDisplay = progressDisplayRef.current;
-    if (entities.length === 0) {
-      bgMesh.count = 0;
-      fgMesh.count = 0;
-      /**
-       * The shadows have to be zeroed HERE too, not only on the path below.
-       *
-       * A shadow mesh draws the body mesh's instance matrices by aliasing the same attribute, and
-       * that array is never cleared — only `count` decides how much of it is drawn. This early
-       * return used to zero the two body counts and leave the shadow counts at whatever the last
-       * populated frame set, so deleting the last node (select all, delete) erased every body and
-       * left its soft halo painted at its old position until a node was added back. The shadow
-       * pass writes no depth and nothing was left in front of it to hide it.
-       */
-      const bgShadowEmpty = bgShadowRef.current;
-      const fgShadowEmpty = fgShadowRef.current;
-      if (bgShadowEmpty) bgShadowEmpty.count = 0;
-      if (fgShadowEmpty) fgShadowEmpty.count = 0;
-      dirtyRef.current = false;
-      return;
-    }
 
-    // Viewport bounds in world space for culling
-    const invZoom = 1 / viewport.zoom;
-    const viewLeft = -viewport.x * invZoom;
-    const viewRight = (size.width - viewport.x) * invZoom;
-    const viewTop = -viewport.y * invZoom;
-    const viewBottom = (size.height - viewport.y) * invZoom;
-
-    // Padding for entities partially in view
-    const cullPadding = 300;
+    const visibleIds = culler.ids;
+    const visibleCount = culler.count;
 
     let bgCount = 0;
     let fgCount = 0;
     let movingRing = false;
 
-    for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
+    for (let i = 0; i < visibleCount; i++) {
+      const entity = entityMap.get(visibleIds[i]);
+      // The index is rebuilt from the same store this reads, but a frame can land between a
+      // delete and the rebuild, and a missing body is not worth a crash inside useFrame.
+      if (!entity) continue;
 
       // Skip special entity types (handled by separate renderers)
       if (isSelfDrawn(entity.type)) continue;
@@ -724,17 +759,6 @@ export function Entities() {
       const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
       const entityLayout = getEntitySocketLayout(entity, socketLayout);
       const height = entity.height ?? entityLayout.computedHeight;
-
-      // Frustum culling - skip entities outside viewport
-      const entityRight = entity.position.x + width;
-      const entityBottom = entity.position.y + height;
-
-      if (
-        entityRight < viewLeft - cullPadding ||
-        entity.position.x > viewRight + cullPadding ||
-        entityBottom < viewTop - cullPadding ||
-        entity.position.y > viewBottom + cullPadding
-      ) continue;
 
       // Route to foreground (selected) or background (non-selected) mesh
       const isSelected = selectedEntityIds.has(entity.id);

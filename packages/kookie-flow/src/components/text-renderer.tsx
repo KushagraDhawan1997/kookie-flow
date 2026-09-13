@@ -45,6 +45,8 @@ import { widgetValueText, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
 import { measureText } from '../utils/text-layout';
 import type { EdgeType, EdgeLabelConfig, SocketType } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
+import { type CullRect, inflateViewRect, viewEscaped } from '../utils/viewport-cull';
+import { indexConnectedSockets } from './sockets';
 import { isSelfDrawn } from '../utils/entity-kind';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 
@@ -67,29 +69,23 @@ const MIN_SOCKET_ZOOM = 0.35; // Below this, hide socket labels
 const MIN_EDGE_ZOOM = 0.25; // Below this, hide edge labels
 
 /**
- * How far past the screen edge a collected entry set reaches, as a fraction of the visible
- * world rect on each side.
+ * How far past the collected rect a label's own entity is still considered, in world units.
  *
- * THE DEFECT THIS FIXES. The viewport subscription marked the entry list dirty on every pan
- * frame, and a pan produces one store write per pointermove. Every one of those frames rebuilt
- * the whole entry list, re-walked every character of every label to count glyphs, re-tessellated
- * all of them into the instance buffers, and then re-uploaded the FULL capacity of four
- * attributes — instanceMatrix alone is capacity * 64 bytes — to the GPU. Measured on a dense
- * graph that is megabytes per frame of `bufferSubData` for data that had not changed by one bit:
- * glyph transforms are WORLD space, so panning the camera moves none of them. The only thing a
- * pan can change is which labels survive the cull.
+ * Text hangs off its entity — a status line prints under the bottom edge, a socket label to the
+ * side — so an entity just outside the rect can still put ink inside it. This is what keeps a
+ * label from popping in at the border: it is applied ON TOP of the hysteresis margin, both to the
+ * quadtree query that finds the entities and, unchanged, to the per-label test inside the passes,
+ * so an entity is collected well before its glyphs could reach the screen.
  *
- * So the set is collected for a rect wider than the screen, and re-collected only once the
- * screen has slid out of that rect. Everything collected outside the screen is still uploaded
- * and still drawn, which is why the margin is a fraction and not a large constant: the standing
- * cost is (1 + 2f)^2 more glyph instances every frame, against saving a full re-collect and
- * re-upload on roughly 1/f of the frames of a continuous pan. At 0.15 that is 1.7x the
- * instances for something like a 10x cut in dirty frames.
- *
- * Labels cannot pop in at the edge because `cullPadding` inside `collectTextEntries` is applied
- * on top of this rect, so an entity is collected well before its glyphs could reach the screen.
+ * THE MARGIN ITSELF — the fraction of the screen the set is collected for, and the reason a pan
+ * does not re-collect at all — is `CULL_HYSTERESIS` in utils/viewport-cull.ts. It was proved here
+ * first: this layer's dirty pass re-walks every character of every label, re-counts its glyphs,
+ * re-tessellates them into the instance buffers and re-uploads four attributes at FULL capacity —
+ * megabytes a frame on a dense graph, for data that had not changed by one bit, because glyph
+ * transforms are world space and a pan moves none of them. Every other GL layer was in the same
+ * shape and now shares the fix.
  */
-const CULL_HYSTERESIS = 0.15;
+const LABEL_CULL_PADDING = 100;
 
 /**
  * Which LOD gates the current zoom passes, as a bitmask.
@@ -115,40 +111,22 @@ export function lodBucket(zoom: number): number {
   );
 }
 
-/** A world-space rect in the renderer's Y-down coordinates: `top` is the smaller y. */
-export interface CullRect {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
-
 /**
- * Widen a visible world rect into the rect an entry set is collected for. Writes into `out`
- * rather than returning a rect: this runs inside the frame loop and must not allocate.
+ * The rect helpers live in utils/viewport-cull.ts now — every GL layer uses them, not just this
+ * one — and are re-exported here because this file is where they were proved and where their laws
+ * are written.
  */
-export function inflateViewRect(
-  out: CullRect,
-  left: number,
-  right: number,
-  top: number,
-  bottom: number
-): void {
-  const marginX = (right - left) * CULL_HYSTERESIS;
-  const marginY = (bottom - top) * CULL_HYSTERESIS;
-  out.left = left - marginX;
-  out.right = right + marginX;
-  out.top = top - marginY;
-  out.bottom = bottom + marginY;
-}
+export { type CullRect, inflateViewRect } from '../utils/viewport-cull';
 
 /**
  * Whether a set collected for `collected` at `collectedLod` still answers this view.
  *
- * The whole point of the hysteresis is that this returns false for most frames of a pan, so it is
- * the thing worth pinning down in a test: a set stays usable while the screen is inside the rect
- * it was collected for AND the zoom still passes the same LOD gates, and stops the instant either
- * stops being true.
+ * The rect half is the shared `viewEscaped`; what this adds is the LOD half, which is specific to
+ * text: four thresholds that change WHAT is collected without changing the rect it is collected
+ * for. The whole point of the hysteresis is that this returns false for most frames of a pan, so
+ * it is the thing worth pinning down in a test: a set stays usable while the screen is inside the
+ * rect it was collected for AND the zoom still passes the same LOD gates, and stops the instant
+ * either stops being true.
  */
 export function collectedSetIsStale(
   collected: CullRect,
@@ -160,12 +138,7 @@ export function collectedSetIsStale(
   bottom: number
 ): boolean {
   if (lodBucket(zoom) !== collectedLod) return true;
-  return (
-    left < collected.left ||
-    right > collected.right ||
-    top < collected.top ||
-    bottom > collected.bottom
-  );
+  return viewEscaped(collected, left, right, top, bottom);
 }
 
 /**
@@ -516,6 +489,18 @@ export function MultiWeightTextRenderer({
   const collectedWidthRef = useRef(0);
   const collectedHeightRef = useRef(0);
 
+  /** The quadtree's answer for the collected rect, and the box it is asked with. Both reused. */
+  const visibleIdsRef = useRef<string[]>([]);
+  const visibleQueryRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
+  /**
+   * Which input sockets carry an edge, by entity then by socket id — the same index widgets-gl
+   * keeps, for the same reason: the store answers this through a joined `"id:socket:input"` key,
+   * and building that string once per widget row per rebuild is the cost, not the lookup.
+   */
+  const connectedInputsRef = useRef<Map<string, Set<string>>>(new Map());
+  const connectedOutputsRef = useRef<Map<string, Set<string>>>(new Map());
+
   // Build socket index map
   const rebuildSocketIndexMap = useCallback(() => {
     const { entities } = store.getState();
@@ -543,7 +528,15 @@ export function MultiWeightTextRenderer({
       viewLeft: number,
       viewRight: number,
       viewTop: number,
-      viewBottom: number
+      viewBottom: number,
+      /**
+       * The entities inside the collected rect, from the quadtree, and how many of `visibleIds`
+       * is live. Three of the four passes below used to walk the WHOLE graph and reject entities
+       * one box test at a time; on a drag, which marks this layer dirty every frame, that was
+       * three full sweeps of the graph per frame to lay out a screenful of labels.
+       */
+      visibleIds: readonly string[],
+      visibleCount: number
     ): { regular: TextEntry[]; semibold: TextEntry[] } => {
       const regular: TextEntry[] = [];
       const semibold: TextEntry[] = [];
@@ -551,13 +544,11 @@ export function MultiWeightTextRenderer({
       if (!regularFont) return { regular, semibold };
 
       const {
-        entities,
         edges,
         entityMap,
         selectedEntityIds,
         stackOrder,
         hiddenEntityIds,
-        connectedSockets,
         widgetValues,
         editingWidgetKey,
         getEvaluationRecord,
@@ -565,12 +556,14 @@ export function MultiWeightTextRenderer({
 
       if (zoom < MIN_TEXT_ZOOM) return { regular, semibold };
 
-      const cullPadding = 100;
+      const cullPadding = LABEL_CULL_PADDING;
 
       // Entity headers (semibold) — skip types that render their own content.
       // `header="none"` draws no title at all; the layout reserves no band for one either.
-      for (const entity of entities) {
+      for (let vi = 0; vi < visibleCount; vi++) {
         if (config.header === 'none') break;
+        const entity = entityMap.get(visibleIds[vi]);
+        if (!entity) continue;
         if (isSelfDrawn(entity.type)) continue;
 
         // Collapsing a frame hides everything inside it, and this layer was the one place that
@@ -652,7 +645,9 @@ export function MultiWeightTextRenderer({
 
       // Socket labels (regular)
       if (showSocketLabels && zoom >= MIN_SOCKET_ZOOM) {
-        for (const entity of entities) {
+        for (let vi = 0; vi < visibleCount; vi++) {
+          const entity = entityMap.get(visibleIds[vi]);
+          if (!entity) continue;
           if (hiddenEntityIds.has(entity.id)) continue;
 
           const width = entity.width ?? DEFAULT_ENTITY_WIDTH;
@@ -799,7 +794,9 @@ export function MultiWeightTextRenderer({
         // v2 prints a control's value at the size's own type step — 14px at size 2, not a constant.
         const widgetFont = style.widgetFontSize;
         const glyphScale = widgetFont / regularFont.metrics.info.size;
-        for (const entity of entities) {
+        for (let vi = 0; vi < visibleCount; vi++) {
+          const entity = entityMap.get(visibleIds[vi]);
+          if (!entity) continue;
           if (hiddenEntityIds.has(entity.id)) continue;
           // Not `entity.inputs ?? []` — that mints an empty array for every input-less entity in
           // the graph, on every dirty frame, purely to ask its length. Same note widgets-gl carries.
@@ -826,7 +823,7 @@ export function MultiWeightTextRenderer({
             const socket = inputs[i];
             // A connected socket has no widget — its value comes down the edge. The store keys
             // this set per direction, so the suffix is part of the key.
-            if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+            if (connectedInputsRef.current.get(entity.id)?.has(socket.id)) continue;
             const key = widgetKey(entity.id, socket.id);
             // The borrowed input owns this box for the length of an edit and prints the value
             // itself; see the store field for why the suppression is stated rather than left to
@@ -1019,7 +1016,16 @@ export function MultiWeightTextRenderer({
     // What the person just set, ahead of the consumer echoing it back.
     const unsubWidgetValues = store.subscribe((s) => s.widgetValuesVersion, markDirty);
     // A value stops being shown the moment an edge lands on its socket.
-    const unsubConnected = store.subscribe((s) => s.connectedSockets, markDirty);
+    const reindexConnected = () => {
+      connectedInputsRef.current.clear();
+      connectedOutputsRef.current.clear();
+      indexConnectedSockets(store.getState().edges, connectedInputsRef.current, connectedOutputsRef.current);
+    };
+    reindexConnected();
+    const unsubConnected = store.subscribe((s) => s.connectedSockets, () => {
+      reindexConnected();
+      markDirty();
+    });
     // Suppression under a borrowed input, on and off.
     const unsubEditingWidget = store.subscribe((s) => s.editingWidgetKey, markDirty);
     // An error message appears or clears with the engine's records, which are entity-external.
@@ -1103,12 +1109,33 @@ export function MultiWeightTextRenderer({
     // Collect for a rect wider than the screen so the next several frames of a pan can reuse it.
     inflateViewRect(rect, viewLeft, viewRight, viewTop, viewBottom);
 
+    /**
+     * Which entities that rect holds, from the quadtree — not from a sweep of the graph.
+     *
+     * The query box carries `LABEL_CULL_PADDING` on top of the rect because the passes below
+     * apply the same padding again when they test an individual label; querying for the bare rect
+     * would drop an entity whose title or error line reaches into view from just outside it.
+     *
+     * `visibleIdsRef` is caller-owned and reused, so this allocates nothing per collect, and
+     * `count` rather than `length` says how much of it is live.
+     */
+    const visibleQuery = visibleQueryRef.current;
+    visibleQuery.x = rect.left - LABEL_CULL_PADDING;
+    visibleQuery.y = rect.top - LABEL_CULL_PADDING;
+    visibleQuery.width = rect.right - rect.left + LABEL_CULL_PADDING * 2;
+    visibleQuery.height = rect.bottom - rect.top + LABEL_CULL_PADDING * 2;
+    const visibleCount = store
+      .getState()
+      .quadtree.queryRangeInto(visibleQuery, visibleIdsRef.current);
+
     const { regular, semibold } = collectTextEntries(
       viewport.zoom,
       rect.left,
       rect.right,
       rect.top,
-      rect.bottom
+      rect.bottom,
+      visibleIdsRef.current,
+      visibleCount
     );
 
     // Update refs directly - available immediately to child useFrame calls
