@@ -1859,6 +1859,24 @@ function InputHandler({
     [store, socketLayout]
   );
 
+  /**
+   * The next Tab gives the browser's focus ring back to the canvas.
+   *
+   * A press takes the ring away (see the focus call in `handlePointerDown`), so a keyboard user
+   * arriving by Tab — from the page, or back from a panel outside the canvas — still sees where
+   * focus went. Only Tab: Delete, Escape, the arrows and the shortcuts are the keyboard working ON
+   * the canvas, whose keyboard cursor and widget focus ring already say where it is. The canvas
+   * never keeps Tab for itself; an open panel closes on it and lets it through. Capture phase,
+   * because the controls inside the canvas stop their keys from propagating.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' && containerRef.current) containerRef.current.style.outline = '';
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!containerRef.current) return;
@@ -1870,6 +1888,12 @@ function InputHandler({
       // and clicking a tabindex=0 div only focuses it by browser convention — which `preventDefault`
       // on a middle-click press already breaks. Stating it here makes the gate's precondition
       // something this component guarantees rather than something it hopes for.
+      //
+      // WITHOUT THE BROWSER'S RING. Focus set by script matches `:focus-visible`, so every press
+      // drew the browser's outline around the whole canvas, as if the user had tabbed to it — in an
+      // app shell, a ring around the entire content pane. A press is not the keyboard; the Tab
+      // listener above brings the ring back for the keyboard.
+      containerRef.current.style.outline = 'none';
       if (document.activeElement !== containerRef.current) {
         containerRef.current.focus({ preventScroll: true });
       }

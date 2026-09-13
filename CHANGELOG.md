@@ -80,6 +80,10 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Fixed
 
+- **A click on the canvas drew the browser's focus ring around all of it.** The canvas focuses
+  itself on every press so its keys work, and focus set by script counts as keyboard focus, so an
+  app shell showed a ring around its whole content pane after any click. A press no longer draws
+  it. Tab still does, so a keyboard user arriving on the canvas sees where focus went.
 - **Media controls show what a press will do.** The cursor was the plain arrow over all of a media
   node's chrome, so the strip that moves a model — as opposed to the body that turns it — could
   only be found by being told about it. It is now a pointer on the corner button and a clip's bar,
