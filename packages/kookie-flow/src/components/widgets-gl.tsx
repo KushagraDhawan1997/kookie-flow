@@ -855,6 +855,21 @@ export function WidgetsGL({
       bgMesh.count = 0;
       fgMesh.count = 0;
       dirtyRef.current = false;
+      /**
+       * Tell the gate the meshes are EMPTY, or coming back is not enough to refill them.
+       *
+       * This return tears both meshes down behind the culler's back: it happens before `refresh`,
+       * so the gate still believes the set it last collected is on the GPU. Zoom out one notch past
+       * this threshold and back in and the viewport is numerically identical — `store.zoom` is
+       * additive and leaves x/y alone — so `moved()` finds the same band and no escape, answers
+       * false, and the frame returns with both counts still zero. Every slider, toggle and colour
+       * well on screen stays gone.
+       *
+       * Moving the threshold test below `refresh` does NOT fix it: MIN_WIDGET_ZOOM is 0.4, which
+       * sits INSIDE zoom band -11 ([0.369, 0.403)), so an excursion across the threshold need not
+       * cross a band at all.
+       */
+      cullerRef.current?.invalidate();
       return;
     }
 

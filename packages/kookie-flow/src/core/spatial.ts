@@ -362,7 +362,32 @@ export class Quadtree {
    * be total. Growing costs one O(n) re-index on the rare crossing and nothing at all otherwise.
    */
   private insertOrGrow(id: string, bounds: Bounds): void {
-    if (this.insert(id, bounds)) {
+    /**
+     * CONTAINED in the root, not merely intersecting it — which is all `insert` reports.
+     *
+     * `insertEntry` returns true as soon as the bounds OVERLAP a quadrant, so an entity that hangs
+     * over the edge of the narrowed root took this fast path, was recorded in `idToEntry`, and was
+     * filed only under the quadrants it happened to overlap. The part of it outside the root has no
+     * quadrant to live in, and every query bails at the root's own `intersects`/`containsPoint`
+     * check before reaching it — so the entity was in the index and reachable by nothing.
+     * Reproduced: rebuild narrows the root, then drag a tall frame up past the top of the graph and
+     * `queryPoint` inside it returns [].
+     *
+     * This predates the render cull and used to cost only a hit test — the renderers walked every
+     * entity, so the node still drew and merely could not be clicked. Now that they walk the
+     * index, an entity the index cannot return is an entity that is not drawn at all: body,
+     * sockets and label together.
+     *
+     * The `&&` short-circuits so `insert` never runs on the grow path, which would leave a
+     * half-filed copy for the re-index below to duplicate.
+     */
+    const root = this.bounds;
+    const contained =
+      bounds.x >= root.x &&
+      bounds.y >= root.y &&
+      bounds.x + bounds.width <= root.x + root.width &&
+      bounds.y + bounds.height <= root.y + root.height;
+    if (contained && this.insert(id, bounds)) {
       return;
     }
 

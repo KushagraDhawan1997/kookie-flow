@@ -201,6 +201,52 @@ describe('ViewportCuller', () => {
     for (const id of onScreen) expect(collected.has(id)).toBe(true);
   });
 
+  /**
+   * THE CONVERSE, which is the half that actually pins the optimisation.
+   *
+   * Everything above asserts that what was collected lies inside `rect`. That is satisfied just as
+   * well by collecting for the BARE SCREEN — which is the "collects too tightly" bug this file
+   * exists to prevent, and which is invisible until you pan: the margin is what the skipped frames
+   * are covered by, so without it a node pops in ~192 world units late at the leading edge, on
+   * every quadtree-backed layer at once. Proven necessary by mutation: replacing the query box in
+   * `ViewportCuller.refresh` with the bare view rect left all fifteen other tests green.
+   *
+   * So this states the direction that mutation breaks: the set is a superset of what the collected
+   * rect holds, AND strictly larger than a screen-sized scan would have returned.
+   */
+  it('collects for the inflated rect, not the bare screen', () => {
+    const entities = board(800);
+    const qt = tree(entities);
+    const culler = new ViewportCuller();
+    culler.refresh(qt, -1500, -900, 1, W, H, 0);
+
+    const collected = new Set(culler.ids.slice(0, culler.count));
+    const rect = culler.rect;
+
+    const inRect = entities.filter(
+      (e) =>
+        e.position.x + (e.width ?? 0) >= rect.left &&
+        e.position.x <= rect.right &&
+        e.position.y + (e.height ?? 0) >= rect.top &&
+        e.position.y <= rect.bottom
+    );
+    // Nothing the collected rect holds may be missing from the set.
+    expect(inRect.length).toBeGreaterThan(0);
+    for (const e of inRect) expect(collected.has(e.id)).toBe(true);
+
+    const view = emptyCullRect();
+    worldViewRect(view, -1500, -900, 1, W, H);
+    const onScreen = entities.filter(
+      (e) =>
+        e.position.x + (e.width ?? 0) >= view.left &&
+        e.position.x <= view.right &&
+        e.position.y + (e.height ?? 0) >= view.top &&
+        e.position.y <= view.bottom
+    );
+    // And the margin must actually buy something: strictly more than the screen alone holds.
+    expect(collected.size).toBeGreaterThan(onScreen.length);
+  });
+
   it('does not re-query on a pan that stays inside the margin', () => {
     const culler = new ViewportCuller();
     const qt = tree(board(400));

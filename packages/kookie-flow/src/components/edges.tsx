@@ -312,6 +312,32 @@ export function planEdgeUpdate(dirty: {
 }
 
 /**
+ * Which dirty flags a FINISHED pass is allowed to clear — the companion to `planEdgeUpdate`, and a
+ * law rather than a convenience.
+ *
+ * `planEdgeUpdate` decides what a frame owes before the pass; this decides what it may forget
+ * after, and the difference matters for one flag. The geometry flag is an INPUT to the plan (a set
+ * flag means 'full'), so on a partial frame it was false when the plan was made — which means any
+ * value it holds at the end was raised BY the pass, by the cull branch, on an edge that entered or
+ * left the rect and needs the vertex layout relaid. Clearing it unconditionally erased those
+ * requests in the frame that made them, and the whole culled-edge path was inert: a wire dragged
+ * back into view never got vertices, and a wire dragged out of view kept drawing where it used to
+ * be. Colour has always been guarded for the same reason — a partial pass services only the edges
+ * that moved, so a colour change asked for in the same frame is still owed by the rest of the graph.
+ *
+ * A pure function so the law is stated once and pinned in edges.test.ts, where the plan's is.
+ */
+export function flagsToClearAfterEdgePass(geometry: EdgeUpdatePlan['geometry']): {
+  geometry: boolean;
+  position: boolean;
+  color: boolean;
+  layer: boolean;
+} {
+  const full = geometry === 'full';
+  return { geometry: full, position: true, color: full, layer: true };
+}
+
+/**
  * High-performance mesh-based edge renderer.
  *
  * Uses triangle strips (ribbons) with custom ShaderMaterial for:
@@ -1220,6 +1246,22 @@ export function Edges({
               evCounts[i] = 0;
               edgeLayers[i] = 0;
               edgeCulled[i] = 1;
+            } else if (!edgeCulled[i]) {
+              /**
+               * LEAVING, on a drag — the mirror of the arrival guard below, and the direction the
+               * first cut of this missed entirely.
+               *
+               * `edgeCulled[i] === 0` means the last rebuild DREW this edge, so its vertices are
+               * live inside the draw range — and the draw range is `[0, lastVertexCount)`, which
+               * only a full rebuild rewrites. Skipping the edge here leaves those vertices exactly
+               * where they were: a ribbon painted across empty canvas at the position the edge used
+               * to have. Zeroing `evCounts[i]` would not help, because nothing reads it to decide
+               * what is drawn.
+               *
+               * Fires at most once per edge per rebuild cycle: the rebuild this asks for records
+               * the edge as culled, and a culled edge takes the branch above instead.
+               */
+              geometryDirtyRef.current = true;
             }
             continue;
           }
@@ -1781,14 +1823,13 @@ export function Edges({
       buffers.lastVertexCount = vertexIndex;
       hasLiveRef.current = anyLive;
     }
-    geometryDirtyRef.current = false;
-    positionDirtyRef.current = false;
-    // A partial update rewrites only the edges that moved, so a colour change asked for in the
-    // same frame has not been serviced for the rest of the graph. Clearing the flag here would
-    // throw that request away the way the layer flip used to be thrown away; leaving it set costs
-    // one colour pass on the first frame after the drag settles.
-    if (!isPartialUpdate) colorDirtyRef.current = false;
-    layerDirtyRef.current = false;
+    // What this pass may forget; see flagsToClearAfterEdgePass for why a partial one keeps the
+    // geometry request the cull branch above may have raised.
+    const clear = flagsToClearAfterEdgePass(plan.geometry);
+    if (clear.geometry) geometryDirtyRef.current = false;
+    if (clear.position) positionDirtyRef.current = false;
+    if (clear.color) colorDirtyRef.current = false;
+    if (clear.layer) layerDirtyRef.current = false;
   });
 
   return (

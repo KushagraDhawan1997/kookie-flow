@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planEdgeUpdate, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom, segmentsForZoom } from './edges';
+import { planEdgeUpdate, flagsToClearAfterEdgePass, packEdgeFlags, packVertexSide, unpackEdgeFlags, edgeHalfWidthAtZoom, segmentsForZoom } from './edges';
 
 /**
  * The edge renderer's four dirty flags do not compose into four independent passes, and the
@@ -170,5 +170,54 @@ describe('segmentsForZoom', () => {
     expect(segmentsForZoom(0)).toBe(64);
     expect(segmentsForZoom(-1)).toBe(64);
     expect(segmentsForZoom(Number.NaN)).toBe(64);
+  });
+});
+
+/**
+ * What a finished pass may FORGET — the other half of planEdgeUpdate, and the law whose absence
+ * made the whole culled-edge path inert.
+ *
+ * The geometry flag is an INPUT to the plan: a set flag means 'full'. So on a partial frame it was
+ * false at plan time, and any value it holds when the pass ends was raised BY the pass — by the
+ * cull branch, on an edge that entered or left the rect, each of which needs the vertex layout
+ * relaid before it can be drawn or dropped. The pass used to clear it unconditionally, which erased
+ * those requests in the frame that made them: a wire dragged back into view never got vertices, and
+ * a wire dragged out of view went on drawing at the position it used to have, over empty canvas.
+ * Both are ordinary gestures — auto-layout, a select-all drag — and neither was caught by anything.
+ *
+ * These are laws about which requests a frame is allowed to throw away, stated where the laws about
+ * which passes it owes already live.
+ */
+describe('flagsToClearAfterEdgePass', () => {
+  it('keeps the geometry request a partial pass raised for itself', () => {
+    expect(flagsToClearAfterEdgePass('partial').geometry).toBe(false);
+  });
+
+  it('clears the geometry flag after a full rebuild, which has serviced it', () => {
+    expect(flagsToClearAfterEdgePass('full').geometry).toBe(true);
+  });
+
+  it('keeps a colour request a partial pass could not service for the whole graph', () => {
+    // Unchanged behaviour, restated here so the two guards cannot drift apart again: a partial pass
+    // rewrites only the edges that moved, so the rest of the graph is still owed the colour pass.
+    expect(flagsToClearAfterEdgePass('partial').color).toBe(false);
+    expect(flagsToClearAfterEdgePass('full').color).toBe(true);
+  });
+
+  it('always clears position and layer, which every pass services in full', () => {
+    for (const geometry of ['full', 'partial'] as const) {
+      expect(flagsToClearAfterEdgePass(geometry).position).toBe(true);
+      expect(flagsToClearAfterEdgePass(geometry).layer).toBe(true);
+    }
+  });
+
+  /**
+   * The composition that matters: a partial frame that raises a rebuild must leave the NEXT frame
+   * planning a full one. If either half of this regresses, a culled edge is never relaid.
+   */
+  it('a rebuild raised during a partial pass survives into the next plan', () => {
+    const raisedDuringPass = true; // the cull branch, on an arriving or departing edge
+    const kept = !flagsToClearAfterEdgePass('partial').geometry && raisedDuringPass;
+    expect(planEdgeUpdate({ geometry: kept, position: true, color: false, layer: false }).geometry).toBe('full');
   });
 });

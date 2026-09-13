@@ -203,3 +203,62 @@ describe('Quadtree.queryRangeInto', () => {
     expect(first).toBeGreaterThan(0);
   });
 });
+
+/**
+ * THE INDEX MUST BE TOTAL EVEN FOR AN ENTITY THAT OVERHANGS THE ROOT.
+ *
+ * `rebuild` narrows the root to the content bounding box plus slack, and `insertEntry` returns true
+ * as soon as bounds merely OVERLAP a quadrant. So `insertOrGrow`'s fast path, which trusted that
+ * boolean, accepted an entity hanging over the root's edge: it went into `idToEntry` and into the
+ * quadrants it happened to overlap, while the part outside the root had nowhere to live — and every
+ * query bails at the root's own bounds check before reaching it. The entity was in the index and
+ * reachable by nothing.
+ *
+ * This is why it is stated against the QUERIES rather than against `size` or `idToEntry`: the index
+ * remembering an entity is not the property anything depends on. It predates the render cull and
+ * used to cost only a missed click; now that the renderers walk the index, an entity it cannot
+ * return is an entity that is not drawn — body, sockets and label together.
+ */
+describe('Quadtree keeps an entity that overhangs the root reachable', () => {
+  const wide = { x: -10000, y: -10000, width: 20000, height: 20000 };
+
+  it('finds a tall entity dragged past the top of the narrowed root', () => {
+    const qt = new Quadtree(wide);
+    qt.rebuild([entity('a', 0, 0), entity('b', 400, 0), entity('tall', 800, 0)]);
+
+    // Up and out: the box now reaches far above the root rebuild left behind.
+    qt.update('tall', { x: 800, y: -5500, width: 240, height: 5000 });
+
+    expect(qt.queryPoint(900, -4000)).toContain('tall');
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: 700, y: -4500, width: 900, height: 1500 }, out);
+    expect(out.slice(0, count)).toContain('tall');
+    expect(qt.queryRange({ x: 700, y: -4500, width: 900, height: 1500 })).toContain('tall');
+  });
+
+  it('keeps every other entity reachable across the re-index the growth forces', () => {
+    const qt = new Quadtree(wide);
+    qt.rebuild([entity('a', 0, 0), entity('b', 400, 0), entity('tall', 800, 0)]);
+
+    qt.update('tall', { x: 800, y: -5500, width: 240, height: 5000 });
+
+    expect(qt.queryPoint(10, 10)).toContain('a');
+    expect(qt.queryPoint(410, 10)).toContain('b');
+    // And no duplicate left behind by growing around a half-filed entry.
+    const out: string[] = [];
+    const count = qt.queryRangeInto({ x: -9000, y: -9000, width: 18000, height: 18000 }, out);
+    const seen = out.slice(0, count);
+    expect(seen.length).toBe(new Set(seen).size);
+    expect(seen.sort()).toEqual(['a', 'b', 'tall']);
+  });
+
+  it('finds an entity that overhangs on each of the four sides', () => {
+    for (const [dx, dy] of [[-9000, 0], [9000, 0], [0, -9000], [0, 9000]]) {
+      const qt = new Quadtree(wide);
+      qt.rebuild([entity('anchor', 0, 0), entity('mover', 400, 0)]);
+      qt.update('mover', { x: dx, y: dy, width: 6000, height: 6000 });
+      expect(qt.queryPoint(dx + 10, dy + 10)).toContain('mover');
+      expect(qt.queryPoint(10, 10)).toContain('anchor');
+    }
+  });
+});
