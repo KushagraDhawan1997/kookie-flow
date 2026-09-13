@@ -336,6 +336,12 @@ export interface ImageEntityData extends EntityData {
   objectFit?: 'contain' | 'cover' | 'fill';
   /** Lock aspect ratio during resize (default true for images; Shift inverts) */
   aspectLocked?: boolean;
+  /**
+   * The expand button, drawn in the top-right corner under the pointer. Default: true.
+   *
+   * It opens the picture in a viewer over the page. `false` for a picture used as decoration.
+   */
+  controls?: boolean;
 }
 
 /** Data for video entities */
@@ -406,6 +412,12 @@ export interface MeshEntityData extends EntityData {
    * gives the body back to dragging and leaves the model at its stated camera.
    */
   orbit?: boolean;
+  /**
+   * The expand button, drawn in the top-right corner under the pointer. Default: true.
+   *
+   * It opens the model in a viewer over the page, where it can be turned at full size.
+   */
+  controls?: boolean;
 }
 
 /** Draw entity type */
@@ -554,6 +566,22 @@ export interface EntityPreview {
   height?: number;
   /** Whether the picture fills the band and crops, or fits inside it whole. Default: 'cover'. */
   fit?: 'cover' | 'contain';
+  /**
+   * Where the band sits in the body. Default: `'bottom'`.
+   *
+   * `'bottom'` is the default because adding a band to an existing node then moves nothing: every
+   * socket keeps the row it had and the card grows downwards. `'top'` is for a node whose picture
+   * IS its point — a generator, where the result is what you look at and the inputs are the
+   * controls underneath it.
+   */
+  position?: 'top' | 'bottom';
+  /**
+   * The same controls a media entity carries, drawn on the band under the pointer. Default: true.
+   *
+   * Every band gets the expand button. A clip also gets its play bar, and a model turns when the
+   * band is dragged — the rest of the card still moves the node.
+   */
+  controls?: boolean;
 }
 
 /** Edge connecting two entities */

@@ -125,7 +125,7 @@ vendor/                the packed @kookie-ui/react tarball that both workspaces 
 
 ## Commands
 
-Run these from the repository root. They need pnpm 10 and Node 20 or later.
+Run these from the repository root. They need pnpm 12 and Node 24 or later; `.nvmrc` pins 26 for local work.
 
 | command | what it does |
 |---|---|
@@ -133,7 +133,7 @@ Run these from the repository root. They need pnpm 10 and Node 20 or later.
 | `pnpm docs` | runs the docs site alone |
 | `pnpm test` | runs the package's unit tests with vitest |
 | `pnpm test:browser` | builds the harness and runs the behaviour checks in Chromium. It needs a Playwright Chromium (`npx playwright install chromium`), or a Chromium binary's path in `KOOKIE_CHROMIUM`. |
-| `pnpm lint` | type-checks the package and its harness. It also runs `next lint` in the docs site, which has no ESLint config yet, so that step asks to set one up rather than linting. |
+| `pnpm lint` | type-checks every workspace: the package and its harness, `studio-core`, the docs site and the studio |
 | `pnpm format` | formats the repository with Prettier |
 | `pnpm format:check` | reports files that Prettier would change |
 | `pnpm build` | builds the package and the docs site |

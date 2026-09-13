@@ -227,7 +227,7 @@ export const CHAPTERS: readonly Chapter[] = [
     blurb:
       "Show pictures, video clips, and glTF models on the canvas, and let a node show whatever one of its outputs holds inside its own body.",
     source: "entities/media.mdx",
-    examples: ["media"],
+    examples: ["media", "preview-band"],
     Content: Media,
   },
 

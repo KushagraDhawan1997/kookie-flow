@@ -1267,3 +1267,123 @@ stylesheet. What changed, by v2's own headings:
 - **Digits are not tabular.** v2 sets `font-variant-numeric: tabular-nums` on a number field. The
   MSDF atlas has one glyph per character and no OpenType features, so the number is centred without
   it.
+
+
+### D21, 2026-09-12 — the magnet
+
+**Owner ruling: "I dont like that the edge starts from the center of socket, it looks weird,
+there's no anchor... I'm imagining a magnetic behaviour where the socket is magnetically drawn to
+the edge in proximity, and when it recognises, it sort of morphs."**
+
+A socket was a hollow ring and a dragged wire ended under the pointer, passing through the ring's
+hole. Nothing anchored the two, and the only feedback that a drop would land was a nine-pixel hit
+test lighting a halo. The magnet replaces that with physics.
+
+**One record, three readers.** `gl/magnet.ts` holds the state: which socket is pulling, where it
+is, where the wire's tip actually is, how hard it pulls, and which stage the socket is in. It is a
+spring and a distance and nothing else — no store, no theme, no component — so it leaves with the
+GL seam. The store owns one instance for its life, mutated in place like `widgetValues`, because it
+is written on every pointer move AND every frame of a drag. Nothing subscribes: the socket layer,
+the connection line and the pointer path all already run while a drag is live, and they read it
+there. That is also why a drag still costs no React work.
+
+**The ladder.** Dormant: a hollow ring, as before. Awake, when a socket that could accept the wire
+comes within FOUR socket radii: the ring thickens from 1.5px to 3px and the halo lights in
+proportion to the pull. Recognised, inside a radius and a quarter: the hole closes and the dot
+swells by 1.2px, so what the wire meets is a plug. Welded: the release connects.
+
+Two and a half radii was the first reach, and measured against the socket's own ten-pixel hit test
+it was too tight to feel — fifteen world px, under half the width of the target the same socket
+already claims for a press. Four radii is the number the spike's stages read cleanly at.
+
+**The tip lags.** The wire ends at the tip, not the pointer, and the tip springs toward a goal that
+is the pointer pulled toward the socket by the pull. Critically damped, by the same rule v2 sets
+for its own springs: a wire tip that overshot the socket would be a wire tip that is hard to aim.
+
+**The bridge is one field, not two shapes.** The socket and the tip are both discs, blended with a
+polynomial smooth minimum whose width grows with the pull. Far out the tip is its own round head;
+close in there is a single pool of metal with a real surface at every distance between. The hue
+crosses where the two fields do, so the wire becomes the socket rather than ending at it.
+
+The socket's own disc is CUT OUT of that field. The first cut painted the blend straight over the
+socket, which hid the whole morph — the ring thickening, the hole closing, the swell — behind a
+solid disc from the moment a wire came into reach. The bridge draws the metal between the two and
+nothing else; the socket draws itself.
+
+**Refusal is physical.** An incompatible socket — wrong type, the wire's own node, or a connection
+that would make a cycle — is still handed to the magnet, so it can stiffen: it keeps its hole,
+drains 55% of its hue and pulls nothing, and the tip skids past it. Compatibility is felt in the
+drag instead of read off a colour.
+
+**The release is the point.** A drop inside the pull connects to the socket that was holding the
+wire, even though the pointer never reached its dot. Hover still wins where both answer, because
+the pointer is the more explicit of the two.
+
+**The resting join, and the pointer.** Owner ruling, on seeing the magnet ship without either:
+"it still comes from fucking center and the socket isnt magnetically drawn to the edge?" Both were
+fair. The magnet only acted during a drag, and a resting edge still ran to the socket's centre.
+
+- **The rim anchor.** An edge now starts at the socket's drawn edge and leaves along the socket's
+  axis for a six-px leader before the curve. Every edge type derives its control points from the
+  LEADER ENDS rather than the sockets: measured from the sockets, a short edge put its first
+  control point almost on top of the leader's end, the opening segment collapsed, the
+  degenerate-segment guard dropped it, and the ribbon started a leader's length from the plug. The
+  endpoint law was restated to expect the rim, and reads the offset from the library rather than
+  keeping its own copy.
+- **The punch is gone on a connected socket.** That 1.5px ring of canvas colour exists so a ribbon
+  passing UNDER a socket reads behind it. A connected socket has no wire passing under it any more,
+  so the ring only cut the plug off from the leader welded to it.
+- **The lean.** A socket leans up to five world px toward a pointer within four radii, with no drag
+  at all, thickening its ring and lighting its own hue. It is a uniform plus a vertex offset — the
+  offset applied AFTER the instance transform, which the first cut got wrong, multiplying the
+  displacement a second time and sending every socket off screen. Proximity lights the socket's own
+  colour, never the valid-target green: a cursor passing by is not a drop verdict.
+- **What the fixture hid.** Three rounds of this were spent reading red dashes as a broken join. The
+  harness's default scene gives every socket a random type, so every generated edge fails the
+  compatibility check and paints invalid — dashed, glowless, ending on a gap. `typed=1` is the flag
+  that makes edges valid, and it is the only scene worth judging a join in.
+
+**The drag's own wire, and a pointer that was never there.** Owner ruling, on a screenshot of a
+drag: "it still appears in center of the socket." Correct, and the earlier fix's fault — the rim
+anchor was applied to `edges.tsx` and the laws written against it, while the wire a person actually
+watches while connecting is drawn by `connection-line.tsx` and was never touched. Two meshes, two
+geometry paths, and only one of them moved.
+
+- **The dragged wire starts at the rim.** Same leader as a resting edge, same reason the control
+  points come from the leader's end rather than the socket's centre. The mesh is now named, so the
+  law reads the start off the geometry instead of guessing it from pixels.
+- **A drag's source socket counts as connected.** Only for the punch: the ring of canvas colour has
+  nothing to hide when the wire starts at the rim, and it cut the new wire off from its own plug.
+- **NaN is not a signal a shader can read.** Pointer absence was NaN, tested `uPointer.x ==
+  uPointer.x`. GLSL compilers may assume no NaNs and fold that to true, so at rest every socket
+  computed full proximity and wore its halo with no cursor on the page — measured at alpha 0.22,
+  which is one state term lit exactly. Presence is a float uniform now, and the pointer is written
+  as (0,0) when there is none, so a flattened branch cannot spread NaN into a vertex position.
+- **What the laws were not watching.** Both defects sat in the state a socket spends most of its
+  life in — nothing happening to it — or in the one mesh no law addressed. The two new laws are the
+  arms for exactly that: where a dragged wire begins, and that a resting socket is dark while a
+  pointer beside it is not.
+
+### Addendum, 2026-09-13 — media controls are liquid glass
+
+**Owner ruling: "they dont look glass, they look like blur, see liquid glass, I want sth similar."**
+
+Media chrome (the expand button on every picture, clip and model; a clip's play bar; a model's
+grip, standalone and in a node's band) is drawn on the media quad and blurs the media texture itself,
+so it needs no framebuffer copy. The first cut took the floating panel's numbers — 49% tint, heavy
+disc blur, 2x saturation — and a panel's job is to hide its ground; on media it read as frost and
+printed yellow blotches.
+
+It is now v2's LENS, ported to GL (`src/gl/lens.ts`, from v2's `system/refraction.tsx`): Snell's law
+across a curved bezel on v2's P = 2 / Q = 0.25 profile, channels split by the fringe, v2's 2x boost,
+and v2's glint at (1 - t)^4 across the rim, brighter where the rim faces the top-left light and its
+reflection. GL runs it on every engine, where v2's SVG filter is Chromium-only. D5's "GL lensing is
+out of scope" is superseded for media.
+
+Measured on a frame of the demo clip, both appearances, at 3x:
+
+- v2's thick rung bezel (6.5px) lensed only the outer pixels of a 28px control and read as an outline.
+  The bezel is 9px with thickness scaled by v2's `fitLens` rule; the split is the thin rung's 18%.
+- Bent OUTWARD the lip sampled past the media edge and drew a white band the split printed orange. The
+  bend samples inward, clamped to the picture.
+- Body: 2px blur, a third of the floating tint, a third of the saturation boost. The rim does the work.

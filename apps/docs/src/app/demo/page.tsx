@@ -1295,7 +1295,9 @@ export default function DemoPage() {
         showEdgeLabels
         // Styling props (Milestone 2)
         size="2"
-        variant="classic"
+        // No variant: v2's Card is "one treatment and no variants", and `classic` was the only
+        // one reading a --shadow-N token — a DOM card's tight shadow on a thing that floats over
+        // a canvas. The default surface treatment is the node look, and it is what studio renders.
         radius="medium"
         header="outside"
         accentHeader

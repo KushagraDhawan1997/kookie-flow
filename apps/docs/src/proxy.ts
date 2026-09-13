@@ -34,7 +34,7 @@ import { alternateLink, markdownRoute, prefersMarkdown } from "./app/(docs)/nego
  * this alternation or it quietly loses its negotiation.
  *
  * Every path this site serves a twin for is two segments: a chapter carries its section
- * (`start/installation`). The dot exclusion keeps `/entities/model.md` out — middleware runs
+ * (`start/installation`). The dot exclusion keeps `/entities/model.md` out — the proxy runs
  * BEFORE `next.config.mjs`'s rewrites, so the twin's own URL arrives here first and must be
  * left to the route it already has. Naming the sections rather than matching any two segments
  * is also what keeps `_next`, static files and the full-screen demo routes out of this file.
@@ -43,7 +43,7 @@ export const config = {
   matcher: ["/((?:start|entities|edges|data|interaction|styling|api)/[^/.]+)"],
 };
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const response = prefersMarkdown(request.headers.get("accept"))
     ? NextResponse.rewrite(new URL(markdownRoute(pathname), request.url))

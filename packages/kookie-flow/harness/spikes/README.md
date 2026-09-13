@@ -67,3 +67,18 @@ how a look that did not match v2 got approved by its author. This spike builds
 next to the canvas at the same device scale, closed and with a list open, in both appearances
 (`dist/compare/`). `v2-probe.mjs` prints each v2 part's computed style, pseudo-elements included,
 so a number can be read off the real control and not guessed from a token.
+
+## magnet.mjs: a wire dragged into a socket
+
+The pull, the morph and the fused bridge (gl/magnet.ts, D21) are a LOOK and a FEEL, and the laws
+can only assert the parts that are numbers — that a compatible socket pulls, that a release inside
+the pull connects, that a refusing one pulls nothing. This walks a drag in from out of reach to on
+the dot in the magnet's own units, shooting each stage around the TARGET socket and printing the
+stage, the pull, the verdict and how far the tip is lagging the pointer. It does it twice: once
+against a socket that accepts and once against one that refuses, in both appearances
+(`dist/magnet/`).
+
+What to look for: at `awake` the ring thickens and the tip is a separate head held short of it; at
+`recognised` the tip reaches the rim; at `fused` the hole is closed, the dot has swelled and the
+neck has merged into it. A refusing socket must look untouched at every stage.
+

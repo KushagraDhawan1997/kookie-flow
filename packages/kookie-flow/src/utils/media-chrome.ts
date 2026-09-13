@@ -18,6 +18,62 @@ export const CONTROL_BAR_INSET = 8;
 export const CONTROL_BUTTON_SIZE = 20;
 /** The gap between the button and the track. */
 export const CONTROL_GAP = 8;
+/** Where the track stops short of the bar's right end, so it clears a pill bar's round cap. */
+export const CONTROL_TRACK_END_PAD = 14;
+
+/**
+ * The button in the top-right corner that opens the media in the viewer.
+ *
+ * Every piece of media carries it — a picture, a clip, a model, standalone or in a node's band —
+ * so the one control a person can count on is always in the same place.
+ */
+export const EXPAND_BUTTON_SIZE = 28;
+
+/**
+ * How fast chrome fades in and out, as a share of the remaining distance per second. Fast enough
+ * to feel attached to the pointer, slow enough not to flicker when it crosses a corner.
+ */
+export const CHROME_FADE_RATE = 12;
+
+/**
+ * Move a fade toward where it should be and return where it now is.
+ *
+ * Frame-rate independent: the same share of what is left is covered per second at any refresh
+ * rate. The last sliver snaps, so a fade actually ends and the pass can stop running for it.
+ */
+export function easeChromePresence(
+  presences: Map<string, number>,
+  id: string,
+  wanted: boolean,
+  delta: number
+): number {
+  const target = wanted ? 1 : 0;
+  const from = presences.get(id) ?? 0;
+  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
+  const next = from + (target - from) * alpha;
+  const settled = Math.abs(target - next) < 0.004 ? target : next;
+  if (settled === 0) presences.delete(id);
+  else presences.set(id, settled);
+  return settled;
+}
+
+/** Whether media this size can carry the expand button. Smaller than a bar needs: it is one square. */
+export function fitsExpand(width: number, height: number): boolean {
+  return width >= 64 && height >= 48;
+}
+
+/** Whether a press, in the media's own coordinates, lands on the expand button. */
+export function hitExpandButton(localX: number, localY: number, width: number, height: number): boolean {
+  if (!fitsExpand(width, height)) return false;
+  const right = width - CONTROL_BAR_INSET;
+  const top = CONTROL_BAR_INSET;
+  return (
+    localX >= right - EXPAND_BUTTON_SIZE &&
+    localX <= right &&
+    localY >= top &&
+    localY <= top + EXPAND_BUTTON_SIZE
+  );
+}
 
 /**
  * The strip along the top of a model preview that MOVES the entity.
@@ -71,7 +127,7 @@ export function hitVideoControls(
   if (localX <= buttonRight) return { kind: 'play', t: 0 };
 
   const trackLeft = buttonRight;
-  const trackWidth = barRight - trackLeft;
+  const trackWidth = barRight - CONTROL_TRACK_END_PAD - trackLeft;
   if (trackWidth <= 0) return { kind: 'play', t: 0 };
   return { kind: 'seek', t: clamp01((localX - trackLeft) / trackWidth) };
 }
@@ -79,7 +135,7 @@ export function hitVideoControls(
 /** Where along the clip a pointer at this x sits, for a drag that started on the track. */
 export function seekPositionAt(localX: number, width: number): number {
   const trackLeft = CONTROL_BAR_INSET + CONTROL_BUTTON_SIZE + CONTROL_GAP;
-  const trackWidth = width - CONTROL_BAR_INSET - trackLeft;
+  const trackWidth = width - CONTROL_BAR_INSET - CONTROL_TRACK_END_PAD - trackLeft;
   if (trackWidth <= 0) return 0;
   return clamp01((localX - trackLeft) / trackWidth);
 }
@@ -103,6 +159,21 @@ export function orbitFromDrag(start: OrbitAngles, dx: number, dy: number): Orbit
     yaw: start.yaw + dx * ORBIT_SPEED,
     // Dragging DOWN looks from below: the pointer pushes the model, not the camera.
     pitch: clamp(start.pitch - dy * ORBIT_SPEED, -ORBIT_MAX_PITCH, ORBIT_MAX_PITCH),
+  };
+}
+
+/**
+ * The turn that looks along a direction — `orbitDirection` run backwards.
+ *
+ * A drag starts from where the camera already is. Starting from the origin instead snapped a model
+ * shown from its default angle, slightly above, to dead level on the first pixel of the drag.
+ */
+export function orbitFromDirection(x: number, y: number, z: number): OrbitAngles {
+  const flat = Math.hypot(x, z);
+  if (flat === 0 && y === 0) return { yaw: 0, pitch: 0 };
+  return {
+    yaw: Math.atan2(x, z),
+    pitch: clamp(Math.atan2(y, flat), -ORBIT_MAX_PITCH, ORBIT_MAX_PITCH),
   };
 }
 

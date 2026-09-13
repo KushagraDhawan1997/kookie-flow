@@ -23,7 +23,8 @@ import type {
   FitViewOptions,
 } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
-import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, DEFAULT_ENTITY_WIDTH } from './constants';
+import { DEFAULT_VIEWPORT, MIN_ZOOM, MAX_ZOOM, DEFAULT_ENTITY_WIDTH, SOCKET_RADIUS } from './constants';
+import { Magnet } from '../gl/magnet';
 import {
   Evaluator,
   type EvaluationHost,
@@ -120,6 +121,28 @@ export interface FlowState {
     /** Whether the currently hovered target is valid */
     isValid: boolean;
   } | null;
+  /**
+   * The magnet: which socket is pulling the wire being dragged, how hard, and where the wire's
+   * tip actually is (gl/magnet.ts).
+   *
+   * ONE OBJECT FOR THE LIFE OF THE STORE, mutated in place — the same shape `widgetValues` and
+   * `popoverHsv` have, for the same reason: it is written on every pointer move AND every frame of
+   * a drag, and a fresh record per write is the allocation this package's first rule forbids.
+   * Nothing subscribes to it; the three layers that draw from it already run a frame loop while a
+   * drag is live, and they read it there.
+   */
+  magnet: Magnet;
+  /**
+   * Where the pointer is, in world px — `[x, y]`, and NaN when it is outside the canvas.
+   *
+   * A socket leans toward the pointer whenever one comes near it, with no drag in progress, so the
+   * socket layer needs the pointer every frame. A store field rather than a prop because three
+   * layers may want it, and MUTATED IN PLACE with no version counter because it changes on every
+   * pointermove: a `set()` per move would notify every subscriber sixty times a second, which is
+   * the cost this package's first rule exists to refuse. The layers that care read it in their own
+   * frame loop and hand it to a uniform.
+   */
+  pointerWorld: Float32Array;
   /** Box selection in progress */
   selectionBox: { start: XYPosition; end: XYPosition } | null;
 
@@ -1004,6 +1027,17 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       hoveredSocketId: null,
       hoveredWidget: null,
       connectionDraft: null,
+      /**
+       * The socket's reach, in world px. Four radii out it wakes; a radius and a quarter in, the
+       * wire has fused with it. Both are radii of the DRAWN dot, so the pull scales with the
+       * socket rather than with the zoom — a socket reaches the same distance in the graph's own
+       * units at every scale, which is what makes aiming at one predictable.
+       *
+       * Two and a half radii was the first try and it was too tight to feel: fifteen world px is
+       * under half the width of the fingertip-sized target the same socket claims for its hit test.
+       */
+      magnet: new Magnet({ range: SOCKET_RADIUS * 4, fuse: SOCKET_RADIUS * 1.25 }),
+      pointerWorld: new Float32Array([NaN, NaN]),
       selectionBox: null,
       widgetValues: new Map<string, WidgetOverride>(),
       widgetValuesVersion: 0,

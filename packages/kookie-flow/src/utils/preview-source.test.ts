@@ -68,6 +68,35 @@ describe('what leaves the band empty', () => {
   });
 });
 
+describe('a media reference, which is what a stored picture is', () => {
+  it('draws its own thumbnail in preference to the full asset', () => {
+    expect(
+      classifyPreviewValue({ kind: 'image', hash: 'a1', width: 8, height: 8, url: '/api/blob/a1.png', preview: '/thumb/a1.png' })
+    ).toEqual({ kind: 'image', src: '/thumb/a1.png' });
+  });
+
+  it('falls back to the asset when there is no thumbnail', () => {
+    expect(classifyPreviewValue({ kind: 'image', hash: 'a1', url: '/api/blob/a1.png' })).toEqual({
+      kind: 'image',
+      src: '/api/blob/a1.png',
+    });
+  });
+
+  it('is believed when it says it is a clip, whatever the URL looks like', () => {
+    // A stored asset is served from a path with no extension, and a location with no extension
+    // reads as a picture — so a clip drawn that way would be a still that never moves.
+    expect(classifyPreviewValue({ kind: 'video', hash: 'b2', url: '/api/blob/b2' }).kind).toBe('video');
+  });
+
+  it('but an object naming neither is still nothing', () => {
+    expect(classifyPreviewValue({ kind: 'image', hash: 'c3', width: 8, height: 8 }).kind).toBe('none');
+  });
+
+  it('and it cannot be talked into fetching a word', () => {
+    expect(classifyPreviewValue({ kind: 'image', preview: 'pending' }).kind).toBe('none');
+  });
+});
+
 describe('whether the band has to be redrawn', () => {
   it('the same URL is the same source', () => {
     expect(sameSource(classifyPreviewValue('/a.png'), classifyPreviewValue('/a.png'))).toBe(true);

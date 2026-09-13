@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "apps/*"
-onlyBuiltDependencies:
-  - esbuild
-  - sharp
+# pnpm 11 replaced `onlyBuiltDependencies` with `allowBuilds`: packages allowed to run install scripts.
+allowBuilds:
+  esbuild: true
+  sharp: true

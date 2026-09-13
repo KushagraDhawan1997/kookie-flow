@@ -10,6 +10,7 @@ import {
 } from '../core/constants';
 import type { ResolvedSocketLayout } from './style-resolver';
 import { getEntitySocketLayout, type EntitySocketLayoutCache } from './socket-layout-cache';
+import { EDGE_LEADER, EDGE_SOCKET_RIM, bezierControlOffset } from './edge-curve';
 import { getEntityBounds, type SocketQuadtree, type SocketEntry } from '../core/spatial';
 
 /**
@@ -314,6 +315,16 @@ const socketQueryResults: SocketEntry[] = [];
  * @param socketQuadtree - Spatial index of all sockets
  * @param layout - Optional resolved socket layout for hit radius calculation
  */
+/**
+ * One socket's identity as a string, in the spelling the socket index uses.
+ *
+ * Shared so the magnet can name the socket it is pulling and the socket layer can recognise
+ * itself: two spellings of one key is a socket that lights up while a different one connects.
+ */
+export function socketKey(entityId: string, socketId: string, isInput: boolean): string {
+  return `${entityId}:${socketId}:${isInput ? 'i' : 'o'}`;
+}
+
 export function getSocketAtPositionFast(
   worldPos: XYPosition,
   socketQuadtree: SocketQuadtree,
@@ -368,10 +379,7 @@ function getEdgeBezierPoints(
     const offset = Math.min(absDx * 0.5, 100);
     return { cx1: x0 + offset, cy1: y0, cx2: x1 - offset, cy2: y1 };
   } else {
-    // Bezier: adaptive offset based on distance
-    const distance = Math.sqrt(dx * dx + (y1 - y0) ** 2);
-    const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
-    const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
+    const offset = bezierControlOffset(dx, y1 - y0);
     return { cx1: x0 + offset, cy1: y0, cx2: x1 - offset, cy2: y1 };
   }
 }
@@ -598,14 +606,29 @@ export function getEdgeAtPosition(
     const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
     const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-    const x0 = getSocketWorldX(sourceEntity, false);
+    /**
+     * The shape edges.tsx DRAWS: from the socket's rim, a straight leader, the curve between the
+     * leaders' ends, and the leader into the far rim. This measured from the socket centres and
+     * curved between them, which stopped being the drawn line when the rim and leader went in — a
+     * press on a short edge's visible curve landed outside the hidden one.
+     */
+    const sourceRim = edge.sourceSocket ? EDGE_SOCKET_RIM : 0;
+    const targetRim = edge.targetSocket ? EDGE_SOCKET_RIM : 0;
+    const x0 = getSocketWorldX(sourceEntity, false) + sourceRim;
     const y0 = sourceEntity.position.y + sourceYOffset;
-    const x1 = getSocketWorldX(targetEntity, true);
+    const x1 = getSocketWorldX(targetEntity, true) - targetRim;
     const y1 = targetEntity.position.y + targetYOffset;
+    const lx0 = x0 + (edge.sourceSocket ? EDGE_LEADER : 0);
+    const lx1 = x1 - (edge.targetSocket ? EDGE_LEADER : 0);
 
-    // Quick bounding box check
-    const minX = Math.min(x0, x1) - hitTolerance;
-    const maxX = Math.max(x0, x1) + hitTolerance;
+    const edgeType = edge.type ?? defaultEdgeType;
+    const curved = edgeType !== 'step' && edgeType !== 'straight';
+    const bend = curved ? getEdgeBezierPoints(lx0, y0, lx1, y1, edgeType) : null;
+
+    // Quick bounding box check. A curve's control points reach past its ends, so they are in it.
+    const reach = bend ? Math.abs(bend.cx1 - lx0) : 0;
+    const minX = Math.min(x0, x1, lx0 - reach, lx1 - reach) - hitTolerance;
+    const maxX = Math.max(x0, x1, lx0 + reach, lx1 + reach) + hitTolerance;
     const minY = Math.min(y0, y1) - hitTolerance;
     const maxY = Math.max(y0, y1) + hitTolerance;
 
@@ -613,16 +636,20 @@ export function getEdgeAtPosition(
       continue;
     }
 
-    const edgeType = edge.type ?? defaultEdgeType;
     let dist: number;
 
     if (edgeType === 'step') {
       dist = pointToStepDistance(worldPos, x0, y0, x1, y1);
     } else if (edgeType === 'straight') {
       dist = Math.sqrt(pointToSegmentDistanceSq(worldPos, x0, y0, x1, y1));
+    } else if (bend) {
+      dist = Math.min(
+        pointToBezierDistance(worldPos, lx0, y0, bend.cx1, bend.cy1, bend.cx2, bend.cy2, lx1, y1),
+        Math.sqrt(pointToSegmentDistanceSq(worldPos, x0, y0, lx0, y0)),
+        Math.sqrt(pointToSegmentDistanceSq(worldPos, lx1, y1, x1, y1))
+      );
     } else {
-      const { cx1, cy1, cx2, cy2 } = getEdgeBezierPoints(x0, y0, x1, y1, edgeType);
-      dist = pointToBezierDistance(worldPos, x0, y0, cx1, cy1, cx2, cy2, x1, y1);
+      continue;
     }
 
     if (dist < closestDist) {

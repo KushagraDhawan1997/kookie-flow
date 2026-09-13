@@ -7,6 +7,24 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **An edge starts at the socket's rim, not its centre.** It leaves along the socket's own axis —
+  an output to the right, an input to the left — for a short straight leader before the curve
+  begins, and a connected socket drops the ring of canvas colour that used to separate the two, so
+  the wire and the plug are one shape. Before this an edge ran *through* the dot it named: on a
+  hollow socket you could see the wire inside the ring's hole, and the punch that hid the crossing
+  made the wire look like it stopped a pixel short of its own socket.
+- **A socket leans toward the pointer.** Bring the cursor near one with no drag in progress and the
+  dot moves toward it, up to five world px, thickening its ring and lighting its own hue as it goes.
+  The whole thing is one uniform and a vertex offset, so a pointer crossing the canvas costs no
+  buffer traffic and no React work; the socket's hit test does not move with the lean.
+- **Sockets are magnetic.** A wire dragged near a socket is drawn to it: the socket wakes at two
+  and a half radii (its ring thickens), recognises the wire at one (the hole closes and the dot
+  swells), and the wire's tip is held back from the cursor by a spring that tightens as the gap
+  closes — so the grab is felt in the drag rather than shown as a highlight. At fusing distance the
+  socket and the tip are blended as one distance field, so they bulge together and merge instead of
+  overlapping. A release anywhere inside the pull connects, which means a connection no longer has
+  to land on a six-pixel dot. A socket that cannot take the wire does the opposite: it keeps its
+  hole, drains its colour and pulls nothing, so refusal is felt too (`src/gl/magnet.ts`).
 - **A select's list and a colour widget's picker are drawn in WebGL.** Releasing on a select opens
   a list off the trigger's own box — glass over a blurred copy of the frame beneath it, scaling with
   the node, flipping above the trigger when the bottom of the screen is near, scrolling past eight
@@ -56,6 +74,20 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Fixed
 
+- **The wire a drag draws started at the socket's centre.** Moving a resting edge to the rim left
+  the DRAGGED wire untouched — a different mesh with its own geometry code — so a drag still ran a
+  line out of the middle of the dot, visible through the hole of the hollow socket it was leaving.
+  It now starts on the rim and leaves along the socket's axis for the same six-px leader, with the
+  curve's control points taken from the leader's end so the opening segment cannot collapse.
+- **A socket being dragged out of keeps no punch ring.** The 1.5px ring of canvas colour that makes
+  a passing ribbon read as behind a socket was still drawn on the socket a wire was leaving, which
+  cut the new wire off from the dot it was welded to. A drag's source socket now reads as connected
+  for as long as the drag lasts: solid dot, no ring.
+- **Every socket wore its halo at rest.** "There is no pointer" was carried to the shader as NaN and
+  tested with `x == x`, which a GLSL compiler may fold to true — and does. At rest each socket
+  measured its proximity against a NaN pointer, came out at full strength, and lit its halo with no
+  cursor on the page; a real pointer anywhere on the canvas hid the bug by making the number real.
+  Pointer presence is now a separate float uniform, and the pointer itself is never NaN on the GPU.
 - An alignment guide no longer stays on the canvas after the drag that drew it.
 - Past about 2,500 entities nodes no longer vanish behind the camera: the depth ladder squeezes
   instead of running off it.

@@ -8,9 +8,10 @@ import {
   DEFAULT_SOCKET_TYPES,
   SOCKET_RADIUS,
 } from '../core/constants';
-import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
+import { socketKey, getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { areTypesCompatible } from '../utils/connections';
+import type { Magnet } from '../gl';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import type { Edge, Entity, SocketType } from '../types';
 import { rgbToHex } from '../utils/color';
@@ -36,18 +37,39 @@ const RENDER_ORDER_FG = 5; // Selected sockets (above selected entities)
  */
 export const SOCKET_GL_RADIUS = 10;
 
+/**
+ * How a socket answers a pointer that comes near it, in world px.
+ *
+ * A socket notices at four radii — the same reach the wire magnet uses, so the two behaviours are
+ * one distance and not two — is fully awake at a radius and a quarter, and leans up to `LEAN`
+ * toward the pointer.
+ *
+ * `LEAN` is most of a socket's own radius. Two and a half px was the first try and it read as a
+ * twitch rather than as attraction; five is far enough to see the dot commit to the cursor while
+ * staying inside the ten-px circle that answers a press, which does NOT move with it.
+ */
+const SOCKET_POINTER_REACH = SOCKET_RADIUS * 4;
+const SOCKET_POINTER_FUSE = SOCKET_RADIUS * 1.25;
+const SOCKET_LEAN = 5;
+
 interface SocketBuffers {
   colors: Float32Array;
   hovered: Float32Array;
   connected: Float32Array;
   validTarget: Float32Array;
   invalidHover: Float32Array;
+  /**
+   * The magnet, per socket: (stage, pull, compatible) — gl/magnet.ts. Non-zero only on the one
+   * socket a live connection drag is nearest to.
+   */
+  magnet: Float32Array;
   layers: Float32Array;
   colorAttr: THREE.InstancedBufferAttribute | null;
   hoveredAttr: THREE.InstancedBufferAttribute | null;
   connectedAttr: THREE.InstancedBufferAttribute | null;
   validTargetAttr: THREE.InstancedBufferAttribute | null;
   invalidHoverAttr: THREE.InstancedBufferAttribute | null;
+  magnetAttr: THREE.InstancedBufferAttribute | null;
   layerAttr: THREE.InstancedBufferAttribute | null;
 }
 
@@ -58,14 +80,29 @@ function createSocketBuffers(capacity: number): SocketBuffers {
     connected: new Float32Array(capacity),
     validTarget: new Float32Array(capacity),
     invalidHover: new Float32Array(capacity),
+    magnet: new Float32Array(capacity * 3),
     layers: new Float32Array(capacity),
     colorAttr: null,
     hoveredAttr: null,
     connectedAttr: null,
     validTargetAttr: null,
     invalidHoverAttr: null,
+    magnetAttr: null,
     layerAttr: null,
   };
+}
+
+/**
+ * One socket's magnet state, or zeroes for every socket the wire is not near.
+ *
+ * Written unconditionally, like the widget layer's states and for the same reason: instance `n` is
+ * a different socket from one frame to the next, so a conditional write would leave the previous
+ * occupant's pull behind and morph the wrong dot.
+ */
+function writeMagnet(bufs: SocketBuffers, idx: number, magnet: Magnet | null): void {
+  bufs.magnet[idx * 3] = magnet ? magnet.stage : 0;
+  bufs.magnet[idx * 3 + 1] = magnet ? magnet.strength : 0;
+  bufs.magnet[idx * 3 + 2] = magnet && magnet.compatible ? 1 : 0;
 }
 
 function initSharedSocketBuffers(
@@ -83,6 +120,8 @@ function initSharedSocketBuffers(
   bufs.validTargetAttr.setUsage(THREE.DynamicDrawUsage);
   bufs.invalidHoverAttr = new THREE.InstancedBufferAttribute(bufs.invalidHover, 1);
   bufs.invalidHoverAttr.setUsage(THREE.DynamicDrawUsage);
+  bufs.magnetAttr = new THREE.InstancedBufferAttribute(bufs.magnet, 3);
+  bufs.magnetAttr.setUsage(THREE.DynamicDrawUsage);
   bufs.layerAttr = new THREE.InstancedBufferAttribute(bufs.layers, 1);
   bufs.layerAttr.setUsage(THREE.DynamicDrawUsage);
 
@@ -93,6 +132,7 @@ function initSharedSocketBuffers(
     mesh.geometry.setAttribute('aConnected', bufs.connectedAttr);
     mesh.geometry.setAttribute('aValidTarget', bufs.validTargetAttr);
     mesh.geometry.setAttribute('aInvalidHover', bufs.invalidHoverAttr);
+    mesh.geometry.setAttribute('aMagnet', bufs.magnetAttr);
     mesh.geometry.setAttribute('aLayer', bufs.layerAttr);
   }
 
@@ -114,6 +154,7 @@ function markSocketBuffersForUpload(bufs: SocketBuffers) {
   if (bufs.connectedAttr) { bufs.connectedAttr.clearUpdateRanges(); bufs.connectedAttr.needsUpdate = true; }
   if (bufs.validTargetAttr) { bufs.validTargetAttr.clearUpdateRanges(); bufs.validTargetAttr.needsUpdate = true; }
   if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.clearUpdateRanges(); bufs.invalidHoverAttr.needsUpdate = true; }
+  if (bufs.magnetAttr) { bufs.magnetAttr.clearUpdateRanges(); bufs.magnetAttr.needsUpdate = true; }
   if (bufs.layerAttr) { bufs.layerAttr.clearUpdateRanges(); bufs.layerAttr.needsUpdate = true; }
 }
 
@@ -133,6 +174,7 @@ function markSocketRangeForUpload(bufs: SocketBuffers, start: number, count: num
   if (bufs.connectedAttr) { bufs.connectedAttr.addUpdateRange(start, count); bufs.connectedAttr.needsUpdate = true; }
   if (bufs.validTargetAttr) { bufs.validTargetAttr.addUpdateRange(start, count); bufs.validTargetAttr.needsUpdate = true; }
   if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.addUpdateRange(start, count); bufs.invalidHoverAttr.needsUpdate = true; }
+  if (bufs.magnetAttr) { bufs.magnetAttr.addUpdateRange(start * 3, count * 3); bufs.magnetAttr.needsUpdate = true; }
 }
 
 /**
@@ -280,14 +322,41 @@ export function Sockets({
     attribute float aConnected;
     attribute float aValidTarget;
     attribute float aInvalidHover;
+    attribute vec3 aMagnet;
     attribute float aLayer;
     uniform float uMeshLayer;
+    /**
+     * The pointer, in world px, and how a socket answers it: uReach.x is where a socket starts
+     * to notice, uReach.y where noticing is total, and uReach.z how far it may lean.
+     *
+     * A UNIFORM rather than an attribute, and the lean is computed HERE rather than on the CPU:
+     * every socket in the graph tests one point per vertex, so a pointer moving across the canvas
+     * costs one uniform write and no buffer traffic at all. The socket's INDEX does not move — a
+     * press is still answered where the dot belongs — which is why the lean is a few pixels and
+     * not a few tens.
+     */
+    uniform vec2 uPointer;
+    /**
+     * WHETHER THERE IS A POINTER AT ALL, as a number — 1 while one is over the canvas, 0 otherwise.
+     *
+     * This used to be carried by uPointer itself, as NaN, tested with uPointer.x == uPointer.x.
+     * GLSL compilers are permitted to assume no NaNs and fold that to TRUE, and this one does: at
+     * rest every socket computed its pull against a NaN pointer, came out at full proximity, and
+     * wore its halo with no cursor on the page — measured at alpha 0.22, which is exactly one
+     * state term lit. A flag is a number the compiler cannot reason away. uPointer also holds
+     * (0,0) rather than NaN when there is no pointer, so a flattened branch multiplies zero by
+     * zero instead of spreading NaN into the vertex position.
+     */
+    uniform float uPointerOn;
+    uniform vec3 uReach;
 
     varying vec3 vColor;
     varying float vHovered;
     varying float vConnected;
     varying float vValidTarget;
     varying float vInvalidHover;
+    varying vec3 vMagnet;
+    varying float vPull;
     varying vec2 vUv;
 
     void main() {
@@ -302,13 +371,41 @@ export function Sockets({
       vConnected = aConnected;
       vValidTarget = aValidTarget;
       vInvalidHover = aInvalidHover;
+      vMagnet = aMagnet;
       vUv = uv;
 
       // No hover scale: a dot that grows reads as jitter, a halo reads as light. Hover is drawn
       // in the fragment on the same quad.
       vec3 pos = position;
 
-      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+      /**
+       * THE LEAN, IN WORLD SPACE — which is after the instance transform, not before it.
+       *
+       * The first cut added the offset to the quad's own vertex and then let the instance matrix
+       * multiply it, so the displacement was transformed a second time and every socket left the
+       * screen. The instance places the dot; the lean moves the dot that has already been placed.
+       * World y runs down and GL's runs up, so the pointer is negated to compare.
+       */
+      vec4 placed = instanceMatrix * vec4(pos, 1.0);
+      vPull = 0.0;
+      if (uPointerOn > 0.5) {
+        /**
+         * Measured from the socket's CENTRE, not from this vertex.
+         *
+         * The quad has four corners and the first cut measured each one's own distance to the
+         * pointer, so the near corners moved further than the far ones and the dot came out dented
+         * on the cursor's side instead of displaced toward it. One distance per socket, applied to
+         * every vertex equally, is a dot that keeps its shape and moves.
+         */
+        vec2 centre = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xy;
+        vec2 toPointer = vec2(uPointer.x, -uPointer.y) - centre;
+        float d = length(toPointer);
+        float t = 1.0 - clamp((d - uReach.y) / max(uReach.x - uReach.y, 0.001), 0.0, 1.0);
+        vPull = t * t * (3.0 - 2.0 * t);
+        if (d > 0.001) placed.xy += (toPointer / d) * uReach.z * vPull;
+      }
+
+      gl_Position = projectionMatrix * modelViewMatrix * placed;
     }
   `;
   const fragmentShader = /* glsl */ `
@@ -323,6 +420,8 @@ export function Sockets({
     varying float vConnected;
     varying float vValidTarget;
     varying float vInvalidHover;
+    varying vec3 vMagnet;
+    varying float vPull;
     varying vec2 vUv;
 
     void main() {
@@ -330,31 +429,73 @@ export function Sockets({
       float r  = length(vUv - 0.5) * ${(SOCKET_GL_RADIUS * 2).toFixed(1)};
       float aa = fwidth(r);
 
-      // The dot is still SOCKET_RADIUS: the hit radius, the drawn radius. Unconnected sockets are
-      // hollow to r 4.5, a 1.5px ring, so the canvas shows through their centre.
-      float dot   = 1.0 - smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r);
+      /**
+       * THE MAGNET'S LADDER (gl/magnet.ts): stage 0 dormant, 1 awake, 2 recognised, plus whether
+       * this socket will accept at all. A compatible socket in reach thickens its ring; at fusing
+       * distance the hole closes and the dot swells, so what the wire meets is a plug and not a
+       * hoop. A socket that refuses does the opposite: it keeps its hole and drains its colour.
+       */
+      float stage  = vMagnet.x;
+      float pull   = vMagnet.y;
+      float compat = vMagnet.z;
+      /**
+       * A pointer near the socket wakes it the same way a compatible wire does — the ring thickens,
+       * the halo lights — but it can never make it REFUSE. Refusal is an answer to a wire being
+       * offered, and with no drag there is no offer: the first cut derived refuse from proximity,
+       * so every socket on the canvas wore an invalid halo just for having a pointer on screen.
+       */
+      float dragRange = clamp(stage, 0.0, 1.0);
+      float wake   = max(dragRange * compat, vPull);
+      float rec    = clamp(stage - 1.0, 0.0, 1.0) * compat;
+      float refuse = dragRange * (1.0 - compat);
+
+      // The dot is SOCKET_RADIUS at rest: the hit radius, the drawn radius. It swells as it
+      // recognises a wire; a refused socket never moves.
+      float dotR  = ${SOCKET_RADIUS.toFixed(1)} + 1.2 * rec;
+      float dotA  = 1.0 - smoothstep(dotR - aa, dotR + aa, r);
       // aConnected carries two bits: 1 = connected, 2 = no punch (a grouped child's socket sits
       // on its parent's body, where a ring of canvas colour would be a visibly wrong hole).
       float connected = mod(vConnected, 2.0);
       float punchOn = 1.0 - step(1.5, vConnected);
-      float hole  = (1.0 - smoothstep(4.5 - aa, 4.5 + aa, r)) * (1.0 - connected);
-      // A 1.5px punch of canvas colour around the dot, always: an edge running under a socket
-      // stops short of it, so the dot reads over any ribbon rather than merging with it.
-      float punch = smoothstep(${SOCKET_RADIUS.toFixed(1)} - aa, ${SOCKET_RADIUS.toFixed(1)} + aa, r) * (1.0 - smoothstep(7.5 - aa, 7.5 + aa, r)) * punchOn;
+      // Hollow to 4.5 at rest — a 1.5px ring. Awake it thickens to 3px; fusing, it closes.
+      float holeR = mix(mix(4.5, 3.0, wake), 0.0, rec);
+      float hole  = (1.0 - smoothstep(holeR - aa, holeR + aa, r)) * (1.0 - connected);
+      /**
+       * The punch: 1.5px of canvas colour around the dot, so a ribbon passing UNDER a socket reads
+       * behind it rather than merging with it.
+       *
+       * A CONNECTED socket has none. Its edge no longer passes under it — it starts at the rim and
+       * leaves along the axis (edges.tsx) — so a ring of canvas colour there would cut the wire off
+       * from the plug it is welded to, which is exactly how the old join read: a wire that stopped
+       * a pixel short of the dot it named.
+       */
+      float punchR = dotR + 1.5;
+      float punch = smoothstep(dotR - aa, dotR + aa, r) * (1.0 - smoothstep(punchR - aa, punchR + aa, r)) * punchOn * (1.0 - connected);
       // The halo outside the punch, quadratic, gone by the quad edge. Only lit by a state.
-      float halo  = smoothstep(7.5 - aa, 7.5 + aa, r) * (1.0 - smoothstep(7.5, 10.0, r));
+      float halo  = smoothstep(punchR - aa, punchR + aa, r) * (1.0 - smoothstep(punchR, 10.0, r));
       halo *= halo;
-      float haloOn = max(vHovered, max(vValidTarget, vInvalidHover)) * 0.22;
+      // The magnet lights the halo as it takes hold: the socket reaching back for the wire.
+      float haloOn = max(max(vHovered, vValidTarget), max(vInvalidHover, max(wake * (0.35 + 0.65 * max(pull, vPull)), refuse))) * 0.22;
 
       vec3  dotC  = mix(vColor, uInvalidColor, vInvalidHover);
-      vec3  haloC = mix(mix(vColor, uValidTargetColor, vValidTarget), uInvalidColor, vInvalidHover);
+      // Refusal drains the hue rather than repainting it: the socket goes inert under the wire.
+      float grey  = dot(dotC, vec3(0.2126, 0.7152, 0.0722));
+      dotC = mix(dotC, vec3(grey), 0.55 * refuse);
+      /**
+       * The halo's colour says WHY it is lit. A drag answers with a verdict — green for a socket
+       * that will take this wire, red for one that will not — but a pointer merely being near
+       * answers nothing, so proximity lights the socket's OWN hue. Borrowing the valid-target
+       * green for it, which the first cut did, told every passing cursor it had found a drop
+       * target when nothing was being dropped.
+       */
+      vec3  haloC = mix(mix(mix(vColor, uValidTargetColor, vValidTarget), uInvalidColor, vInvalidHover), uInvalidColor, refuse);
 
       // The three bands never overlap, so their alphas sum and the colour is the alpha-weighted
       // average. Inside the dot that division is by exactly 1.0 and the hue is returned untouched,
       // which the socket-placement law depends on: it flood-fills pixels of the exact frozen hue.
-      float dotA = dot - hole;
-      float a = dotA + punch + halo * haloOn;
-      vec3  c = (dotC * dotA + uCanvas * punch + haloC * halo * haloOn) / max(a, 1e-4);
+      float dotFill = dotA - hole;
+      float a = dotFill + punch + halo * haloOn;
+      vec3  c = (dotC * dotFill + uCanvas * punch + haloC * halo * haloOn) / max(a, 1e-4);
       if (a < 0.004) discard;
       gl_FragColor = vec4(c, a);
     }
@@ -369,6 +510,9 @@ export function Sockets({
           uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
           uCanvas: { value: new THREE.Color(canvasColor[0], canvasColor[1], canvasColor[2]) },
           uMeshLayer: { value: 0.0 },
+          uPointer: { value: new THREE.Vector2(0, 0) },
+          uPointerOn: { value: 0 },
+          uReach: { value: new THREE.Vector3(SOCKET_POINTER_REACH, SOCKET_POINTER_FUSE, SOCKET_LEAN) },
         },
         vertexShader,
         fragmentShader,
@@ -386,6 +530,9 @@ export function Sockets({
           uValidTargetColor: { value: new THREE.Color(validTargetColor[0], validTargetColor[1], validTargetColor[2]) },
           uCanvas: { value: new THREE.Color(canvasColor[0], canvasColor[1], canvasColor[2]) },
           uMeshLayer: { value: 1.0 },
+          uPointer: { value: new THREE.Vector2(0, 0) },
+          uPointerOn: { value: 0 },
+          uReach: { value: new THREE.Vector3(SOCKET_POINTER_REACH, SOCKET_POINTER_FUSE, SOCKET_LEAN) },
         },
         vertexShader,
         fragmentShader,
@@ -563,12 +710,24 @@ export function Sockets({
     const entityConnectedOutputs = connectedOutputs.get(entity.id);
     // A grouped child's sockets sit on its parent's body: no punch ring there (see the shader).
     const punchOff = entity.parentId ? 2.0 : 0.0;
+    /**
+     * THE SOCKET A WIRE IS BEING DRAGGED OUT OF counts as connected, for the punch's purposes.
+     *
+     * The punch is 1.5px of canvas colour around a dot, there so a ribbon passing UNDER a socket
+     * reads behind it. A wire that STARTS here does not pass under anything — it is welded to the
+     * rim (connection-line.tsx) — so the ring only cuts the wire off from the dot it is leaving,
+     * which is the same "stops a pixel short" join a connected edge used to have.
+     */
+    const draftSource = connectionDraft?.source;
+    const draftHere = draftSource !== undefined && draftSource.entityId === entity.id;
     // Hoisted out of the socket loops and handed to getSocketYOffset: without it, moving these
     // four sites onto the shared arithmetic would turn one layout-cache lookup per ENTITY into
     // one per SOCKET, in the hottest loop the renderer has.
     const entityLayout = getEntitySocketLayout(entity, socketLayout);
     // A socket sits in its entity's depth slice, above the body — see utils/entity-depth.ts.
-    const { stackOrder, selectedEntityIds } = store.getState();
+    const { stackOrder, selectedEntityIds, magnet } = store.getState();
+    // The magnet names one socket; every other instance writes zeroes (see the buffer's note).
+    const magnetKey = magnet.active ? magnet.targetKey : null;
     const z = entityDepth(entity.id, stackOrder, selectedEntityIds, DEPTH_LAYER.socket);
 
     // Render input sockets
@@ -599,7 +758,10 @@ export function Sockets({
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
         bufs.connected[idx] =
-          (entityConnectedInputs !== undefined && entityConnectedInputs.has(socket.id) ? 1.0 : 0.0) + punchOff;
+          (entityConnectedInputs !== undefined && entityConnectedInputs.has(socket.id)) ||
+          (draftHere && draftSource.isInput && draftSource.socketId === socket.id)
+            ? 1.0 + punchOff
+            : punchOff;
 
         let isValidTarget = 0.0;
         if (connectionDraft && !connectionDraft.source.isInput && sourceSocketType) {
@@ -616,6 +778,8 @@ export function Sockets({
         const isInvalidHover =
           isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
         bufs.invalidHover[idx] = isInvalidHover;
+
+        writeMagnet(bufs, idx, magnetKey === socketKey(entity.id, socket.id, true) ? magnet : null);
 
         idx++;
       }
@@ -649,7 +813,10 @@ export function Sockets({
         bufs.hovered[idx] = isHovered ? 1.0 : 0.0;
 
         bufs.connected[idx] =
-          (entityConnectedOutputs !== undefined && entityConnectedOutputs.has(socket.id) ? 1.0 : 0.0) + punchOff;
+          (entityConnectedOutputs !== undefined && entityConnectedOutputs.has(socket.id)) ||
+          (draftHere && !draftSource.isInput && draftSource.socketId === socket.id)
+            ? 1.0 + punchOff
+            : punchOff;
 
         let isValidTarget = 0.0;
         if (connectionDraft && connectionDraft.source.isInput && sourceSocketType) {
@@ -666,6 +833,8 @@ export function Sockets({
         const isInvalidHover =
           isHovered && connectionDraft && isValidTarget === 0.0 ? 1.0 : 0.0;
         bufs.invalidHover[idx] = isInvalidHover;
+
+        writeMagnet(bufs, idx, magnetKey === socketKey(entity.id, socket.id, false) ? magnet : null);
 
         idx++;
       }
@@ -755,6 +924,21 @@ export function Sockets({
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
     if (!bgMesh || !fgMesh || !initializedRef.current) return;
+
+    /**
+     * The pointer reaches the shader here, every frame and before any early return: a socket leans
+     * toward a pointer that is merely near it, and that has to keep working on frames where
+     * nothing else about the sockets changed.
+     */
+    {
+      const p = store.getState().pointerWorld;
+      // NaN is how the store says "no pointer"; the shader is told in a number it can trust.
+      const on = Number.isFinite(p[0]) && Number.isFinite(p[1]);
+      for (const m of [bgMaterial, fgMaterial]) {
+        (m.uniforms.uPointer.value as THREE.Vector2).set(on ? p[0] : 0, on ? p[1] : 0);
+        m.uniforms.uPointerOn.value = on ? 1 : 0;
+      }
+    }
 
     // Mark dirty on canvas resize (prevents ghosting)
     if (size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height) {

@@ -23,18 +23,21 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../core/constants';
 import { ImageTextureManager } from '../utils/image-loader';
 import type { ImageEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
+import { easeChromePresence, fitsExpand } from '../utils/media-chrome';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
   createMediaMaterial,
   applyObjectFitUV,
   setMediaBox,
+  setMediaChrome,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 1;
@@ -115,6 +118,10 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const selectionDirtyRef = useRef(true);
   const hiddenDirtyRef = useRef(true);
   const topologyDirtyRef = useRef(true);
+  /** How faded in each picture's expand button is. Same easing the video controls use. */
+  const chromePresenceRef = useRef<Map<string, number>>(new Map());
+  /** Whether a button is mid-fade, so the pass runs on frames the store published nothing on. */
+  const chromeFadingRef = useRef(false);
 
   // Refs for each mesh, keyed by entity ID
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -138,6 +145,18 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   // Stable ref for onEntitiesChange to avoid stale closures in microtasks
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   onEntitiesChangeRef.current = onEntitiesChange;
+
+  // The controls' glass, shared by every material; see utils/media-glass.ts.
+  const glass = useMemo(
+    () => buildMediaGlass(tokens, resolveColor(THEME_COLORS.canvas.background, tokens), resolvedStyle.widgetRadius),
+    [tokens, resolvedStyle.widgetRadius]
+  );
+  const glassRef = useRef(glass);
+  glassRef.current = glass;
+  useEffect(() => {
+    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    fullDirtyRef.current = true;
+  }, [glass]);
 
   // Texture manager — singleton for component lifetime.
   // onLoad callback marks dirty so textures appear as soon as they're ready.
@@ -259,6 +278,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     const unsubHidden = store.subscribe((s) => s.hiddenEntityIds, () => {
       hiddenDirtyRef.current = true;
     });
+    const unsubHovered = store.subscribe((s) => s.hoveredEntityId, markFullDirty);
 
     return () => {
       unsubTopology();
@@ -268,6 +288,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       unsubSelection();
       unsubStack();
       unsubHidden();
+      unsubHovered();
     };
   }, [store]);
 
@@ -281,7 +302,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
           meshRefs.current.set(id, mesh);
           // Pre-create ShaderMaterial so useFrame only updates uniforms, never allocates
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial());
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
           }
         } else {
           meshRefs.current.delete(id);
@@ -297,13 +318,15 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   // - fullDirtyRef: positions, culling, LOD, textures (viewport/entity/texture changes)
   // - selectionDirtyRef: only renderOrder (selection click)
   // - hiddenDirtyRef: only visibility (hide/show toggle)
-  useFrame(({ size }) => {
+  useFrame(({ size }, delta) => {
     // Drain texture upload queue: 1-2 per frame to avoid GPU stalls.
     // Runs before dirty-flag check so queue drains even when nothing else changed.
     if (texManager.hasQueuedUploads) {
       texManager.processUploadQueue(2);
       fullDirtyRef.current = true;
     }
+    // A button mid-fade needs its next step, and only the full pass writes chrome.
+    if (chromeFadingRef.current) fullDirtyRef.current = true;
 
     const full = fullDirtyRef.current;
     const selDirty = selectionDirtyRef.current;
@@ -317,7 +340,9 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       selectedEntityIds,
       hiddenEntityIds,
       stackOrder,
+      hoveredEntityId,
     } = store.getState();
+    let chromeFading = false;
 
     // O(k) iteration over image entity IDs only, with O(1) entityMap lookups
     const ids = imageEntityIdsRef.current;
@@ -404,11 +429,19 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       // Cache entry lookup once (used for UV, error state, and auto-sizing)
       const entry = src ? texManager.getEntry(src) : undefined;
 
+      // The expand button, under the pointer. Only a settled fade lets the pass stop: an open
+      // button is a still picture and costs nothing per frame.
+      const wantsChrome =
+        (data.controls ?? true) && hoveredEntityId === entity.id && fitsExpand(w, h);
+      const presence = easeChromePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
+      if (presence !== (wantsChrome ? 1 : 0)) chromeFading = true;
+
       if (texture) {
         // ShaderMaterial pre-created in ref callback — update uniforms only
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
           setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+          setMediaChrome(mat, 0, 0, false, 0, presence);
           const u = mat.uniforms;
           if (u.map.value !== texture) {
             u.map.value = texture;
@@ -492,6 +525,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       topologyDirtyRef.current = false;
     }
 
+    if (full) chromeFadingRef.current = chromeFading;
     fullDirtyRef.current = false;
     selectionDirtyRef.current = false;
     hiddenDirtyRef.current = false;

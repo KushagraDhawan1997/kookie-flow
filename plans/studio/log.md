@@ -5,6 +5,132 @@
 
 ---
 
+## 2026-09-13, the node's shadow, and generation nodes that cost nothing
+
+### The shadow was never KookieUI's
+
+Asked why a node's float looked unlike the docs demo's, and why the studio's read as "cut". Two
+different answers, and the second one was the real fault.
+
+- **The demo was pinned to `variant="classic"`**, which resolved a `--shadow-N` token — a tight
+  DOM-card shadow — while the studio took the default surface treatment. v2's Card is "one
+  treatment and no variants", so the prop named a look the design system had deleted. Removed.
+- **The body's float was invented.** `useThemeTokens` never parses `--shadow-1..5` at all — it
+  returns hardcoded single-layer stand-ins, saying CSS shadows are "too complex to parse
+  reliably" — and `NODE_SHADOW` then ignored even those, on the grounds that the tokens "top out
+  at blur 16". That was only ever true of the fake table: v2's real `--shadow-3` is three layers
+  reaching 48, and `gl/material.ts` has carried it, read off v2's stylesheet, all along. The
+  popover has drawn it correctly since it was written. The node body was the one surface never
+  moved over, and now draws the same three-layer cast.
+- **The "cut" was a discard threshold.** The halo was thrown away below 1% alpha while the tail
+  was still ~1% black — three luma levels on the light floor, a hard edge tracing the card's
+  outline out in open canvas. A 4px blur hid it against the card's edge; a 20px one did not.
+  Measured on the canvas before and after: a three-level step became one, the floor's own
+  quantisation.
+
+Still v1 residue, deliberately not swept up in a shadow fix: the fake `--shadow-N` table, the now
+unread `NODE_SHADOW` and `resolvedStyle.shadow*`, and the whole `EntityVariant` axis (a public
+type, documented in `entities.mdx`).
+
+### Generation nodes, against a mock
+
+Five nodes, all `where: 'server'` and `evaluation: 'manual'` — the two go together, because a node
+that costs money must never run because a slider moved. Generate image, Edit image, Upscale,
+Remove background, Animate image.
+
+The pipeline is real and only the pixels are not: `/api/jobs` writes a row, paints a deterministic
+placeholder PNG (hashed from the request, so the same prompt and seed give the same picture and a
+second Run is answered from the evaluator's cache), stores it content-addressed, and returns a
+`MediaRef`. The encoder is `node:zlib` and about sixty lines; no dependency, no key, no spend. The
+fal adapter is a swap at the port, not a rewrite.
+
+**Library change 1 from the plan, which was still undone:** `classifyPreviewValue` returned
+nothing for an object, so a `MediaRef` on an output socket could never draw its own band. It now
+reads a reference's `preview` before its `url`, and believes `kind: 'video'` over a URL with no
+extension — a stored asset is served from an extensionless path, and a clip drawn as a picture is
+a still that never moves. Five tests.
+
+Three defects the screenshots caught, all the same v1-token trap: a prompt well took the control
+family's pill sentinel and came out a **circle** (a multi-row field has to say `textarea`, which
+is what `wellRadius` keys on); the inspector's output picture read `--radius-2` and did the same;
+and it then ran off the panel, because a flex item's automatic minimum size is its content's.
+
+Two more the owner caught by eye, both config rather than rendering. A prompt sat in the
+half-width column beside its own label: the Text source node says `layout: 'stacked'` and the
+generation nodes did not, and a prompt is the thing you came to the node to write. And the band
+letterboxed — the registry asked for `fit: 'contain'`, so a square generation in a wide, short
+band was centred with the card's fill either side, reading as a small picture in a frame rather
+than as a band. It covers now; the uncropped frame is one click away in the inspector.
+
+Verified in a browser: the band draws, the inspector reports Done, bytes land in `.data/blobs`,
+and the video node's reference carries its duration and fps. `tsc` clean in all three packages;
+library 752 tests, studio-core 24.
+
+### The band was not in the same flow as the rows
+
+Resizing a node drew the picture straight over its own inputs. A card taller than its content
+CENTRES what is inside it — `geometry.ts` and `widget-geometry.ts` both add
+`(height - computedHeight) / 2` to every socket and every widget — and the band alone was placed
+at the bare `previewY`. So the moment an entity carried an explicit height, from a resize or from
+a document that set one, the rows moved down and the band did not. It takes the same term now,
+same sign, unclamped, and measures its remaining room from the offset top rather than from
+`previewY`.
+
+Reproduced without touching a drag handle: two nodes in one document, one default and one at
+`width: 240, height: 720`. The sized one showed the overlap every time and is clean now.
+
+### A band can lead
+
+`EntityPreview` takes `position?: 'top' | 'bottom'`, defaulting to `bottom` — so the docs, the
+demo and every existing consumer keep the layout they had, and adding a band to a node still
+moves nothing. The studio asks for `top` on every node that has one: on a generator the picture
+IS the point, and the prompt and the sizes are the controls underneath it. The layout places the
+band before the outputs, and `buildCacheKey` carries `position` because it moves every row below
+it — `fit` stays out of that key, being a drawing decision the layout never sees.
+
+A leading band then sat too close to the title, and the reason is that `marginTop` is
+`padding + titleBand`: content begins flush against the bottom of the title's own air. A socket
+row hides that, its label being centred inside a tall row, so the space arrives for free. A
+picture has no inside — its pixels start on that edge, and the title ends up sitting on the frame.
+It takes `padding` above it now, the same inset it already had left and right, so the picture
+carries an even margin on three sides.
+
+### Real files instead of a painted placeholder
+
+The mock answers with two real files from `apps/studio/mock/`: a photograph for every picture
+(Birmingham Museums Trust, a 3999×2896 progressive JPEG) and a clip for every video (2560×1440
+H.264, 17.95 s at 29.97 fps). The PNG painter is gone. A painted PNG only proved that PNGs work;
+a large JPEG and an MP4 served by range are what a provider will actually hand back. Each file is
+read and hashed once per process — a repeat job answers in 8 ms against 38 ms for the first.
+
+Verified: the JPEG serves 200 at its exact size, the MP4 answers a range with 206, the photograph
+draws in the Generate band, and the clip MOVES — 12,624 pixels change across 1.5 s, all inside
+the Animate band. One run hit a shader compile error in `media-quad.ts`; it was a stale compile
+of an in-flight save and cleared on reload.
+
+The two files are 13.4 MB and uncommitted. Whether they belong in git is a call for later.
+
+### The editor loses its header
+
+Laid out the way the docs site is (`docs-chrome.tsx`), because what the header held was either
+the frame's own chrome or a control for the graph — and neither belongs in a band across the
+whole window. The graph's controls float in a `ShellPaneHeader` over the canvas, which passes
+behind them. The way home sits beside the node search in the sidebar's floating header; the
+appearance control in its floating footer.
+
+No separators, as the docs band has none: undo and redo are one `ToolbarGroup`, every other
+control is its own capsule, and the gap between clusters is one step wider than the row's own, so
+the air does the separating.
+
+Two things the move broke, both caught on screen and fixed. The node list started UNDER the
+floating header, hiding "Sources"; it now spends the pane's published reach with the docs nav's
+own two lines. And the search ran off the pane; it grows into the row now, which needed
+`minInlineSize: 0` on the field's wrapper, and its placeholder is "Search" because "Search nodes"
+clipped at 167 px. Measured rather than eyeballed: zero separators, zero header elements, the
+list's first label below the band, the field inside the pane.
+
+---
+
 ## 2026-09-12, the ultracode audit and its fixes
 
 152 agents over three rounds: seven dimension finders (correctness, performance, security, data

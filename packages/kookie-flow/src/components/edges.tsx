@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { DEFAULT_SOCKET_TYPES } from '../core/constants';
 import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
+import { EDGE_LEADER, EDGE_SOCKET_RIM, bezierControlOffset } from '../utils/edge-curve';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { THEME_COLORS } from '../core/theme-colors';
 import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types';
@@ -18,10 +19,18 @@ const INITIAL_EDGE_CAPACITY = 512;
 const SEGMENTS_PER_EDGE = 64;
 // Each segment = 1 quad = 2 triangles = 6 vertices
 // Plus up to 2 arrows (3 vertices each) = 6 extra vertices
-const VERTICES_PER_EDGE = SEGMENTS_PER_EDGE * 6 + 6;
+// Two more segments than the curve has: the straight leader at each end (see the rim anchor below).
+const VERTICES_PER_EDGE = (SEGMENTS_PER_EDGE + 2) * 6 + 6;
 
 // Max points per edge (bezier has SEGMENTS+1, step has 4, straight has 2)
-const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 1;
+const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 3;
+
+/**
+ * Where an edge meets a socket — the rim and the leader — lives in utils/edge-curve.ts, shared with
+ * the dragged wire and the hit test. `RIM` is the socket's drawn radius, so an edge starts on the
+ * dot's edge rather than at its centre; `LEADER` is the straight run it leaves along before the curve
+ * begins, which is what makes the join read as a plug with a direction.
+ */
 
 /**
  * Edge visual settings, all in SCREEN px: the vertex shader divides by zoom, so an edge is the
@@ -902,10 +911,34 @@ export function Edges({
         }
 
         // Edge endpoints at actual socket positions (outside entity body)
-        const x0 = getSocketWorldX(sourceEntity, false);
-        const y0 = sourceEntity.position.y + sourceYOffset;
-        const x1 = getSocketWorldX(targetEntity, true);
-        const y1 = targetEntity.position.y + targetYOffset;
+        /**
+         * THE RIM, NOT THE CENTRE — and a leader before the curve.
+         *
+         * An edge used to be drawn to the socket's own point, which is its CENTRE, so the ribbon
+         * ran under the dot and out the other side: on a hollow socket you could see the wire
+         * inside the ring's hole, and nothing about the join read as a plug. The 1.5px punch of
+         * canvas colour around every dot was there to hide that crossing, which is why a connected
+         * edge appeared to stop short and fade a pixel from the thing it names.
+         *
+         * An edge now starts where the socket's edge is, and leaves along the socket's own axis —
+         * an output to the right, an input to the left — for a short straight leader before the
+         * curve takes over. The leader is what gives the join a direction you can read, and it is
+         * why the curve no longer has to aim at a point it cannot reach.
+         */
+        const cx0 = getSocketWorldX(sourceEntity, false);
+        const cy0 = sourceEntity.position.y + sourceYOffset;
+        const cx1p = getSocketWorldX(targetEntity, true);
+        const cy1p = targetEntity.position.y + targetYOffset;
+        // An edge that names no socket lands on the entity's centre, where there is no rim to
+        // leave from and no axis to leave along: it keeps the old behaviour.
+        const sourceRim = sourceSocketInfo ? EDGE_SOCKET_RIM : 0;
+        const targetRim = targetSocketInfo ? EDGE_SOCKET_RIM : 0;
+        const x0 = cx0 + sourceRim;
+        const y0 = cy0;
+        const x1 = cx1p - targetRim;
+        const y1 = cy1p;
+        const lead0 = sourceSocketInfo ? EDGE_LEADER : 0;
+        const lead1 = targetSocketInfo ? EDGE_LEADER : 0;
 
         // Partial update: check if this edge's endpoints changed
         if (isPartialUpdate) {
@@ -937,20 +970,30 @@ export function Edges({
 
         // Calculate bezier control points BEFORE culling to get accurate bounding box
         // Control points can extend beyond endpoints (especially when source is right of target)
-        const dx = x1 - x0;
+        /**
+         * The curve spans the LEADER ENDS, not the sockets, so every control point below is
+         * derived from those. Measured from the sockets instead, a short edge put its first control
+         * point almost on top of the leader's end and the opening segment collapsed — the
+         * degenerate-segment guard dropped it, and the ribbon started a leader's length away from
+         * the plug it was supposed to be welded to. That gap is what this arithmetic exists to
+         * close.
+         */
+        const lead0X = x0 + lead0;
+        const lead1X = x1 - lead1;
+        const dx = lead1X - lead0X;
         const dy = y1 - y0;
         const absDx = Math.abs(dx);
 
         let cx1: number, cy1: number, cx2: number, cy2: number;
 
         if (edgeType === 'straight') {
-          cx1 = x0;
+          cx1 = lead0X;
           cy1 = y0;
-          cx2 = x1;
+          cx2 = lead1X;
           cy2 = y1;
         } else if (edgeType === 'step') {
           // For step edges, the midpoint extends the bounds
-          const midX = x0 + dx / 2;
+          const midX = lead0X + dx / 2;
           cx1 = midX;
           cy1 = y0;
           cx2 = midX;
@@ -958,21 +1001,16 @@ export function Edges({
         } else if (edgeType === 'smoothstep') {
           // Smoothstep: constrained curve, scales with distance
           const offset = Math.min(absDx * 0.5, 100);
-          cx1 = x0 + offset;
+          cx1 = lead0X + offset;
           cy1 = y0;
-          cx2 = x1 - offset;
+          cx2 = lead1X - offset;
           cy2 = y1;
         } else {
-          // Bezier: adaptive offset based on distance
-          // - For close entities, use minimal offset for direct connection
-          // - For far entities, use proportional offset for nice curve
-          // - Consider vertical distance too
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const baseOffset = Math.min(absDx * 0.5, distance * 0.4);
-          const offset = Math.max(baseOffset, Math.min(absDx * 0.25, 20));
-          cx1 = x0 + offset;
+          // The same reach the dragged wire and the hit test use; see utils/edge-curve.ts.
+          const offset = bezierControlOffset(dx, dy);
+          cx1 = lead0X + offset;
           cy1 = y0;
-          cx2 = x1 - offset;
+          cx2 = lead1X - offset;
           cy2 = y1;
         }
 
@@ -1025,7 +1063,7 @@ export function Edges({
 
         if (edgeType === 'step') {
           // Step: horizontal → vertical → horizontal
-          const midX = x0 + dx / 2;
+          const midX = lead0X + dx / 2;
           points[0] = x0;
           points[1] = y0;
           points[2] = midX;
@@ -1042,7 +1080,13 @@ export function Edges({
           points[3] = y1;
           pointsCount = 2;
         } else {
-          // Bezier/smoothstep - sample the curve
+          /**
+           * The leader, then the curve. The straight run leaves the socket along its own axis, and
+           * the curve is sampled between the leader's ends rather than between the sockets — so the
+           * ribbon is continuous through the joint instead of kinking at it.
+           */
+          const lx0 = x0 + lead0;
+          const lx1 = x1 - lead1;
           for (let s = 0; s <= SEGMENTS_PER_EDGE; s++) {
             const t = s / SEGMENTS_PER_EDGE;
             const mt = 1 - t;
@@ -1051,11 +1095,17 @@ export function Edges({
             const t2 = t * t;
             const t3 = t2 * t;
 
-            const idx = s * 2;
-            points[idx] = mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x1;
+            const idx = (s + 1) * 2;
+            points[idx] = mt3 * lx0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * lx1;
             points[idx + 1] = mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y1;
           }
-          pointsCount = SEGMENTS_PER_EDGE + 1;
+          // The two leader ends, in front of and behind the sampled curve.
+          points[0] = x0;
+          points[1] = y0;
+          const tail = (SEGMENTS_PER_EDGE + 2) * 2;
+          points[tail] = x1;
+          points[tail + 1] = y1;
+          pointsCount = SEGMENTS_PER_EDGE + 3;
         }
 
         // Generate ribbon geometry from points

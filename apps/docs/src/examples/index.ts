@@ -29,7 +29,9 @@ import EvaluationExample from "./evaluation";
 import FramesExample from "./frames";
 import HistoryExample from "./history";
 import MediaExample from "./media";
+import MediaEntitiesExample from "./media-entities";
 import NodesExample from "./nodes";
+import PreviewBandExample from "./preview-band";
 import QuickStartExample from "./quick-start";
 import TextEntitiesExample from "./text-entities";
 import ToolbarExample from "./toolbar";
@@ -41,7 +43,9 @@ export const EXAMPLES: Record<string, React.ComponentType> = {
   nodes: NodesExample,
   frames: FramesExample,
   "text-entities": TextEntitiesExample,
+  "media-entities": MediaEntitiesExample,
   media: MediaExample,
+  "preview-band": PreviewBandExample,
   edges: EdgesExample,
   "connection-rules": ConnectionRulesExample,
   evaluation: EvaluationExample,

@@ -8,6 +8,7 @@
 
 export { SDF_GLSL } from './sdf';
 export { GLASS_GLSL } from './glass';
+export { LENS, LENS_GLSL, GLINT, type LensRung } from './lens';
 export {
   EASE_GLSL,
   easeOutCubic,
@@ -33,4 +34,10 @@ export {
   type RGBA,
 } from './material';
 export { TransitionTracker, motionNow, SETTLED, type Transition } from './motion';
+export {
+  Magnet,
+  MAGNET_STAGE,
+  type MagnetRange,
+  type MagnetTarget,
+} from './magnet';
 export { BackdropSnapshot, BACKDROP_GLSL } from './backdrop';

@@ -111,7 +111,27 @@ export class NodeRegistry {
         evaluation: def.evaluation ?? 'reactive',
       };
       if (preview) {
-        entry.preview = { socket: preview, height: def.previewHeight ?? DEFAULT_PREVIEW_HEIGHT, fit: 'contain' };
+        /**
+         * `cover`, so the band is the picture and not a picture sitting in a frame.
+         *
+         * `contain` letterboxes: a square generation in a wide, short band is centred with the
+         * card's own fill either side, which reads as a smaller picture rather than as a band.
+         * Cropping the edges is the right trade here — the band is a glance, and the full frame
+         * is one click away in the inspector.
+         */
+        /**
+         * `top`, because the picture is why the node exists.
+         *
+         * The library defaults a band to the bottom so that adding one to an existing node moves
+         * nothing. A generator is the other case: the result is the thing you look at, and the
+         * prompt and the sizes are the controls under it.
+         */
+        entry.preview = {
+          socket: preview,
+          height: def.previewHeight ?? DEFAULT_PREVIEW_HEIGHT,
+          fit: 'cover',
+          position: 'top',
+        };
       }
       if (def.width !== undefined) entry.defaultWidth = def.width;
       out[def.type] = entry;

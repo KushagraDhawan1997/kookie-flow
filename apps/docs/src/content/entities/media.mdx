@@ -5,6 +5,25 @@ a band inside its own body.
 People can also paste or drop media onto the canvas to make these entities, as
 [Dropping and pasting media](/interaction/drop-and-paste) describes.
 
+Move the pointer over any of these to see its controls:
+
+<Example name="media-entities" />
+
+## Controls
+
+Media shows its controls while the pointer is over it, and hides them when the pointer leaves.
+The controls are the same on a media entity and in a node's band.
+
+- **Every picture, clip and model** has an expand button in its top-right corner. It opens the
+  media in a viewer over the page. Press Escape, the close button, or the dark area around the
+  media to close it.
+- **A clip** also has a play bar along its bottom edge. In the viewer, the clip starts from the
+  same frame and can play with sound.
+- **A model** turns when you drag it. In the viewer, it turns at full size.
+
+Media smaller than 64 × 48 has no expand button. A clip smaller than 120 × 80 has no play bar.
+Set `controls: false` to turn the controls off.
+
 ## Show an image
 
 Give the entity `type: 'image'`, a `width`, a `height`, and a `data.src`.
@@ -21,6 +40,7 @@ const cover: Entity = {
 | `src`          | `string`                         | none     | The picture's URL, a `data:` URL, or a `blob:` URL.                                      |
 | `objectFit`    | `'contain' \| 'cover' \| 'fill'` | `'fill'` | `fill` stretches the picture to the box, `cover` fills the box and crops, and `contain` fits the whole picture inside it. |
 | `aspectLocked` | `boolean`                        | `true`   | Whether a resize keeps the entity's proportions. See [Resize media](#resize-media).      |
+| `controls`     | `boolean`                        | `true`   | Show the expand button under the pointer.                                                |
 | `alt`          | `string`                         | none     | Stored with the entity, but the canvas doesn't use it.                                   |
 
 `ImageEntityData` is the type of this `data`, and `ImageEntity` is `Entity<ImageEntityData>` with
@@ -51,7 +71,7 @@ const clip: Entity = {
 | `autoplay`     | `boolean`                        | `false`     | Play whenever the clip is on screen.                                                     |
 | `playing`      | `boolean`                        | none        | Play or pause from your code. When set, it wins over `autoplay` and over the play button. |
 | `loop`         | `boolean`                        | `true`      | Start again at the end.                                                                  |
-| `controls`     | `boolean`                        | `true`      | Show the play button and the scrub bar under the pointer.                                |
+| `controls`     | `boolean`                        | `true`      | Show the expand button, the play button and the scrub bar under the pointer.             |
 | `objectFit`    | `'contain' \| 'cover' \| 'fill'` | `'contain'` | How the frame fills the box. `contain` shows the whole frame inside it.                  |
 | `aspectLocked` | `boolean`                        | `true`      | Whether a resize keeps the entity's proportions.                                         |
 | `poster`       | `string`                         | none        | Stored with the entity, but not drawn. The clip's own first frame shows until it plays.  |
@@ -97,6 +117,7 @@ const chair: Entity = {
 | `autoRotate`     | `boolean`                   | `false`               | Turn the model continuously.                                                              |
 | `rotateSpeed`    | `number`                    | `0.6`                 | How fast `autoRotate` turns the model, in radians per second.                             |
 | `orbit`          | `boolean`                   | `true`                | Let people turn the model by dragging it.                                                 |
+| `controls`       | `boolean`                   | `true`                | Show the expand button under the pointer.                                                 |
 | `aspectLocked`   | `boolean`                   | `true`                | Whether a resize keeps the entity's proportions.                                          |
 
 `MeshEntityData` is the type of this `data`, and `MeshEntity` is `Entity<MeshEntityData>` with
@@ -155,13 +176,15 @@ const generate: Entity = {
 | `socket` | `string`                | required  | The id of the output socket whose value is shown.                    |
 | `height` | `number`                | `160`     | The band's height.                                                   |
 | `fit`    | `'cover' \| 'contain'`  | `'cover'` | Fill the band and crop, or fit the whole picture inside it.          |
+| `controls` | `boolean`             | `true`    | Show the band's controls under the pointer. See [Controls](#controls). |
 
 `EntityPreview` is the type of `preview`. An entity type can give every node of that type a band
 through its own `preview`, as [Entity types](/entities/types) describes.
 
-The band is drawn only on a node with a `width`, stated on the node or through its type's
-`defaultWidth`. A node that takes the default width reserves the space and leaves it empty. If you
-give the node a `height` too short for the band, the band shrinks to fit inside the node.
+The band is drawn only on a node whose `width` is stated, either on the node itself or through its
+type's `defaultWidth`. A node that states neither still grows to make room for the band, but leaves
+it empty. If you give the node a `height` too short for the band, the band shrinks to fit inside
+the node.
 
 The value comes from the evaluation engine, not from the node's `data`. You put it there by
 returning it from `onEvaluate`, or by calling `setSocketValue` on the [ref](/api/instance). The
@@ -183,8 +206,16 @@ The band decides what to draw from the value:
 - **Anything else**, such as a number, an object, a plain word, or no value yet, leaves the band
   empty.
 
-A clip in a band plays muted and loops whenever the band is on screen, and it has no controls. A
-model in a band is shown from the default angle and can't be turned. A bitmap, image element or
+All three kinds sit side by side below. Generate is a manual node: press the button, watch the
+progress ring, and the picture it returns lands in its own band. The clip and the model never
+evaluate — their values were placed with `setSocketValue` — which is the same band fed the other
+way.
+
+<Example name="preview-band" />
+
+A clip in a band plays muted and loops whenever the band is on screen, until someone pauses it
+with the play bar. A model in a band turns when you drag the band; drag anywhere else on the node
+to move it. A bitmap, image element or
 canvas is uploaded once, when it arrives, so drawing on the same canvas later doesn't change the
 band. When you want a new picture, set the value again with a new object.
 

@@ -849,6 +849,290 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
   );
 });
 
+// ---------------------------------------------------------------- magnet
+
+head('magnet');
+
+/**
+ * A SOCKET PULLS, AND A RELEASE INSIDE THE PULL CONNECTS.
+ *
+ * The claim the magnet makes (gl/magnet.ts, D21) is not that a socket lights up — the old halo did
+ * that — but that a connection no longer has to land on the dot. So this releases the wire a long
+ * way outside the socket's own hit test (`SOCKET_RADIUS + SOCKET_HIT_TOLERANCE`, ten world px) and
+ * asserts the connection arrived naming the socket that was doing the pulling.
+ *
+ * The refusal is the other half, and it is the arm that would catch a magnet that pulls everything:
+ * a socket whose type cannot take the wire is inside the same reach, and a release there must
+ * connect nothing at all.
+ *
+ * Both pairs are chosen from what the scene actually has — a free output and a free input on
+ * another entity, same type for the accepting pair and different concrete types for the refusing
+ * one — because a law that hardcoded socket ids would break the next time the fixture's graph did.
+ */
+await withPage('count=6&seed=3&grid=0', async (page) => {
+  const pairs = await page.evaluate(() => {
+    const h = window.__harness;
+    const s = h.store.getState();
+    const taken = new Set();
+    for (const e of s.edges) {
+      taken.add(`${e.source}:${e.sourceSocket}:o`);
+      taken.add(`${e.target}:${e.targetSocket}:i`);
+    }
+    const key = (x) => `${x.entityId}:${x.socketId}:${x.isInput ? 'i' : 'o'}`;
+    const free = h.indexedSockets().filter((x) => !taken.has(key(x)));
+    const typeOf = (x) => {
+      const ent = s.entityMap.get(x.entityId);
+      const list = x.isInput ? ent?.inputs : ent?.outputs;
+      return list?.find((k) => k.id === x.socketId)?.type ?? 'any';
+    };
+    const rect = document.querySelector('canvas').getBoundingClientRect();
+    const toScreen = (p) => ({
+      x: p.x * s.viewport.zoom + s.viewport.x + rect.left,
+      y: p.y * s.viewport.zoom + s.viewport.y + rect.top,
+    });
+    const pick = (wants) => {
+      let best = null;
+      for (const o of free.filter((x) => !x.isInput)) {
+        for (const i of free.filter((x) => x.isInput)) {
+          if (i.entityId === o.entityId) continue;
+          const ot = typeOf(o);
+          const it = typeOf(i);
+          const same = ot === it;
+          const wild = ot === 'any' || it === 'any';
+          if (wants === 'accept' ? !same : same || wild) continue;
+          const d = Math.hypot(i.x - o.x, i.y - o.y);
+          if (d > 460 || d < 40) continue;
+          if (!best || d < best.d) {
+            best = { d, from: toScreen(o), to: toScreen(i), target: { entityId: i.entityId, socketId: i.socketId }, source: { entityId: o.entityId, socketId: o.socketId } };
+          }
+        }
+      }
+      return best;
+    };
+    const m = s.magnet;
+    return {
+      accept: pick('accept'),
+      refuse: pick('refuse'),
+      reach: { range: m.bounds.range, fuse: m.bounds.fuse },
+      zoom: s.viewport.zoom,
+    };
+  });
+
+  check(
+    'INSTRUMENT: the scene has a pair that accepts and a pair that refuses',
+    pairs.accept !== null && pairs.refuse !== null,
+    `accept ${JSON.stringify(pairs.accept?.source)} refuse ${JSON.stringify(pairs.refuse?.source)}`
+  );
+  if (!pairs.accept || !pairs.refuse) return;
+
+  /** Release this far short of the socket: inside the pull, well outside the ten-px hit test. */
+  const gap = pairs.reach.range * 0.75 * pairs.zoom;
+  check(
+    'INSTRUMENT: the release point is outside the socket hit test',
+    gap > 10 * pairs.zoom,
+    `${gap.toFixed(1)}px short, hit test is ${(10 * pairs.zoom).toFixed(1)}px`
+  );
+
+  const dragTo = async (pair) => {
+    const before = (await page.evaluate(() => window.__harness.connections())).length;
+    await page.mouse.move(pair.from.x, pair.from.y);
+    await page.mouse.down();
+    const dx = pair.to.x - pair.from.x;
+    const dy = pair.to.y - pair.from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    await page.mouse.move(pair.to.x - (dx / len) * gap, pair.to.y - (dy / len) * gap, { steps: 10 });
+    await page.waitForTimeout(120);
+    const held = await page.evaluate(() => {
+      const m = window.__harness.store.getState().magnet;
+      return { stage: m.stage, pull: m.strength, accepts: m.compatible, key: m.targetKey };
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    const made = (await page.evaluate(() => window.__harness.connections())).slice(before);
+    return { held, made };
+  };
+
+  const accepted = await dragTo(pairs.accept);
+  check(
+    'a compatible socket in reach pulls the wire it is offered',
+    accepted.held.accepts === true && accepted.held.pull > 0 && accepted.held.stage > 0,
+    JSON.stringify(accepted.held)
+  );
+  check(
+    'a release inside the pull connects to the socket that was pulling',
+    accepted.made.length === 1 &&
+      accepted.made[0].target === pairs.accept.target.entityId &&
+      accepted.made[0].targetSocket === pairs.accept.target.socketId &&
+      accepted.made[0].source === pairs.accept.source.entityId,
+    `${JSON.stringify(accepted.made)} for ${JSON.stringify(pairs.accept.target)}`
+  );
+
+  const refused = await dragTo(pairs.refuse);
+  check(
+    'a socket that cannot take the wire pulls nothing',
+    refused.held.pull === 0 && refused.held.accepts === false,
+    JSON.stringify(refused.held)
+  );
+  check(
+    'and a release inside its reach connects nothing',
+    refused.made.length === 0,
+    JSON.stringify(refused.made)
+  );
+
+  // And the magnet lets go: a drag that ended leaves nothing holding the next one.
+  const after = await page.evaluate(() => {
+    const m = window.__harness.store.getState().magnet;
+    return { active: m.active, key: m.targetKey, pull: m.strength };
+  });
+  check(
+    'the magnet lets go when the drag ends',
+    after.active === false && after.key === null && after.pull === 0,
+    JSON.stringify(after)
+  );
+});
+
+/**
+ * A DRAGGED WIRE LEAVES THE RIM, NOT THE CENTRE.
+ *
+ * The resting edge had a law for this and the DRAGGED one did not, which is how it shipped starting
+ * at the socket's centre and stayed that way through a round of "fixed" — the owner was looking at
+ * the wire a drag draws, and every law was looking at the wire an edge draws. The two are different
+ * meshes with different geometry code (edges.tsx, connection-line.tsx), so one law cannot cover
+ * both; this is the other one.
+ *
+ * Read off the drag line's own vertices rather than pixels: the ribbon is named, so the law asks
+ * the mesh where it begins instead of inferring it from colour.
+ */
+await withPage('count=6&seed=3&grid=0&typed=1', async (page) => {
+  const pick = await page.evaluate(() => {
+    const h = window.__harness;
+    const s = h.store.getState();
+    const taken = new Set();
+    for (const e of s.edges) if (e.sourceSocket) taken.add(`${e.source}:${e.sourceSocket}`);
+    const free = h
+      .indexedSockets()
+      .find((x) => !x.isInput && !taken.has(`${x.entityId}:${x.socketId}`));
+    if (!free) return null;
+    const c = h.canvas();
+    const rect = c.getBoundingClientRect();
+    return {
+      world: { x: free.x, y: free.y },
+      screen: {
+        x: free.x * s.viewport.zoom + s.viewport.x + rect.left,
+        y: free.y * s.viewport.zoom + s.viewport.y + rect.top,
+      },
+      rim: h.socketRimOffset(),
+      zoom: s.viewport.zoom,
+    };
+  });
+  check('INSTRUMENT: the scene has a free output socket to drag from', pick !== null, String(pick));
+  if (!pick) return;
+
+  await page.mouse.move(pick.screen.x, pick.screen.y);
+  await page.mouse.down();
+  await page.mouse.move(pick.screen.x + 240, pick.screen.y + 140, { steps: 8 });
+  await page.waitForTimeout(140);
+  const wire = await page.evaluate(({ world, rim }) => {
+    const pts = window.__harness
+      .drawnVertices()
+      .filter((p) => p.kind === 'connection-line');
+    if (pts.length === 0) return { count: 0 };
+    let nearest = Infinity;
+    let insideDot = 0;
+    for (const p of pts) {
+      const dx = p.x - world.x;
+      nearest = Math.min(nearest, dx);
+      if (dx < rim - 0.5 && Math.abs(p.y - world.y) < rim) insideDot++;
+    }
+    return { count: pts.length, nearest, insideDot };
+  }, { world: pick.world, rim: pick.rim });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+
+  check('INSTRUMENT: a drag draws a connection line', wire.count > 0, JSON.stringify(wire));
+  check(
+    'a dragged wire starts at the socket rim, along the socket axis',
+    wire.count > 0 && Math.abs(wire.nearest - pick.rim) < 0.75,
+    `nearest vertex ${wire.nearest?.toFixed(2)} world px out, rim is ${pick.rim}`
+  );
+  check(
+    'and nothing of it is drawn inside the dot',
+    wire.insideDot === 0,
+    `${wire.insideDot} vertices inside the dot`
+  );
+});
+
+/**
+ * A SOCKET WITH NO POINTER ON THE CANVAS IS NOT LIT.
+ *
+ * The lean and its halo are driven by a pointer uniform, and "there is no pointer" used to be
+ * carried as NaN and tested in GLSL with x == x. A compiler is allowed to assume no NaNs and fold
+ * that to true, and this one does: at rest every socket on the canvas read full proximity and wore
+ * its halo with no cursor on the page. Nothing failed — no law looked at a socket that nothing was
+ * happening to, which is the one state every socket is in most of the time.
+ *
+ * Measured to the RIGHT of a free output socket, which is open canvas — straight up is not, as the
+ * first cut of this law found: the pixel there reads a flat alpha 67 of node body edge whether the
+ * halo is lit or not, so both halves of the law failed on scenery.
+ *
+ * The second half asserts the LEAN, not the halo. The halo is quadratic and dies by ten world px,
+ * so a few px either side of the punch edge it is worth about one alpha step — and the lean moves
+ * the dot out from under any point picked in advance, which is how the first cut of this half came
+ * to read 7 against 7 with a pointer well inside the reach. The dot's own fill is the witness with
+ * no ambiguity in it: at rest, nine px out is bare canvas; with a pointer fourteen px out the
+ * socket leans about three and a third px toward it and covers that point.
+ *
+ * Fourteen is also outside the ten-px hit test, so the pointer is NEAR the socket without hovering
+ * it — the lean is the only thing that can answer, which is the claim.
+ */
+await withPage('count=6&seed=3&grid=0&typed=1&preserveBuffer=1', async (page) => {
+  const pick = await page.evaluate(() => {
+    const h = window.__harness;
+    const s = h.store.getState();
+    const taken = new Set();
+    for (const e of s.edges) if (e.sourceSocket) taken.add(`${e.source}:${e.sourceSocket}`);
+    const free = h
+      .indexedSockets()
+      .find((x) => !x.isInput && !taken.has(`${x.entityId}:${x.socketId}`));
+    if (!free) return null;
+    const c = h.canvas();
+    const rect = c.getBoundingClientRect();
+    return {
+      local: { x: free.x * s.viewport.zoom + s.viewport.x, y: free.y * s.viewport.zoom + s.viewport.y },
+      screen: {
+        x: free.x * s.viewport.zoom + s.viewport.x + rect.left,
+        y: free.y * s.viewport.zoom + s.viewport.y + rect.top,
+      },
+      zoom: s.viewport.zoom,
+    };
+  });
+  check('INSTRUMENT: the scene has a free socket to watch', pick !== null, String(pick));
+  if (!pick) return;
+
+  /** Nine world px right of the dot: past the 7.5px punch, and bare canvas until something moves. */
+  const probe = (page, pick) =>
+    page.evaluate(
+      ({ local, zoom }) => window.__harness.readPixel(local.x + 9 * zoom, local.y),
+      { local: pick.local, zoom: pick.zoom }
+    );
+
+  const rest = await probe(page, pick);
+  await page.mouse.move(pick.screen.x + 14 * pick.zoom, pick.screen.y);
+  await page.waitForTimeout(160);
+  const near = await probe(page, pick);
+
+  check(
+    'a socket with no pointer on the canvas is not lit',
+    rest !== null && rest[3] <= 12,
+    `alpha ${rest?.[3]} nine px right of a resting socket`
+  );
+  check(
+    'and a pointer near it draws the dot toward the pointer',
+    rest !== null && near !== null && near[3] > 200,
+    `alpha ${rest?.[3]} at rest, ${near?.[3]} with the pointer fourteen px out`
+  );
+});
+
 // ---------------------------------------------------------------- edges
 
 head('edges');
@@ -896,9 +1180,20 @@ await withPage('scene=shapes', async (page) => {
       ]) {
         const sock = socketAt(entityId, socketId, isInput);
         if (!sock) continue;
+        /**
+         * THE RIM, NOT THE CENTRE (D21). An edge leaves a socket at its drawn edge and runs along
+         * the socket's own axis — an output to the right, an input to the left — so the endpoint
+         * that must be landed on is the rim point, not the socket's point. Measuring to the centre
+         * is what this law used to do, and it passed only while an edge ran through the dot.
+         *
+         * The radius is read from the library rather than restated: a law with its own copy of it
+         * would go green the day the socket changed size and the edge did not follow.
+         */
+        const rim = h.socketRimOffset();
+        const aim = { x: sock.x + (isInput ? -rim : rim), y: sock.y };
         let best = Infinity;
         for (const v of verts) {
-          const d = Math.hypot(v.x - sock.x, v.y - sock.y);
+          const d = Math.hypot(v.x - aim.x, v.y - aim.y);
           if (d < best) best = d;
         }
         rows.push({ what: `${edge.id} ${side} ${entityId}/${socketId}`, dist: best });
@@ -917,7 +1212,7 @@ await withPage('scene=shapes', async (page) => {
 
   const off = out.rows.filter((r) => r.dist > 0.5);
   check(
-    'every edge endpoint lands on its socket',
+    'every edge endpoint lands on its socket rim, along the socket axis',
     off.length === 0,
     off.length ? off.map((r) => `${r.what} ${r.dist.toFixed(1)}px`).join('  ') : undefined
   );
@@ -4192,6 +4487,7 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
     return { x: e.position.x, y: e.position.y, w: e.width, h: e.height };
   });
   const bodyBefore = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  const orbitBefore = await page.evaluate(() => window.__harness.orbit('media-mesh'));
   const bodyStart = await toScreen(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.6);
   await page.mouse.move(bodyStart.x, bodyStart.y);
   await page.mouse.down();
@@ -4199,13 +4495,29 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
   await page.mouse.up();
   await page.waitForTimeout(500);
   const bodyAfter = await pixelAtWorld(mesh.x + mesh.w * 0.5, mesh.y + mesh.h * 0.55);
+  const orbitAfter = await page.evaluate(() => window.__harness.orbit('media-mesh'));
   const meshAfterTurn = await page.evaluate(() => {
     const e = window.__harness.store.getState().entityMap.get('media-mesh');
     return { x: e.position.x, y: e.position.y };
   });
+  /* THE TURN IS READ FROM THE ANGLE, NOT FROM A PIXEL'S BRIGHTNESS. This law used to demand that
+     one sample move by more than 18 per channel, and three r186 broke it without anything being
+     broken: its more physically correct diffuse term darkens a dielectric at grazing angles, so the
+     model's faces sit closer in tone and the same 60px turn moved that sample by 12 instead of 27.
+     A brightness threshold was measuring three's lighting model rather than the turn. The angle is
+     the fact; the pixel check stays, deliberately loose, to catch a turn that never redraws. */
   check(
     'dragging a model turns it',
-    differ(bodyBefore, bodyAfter),
+    orbitAfter.yaw !== orbitBefore.yaw || orbitAfter.pitch !== orbitBefore.pitch,
+    `before=${JSON.stringify(orbitBefore)} after=${JSON.stringify(orbitAfter)}`
+  );
+  check(
+    'and the picture is redrawn from the new angle',
+    bodyBefore &&
+      bodyAfter &&
+      (Math.abs(bodyBefore[0] - bodyAfter[0]) > 4 ||
+        Math.abs(bodyBefore[1] - bodyAfter[1]) > 4 ||
+        Math.abs(bodyBefore[2] - bodyAfter[2]) > 4),
     `before=${JSON.stringify(bodyBefore)} after=${JSON.stringify(bodyAfter)}`
   );
   check(

@@ -31,7 +31,7 @@ const allowedHosts = new Set(
     .map((h) => h.replace(/:\d+$/, ''))
 );
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const host = (request.headers.get('host') ?? '').toLowerCase().replace(/:\d+$/, '');
   if (!allowedHosts.has(host)) {
     return NextResponse.json({ error: 'unrecognised host' }, { status: 403 });

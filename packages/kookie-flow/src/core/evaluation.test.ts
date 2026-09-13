@@ -785,10 +785,12 @@ describe('injected values and the whole graph', () => {
       [edge('a', 'out', 'b', 'in')]
     );
     const calls: string[] = [];
-    let release: (() => void) | null = null;
+    // A box rather than a `let`: TypeScript narrows a `let` from its initialiser and never sees an
+    // assignment made inside the promise, so the call below would be a call on `never`.
+    const held: { release: (() => void) | null } = { release: null };
     const hang = (id: string) => {
       calls.push(id);
-      if (id === 'a') return new Promise<Values>((resolve) => { release = () => resolve({ out: 9 }); });
+      if (id === 'a') return new Promise<Values>((resolve) => { held.release = () => resolve({ out: 9 }); });
       return { out: 1 };
     };
     const ev = new Evaluator(hostFor(w), hang);
@@ -796,7 +798,7 @@ describe('injected values and the whole graph', () => {
     await tick();
     expect(ev.status('a')).toBe('running');
     ev.dispose();
-    release?.(); // the abandoned run answers after the dispose; its result must be dropped
+    held.release?.(); // the abandoned run answers after the dispose; its result must be dropped
     await tick();
 
     calls.length = 0;

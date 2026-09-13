@@ -13,23 +13,34 @@
 
 import type { OrbitAngles } from './media-chrome';
 
-/** What a press on a video's controls can ask for. Registered by the video renderer. */
+/** What a press on a video's controls can ask for. Registered by a renderer that owns clips. */
 export interface VideoOps {
   /** Play if paused, pause if playing. */
   toggle(entityId: string): void;
   /** Jump to a fraction of the clip, 0..1. */
   seek(entityId: string, t: number): void;
+  /** Where the clip is, in seconds, so the viewer can pick up from the same frame. */
+  currentTime(entityId: string): number;
 }
 
-const videoRegistry = new WeakMap<object, VideoOps>();
+/**
+ * Which renderer owns the clip. A video entity and a node's band load their clips through separate
+ * managers, so a press has to reach the one that drew what was pressed.
+ */
+export type VideoSurface = 'entity' | 'band';
 
-export function registerVideoOps(key: object, ops: VideoOps | null): void {
-  if (ops) videoRegistry.set(key, ops);
-  else videoRegistry.delete(key);
+const videoRegistry: Record<VideoSurface, WeakMap<object, VideoOps>> = {
+  entity: new WeakMap(),
+  band: new WeakMap(),
+};
+
+export function registerVideoOps(key: object, surface: VideoSurface, ops: VideoOps | null): void {
+  if (ops) videoRegistry[surface].set(key, ops);
+  else videoRegistry[surface].delete(key);
 }
 
-export function videoOps(key: object): VideoOps | undefined {
-  return videoRegistry.get(key);
+export function videoOps(key: object, surface: VideoSurface): VideoOps | undefined {
+  return videoRegistry[surface].get(key);
 }
 
 // ---------------------------------------------------------------- orbit
@@ -48,6 +59,9 @@ export function getOrbit(key: object, entityId: string): OrbitAngles {
  * Turn a model. Notifies the renderer directly rather than through the store, so a drag redraws
  * one render target and nothing else — no state, no render, no subscriber woken that does not
  * draw models.
+ *
+ * Keyed by entity id, which is unique across the flow, so a model entity and a node's band never
+ * share a turn.
  */
 export function setOrbit(key: object, entityId: string, angles: OrbitAngles): void {
   let map = orbits.get(key);

@@ -182,7 +182,21 @@ function OutputRow({ id, value }: { id: string; value: unknown }) {
   if (value === undefined) shown = <Text size="1" emphasis="quiet">–</Text>;
   else if (isMediaRef(value) && value.url) {
     shown = (
-      <img src={value.url} alt="" style={{ maxInlineSize: '100%', blockSize: 'auto', borderRadius: 'var(--radius-2, 6px)' }} />
+      // `--radius-surface-1`, not `--radius-2`: the radius scale is split by role, and at the
+      // `full` level every control token is the 9999px pill sentinel. A picture is a surface, and
+      // read off the control half it came out a circle.
+      <img
+        src={value.url}
+        alt=""
+        style={{
+          maxInlineSize: '100%',
+          // A flex item's automatic minimum size is its CONTENT's size, so a 768px picture refuses
+          // to shrink and runs off the panel however small `max-inline-size` says it may be.
+          minInlineSize: 0,
+          blockSize: 'auto',
+          borderRadius: 'var(--radius-surface-1, 6px)',
+        }}
+      />
     );
   } else if (typeof value === 'object') shown = <Code size="1">{JSON.stringify(value)}</Code>;
   else shown = <Code size="1">{String(value)}</Code>;

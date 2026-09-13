@@ -141,8 +141,10 @@ function buildCacheKey(entity: Entity): string {
   const outputs = (entity.outputs ?? [])
     .map((s) => `${s.id}:${s.layout ?? 'i'}:${s.rows ?? 1}:${s.height ?? 0}`)
     .join(',');
+  // `position` belongs in the key and `fit` does not: where the band sits moves every row below
+  // it, while how the picture fills the band is a drawing decision the layout never sees.
   const preview = entity.preview
-    ? `${entity.preview.socket}:${entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT}`
+    ? `${entity.preview.socket}:${entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT}:${entity.preview.position ?? 'bottom'}`
     : '';
   return `${entity.type}|${inputs}|${outputs}|${preview}`;
 }
@@ -221,6 +223,28 @@ function computeEntitySocketLayout(
     : baseLayout.marginTop;
   let currentY = marginTop;
 
+  // The band's height is settled before anything is placed, because it may come FIRST.
+  const previewHeight = entity.preview
+    ? Math.max(0, entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT)
+    : 0;
+  const previewAtTop = entity.preview?.position === 'top';
+  let previewY = 0;
+  if (entity.preview && previewAtTop) {
+    /**
+     * A LEADING BAND OWES ITSELF THE SAME MARGIN IT HAS EITHER SIDE.
+     *
+     * `marginTop` is `padding + titleBand`, and the title band is the line box plus the row's own
+     * inset — so content begins flush against the bottom of the title's air. A socket row hides
+     * that, because its label is centred inside a tall row and the space arrives for free. A
+     * picture has no such inside: its pixels start on that edge, and the title sits on the frame.
+     * The band is already inset by `padding` left and right, so it takes the same above, and the
+     * picture ends up in an even margin on three sides.
+     */
+    currentY += baseLayout.padding;
+    previewY = currentY;
+    currentY += previewHeight;
+  }
+
   // Process outputs first (they come before inputs in layout order)
   const outputSockets = entity.outputs ?? [];
   for (let i = 0; i < outputSockets.length; i++) {
@@ -245,16 +269,14 @@ function computeEntitySocketLayout(
   }
 
   /**
-   * The preview band goes UNDER the sockets, at the bottom of the body.
+   * The preview band goes UNDER the sockets unless it asked to lead.
    *
-   * Under, so that adding one to an existing node moves nothing: every socket keeps the row it
-   * had and the card simply grows downwards. It is inset by the body's padding on each side,
-   * like everything else drawn in the body.
+   * Under by default, so that adding one to an existing node moves nothing: every socket keeps
+   * the row it had and the card simply grows downwards. A node whose picture is its whole point
+   * says `position: 'top'` and was placed above, before the outputs. Either way it is inset by
+   * the body's padding on each side, like everything else drawn in the body.
    */
-  let previewY = 0;
-  let previewHeight = 0;
-  if (entity.preview) {
-    previewHeight = Math.max(0, entity.preview.height ?? DEFAULT_PREVIEW_HEIGHT);
+  if (entity.preview && !previewAtTop) {
     previewY = currentY;
     currentY += previewHeight;
   }

@@ -7,15 +7,15 @@ import {
   Flex,
   Shell,
   ShellContent,
-  ShellHeader,
   ShellInspector,
+  ShellPaneFooter,
+  ShellPaneHeader,
   ShellSidebar,
   ShellTrigger,
   TextField,
   Toolbar,
   ToolbarButton,
   ToolbarGroup,
-  ToolbarSeparator,
 } from '@kookie-ui/react';
 import {
   screenToWorld,
@@ -242,64 +242,77 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
 
   return (
     <Box height="100dvh">
+      {/* NO HEADER, as the docs site has none. Everything that row held was either the frame's
+          own chrome or a control for the graph on the canvas, and neither belongs in a band
+          across the whole window: the way home and the appearance go to the sidebar's pinned
+          rows, and the graph's controls float over the graph. */}
       <Shell>
-        <ShellHeader>
-          <Toolbar>
-            <Flex gap="2" align="center">
+        <ShellSidebar aria-label="Node library" defaultOpen width={264}>
+          <NodeLibrary
+            onAdd={onAdd}
+            leading={
               <ToolbarButton iconOnly aria-label="All graphs" render={<NextLink href="/" />}>
                 <HomeIcon />
               </ToolbarButton>
-              <ShellTrigger
-                target="sidebar"
-                render={
-                  <ToolbarButton iconOnly aria-label="Toggle node library">
-                    <PanelLeftIcon />
-                  </ToolbarButton>
-                }
-              />
-              <TextField
-                aria-label="Graph name"
-                value={name}
-                maxLength={120}
-                onChange={(e) => setName(e.target.value)}
-                style={{ inlineSize: 240 }}
-              />
-              <SaveStatus store={autosave.status} />
-            </Flex>
-            <Flex gap="2" align="center">
-              <ToolbarGroup>
-                <ToolbarButton iconOnly aria-label="Undo" disabled={!canUndo} onClick={stepBack}>
-                  <UndoIcon />
-                </ToolbarButton>
-                <ToolbarButton iconOnly aria-label="Redo" disabled={!canRedo} onClick={stepForward}>
-                  <RedoIcon />
-                </ToolbarButton>
-              </ToolbarGroup>
-              <ToolbarSeparator />
-              <ToolbarButton emphasis="loud" tone="accent" leading={<RunIcon />} onClick={() => void flowRef.current?.evaluateDirty()}>
-                Run
-              </ToolbarButton>
-              <ToolbarButton onClick={() => void flowRef.current?.evaluateAll()}>Run all</ToolbarButton>
-              <ToolbarSeparator />
-              <ShellTrigger
-                target="inspector"
-                render={
-                  <ToolbarButton iconOnly aria-label="Toggle inspector">
-                    <PanelRightIcon />
-                  </ToolbarButton>
-                }
-              />
+            }
+          />
+          <ShellPaneFooter float>
+            <Toolbar backdrop>
               <AppearanceToggle inToolbar />
-            </Flex>
-          </Toolbar>
-        </ShellHeader>
-
-        <ShellSidebar aria-label="Node library" defaultOpen width={264}>
-          <NodeLibrary onAdd={onAdd} />
+            </Toolbar>
+          </ShellPaneFooter>
         </ShellSidebar>
 
-        {/* The pane's padding is for content that reads; a canvas takes the whole box. */}
-        <ShellContent style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
+        {/* A canvas takes the whole box, and the pane's controls float over it: the graph passes
+            behind them, as a docs page passes behind its band. */}
+        <ShellContent flush style={{ position: 'relative', overflow: 'hidden' }}>
+          <ShellPaneHeader float>
+            <Toolbar backdrop>
+              <Flex gap="2" align="center">
+                <ShellTrigger
+                  target="sidebar"
+                  render={
+                    <ToolbarButton iconOnly aria-label="Toggle node library">
+                      <PanelLeftIcon />
+                    </ToolbarButton>
+                  }
+                />
+                <TextField
+                  aria-label="Graph name"
+                  value={name}
+                  maxLength={120}
+                  onChange={(e) => setName(e.target.value)}
+                  style={{ inlineSize: 240 }}
+                />
+                <SaveStatus store={autosave.status} />
+              </Flex>
+              {/* NO SEPARATORS, as the docs band has none: each cluster is its own capsule and the
+                  air between capsules does the separating. The gap is one step wider than the
+                  row's own, or two neighbouring groups read as one long capsule with a seam. */}
+              <Flex gap="3" align="center">
+                <ToolbarGroup>
+                  <ToolbarButton iconOnly aria-label="Undo" disabled={!canUndo} onClick={stepBack}>
+                    <UndoIcon />
+                  </ToolbarButton>
+                  <ToolbarButton iconOnly aria-label="Redo" disabled={!canRedo} onClick={stepForward}>
+                    <RedoIcon />
+                  </ToolbarButton>
+                </ToolbarGroup>
+                <ToolbarButton emphasis="loud" tone="accent" leading={<RunIcon />} onClick={() => void flowRef.current?.evaluateDirty()}>
+                  Run
+                </ToolbarButton>
+                <ToolbarButton onClick={() => void flowRef.current?.evaluateAll()}>Run all</ToolbarButton>
+                <ShellTrigger
+                  target="inspector"
+                  render={
+                    <ToolbarButton iconOnly aria-label="Toggle inspector">
+                      <PanelRightIcon />
+                    </ToolbarButton>
+                  }
+                />
+              </Flex>
+            </Toolbar>
+          </ShellPaneHeader>
           <Canvas
             flowRef={flowRef}
             containerRef={containerRef}

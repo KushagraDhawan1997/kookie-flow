@@ -63,6 +63,9 @@ import {
   DEFAULT_TEXT_WIDTH,
   DEFAULT_VIDEO_WIDTH,
   DEFAULT_VIDEO_HEIGHT,
+  DEFAULT_IMAGE_WIDTH,
+  DEFAULT_IMAGE_HEIGHT,
+  DEFAULT_MESH_WIDTH,
   DEFAULT_MESH_HEIGHT,
   DEFAULT_TEXT_HEIGHT,
   MIN_ZOOM,
@@ -73,7 +76,7 @@ import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import type { GlyphMap, KerningMap } from '../utils/text-layout';
 import { buildCharPositionsForEntity, hitTestCharOffset, getWordBoundary, getLineBoundary } from '../utils/text-cursor-layout';
 import { getEditingTextarea, suppressEditBlur } from './text-edit-overlay';
-import type { DrawEntityData, MeshEntityData, TextEntityData, VideoEntityData } from '../types';
+import type { SocketHandle, DrawEntityData, ImageEntityData, MeshEntityData, TextEntityData, VideoEntityData } from '../types';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { diffGraph } from '../core/graph-diff';
 import { findAlignment, type AlignRect } from '../utils/alignment';
@@ -81,15 +84,22 @@ import { mediaEntity, mediaKindOfFile, mediaKindOfUrl } from '../utils/media-pas
 import { simplifyStroke, strokeBounds } from '../utils/stroke-geometry';
 import { DEFAULT_STROKE_WIDTH } from './draw-entities';
 import {
+  hitExpandButton,
   hitVideoControls,
   isMeshDragStrip,
+  orbitFromDirection,
   orbitFromDrag,
   seekPositionAt,
   type OrbitAngles,
 } from '../utils/media-chrome';
-import { getOrbit, setOrbit, videoOps } from '../utils/media-runtime';
+import { getOrbit, hasOrbit, setOrbit, videoOps, type VideoSurface } from '../utils/media-runtime';
+import { previewBandRect, type BandRect } from '../utils/preview-band';
+import { classifyPreviewValue } from '../utils/preview-source';
+import { BAND_MODEL_DIRECTION } from './preview-entities';
+import { MediaViewer, type MediaView } from './media-viewer';
 import { capture } from '../utils/canvas-runtime';
-import { screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
+import type { SocketEntry } from '../core/spatial';
+import { getSocketPosition, socketKey, screenToWorld, getSocketAtPositionFast, getEdgeAtPosition } from '../utils/geometry';
 import { isPointInWidget } from '../utils/widget-geometry';
 import {
   getWidgetAt,
@@ -141,6 +151,14 @@ import type {
 import * as THREE from 'three';
 import { topmostEntityId } from '../utils/entity-depth';
 import { locksAspectByDefault } from '../utils/entity-kind';
+
+/**
+ * The sockets a magnet query lands on, reused across every pointer move of a drag.
+ *
+ * `queryPoint` fills a caller's array, and a fresh one per move is the allocation this package's
+ * first rule forbids — the same reason the socket hit test keeps one of these.
+ */
+const MAGNET_NEAR: SocketEntry[] = [];
 
 /**
  * The defaults for the three props whose IDENTITY is a dependency downstream.
@@ -952,7 +970,20 @@ function InputHandler({
   /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
   /** Whether a checkbox is being held down, so its release knows to put the light out. */
   const checkboxPressRef = useRef(false);
-  const videoScrubRef = useRef<{ entityId: string; width: number } | null>(null);
+  /**
+   * A scrub in progress on a clip's track: which clip, which renderer owns it, and where its track
+   * sits in world units. A band's clip is not at its entity's position, so the left edge is kept.
+   */
+  const videoScrubRef = useRef<{
+    entityId: string;
+    surface: VideoSurface;
+    left: number;
+    width: number;
+  } | null>(null);
+  /** Scratch box for a press on a node's preview band. */
+  const bandScratchRef = useRef<BandRect>({ x: 0, y: 0, width: 0, height: 0 });
+  /** The media the viewer is showing. React state: it opens and closes once per press, never per frame. */
+  const [mediaView, setMediaView] = useState<MediaView | null>(null);
   /** A turn in progress on a model: where it started, and the angles it started from. */
   const orbitDragRef = useRef<{
     entityId: string;
@@ -1141,6 +1172,16 @@ function InputHandler({
 
   /** A picker drag, in progress: which pointer, and which of the two controls it is moving. */
   const colorDragRef = useRef<{ pointerId: number; part: 'sv' | 'hue' } | null>(null);
+
+  /**
+   * The socket the magnet is holding the wire against, when it would accept it.
+   *
+   * The magnet itself (gl/magnet.ts) carries only numbers and a key, because it is in the GL seam
+   * and knows nothing of sockets. This is the handle that key belongs to, so a release inside the
+   * pull connects to it — which is the whole point of a magnet: you no longer have to land on a
+   * six-pixel dot.
+   */
+  const magnetTargetRef = useRef<SocketHandle | null>(null);
   const applyColorDrag = useCallback(
     (layout: ColorPopoverLayout, part: 'sv' | 'hue', worldX: number, worldY: number) => {
       const s = store.getState();
@@ -1856,6 +1897,17 @@ function InputHandler({
         if (socket) {
           // Start connection draft with current mouse position
           store.getState().startConnectionDraft(socket, worldPos);
+          // The wire's tip starts ON the socket it leaves, so the first frame is a wire growing
+          // out of a plug rather than a line already under the cursor.
+          {
+            const s = store.getState();
+            const sourceEntity = s.entityMap.get(socket.entityId);
+            const from = sourceEntity
+              ? getSocketPosition(sourceEntity, socket.socketId, socket.isInput, socketLayout)
+              : null;
+            s.magnet.begin(from?.x ?? worldPos.x, from?.y ?? worldPos.y);
+            magnetTargetRef.current = null;
+          }
           setIsConnecting(true);
           setInteractionMode('connecting');
           // Capture pointer to the container, not e.target, to ensure we receive move events
@@ -2015,6 +2067,125 @@ function InputHandler({
          * top is what moves it — so on a model the branch below is inverted: the press is a drag
          * of the node only where the strip is, and everything else starts an orbit.
          */
+        /** A press a media control answers: it is not a press on the entity, so no drag follows. */
+        const claimMediaPress = (entityId: string) => {
+          e.preventDefault();
+          pointerDownPos.current = null;
+          store.getState().bringToFront(entityId);
+          store.getState().setFocusedEntityId(entityId);
+        };
+
+        /**
+         * The expand button, on every media entity, checked before the bar and the strip: it sits
+         * over a model's strip where the two meet, and the shader draws it on top in that order.
+         */
+        if (
+          clickedEntity &&
+          (clickedEntity.type === 'image' || clickedEntity.type === 'video' || clickedEntity.type === 'mesh')
+        ) {
+          const data = clickedEntity.data as ImageEntityData | VideoEntityData | MeshEntityData;
+          const [dw, dh] =
+            clickedEntity.type === 'image' ? [DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT]
+            : clickedEntity.type === 'video' ? [DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT]
+            : [DEFAULT_MESH_WIDTH, DEFAULT_MESH_HEIGHT];
+          if (
+            data.src &&
+            (data.controls ?? true) &&
+            hitExpandButton(
+              worldPos.x - clickedEntity.position.x,
+              worldPos.y - clickedEntity.position.y,
+              clickedEntity.width ?? dw,
+              clickedEntity.height ?? dh
+            )
+          ) {
+            claimMediaPress(clickedEntity.id);
+            if (clickedEntity.type === 'video') {
+              const startTime = videoOps(store, 'entity')?.currentTime(clickedEntity.id) ?? 0;
+              setMediaView({ kind: 'video', src: data.src, startTime });
+            } else if (clickedEntity.type === 'mesh') {
+              const cam = (data as MeshEntityData).cameraPosition;
+              const orbit = hasOrbit(store, clickedEntity.id)
+                ? getOrbit(store, clickedEntity.id)
+                : orbitFromDirection(cam?.x ?? 0, cam?.y ?? 0.4, cam?.z ?? 1);
+              setMediaView({ kind: 'mesh', src: data.src, orbit });
+            } else {
+              setMediaView({ kind: 'image', src: data.src });
+            }
+            return;
+          }
+        }
+
+        /**
+         * A node's preview band carries the same controls as a media entity, pressed through the
+         * same hit tests. The box comes from the geometry the band renderer draws from, so the press
+         * lands on the button that was drawn. Everything else on the card still drags the node.
+         */
+        if (clickedEntity?.preview && (clickedEntity.preview.controls ?? true)) {
+          const band = bandScratchRef.current;
+          if (
+            previewBandRect(clickedEntity, socketLayout, band) &&
+            worldPos.x >= band.x && worldPos.x <= band.x + band.width &&
+            worldPos.y >= band.y && worldPos.y <= band.y + band.height
+          ) {
+            const source = classifyPreviewValue(
+              store.getState().getSocketValue(clickedEntity.id, clickedEntity.preview.socket)
+            );
+            const lx = worldPos.x - band.x;
+            const ly = worldPos.y - band.y;
+
+            if (source.kind !== 'none' && hitExpandButton(lx, ly, band.width, band.height)) {
+              claimMediaPress(clickedEntity.id);
+              if (source.kind === 'video') {
+                const startTime = videoOps(store, 'band')?.currentTime(clickedEntity.id) ?? 0;
+                setMediaView({ kind: 'video', src: source.src, startTime });
+              } else if (source.kind === 'mesh') {
+                const orbit = hasOrbit(store, clickedEntity.id)
+                  ? getOrbit(store, clickedEntity.id)
+                  : orbitFromDirection(BAND_MODEL_DIRECTION.x, BAND_MODEL_DIRECTION.y, BAND_MODEL_DIRECTION.z);
+                setMediaView({ kind: 'mesh', src: source.src, orbit });
+              } else {
+                setMediaView(source);
+              }
+              return;
+            }
+
+            if (source.kind === 'video') {
+              const hit = hitVideoControls(lx, ly, band.width, band.height);
+              if (hit) {
+                claimMediaPress(clickedEntity.id);
+                const ops = videoOps(store, 'band');
+                if (hit.kind === 'play') {
+                  ops?.toggle(clickedEntity.id);
+                } else {
+                  ops?.seek(clickedEntity.id, hit.t);
+                  videoScrubRef.current = {
+                    entityId: clickedEntity.id,
+                    surface: 'band',
+                    left: band.x,
+                    width: band.width,
+                  };
+                  containerRef.current?.setPointerCapture(e.pointerId);
+                }
+                return;
+              }
+            }
+
+            if (source.kind === 'mesh') {
+              claimMediaPress(clickedEntity.id);
+              orbitDragRef.current = {
+                entityId: clickedEntity.id,
+                start: hasOrbit(store, clickedEntity.id)
+                  ? getOrbit(store, clickedEntity.id)
+                  : orbitFromDirection(BAND_MODEL_DIRECTION.x, BAND_MODEL_DIRECTION.y, BAND_MODEL_DIRECTION.z),
+                originX: worldPos.x,
+                originY: worldPos.y,
+              };
+              containerRef.current?.setPointerCapture(e.pointerId);
+              return;
+            }
+          }
+        }
+
         if (clickedEntity && clickedEntity.type === 'video') {
           const data = clickedEntity.data as VideoEntityData;
           const vw = clickedEntity.width ?? DEFAULT_VIDEO_WIDTH;
@@ -2027,18 +2198,20 @@ function InputHandler({
               )
             : null;
           if (hit) {
-            e.preventDefault();
-            pointerDownPos.current = null;
-            store.getState().bringToFront(clickedEntity.id);
-            store.getState().setFocusedEntityId(clickedEntity.id);
-            const ops = videoOps(store);
+            claimMediaPress(clickedEntity.id);
+            const ops = videoOps(store, 'entity');
             if (hit.kind === 'play') {
               ops?.toggle(clickedEntity.id);
             } else {
               ops?.seek(clickedEntity.id, hit.t);
               // Held: scrubbing is a drag, and letting go of the track mid-gesture would be a
               // control that answers the press and then stops listening.
-              videoScrubRef.current = { entityId: clickedEntity.id, width: vw };
+              videoScrubRef.current = {
+                entityId: clickedEntity.id,
+                surface: 'entity',
+                left: clickedEntity.position.x,
+                width: vw,
+              };
               containerRef.current?.setPointerCapture(e.pointerId);
             }
             return;
@@ -2050,13 +2223,14 @@ function InputHandler({
           const mh = clickedEntity.height ?? DEFAULT_MESH_HEIGHT;
           const onStrip = isMeshDragStrip(worldPos.y - clickedEntity.position.y, mh);
           if ((data.orbit ?? true) && !onStrip) {
-            e.preventDefault();
-            pointerDownPos.current = null;
-            store.getState().bringToFront(clickedEntity.id);
-            store.getState().setFocusedEntityId(clickedEntity.id);
+            claimMediaPress(clickedEntity.id);
+            const cam = data.cameraPosition;
             orbitDragRef.current = {
               entityId: clickedEntity.id,
-              start: getOrbit(store, clickedEntity.id),
+              // From where the camera already stands, so the first pixel of the drag does not jump.
+              start: hasOrbit(store, clickedEntity.id)
+                ? getOrbit(store, clickedEntity.id)
+                : orbitFromDirection(cam?.x ?? 0, cam?.y ?? 0.4, cam?.z ?? 1),
               originX: worldPos.x,
               originY: worldPos.y,
             };
@@ -2142,6 +2316,27 @@ function InputHandler({
   // (which is batched). This prevents issues when events fire before React processes state updates.
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent) => {
+      /**
+       * WHERE THE POINTER IS, first thing and unconditionally.
+       *
+       * A socket leans toward a pointer that merely comes near it, with no drag in progress, so
+       * this has to be written on every move — ahead of the colour-drag, connection and entity-drag
+       * branches, each of which returns. The first cut sat inside the entity-drag branch, so it
+       * only ran while a node was being dragged and the lean never appeared at all.
+       *
+       * Two floats into a pre-allocated pair, never a `set()`: this is the hottest handler here.
+       */
+      {
+        const rectNow = cachedRectRef.current;
+        const { viewport: vpNow, pointerWorld } = store.getState();
+        const world = screenToWorld(
+          { x: e.clientX - rectNow.left, y: e.clientY - rectNow.top },
+          vpNow
+        );
+        pointerWorld[0] = world.x;
+        pointerWorld[1] = world.y;
+      }
+
       /**
        * An open panel owns the pointer while it is up: a picker drag moves its cursors, and a
        * pointer over the list lights the row under it. Nothing beneath the panel is hovered
@@ -2232,12 +2427,9 @@ function InputHandler({
           videoScrubRef.current = null;
         } else {
           const rect = cachedRectRef.current;
-          const { viewport, entityMap } = store.getState();
+          const { viewport } = store.getState();
           const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top }, viewport);
-          const entity = entityMap.get(scrub.entityId);
-          if (entity) {
-            videoOps(store)?.seek(scrub.entityId, seekPositionAt(world.x - entity.position.x, scrub.width));
-          }
+          videoOps(store, scrub.surface)?.seek(scrub.entityId, seekPositionAt(world.x - scrub.left, scrub.width));
           return;
         }
       }
@@ -2311,6 +2503,8 @@ function InputHandler({
           autoScrollRef.current.lastScreenPos = null;
 
           if (connectionDraft) {
+            store.getState().magnet.end();
+            magnetTargetRef.current = null;
             store.getState().cancelConnectionDraft();
             setIsConnecting(false);
           }
@@ -2396,6 +2590,55 @@ function InputHandler({
               isTypeCompatible = false;
             }
           }
+        }
+
+        /**
+         * THE MAGNET. Hover answers a nine-pixel hit test; this answers "what is the wire near",
+         * which is a wider question and the one the pull is built on. The nearest socket that
+         * could take a connection at all — same direction is never one, nor is the wire's own
+         * node — is handed to the magnet with its own verdict, and the magnet decides how hard it
+         * pulls. A socket that refuses is still handed over, so it can stiffen rather than sit
+         * there looking available.
+         */
+        const magnet = store.getState().magnet;
+        MAGNET_NEAR.length = 0;
+        const reach = magnet.bounds.range + socketLayout.socketSize;
+        const near = connSocketQuadtree.queryPoint(worldPos.x, worldPos.y, reach, MAGNET_NEAR);
+        let bestEntry: (typeof near)[number] | null = null;
+        let bestDistance = Infinity;
+        for (let i = 0; i < near.length; i++) {
+          const entry = near[i];
+          if (entry.isInput === connectionDraft.source.isInput) continue;
+          if (entry.entityId === connectionDraft.source.entityId) continue;
+          const d = Math.hypot(entry.x - worldPos.x, entry.y - worldPos.y);
+          if (d < bestDistance) {
+            bestDistance = d;
+            bestEntry = entry;
+          }
+        }
+        if (bestEntry) {
+          const handle: SocketHandle = {
+            entityId: bestEntry.entityId,
+            socketId: bestEntry.socketId,
+            isInput: bestEntry.isInput,
+          };
+          let accepts = isSocketCompatible(connectionDraft.source, handle, entityMap, socketTypes);
+          if (accepts && !allowCycles) {
+            const isSourceInput = connectionDraft.source.isInput;
+            const sourceNodeId = isSourceInput ? handle.entityId : connectionDraft.source.entityId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.entityId : handle.entityId;
+            if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) accepts = false;
+          }
+          magnet.aim(
+            worldPos.x,
+            worldPos.y,
+            { x: bestEntry.x, y: bestEntry.y, compatible: accepts },
+            socketKey(handle.entityId, handle.socketId, handle.isInput)
+          );
+          magnetTargetRef.current = accepts ? handle : null;
+        } else {
+          magnet.aim(worldPos.x, worldPos.y, null, null);
+          magnetTargetRef.current = null;
         }
 
         // Update connection draft position and validity (for visual feedback)
@@ -2668,7 +2911,6 @@ function InputHandler({
         const screenY = e.clientY - rect.top;
         const { viewport } = store.getState();
         const worldPos = screenToWorld({ x: screenX, y: screenY }, viewport);
-
         // Calculate primary entity position using cursor offset (React Flow style)
         // This keeps cursor at same spot on entity throughout drag
         let primaryX = worldPos.x - dragState.current.cursorOffset.x;
@@ -3019,14 +3261,20 @@ function InputHandler({
 
       // End connection draft (check store state, not React state)
       if (connectionDraft) {
-        const { hoveredSocketId, entityMap, viewport } = store.getState();
+        const { hoveredSocketId, entityMap, viewport, magnet } = store.getState();
         let connectionSucceeded = false;
+        // A release inside the pull lands on the socket that was holding the wire, even though the
+        // pointer never reached its dot. That is what the magnet is for; hover still wins where
+        // both answer, because the pointer is the more explicit of the two.
+        const dropTarget = hoveredSocketId ?? magnetTargetRef.current;
+        magnet.end();
+        magnetTargetRef.current = null;
 
-        if (hoveredSocketId) {
+        if (dropTarget) {
           // Check if connection is valid (use entityMap for O(1))
           let isValid = validateConnection(
             connectionDraft.source,
-            hoveredSocketId,
+            dropTarget,
             entityMap,
             socketTypes,
             connectionMode,
@@ -3036,8 +3284,8 @@ function InputHandler({
           // Check cycle prevention when allowCycles is false
           if (isValid && !allowCycles) {
             const isSourceInput = connectionDraft.source.isInput;
-            const sourceNodeId = isSourceInput ? hoveredSocketId.entityId : connectionDraft.source.entityId;
-            const targetNodeId = isSourceInput ? connectionDraft.source.entityId : hoveredSocketId.entityId;
+            const sourceNodeId = isSourceInput ? dropTarget.entityId : connectionDraft.source.entityId;
+            const targetNodeId = isSourceInput ? connectionDraft.source.entityId : dropTarget.entityId;
             if (store.getState().wouldCreateCycle(sourceNodeId, targetNodeId)) {
               isValid = false;
             }
@@ -3050,7 +3298,7 @@ function InputHandler({
             // In loose mode, connection is allowed but marked invalid if types don't match
             const isTypeCompatible = isSocketCompatible(
               connectionDraft.source,
-              hoveredSocketId,
+              dropTarget,
               entityMap,
               socketTypes
             );
@@ -3058,14 +3306,14 @@ function InputHandler({
             // Determine source and target based on input/output
             const isSourceInput = connectionDraft.source.isInput;
             const connection: Connection = {
-              source: isSourceInput ? hoveredSocketId.entityId : connectionDraft.source.entityId,
+              source: isSourceInput ? dropTarget.entityId : connectionDraft.source.entityId,
               sourceSocket: isSourceInput
-                ? hoveredSocketId.socketId
+                ? dropTarget.socketId
                 : connectionDraft.source.socketId,
-              target: isSourceInput ? connectionDraft.source.entityId : hoveredSocketId.entityId,
+              target: isSourceInput ? connectionDraft.source.entityId : dropTarget.entityId,
               targetSocket: isSourceInput
                 ? connectionDraft.source.socketId
-                : hoveredSocketId.socketId,
+                : dropTarget.socketId,
               invalid: !isTypeCompatible,
             };
 
@@ -3103,6 +3351,8 @@ function InputHandler({
         autoScrollRef.current.lastScreenPos = null;
 
         // Cancel the draft
+        store.getState().magnet.end();
+        magnetTargetRef.current = null;
         store.getState().cancelConnectionDraft();
         setIsConnecting(false);
         setInteractionMode('idle');
@@ -3815,6 +4065,8 @@ function InputHandler({
         if (s.editingEntityId) {
           s.stopEditing();
         } else if (s.connectionDraft) {
+          s.magnet.end();
+          magnetTargetRef.current = null;
           s.cancelConnectionDraft();
           setIsConnecting(false);
         } else if (s.selectionBox) {
@@ -4106,6 +4358,12 @@ function InputHandler({
         if (e.target === containerRef.current) store.getState().closeWidgetPopover();
       }}
       onPointerLeave={(e) => {
+        // Nothing is near the pointer once there is no pointer: NaN, which every reader tests for.
+        {
+          const p = store.getState().pointerWorld;
+          p[0] = Number.NaN;
+          p[1] = Number.NaN;
+        }
         handlePointerUp(e);
         store.getState().setHoveredEntityId(null);
         store.getState().setHoveredSocketId(null);
@@ -4152,6 +4410,8 @@ function InputHandler({
         onChange={emitWidgetChange}
         onClose={() => openWidgetEdit(null)}
       />
+      {/* The expand button's viewer. Mounted only while open, like the edit overlay above. */}
+      <MediaViewer view={mediaView} onClose={() => setMediaView(null)} />
       {/* Static, and therefore free: one hidden sentence, read once when the graph takes focus. */}
       <p id={instructionsId} style={SR_ONLY_TEXT}>
         Arrow keys move between nodes. Press Enter to reach the focused node&apos;s controls, and

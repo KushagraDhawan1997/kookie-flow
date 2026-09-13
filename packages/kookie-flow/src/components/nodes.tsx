@@ -6,6 +6,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
+import { MATERIAL } from '../gl';
 import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
@@ -196,6 +197,19 @@ export function Entities() {
 
   // Create material with resolved style (shared between both meshes)
   const material = useMemo(() => {
+    /**
+     * THE CARD'S FLOAT IS `--shadow-3`, and it is the token rather than an impression of it.
+     *
+     * This used to be a hand-rolled `NODE_SHADOW` — one layer, blur 20, offset 8 — justified by
+     * the claim that the `--shadow-N` tokens "top out at blur 16". That was only ever true of
+     * useThemeTokens' FALLBACK table, which invents single-layer stand-ins because "CSS shadows
+     * are too complex to parse reliably". v2's real `--shadow-3` is three layers reaching 48, and
+     * gl/material.ts already carries it read off v2's own stylesheet. The popover has drawn it
+     * correctly all along; the node body was the one surface that never moved over.
+     */
+    const cast = MATERIAL[tokens.appearance].floatingCast;
+    // A layer reaches `y + spread + blur` past the shape, and the quad has to hold all three.
+    const castPad = cast.reduce((m, l) => Math.max(m, Math.abs(l.y) + l.spread + l.blur), 0);
     return new THREE.ShaderMaterial({
       uniforms: {
         // 1 = the body (writes depth, discards outside the shape); 0 = the shadow halo only.
@@ -208,10 +222,11 @@ export function Entities() {
         // The global accent band hue (r < 0 = none). A Vector3 rather than a Color so the
         // resolver's negative sentinel is not a colour.
         uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
-        // The card's float and its top light; both per appearance, both from the resolver.
-        uShadowBlur: { value: resolvedStyle.shadowBlur },
-        uShadowOffsetY: { value: resolvedStyle.shadowOffsetY },
-        uShadowOpacity: { value: resolvedStyle.shadowOpacity },
+        // The card's float: v2's `--shadow-3`, three layers, per appearance. The colours are the
+        // token's own, so the appearance pair is the material's and not a light/dark opacity.
+        uCast: { value: cast.map((l) => new THREE.Vector4(l.y, l.blur, l.spread, 0)) },
+        uCastColor: { value: cast.map((l) => new THREE.Vector4(...l.color)) },
+        uShadowPad: { value: castPad },
         uTopLight: { value: resolvedStyle.topLightAlpha },
         // Status rendering
         // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
@@ -228,8 +243,7 @@ export function Entities() {
         attribute float aStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success, 5=dirty
         attribute float aProgress; // 0..1 while running with reported progress; -1 = no bar
 
-        uniform float uShadowBlur;
-        uniform float uShadowOffsetY;
+        uniform float uShadowPad;
 
         varying vec2 vUv;
         varying vec2 vSize;
@@ -245,9 +259,8 @@ export function Entities() {
           vStatus = aStatus;
           vProgress = aProgress;
 
-          // Expand geometry to include shadow padding
-          float shadowPadding = uShadowBlur + abs(uShadowOffsetY);
-          vec2 expandedSize = aSize + vec2(shadowPadding * 2.0);
+          // Expand geometry to hold the whole cast; the reach is computed on the CPU.
+          vec2 expandedSize = aSize + vec2(uShadowPad * 2.0);
           vExpandedSize = expandedSize;
 
           vec3 pos = position;
@@ -268,10 +281,9 @@ export function Entities() {
         // Header uniforms
         uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
         uniform float uPass;
-        // Shadow uniforms
-        uniform float uShadowBlur;
-        uniform float uShadowOffsetY;
-        uniform float uShadowOpacity;
+        // The float: shadow-3 as (y, blur, spread) and a colour, three layers.
+        uniform vec4 uCast[3];
+        uniform vec4 uCastColor[3];
         uniform float uTopLight;
         // Status uniforms
         uniform vec3 uAccentColor;
@@ -287,6 +299,18 @@ export function Entities() {
         varying float vProgress;
 
         ${squircleBoxSDF}
+
+        // Straight-alpha "over", as gl/glass.ts defines it. Inlined rather than pulling GLASS_GLSL
+        // in whole: this shader needs two of its fifteen functions and runs on every node.
+        vec4 over(vec4 dst, vec3 c, float a) {
+          a = clamp(a, 0.0, 1.0);
+          float outA = a + dst.a * (1.0 - a);
+          vec3 outC = (c * a + dst.rgb * dst.a * (1.0 - a)) / max(outA, 1e-5);
+          return vec4(outC, outA);
+        }
+        vec4 overC(vec4 dst, vec4 c, float a) {
+          return over(dst, c.rgb, c.a * a);
+        }
 
         /**
          * Where a point on the border sits along the perimeter: 0 at top-centre, rising clockwise
@@ -326,23 +350,23 @@ export function Entities() {
           vec2 p = (vUv - 0.5) * vExpandedSize;
           vec2 b = vSize * 0.5;
 
-          // Shadow calculation (rendered behind main shape)
-          // The shadow is priced only in the shadow pass. Both passes share the vertex shader
-          // and so the 28px padded quad; the body pass used to run this SDF, the status branch
-          // and every mask over that whole ring before dying at the final alpha test — a
-          // 240x100 card paid ~1.9x its fragments for nothing.
-          float shadowAlpha = 0.0;
-          if (uPass < 0.5 && uShadowOpacity > 0.0) {
-            // Offset shadow position (Y is negated because WebGL Y-up vs our Y-down)
-            vec2 shadowP = p + vec2(0.0, uShadowOffsetY);
-            float shadowD = roundedBoxSDF(shadowP, b, uCornerRadius);
-            // Full inside a short way under the edge, then a quadratic tail out to the blur:
-            // no knee where the halo meets the body, and the card lands rather than floats.
-            float s = 1.0 - smoothstep(-uShadowBlur * 0.25, uShadowBlur, shadowD);
-            shadowAlpha = uShadowOpacity * s * s;
-          }
-
           float d = roundedBoxSDF(p, b, uCornerRadius);
+
+          // The float, priced only in the shadow pass — the body pass used to run this whole ring
+          // before dying at the final alpha test, and a 240x100 card paid ~1.9x its fragments for
+          // nothing. Each layer is the shape moved DOWN by y, grown by its spread, and blurred;
+          // the CSS blur radius is two sigma, so the ramp runs -blur..blur. Exactly glassCast().
+          // "cast" is a reserved word in GLSL ES 1.00, hence the name.
+          vec4 castAcc = vec4(0.0);
+          if (uPass < 0.5) {
+            for (int i = 0; i < 3; i++) {
+              float cy = uCast[i].x;
+              float cb = uCast[i].y;
+              float cs = uCast[i].z;
+              float dc = roundedBoxSDF(p + vec2(0.0, cy), b + cs, uCornerRadius + cs);
+              castAcc = overC(castAcc, uCastColor[i], 1.0 - smoothstep(-cb, cb, dc));
+            }
+          }
 
           // Body pass: anything past the hairline is not the body. Shadow pass: the halo alone,
           // and it returns here — nothing below it is the shadow's business.
@@ -353,9 +377,16 @@ export function Entities() {
           } else {
             float passAA = fwidth(d) * 1.5;
             float passFill = 1.0 - smoothstep(-passAA, passAA, d);
-            float shadowMask = shadowAlpha * (1.0 - passFill);
-            if (shadowMask < 0.01) discard;
-            gl_FragColor = vec4(0.0, 0.0, 0.0, shadowMask);
+            // CSS never paints a box-shadow under its own box, and the body is the other pass, so
+            // what is left is the halo outside the shape, faded across the shape's own edge.
+            float shadowMask = castAcc.a * (1.0 - passFill);
+            // 0.004, not 0.01, and it is the difference between a halo that fades and one that
+            // ENDS. The outermost layer is still ~1% black where 0.01 would cut it, which is three
+            // luma levels on the light floor — a hard edge tracing the card's own outline out in
+            // open canvas. At 0.004 the step is one level, the floor's own quantisation. Nothing
+            // is saved by the higher number: the three SDFs have already run by this point.
+            if (shadowMask < 0.004) discard;
+            gl_FragColor = vec4(castAcc.rgb, shadowMask);
             return;
           }
 

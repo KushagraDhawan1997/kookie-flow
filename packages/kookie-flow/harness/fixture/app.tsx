@@ -18,7 +18,7 @@ import { Theme } from '@kookie-ui/react';
 import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
-import type { Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
+import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
 import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
 import { capture } from '../../src/utils/canvas-runtime';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
@@ -27,9 +27,11 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { frozenHue } from '../../src/core/palette';
 import { getWidgetBox, sliderTrackWidth } from '../../src/utils/widget-geometry';
 import { popoverLayoutFor, POPOVER_PAD } from '../../src/utils/popover-layout';
+import { EDGE_SOCKET_RIM } from '../../src/components/edges';
 import { useResolvedStyle } from '../../src/contexts/StyleContext';
 import { resolveWidgetConfig } from '../../src/utils/widgets';
 import { DEFAULT_SOCKET_TYPES } from '../../src/core/constants';
+import { getOrbit } from '../../src/utils/media-runtime';
 
 declare global {
   interface Window {
@@ -54,6 +56,20 @@ export interface HarnessApi {
   consumerEntities(): { id: string; position: { x: number; y: number } }[];
   /** Every onEntitiesChange batch the consumer received, as the ids each one touched. */
   entityChangeBatches(): string[][];
+  /**
+   * The library's own rim offset: how far from a socket's centre an edge starts (D21).
+   *
+   * Exposed rather than restated, so the endpoint law cannot go green the day the socket changes
+   * size and the edge stops following it.
+   */
+  socketRimOffset(): number;
+  /** Every connection the canvas offered the consumer, in order. */
+  connections(): {
+    source: string | null;
+    sourceSocket?: string | null;
+    target: string | null;
+    targetSocket?: string | null;
+  }[];
   /** Read the store's viewport (pan/zoom). */
   viewport(): unknown;
   /** Resolve a CSS custom property the way the GL layer does, to sRGB 0-1. */
@@ -66,6 +82,13 @@ export interface HarnessApi {
     parsePx(v: string): number;
     frozenHue(name: string, appearance: 'light' | 'dark'): string | null;
   };
+  /**
+   * Where a model's camera stands, as the renderer reads it.
+   *
+   * Exposed so a turn is asserted on the angle rather than on how bright one pixel is — which
+   * depends on three's lighting model, and moved when r186 changed it.
+   */
+  orbit(entityId: string): { yaw: number; pitch: number };
   /** Read one pixel from the WebGL canvas, in CSS pixel coordinates from the top-left. */
   readPixel(x: number, y: number): [number, number, number, number] | null;
   /** The <canvas> R3F is drawing into. */
@@ -872,6 +895,13 @@ const EVALUATION_TYPES = { gate: { type: 'gate', evaluation: 'manual' as const }
  */
 const consumerEntities: { current: Entity[] } = { current: [] };
 const entityChangeBatches: { current: string[][] } = { current: [] };
+/**
+ * Every connection the canvas offered the consumer, in order.
+ *
+ * Module scope, beside the change batches and for the same reason: the api object is built inside
+ * the Probe, which is not the component holding the graph's state.
+ */
+const connectionsReceived: { current: Connection[] } = { current: [] };
 
 const evaluationHooks = { failPost: false, slowGen: false, quietGen: false };
 async function fixtureEvaluate(
@@ -936,6 +966,8 @@ function Probe() {
         const s = (store as { getState(): { entities?: unknown[]; edges?: unknown[] } }).getState();
         return { entities: s.entities?.length ?? 0, edges: s.edges?.length ?? 0 };
       },
+      socketRimOffset: () => EDGE_SOCKET_RIM,
+      connections: () => connectionsReceived.current.slice(),
       evaluationLog: () => evaluationLog.slice(),
       evaluationCalls: () => evaluationCalls.slice(),
       evaluationStatus(id: string) {
@@ -1008,6 +1040,11 @@ function Probe() {
           return [Number(rgb[1]) / 255, Number(rgb[2]) / 255, Number(rgb[3]) / 255];
         }
         return null;
+      },
+      orbit(entityId: string) {
+        // Keyed by the same store object mesh-entities turns by, so this is the angle it draws from.
+        const { yaw, pitch } = getOrbit(store, entityId);
+        return { yaw, pitch };
       },
       readPixel(x: number, y: number) {
         const c = canvas();
@@ -1337,6 +1374,32 @@ function App() {
     entityChangeBatches.current.push(changes.map((c) => (c.type === 'add' ? c.entity.id : c.id)));
     setEntities((prev) => applyEntityChanges(prev, changes));
   }, []);
+  /**
+   * A connection the canvas offers, applied the way a consumer applies one.
+   *
+   * Without this the fixture dropped `onConnect` on the floor, so no law could tell a connection
+   * that was made from one that was not — which is exactly the claim the magnet makes about a
+   * release that never lands on the dot.
+   */
+  const onConnect = useCallback((connection: Connection) => {
+    connectionsReceived.current.push(connection);
+    const { source, target, sourceSocket, targetSocket } = connection;
+    // A Connection names its ends optionally; an edge cannot. A consumer that appended one anyway
+    // would be testing a shape the library never promised.
+    if (source === null || source === undefined || target === null || target === undefined) return;
+    setEdges((prev) => [
+      ...prev,
+      {
+        id: `c${prev.length}-${source}:${sourceSocket ?? ''}-${target}:${targetSocket ?? ''}`,
+        source,
+        target,
+        ...(sourceSocket ? { sourceSocket } : {}),
+        ...(targetSocket ? { targetSocket } : {}),
+        ...(connection.invalid ? { invalid: true } : {}),
+      },
+    ]);
+  }, []);
+
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     setEdges((prev) => applyEdgeChanges(prev, changes));
   }, []);
@@ -1355,6 +1418,7 @@ function App() {
         edges={edges}
         onEntitiesChange={i === 0 ? onEntitiesChange : undefined}
         onEdgesChange={i === 0 ? onEdgesChange : undefined}
+        onConnect={i === 0 ? onConnect : undefined}
         showWidgets={p.widgets}
         {...(p.customWidget ? { widgetTypes: CUSTOM_WIDGET_TYPES } : {})}
         /**

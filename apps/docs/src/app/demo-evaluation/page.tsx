@@ -75,6 +75,8 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
     evaluation: 'manual',
     inputs: [{ id: 'seed', name: 'Seed', type: 'float' }],
     outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+    // The picture the run returns, drawn in the node's own body.
+    preview: { socket: 'image', height: 150, fit: 'cover', position: 'top' },
   },
   'image/upscale': {
     type: 'image/upscale',
@@ -82,6 +84,7 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
     defaultWidth: 240,
     inputs: [{ id: 'image', name: 'Image', type: 'image' }],
     outputs: [{ id: 'image', name: 'Image', type: 'image' }],
+    preview: { socket: 'image', height: 150, fit: 'cover', position: 'top' },
   },
 };
 
@@ -147,11 +150,13 @@ export default function DemoEvaluationPage() {
           ctx.progress(i / GENERATE_TICKS);
         }
         if (failRef.current) throw new Error(`seed ${num(inputs.seed)} was refused by the model`);
-        return { image: `image(seed=${num(inputs.seed)})` };
+        // A URL, which is what the band draws. A real model call returns one of these too.
+        return { image: '/preview-render.jpg' };
       }
       case 'image/upscale':
         await sleep(300, ctx.signal);
-        return { image: `${String(inputs.image)} @2x` };
+        // Standing in for the upscaled copy: a second picture, so the two bands differ.
+        return { image: '/preview-source.jpg' };
       default:
         throw new Error(`no evaluator for ${type} (${id})`);
     }

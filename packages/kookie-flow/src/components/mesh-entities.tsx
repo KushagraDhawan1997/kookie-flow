@@ -28,7 +28,8 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_MESH_WIDTH, DEFAULT_MESH_HEIGHT } from '../core/constants';
 import { MeshSceneManager, frameCamera } from '../utils/mesh-loader';
@@ -41,27 +42,8 @@ import {
   setMediaBox,
   setMediaChrome,
 } from '../utils/media-quad';
-import { isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
+import { easeChromePresence, fitsExpand, isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, subscribeOrbit } from '../utils/media-runtime';
-
-/** Same fade the video controls use; see video-entities.tsx. */
-const CHROME_FADE_RATE = 12;
-
-function easeStripPresence(
-  presences: Map<string, number>,
-  id: string,
-  wanted: boolean,
-  delta: number
-): number {
-  const target = wanted ? 1 : 0;
-  const from = presences.get(id) ?? 0;
-  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
-  const next = from + (target - from) * alpha;
-  const settled = Math.abs(target - next) < 0.004 ? target : next;
-  if (settled === 0) presences.delete(id);
-  else presences.set(id, settled);
-  return settled;
-}
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -146,6 +128,18 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
   meshEntityIdsRef.current = meshEntityIds;
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   onEntitiesChangeRef.current = onEntitiesChange;
+
+  // The controls' glass, shared by every material; see utils/media-glass.ts.
+  const glass = useMemo(
+    () => buildMediaGlass(tokens, resolveColor(THEME_COLORS.canvas.background, tokens), resolvedStyle.widgetRadius),
+    [tokens, resolvedStyle.widgetRadius]
+  );
+  const glassRef = useRef(glass);
+  glassRef.current = glass;
+  useEffect(() => {
+    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    fullDirtyRef.current = true;
+  }, [glass]);
 
   /** Monotonic frame counter, for LRU reclamation of render targets. */
   const frameRef = useRef(0);
@@ -249,7 +243,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial());
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
           }
         } else {
           meshRefs.current.delete(id);
@@ -493,11 +487,20 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
          * body moves the entity as any other does, and a strip would be advertising a distinction
          * that no longer exists.
          */
-        const wantsStrip =
-          (data.orbit ?? true) && hoveredEntityId === entity.id && isMeshDragStrip(0, h);
-        const presence = easeStripPresence(chromePresenceRef.current, entity.id, wantsStrip, delta);
-        if (presence > 0.001) chromeFading = true;
-        setMediaChrome(mat, presence > 0.001 ? 2 : 0, 0, false, presence);
+        const hasStrip = (data.orbit ?? true) && isMeshDragStrip(0, h);
+        const hasExpand = (data.controls ?? true) && fitsExpand(w, h);
+        const wantsChrome = hoveredEntityId === entity.id && (hasStrip || hasExpand);
+        const presence = easeChromePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
+        // Only a moving fade keeps the pass alive; open chrome on a still model is a still picture.
+        if (presence !== (wantsChrome ? 1 : 0)) chromeFading = true;
+        setMediaChrome(
+          mat,
+          hasStrip && presence > 0.001 ? 2 : 0,
+          0,
+          false,
+          hasStrip ? presence : 0,
+          hasExpand ? presence : 0
+        );
         if (mat.uniforms.map.value !== target.rt.texture) {
           mat.uniforms.map.value = target.rt.texture;
         }

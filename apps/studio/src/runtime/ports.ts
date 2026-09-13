@@ -24,7 +24,26 @@ export const ports: Ports = {
     },
   },
   jobs: {
-    run: () => Promise.reject(new NotAvailableError('AI generation')),
+    /**
+     * Submit and wait. The route answers when the job is done, so there is nothing to poll yet —
+     * a real provider will need that, and the signal is already wired for the cancel it brings.
+     */
+    async run({ entityId, model, input, signal, progress }) {
+      progress?.(0.1);
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entityId, model, input }),
+        signal,
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`job failed: ${detail || res.status}`);
+      }
+      const body = (await res.json()) as { output: Record<string, unknown>; cost?: number };
+      progress?.(1);
+      return { output: body.output, cost: body.cost };
+    },
   },
   assets: {
     async put(blob, kind = blob.type.startsWith('video/') ? 'video' : 'image'): Promise<MediaRef> {

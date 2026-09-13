@@ -1,8 +1,5 @@
 import nextMDX from '@next/mdx';
-import remarkGfm from 'remark-gfm';
 import { createRequire } from 'module';
-
-import remarkFenceMeta from './mdx-plugins/remark-fence-meta.mjs';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../packages/kookie-flow/package.json');
@@ -56,12 +53,17 @@ const securityHeaders = [
  * same CodeSample the examples use instead, so prose fences and example sources highlight
  * through one function rather than drifting apart.
  *
- * Functions rather than path strings: this app compiles with webpack, whose MDX loader takes
- * plugins directly.
+ * PATH STRINGS, NOT FUNCTIONS. Turbopack compiles this app, and it hands plugin options to Rust,
+ * which cannot receive a JavaScript function — so each plugin is named by a string it resolves
+ * itself. The local plugin is an ABSOLUTE path: a relative string is resolved as a module
+ * specifier from the loader's own context, where it finds nothing.
  */
 const withMDX = nextMDX({
   options: {
-    remarkPlugins: [remarkGfm, remarkFenceMeta],
+    remarkPlugins: [
+      ['remark-gfm', {}],
+      new URL('./mdx-plugins/remark-fence-meta.mjs', import.meta.url).pathname,
+    ],
   },
 });
 
@@ -107,6 +109,10 @@ const MOVED_TWINS = MOVED_CHAPTERS.filter(([source]) => !source.startsWith('/doc
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  /* `next dev` otherwise writes an AGENTS.md and a CLAUDE.md into the app on every run. This repo
+     keeps its agent instructions in the root CLAUDE.md, and a second copy the framework rewrites
+     is an uninvited voice in the place the rules live — the same call the KookieUI docs make. */
+  agentRules: false,
   reactStrictMode: true,
   /* THE DEV SERVER SERVES A PHONE ON THE LAN. The dev server refuses `/_next/*` for any
      browser origin it was not told about: the HTML arrives, every chunk is refused, nothing
@@ -118,6 +124,11 @@ const nextConfig = {
   env: {
     KOOKIE_FLOW_VERSION: packageJson.version,
   },
+  /* THE LIBRARY FROM SOURCE, NOT FROM DIST, as the studio does. The two entry points are mapped to
+     `src` by `paths` in tsconfig.json, which Next applies to bundling as well as to tsc, so the
+     app's own compiler is the only step. Through `dist` a stalled `tsup --watch` left the docs
+     showing a ten-hour-old library while the studio showed the current one. The built package is
+     still exercised as a consumer gets it by the harness, which builds it. */
   transpilePackages: ['@kushagradhawan/kookie-flow'],
   trailingSlash: false,
   /* Old chapter URLs live in issues, READMEs and search indexes, and a moved page that 404s

@@ -83,11 +83,8 @@ function classifyString(src: string): PreviewSource {
   return NONE;
 }
 
-export function classifyPreviewValue(value: unknown): PreviewSource {
-  if (typeof value === 'string') return classifyString(value);
-  if (value === null || value === undefined) return NONE;
-
-  // `instanceof` needs the constructors, which do not exist while server-rendering.
+/** `instanceof` needs the constructors, which do not exist while server-rendering. */
+function classifyBitmap(value: unknown): PreviewSource | null {
   if (typeof ImageBitmap !== 'undefined' && value instanceof ImageBitmap) {
     return { kind: 'bitmap', image: value };
   }
@@ -96,6 +93,40 @@ export function classifyPreviewValue(value: unknown): PreviewSource {
   }
   if (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) {
     return { kind: 'bitmap', image: value };
+  }
+  return null;
+}
+
+export function classifyPreviewValue(value: unknown): PreviewSource {
+  if (typeof value === 'string') return classifyString(value);
+  if (value === null || value === undefined) return NONE;
+
+  const bitmap = classifyBitmap(value);
+  if (bitmap) return bitmap;
+
+  /**
+   * An object that names its own preview — a media reference, which is what a picture is once it
+   * is content-addressed: an id, a size, and somewhere the pixels can be found.
+   *
+   * `preview` is what the node wants in the band: a small decoded bitmap, or a thumbnail URL. It
+   * wins, because it is the cheap one and the node chose it. `url` is the full asset and stands in
+   * when there is no preview. Read one level only: no recursion, so a self-referencing object
+   * cannot spin here.
+   *
+   * A reference that says `kind: 'video'` is believed over the URL it carries. A stored asset is
+   * often served from a path with no extension, `classifyString` calls anything location-shaped a
+   * picture, and a clip drawn down that path would be a still frame that never moves.
+   */
+  if (typeof value === 'object') {
+    const ref = value as { preview?: unknown; url?: unknown; kind?: unknown };
+    const fromPreview =
+      typeof ref.preview === 'string' ? classifyString(ref.preview) : classifyBitmap(ref.preview);
+    if (fromPreview && fromPreview.kind !== 'none') return fromPreview;
+    if (typeof ref.url === 'string') {
+      const fromUrl = classifyString(ref.url);
+      if (ref.kind === 'video' && fromUrl.kind === 'image') return { kind: 'video', src: ref.url };
+      return fromUrl;
+    }
   }
   return NONE;
 }

@@ -66,12 +66,13 @@
     "harness:spike:theme": "node harness/spikes/theme-flip.mjs",
     "harness:spike:glass": "node harness/spikes/glass-look.mjs",
     "harness:spike:compare": "node harness/spikes/glass-compare.mjs",
+    "harness:spike:magnet": "node harness/spikes/magnet.mjs",
     "harness:counts": "node harness/spikes/counts.mjs",
     "harness:tokens": "node harness/spikes/token-census.mjs",
     "test:browser": "node harness/build.mjs && node harness/behaviors.mjs"
   },
   "dependencies": {
-    "zustand": "^5.0.10"
+    "zustand": "^5.0.15"
   },
   "peerDependencies": {
     "@react-three/drei": ">=10.0.0",
@@ -87,22 +88,23 @@
     }
   },
   "devDependencies": {
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.5.0",
-    "@testing-library/react": "^16.1.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@types/three": "^0.182.0",
-    "esbuild": "^0.27.2",
-    "jsdom": "^25.0.0",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "~19.2.18",
+    "@types/react-dom": "~19.2.7",
+    "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
     "msdf-bmfont-xml": "^2.8.0",
-    "playwright-core": "^1.58.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "three": "^0.182.0",
+    "playwright-core": "^1.63.0",
+    "react": "~19.2.8",
+    "react-dom": "~19.2.8",
+    "three": "^0.186.0",
     "tsup": "^8.3.0",
-    "typescript": "^5.9.0",
-    "vitest": "^4.0.18",
-    "@kookie-ui/react": "file:../../vendor/kookie-ui-react-0.0.0.tgz"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0",
+    "@kookie-ui/react": "file:../../vendor/kookie-ui-react-0.0.0.tgz",
+    "vite": "^8.3.0"
   }
 }

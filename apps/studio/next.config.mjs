@@ -2,7 +2,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const flowSrc = path.join(here, '../../packages/kookie-flow/src');
 
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -13,6 +12,9 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  /* `next dev` otherwise writes an AGENTS.md and a CLAUDE.md into the app on every run; the
+     repo's agent instructions live in the root CLAUDE.md. */
+  agentRules: false,
   reactStrictMode: true,
   /* One Docker image for self-hosters: `next build` writes a server that needs only Node. The
      tracing root is the monorepo, or the workspace packages the app links to are left out. */
@@ -33,14 +35,10 @@ const nextConfig = {
     process.env.STUDIO_LAN === '1' ? ['192.168.*.*', '10.*.*.*', '172.*.*.*', '*.local'] : [],
   /* THE LIBRARY FROM SOURCE, NOT FROM DIST. The studio is where the library gets changed for
      its own needs, and a change is only real here once it is on screen. Going through `dist`
-     puts a separate watcher between an edit and the page; aliasing the two entry points to
-     `src` makes the app's own compiler the only step. `$` keeps the two keys exact, or the
-     first would also swallow the second. tsconfig.json makes the same two mappings for tsc. */
-  webpack: (config) => {
-    config.resolve.alias['@kushagradhawan/kookie-flow/plugins$'] = path.join(flowSrc, 'plugins/index.ts');
-    config.resolve.alias['@kushagradhawan/kookie-flow$'] = path.join(flowSrc, 'index.ts');
-    return config;
-  },
+     puts a separate watcher between an edit and the page. The two entry points are mapped to
+     `src` by `paths` in tsconfig.json, which Next applies to bundling as well as to tsc — so the
+     app's own compiler is the only step, and there is no second copy of the mapping here. A
+     `paths` key with no `*` is an exact match, so the root entry never swallows `/plugins`. */
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

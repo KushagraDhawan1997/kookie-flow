@@ -12,10 +12,16 @@
  * model is rendered into a target first, exactly as mesh entities are — this file reuses those
  * three utilities rather than reimplementing any of them.
  *
+ * THE SAME CONTROLS AS A MEDIA ENTITY. A band is media, so it carries what media carries: the
+ * expand button on everything, the play bar on a clip, and a turn on a model. They are drawn by the
+ * same shader from the same constants, and pressed through the same hit tests in kookie-flow.tsx.
+ *
  * WHAT KEEPS IT CHEAP. The pass is dirty-driven like every other renderer here, and additionally
  * runs while a video is playing or a model is being redrawn. Bands whose source has not changed
  * upload nothing; a model's target is redrawn only when its box crosses a resolution bucket or
- * its scene finishes loading.
+ * its scene finishes loading. Hovering a node with a band runs a CHROME-ONLY pass over the one
+ * hovered band and whatever is still fading, never the whole list — pointer moves write no store
+ * state, so the band has to look for the pointer itself, and it looks in one place.
  */
 
 import { useRef, useEffect, useMemo, useState } from 'react';
@@ -29,15 +35,20 @@ import { rgbToHex } from '../utils/color';
 import { ImageTextureManager } from '../utils/image-loader';
 import { VideoTextureManager } from '../utils/video-loader';
 import { MeshSceneManager, frameCamera } from '../utils/mesh-loader';
-import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { classifyPreviewValue, sameSource, type PreviewSource } from '../utils/preview-source';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
+import { previewBandRect, type BandRect } from '../utils/preview-band';
+import { easeChromePresence, fitsControls, fitsExpand, orbitDirection } from '../utils/media-chrome';
+import { getOrbit, hasOrbit, registerVideoOps, subscribeOrbit } from '../utils/media-runtime';
+import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
+import type { Entity } from '../types';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
   createMediaMaterial,
   applyObjectFitUV,
   setMediaBox,
+  setMediaChrome,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 2;
@@ -57,6 +68,9 @@ const PREVIEW_RENDER_PRIORITY = -1;
 const MAX_PREVIEW_TARGETS = 4;
 const MIN_BUCKET = 128;
 const MAX_BUCKET = 512;
+
+/** The direction a band's model is seen from until someone turns it: slightly above, in front. */
+export const BAND_MODEL_DIRECTION = { x: 0, y: 0.4, z: 1 } as const;
 
 /**
  * A band's corner is HALF the card's.
@@ -79,6 +93,10 @@ interface PreviewTarget {
   dirty: boolean;
   renderedSrc: string | null;
   lastSeen: number;
+  /** The turn the target's picture was taken at, so a new one is noticed. */
+  yaw: number;
+  pitch: number;
+  turned: boolean;
 }
 
 /** What each band is currently holding on to, so it can be released when it stops. */
@@ -112,6 +130,14 @@ export function PreviewEntities() {
   const holdsRef = useRef<Map<string, PreviewHold>>(new Map());
   /** Reused across frames so deciding what may play allocates nothing. */
   const wantPlayingRef = useRef<Set<string>>(new Set());
+  /** A pause or play someone pressed, by source. It outranks a band's standing wish to play. */
+  const userPlaybackRef = useRef<Map<string, boolean>>(new Map());
+  /** How faded in each band's controls are, 0..1. */
+  const chromePresenceRef = useRef<Map<string, number>>(new Map());
+  /** Whether the chrome-only pass must run: a band is hovered, or something is still fading. */
+  const chromeActiveRef = useRef(false);
+  /** Scratch box, rewritten for every band so the pass allocates nothing. */
+  const bandRef = useRef<BandRect>({ x: 0, y: 0, width: 0, height: 0 });
 
   const previewIdsRef = useRef(previewIds);
   previewIdsRef.current = previewIds;
@@ -121,6 +147,18 @@ export function PreviewEntities() {
   const dirRef = useRef(new THREE.Vector3());
 
   const markFullDirty = useMemo(() => () => { fullDirtyRef.current = true; }, []);
+
+  // The controls' glass. A band's ground is the card it sits in, not the canvas.
+  const glass = useMemo(
+    () => buildMediaGlass(tokens, resolvedStyle.background, resolvedStyle.widgetRadius),
+    [tokens, resolvedStyle.background, resolvedStyle.widgetRadius]
+  );
+  const glassRef = useRef(glass);
+  glassRef.current = glass;
+  useEffect(() => {
+    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    markFullDirty();
+  }, [glass, markFullDirty]);
 
   const imageManager = useMemo(() => new ImageTextureManager(markFullDirty), [markFullDirty]);
   const videoManager = useMemo(() => new VideoTextureManager(markFullDirty), [markFullDirty]);
@@ -174,6 +212,10 @@ export function PreviewEntities() {
     // The values themselves. A band exists to show what a run produced, so the version the engine
     // bumps on every status and value change is the one that matters most here.
     const unsubEvaluation = store.subscribe((s) => s.evaluationVersion, markFullDirty);
+    // Entering a node is what arms the chrome pass; see the file docblock.
+    const unsubHovered = store.subscribe((s) => s.hoveredEntityId, markFullDirty);
+    // A turn changes nothing in the store — by design — so it says so here instead.
+    const unsubOrbit = subscribeOrbit(store, markFullDirty);
 
     return () => {
       unsubTopology();
@@ -184,8 +226,43 @@ export function PreviewEntities() {
       unsubStack();
       unsubHidden();
       unsubEvaluation();
+      unsubHovered();
+      unsubOrbit();
     };
   }, [store, markFullDirty]);
+
+  /** The clip a band is showing, if it is showing one. */
+  function bandVideoSrc(entityId: string): string | null {
+    const source = holdsRef.current.get(entityId)?.source;
+    return source?.kind === 'video' ? source.src : null;
+  }
+
+  // What a press on a band's play bar acts on. See media-runtime.ts.
+  useEffect(() => {
+    registerVideoOps(store, 'band', {
+      toggle: (entityId) => {
+        const src = bandVideoSrc(entityId);
+        if (!src) return;
+        const next = !videoManager.isPlaying(src);
+        userPlaybackRef.current.set(src, next);
+        videoManager.setPlaying(src, next);
+        markFullDirty();
+      },
+      seek: (entityId, t) => {
+        const src = bandVideoSrc(entityId);
+        const element = src ? videoManager.getEntry(src)?.element : undefined;
+        const duration = element?.duration;
+        if (!element || !duration || !Number.isFinite(duration)) return;
+        element.currentTime = Math.min(Math.max(t, 0), 1) * duration;
+        markFullDirty();
+      },
+      currentTime: (entityId) => {
+        const src = bandVideoSrc(entityId);
+        return (src ? videoManager.getEntry(src)?.element.currentTime : 0) ?? 0;
+      },
+    });
+    return () => registerVideoOps(store, 'band', null);
+  }, [store, videoManager, markFullDirty]);
 
   function getRefCallback(id: string): (mesh: THREE.Mesh | null) => void {
     let cb = refCallbacksRef.current.get(id);
@@ -193,7 +270,7 @@ export function PreviewEntities() {
       cb = (mesh: THREE.Mesh | null) => {
         if (mesh) {
           quadRefs.current.set(id, mesh);
-          if (!materialRefs.current.has(id)) materialRefs.current.set(id, createMediaMaterial());
+          if (!materialRefs.current.has(id)) materialRefs.current.set(id, createMediaMaterial(glassRef.current));
         } else {
           quadRefs.current.delete(id);
         }
@@ -213,6 +290,47 @@ export function PreviewEntities() {
     else if (source.kind === 'mesh') sceneManager.release(source.src);
     hold.ownTexture?.dispose();
     holdsRef.current.delete(id);
+  }
+
+  /**
+   * Write one band's controls and return whether they are still fading.
+   *
+   * The pointer has to be over the BAND, not merely the node: the controls belong to the picture,
+   * and a button appearing when the pointer is on the node's title would be answering the wrong
+   * thing. `pointerWorld` is the pre-allocated pair the move handler writes, so this reads two
+   * floats and allocates nothing.
+   */
+  function writeChrome(
+    entity: Entity,
+    band: BandRect,
+    mat: THREE.ShaderMaterial,
+    source: PreviewSource,
+    hoveredEntityId: string | null,
+    pointerWorld: Float32Array,
+    delta: number
+  ): boolean {
+    const px = pointerWorld[0];
+    const py = pointerWorld[1];
+    const over =
+      hoveredEntityId === entity.id &&
+      px >= band.x && px <= band.x + band.width &&
+      py >= band.y && py <= band.y + band.height;
+    const wants = (entity.preview?.controls ?? true) && over && fitsExpand(band.width, band.height);
+    const presence = easeChromePresence(chromePresenceRef.current, entity.id, wants, delta);
+
+    const bar = source.kind === 'video' && fitsControls(band.width, band.height);
+    let progress = 0;
+    let playing = false;
+    if (bar && source.kind === 'video') {
+      const element = videoManager.getEntry(source.src)?.element;
+      const duration = element?.duration;
+      if (element && duration && Number.isFinite(duration) && duration > 0) {
+        progress = element.currentTime / duration;
+      }
+      playing = videoManager.isPlaying(source.src);
+    }
+    setMediaChrome(mat, bar && presence > 0.001 ? 1 : 0, progress, playing, bar ? presence : 0, presence);
+    return presence !== (wants ? 1 : 0);
   }
 
   /**
@@ -238,16 +356,59 @@ export function PreviewEntities() {
     return true;
   }
 
-  useFrame(({ gl, size, viewport: glViewport }) => {
-    const frame = ++frameRef.current;
-    if (!fullDirtyRef.current && !animatingRef.current) return;
+  /** The chrome-only pass: the hovered band and anything still fading, and nothing else. */
+  function chromePass(delta: number): void {
+    const { entityMap, hoveredEntityId, pointerWorld } = store.getState();
+    const presences = chromePresenceRef.current;
+    const band = bandRef.current;
+    let fading = false;
 
-    const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder, getSocketValue } =
-      store.getState();
+    const step = (id: string) => {
+      const entity = entityMap.get(id);
+      const quad = quadRefs.current.get(id);
+      const mat = materialRefs.current.get(id);
+      const hold = holdsRef.current.get(id);
+      if (!entity || !quad || !quad.visible || !mat || !hold || quad.material !== mat) {
+        presences.delete(id);
+        return;
+      }
+      if (!previewBandRect(entity, socketLayout, band)) {
+        presences.delete(id);
+        return;
+      }
+      if (writeChrome(entity, band, mat, hold.source, hoveredEntityId, pointerWorld, delta)) fading = true;
+    };
+
+    const hovered = hoveredEntityId && entityMap.get(hoveredEntityId)?.preview ? hoveredEntityId : null;
+    if (hovered) step(hovered);
+    for (const id of presences.keys()) if (id !== hovered) step(id);
+
+    chromeActiveRef.current = fading || hovered !== null;
+  }
+
+  useFrame(({ gl, size, viewport: glViewport }, delta) => {
+    const frame = ++frameRef.current;
+    if (!fullDirtyRef.current && !animatingRef.current) {
+      if (chromeActiveRef.current) chromePass(delta);
+      return;
+    }
+
+    const {
+      entityMap,
+      viewport,
+      selectedEntityIds,
+      hiddenEntityIds,
+      stackOrder,
+      getSocketValue,
+      hoveredEntityId,
+      pointerWorld,
+    } = store.getState();
     const ids = previewIdsRef.current;
     const wantPlaying = wantPlayingRef.current;
     wantPlaying.clear();
     let animating = false;
+    let chromeFading = false;
+    const band = bandRef.current;
 
     const invZoom = 1 / viewport.zoom;
     const viewLeft = -viewport.x * invZoom;
@@ -272,23 +433,11 @@ export function PreviewEntities() {
       }
 
       // The band, in world space: the body's padding on each side, at the row the layout gave it.
-      const layout = getEntitySocketLayout(entity, socketLayout);
-      const w = (entity.width ?? 0) - socketLayout.padding * 2;
-      /**
-       * The band takes the height the layout gave it, unless the entity was given an explicit
-       * height smaller than its content — a resize, or a consumer that set one. Then the band
-       * shrinks to what is left inside the card rather than hanging out of the bottom of it.
-       */
-      const available = entity.height === undefined
-        ? layout.previewHeight
-        : entity.height - socketLayout.padding - layout.previewY;
-      const h = Math.min(layout.previewHeight, available);
-      if (w <= 0 || h <= 0) {
+      if (!previewBandRect(entity, socketLayout, band)) {
         quad.visible = false;
         continue;
       }
-      const x = entity.position.x + socketLayout.padding;
-      const y = entity.position.y + layout.previewY;
+      const { x, y, width: w, height: h } = band;
 
       if (
         x + w < viewLeft - CULL_PADDING || x > viewRight + CULL_PADDING ||
@@ -381,6 +530,9 @@ export function PreviewEntities() {
             dirty: true,
             renderedSrc: null,
             lastSeen: frame,
+            yaw: 0,
+            pitch: 0,
+            turned: false,
           };
           targetsRef.current.set(entity.id, target);
         }
@@ -395,6 +547,15 @@ export function PreviewEntities() {
           target.dirty = true;
         }
         if (target.renderedSrc !== source.src) target.dirty = true;
+        // A turn is a camera change, and the target holds a picture taken from the old one.
+        const turned = hasOrbit(store, entity.id);
+        const orbit = getOrbit(store, entity.id);
+        if (target.turned !== turned || target.yaw !== orbit.yaw || target.pitch !== orbit.pitch) {
+          target.turned = turned;
+          target.yaw = orbit.yaw;
+          target.pitch = orbit.pitch;
+          target.dirty = true;
+        }
 
         if (target.dirty) {
           if (!rendered) {
@@ -402,7 +563,12 @@ export function PreviewEntities() {
             gl.getClearColor(clearColorRef.current);
             prevTarget = gl.getRenderTarget();
           }
-          dirRef.current.set(0, 0.4, 1);
+          if (turned) {
+            const d = orbitDirection(orbit);
+            dirRef.current.set(d.x, d.y, d.z);
+          } else {
+            dirRef.current.set(BAND_MODEL_DIRECTION.x, BAND_MODEL_DIRECTION.y, BAND_MODEL_DIRECTION.z);
+          }
           frameCamera(target.camera, entry.center, entry.radius, dirRef.current);
           gl.setRenderTarget(target.rt);
           gl.setClearColor(0x000000, 0);
@@ -421,6 +587,7 @@ export function PreviewEntities() {
         mat.uniforms.uvScale.value.set(1, -1);
         if (mat.uniforms.map.value !== target.rt.texture) mat.uniforms.map.value = target.rt.texture;
         mat.uniforms.opacity.value = 1;
+        if (writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld, delta)) chromeFading = true;
         quad.material = mat;
         continue;
       }
@@ -453,8 +620,9 @@ export function PreviewEntities() {
         if (!texture) animating = true;
         naturalW = entry?.naturalWidth ?? 0;
         naturalH = entry?.naturalHeight ?? 0;
-        // A visible band wants to be playing; the manager decides how many actually may.
-        wantPlaying.add(source.src);
+        // A visible band wants to be playing unless someone paused it; the manager decides how
+        // many actually may.
+        if (userPlaybackRef.current.get(source.src) !== false) wantPlaying.add(source.src);
         if (videoManager.isPlaying(source.src)) animating = true;
       } else if (source.kind === 'bitmap') {
         const hold2 = holdsRef.current.get(entity.id);
@@ -479,6 +647,7 @@ export function PreviewEntities() {
       );
       if (mat.uniforms.map.value !== texture) mat.uniforms.map.value = texture;
       mat.uniforms.opacity.value = 1;
+      if (writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld, delta)) chromeFading = true;
       quad.material = mat;
     }
 
@@ -491,6 +660,9 @@ export function PreviewEntities() {
     // Uploads are queued so a board of new pictures does not stall one frame decoding all of them.
     if (imageManager.processUploadQueue()) animating = true;
     animatingRef.current = animating;
+    // A hovered band has to keep looking for the pointer; see the file docblock.
+    chromeActiveRef.current =
+      chromeFading || (hoveredEntityId !== null && entityMap.get(hoveredEntityId)?.preview !== undefined);
 
     if (topologyDirtyRef.current) {
       for (const [id] of materialRefs.current) {
@@ -500,6 +672,7 @@ export function PreviewEntities() {
         refCallbacksRef.current.delete(id);
         targetsRef.current.get(id)?.rt.dispose();
         targetsRef.current.delete(id);
+        chromePresenceRef.current.delete(id);
         releaseHold(id);
       }
       topologyDirtyRef.current = false;

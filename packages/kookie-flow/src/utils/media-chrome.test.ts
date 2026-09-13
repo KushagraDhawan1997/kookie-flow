@@ -3,15 +3,59 @@ import {
   CONTROL_BAR_HEIGHT,
   CONTROL_BAR_INSET,
   CONTROL_BUTTON_SIZE,
+  CONTROL_TRACK_END_PAD,
+  EXPAND_BUTTON_SIZE,
   MESH_DRAG_STRIP_HEIGHT,
   ORBIT_MAX_PITCH,
+  easeChromePresence,
   fitsControls,
+  fitsExpand,
+  hitExpandButton,
   hitVideoControls,
   isMeshDragStrip,
   orbitDirection,
+  orbitFromDirection,
   orbitFromDrag,
   seekPositionAt,
 } from './media-chrome';
+
+describe('the expand button', () => {
+  const inset = CONTROL_BAR_INSET;
+
+  it('sits in the top-right corner', () => {
+    expect(hitExpandButton(W - inset - EXPAND_BUTTON_SIZE / 2, inset + EXPAND_BUTTON_SIZE / 2, W, H)).toBe(true);
+  });
+
+  it('and nowhere else: not the other corners, not the middle', () => {
+    expect(hitExpandButton(inset + 4, inset + 4, W, H)).toBe(false);
+    expect(hitExpandButton(W / 2, H / 2, W, H)).toBe(false);
+    expect(hitExpandButton(W - inset - 4, H - inset - 4, W, H)).toBe(false);
+  });
+
+  it('never overlaps the play bar, so a clip keeps both', () => {
+    const barTop = H - CONTROL_BAR_INSET - CONTROL_BAR_HEIGHT;
+    expect(inset + EXPAND_BUTTON_SIZE).toBeLessThan(barTop);
+  });
+
+  it('fits media too small for a bar, and not a speck', () => {
+    expect(fitsControls(90, 60)).toBe(false);
+    expect(fitsExpand(90, 60)).toBe(true);
+    expect(fitsExpand(40, 30)).toBe(false);
+    expect(hitExpandButton(38, 10, 40, 30)).toBe(false);
+  });
+});
+
+describe('chrome fading', () => {
+  it('arrives, settles exactly, and leaves no entry once gone', () => {
+    const presences = new Map<string, number>();
+    let p = 0;
+    for (let i = 0; i < 120; i++) p = easeChromePresence(presences, 'a', true, 1 / 60);
+    expect(p).toBe(1);
+    for (let i = 0; i < 120; i++) p = easeChromePresence(presences, 'a', false, 1 / 60);
+    expect(p).toBe(0);
+    expect(presences.has('a')).toBe(false);
+  });
+});
 
 /**
  * Where a press lands. The drawing of these shapes is in the shader and pinned by browser laws;
@@ -66,7 +110,7 @@ describe('dragging along the track', () => {
 
   it('and the middle of the track is the middle of the clip', () => {
     const trackLeft = CONTROL_BAR_INSET + CONTROL_BUTTON_SIZE + 8;
-    const trackRight = W - CONTROL_BAR_INSET;
+    const trackRight = W - CONTROL_BAR_INSET - CONTROL_TRACK_END_PAD;
     expect(seekPositionAt((trackLeft + trackRight) / 2, W)).toBeCloseTo(0.5, 5);
   });
 });
@@ -107,6 +151,15 @@ describe('turning a model', () => {
       const d = orbitDirection(angles);
       expect(Math.hypot(d.x, d.y, d.z)).toBeCloseTo(1, 10);
     }
+  });
+
+  it('a drag starts from the stated view: the direction survives the round trip', () => {
+    const angles = orbitFromDirection(0, 0.4, 1);
+    const d = orbitDirection(angles);
+    const len = Math.hypot(0, 0.4, 1);
+    expect(d.x).toBeCloseTo(0, 10);
+    expect(d.y).toBeCloseTo(0.4 / len, 10);
+    expect(d.z).toBeCloseTo(1 / len, 10);
   });
 
   it('and no turn at all looks from the front', () => {

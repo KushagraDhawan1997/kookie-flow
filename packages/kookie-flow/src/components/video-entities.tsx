@@ -22,13 +22,14 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import { rgbToHex } from '../utils/color';
 import { DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT, MIN_VIDEO_HEIGHT } from '../core/constants';
 import { VideoTextureManager } from '../utils/video-loader';
 import type { VideoEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
-import { fitsControls } from '../utils/media-chrome';
+import { easeChromePresence, fitsControls, fitsExpand } from '../utils/media-chrome';
 import { registerVideoOps } from '../utils/media-runtime';
 import {
   sharedGeometry,
@@ -38,35 +39,6 @@ import {
   setMediaBox,
   setMediaChrome,
 } from '../utils/media-quad';
-
-/**
- * How fast chrome fades in and out, as a share of the remaining distance per second. Fast enough
- * to feel attached to the pointer, slow enough not to flicker when it crosses a corner.
- */
-const CHROME_FADE_RATE = 12;
-
-/**
- * Move a fade toward where it should be and return where it now is.
- *
- * Frame-rate independent, the same way the progress ring's sweep is: the same share of what is
- * left is covered per second at any refresh rate.
- */
-function easePresence(
-  presences: Map<string, number>,
-  id: string,
-  wanted: boolean,
-  delta: number
-): number {
-  const target = wanted ? 1 : 0;
-  const from = presences.get(id) ?? 0;
-  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
-  const next = from + (target - from) * alpha;
-  // Snap the last sliver, so a fade actually ends and the pass can stop running for it.
-  const settled = Math.abs(target - next) < 0.004 ? target : next;
-  if (settled === 0) presences.delete(id);
-  else presences.set(id, settled);
-  return settled;
-}
 
 const RENDER_ORDER_BG = 1;
 const RENDER_ORDER_FG = 4;
@@ -110,6 +82,18 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
   videoEntityIdsRef.current = videoEntityIds;
   const onEntitiesChangeRef = useRef(onEntitiesChange);
   onEntitiesChangeRef.current = onEntitiesChange;
+
+  // The controls' glass, shared by every material; see utils/media-glass.ts.
+  const glass = useMemo(
+    () => buildMediaGlass(tokens, resolveColor(THEME_COLORS.canvas.background, tokens), resolvedStyle.widgetRadius),
+    [tokens, resolvedStyle.widgetRadius]
+  );
+  const glassRef = useRef(glass);
+  glassRef.current = glass;
+  useEffect(() => {
+    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    fullDirtyRef.current = true;
+  }, [glass]);
 
   /**
    * Sources this pass decided should be playing.
@@ -230,7 +214,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
    * loaded here. Registered against the store, which is what identifies one flow.
    */
   useEffect(() => {
-    registerVideoOps(store, {
+    registerVideoOps(store, 'entity', {
       toggle: (entityId) => {
         const src = (store.getState().entityMap.get(entityId)?.data as VideoEntityData | undefined)?.src;
         if (!src) return;
@@ -249,8 +233,12 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         entry.element.currentTime = Math.min(Math.max(t, 0), 1) * duration;
         fullDirtyRef.current = true;
       },
+      currentTime: (entityId) => {
+        const src = (store.getState().entityMap.get(entityId)?.data as VideoEntityData | undefined)?.src;
+        return (src ? texManager.getEntry(src)?.element.currentTime : 0) ?? 0;
+      },
     });
-    return () => registerVideoOps(store, null);
+    return () => registerVideoOps(store, 'entity', null);
   }, [store, texManager]);
 
   function getRefCallback(id: string): (mesh: THREE.Mesh | null) => void {
@@ -260,7 +248,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial());
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
           }
         } else {
           meshRefs.current.delete(id);
@@ -377,11 +365,12 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
        *
        * `controls: false` turns them off — a video used as decoration on a board should not grow
        * a play bar when the pointer crosses it. A clip too small for a bar never shows one, since
-       * a control strip in a thumbnail is a smudge rather than an affordance.
+       * a control strip in a thumbnail is a smudge rather than an affordance; it may still be big
+       * enough for the expand button, which is one square.
        */
       const wantsChrome =
-        (data.controls ?? true) && hoveredEntityId === entity.id && fitsControls(w, h);
-      const presence = easePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
+        (data.controls ?? true) && hoveredEntityId === entity.id && fitsExpand(w, h);
+      const presence = easeChromePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
       if (presence > 0.001) chromeFading = true;
 
       if (texture) {
@@ -393,7 +382,14 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
           const played = element && duration && Number.isFinite(duration) && duration > 0
             ? element.currentTime / duration
             : 0;
-          setMediaChrome(mat, presence > 0.001 ? 1 : 0, played, src ? texManager.isPlaying(src) : false, presence);
+          setMediaChrome(
+            mat,
+            presence > 0.001 && fitsControls(w, h) ? 1 : 0,
+            played,
+            src ? texManager.isPlaying(src) : false,
+            presence,
+            presence
+          );
           // A clip that is running redraws its own frames anyway; one that is paused still has to
           // repaint while its bar fades, and while it is showing, so the played line keeps up.
           if (presence > 0.001) chromeFading = true;
