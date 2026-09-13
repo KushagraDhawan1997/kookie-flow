@@ -159,14 +159,28 @@ function initSharedSocketBuffers(
  * so a range left behind by a partial update that never reached the GPU — the mesh drew nothing
  * that frame, say — would silently turn this full upload into that one stale sliver.
  */
-function markSocketBuffersForUpload(bufs: SocketBuffers) {
-  if (bufs.colorAttr) { bufs.colorAttr.clearUpdateRanges(); bufs.colorAttr.needsUpdate = true; }
-  if (bufs.hoveredAttr) { bufs.hoveredAttr.clearUpdateRanges(); bufs.hoveredAttr.needsUpdate = true; }
-  if (bufs.connectedAttr) { bufs.connectedAttr.clearUpdateRanges(); bufs.connectedAttr.needsUpdate = true; }
-  if (bufs.validTargetAttr) { bufs.validTargetAttr.clearUpdateRanges(); bufs.validTargetAttr.needsUpdate = true; }
-  if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.clearUpdateRanges(); bufs.invalidHoverAttr.needsUpdate = true; }
-  if (bufs.magnetAttr) { bufs.magnetAttr.clearUpdateRanges(); bufs.magnetAttr.needsUpdate = true; }
-  if (bufs.layerAttr) { bufs.layerAttr.clearUpdateRanges(); bufs.layerAttr.needsUpdate = true; }
+function markSocketBuffersForUpload(bufs: SocketBuffers, count: number) {
+  /**
+   * Ranged to what this rebuild WROTE, not to the buffers' capacity.
+   *
+   * Every array here is sized to capacity, and a bare `needsUpdate` with the ranges cleared hands
+   * three the whole thing — `WebGLAttributes.updateBuffer` falls back to `bufferSubData(type, 0,
+   * array)` when `updateRanges` is empty. That was survivable while this layer had no viewport
+   * subscription and rebuilt only on a topology or selection change. It stopped being survivable
+   * the moment the cull gave it one: measured on the counts spike at two thousand nodes, a wheel
+   * zoom crossing bands re-sent 13 MB PER FRAME, for a few hundred sockets' worth of instances.
+   *
+   * The ranges are cleared first because a fast path that bailed into this rebuild may have left
+   * a sliver behind, and three would upload that sliver instead of the span written here.
+   */
+  if (count <= 0) return;
+  if (bufs.colorAttr) { bufs.colorAttr.clearUpdateRanges(); bufs.colorAttr.addUpdateRange(0, count * 3); bufs.colorAttr.needsUpdate = true; }
+  if (bufs.hoveredAttr) { bufs.hoveredAttr.clearUpdateRanges(); bufs.hoveredAttr.addUpdateRange(0, count); bufs.hoveredAttr.needsUpdate = true; }
+  if (bufs.connectedAttr) { bufs.connectedAttr.clearUpdateRanges(); bufs.connectedAttr.addUpdateRange(0, count); bufs.connectedAttr.needsUpdate = true; }
+  if (bufs.validTargetAttr) { bufs.validTargetAttr.clearUpdateRanges(); bufs.validTargetAttr.addUpdateRange(0, count); bufs.validTargetAttr.needsUpdate = true; }
+  if (bufs.invalidHoverAttr) { bufs.invalidHoverAttr.clearUpdateRanges(); bufs.invalidHoverAttr.addUpdateRange(0, count); bufs.invalidHoverAttr.needsUpdate = true; }
+  if (bufs.magnetAttr) { bufs.magnetAttr.clearUpdateRanges(); bufs.magnetAttr.addUpdateRange(0, count * 3); bufs.magnetAttr.needsUpdate = true; }
+  if (bufs.layerAttr) { bufs.layerAttr.clearUpdateRanges(); bufs.layerAttr.addUpdateRange(0, count); bufs.layerAttr.needsUpdate = true; }
 }
 
 /**
@@ -1206,15 +1220,17 @@ export function Sockets({
       }
     }
 
-    // Update GPU buffers (shared between both meshes). Ranges left over from a fast path that
-    // bailed into this rebuild have to go, or three would upload that sliver instead of the whole
-    // buffer this path just rewrote.
-    bgMesh.instanceMatrix.clearUpdateRanges();
-    bgMesh.instanceMatrix.needsUpdate = true;
-    markSocketBuffersForUpload(sharedBuffers);
-
+    // Update GPU buffers (shared between both meshes), over the span this pass actually wrote.
     // Both meshes draw all instances; shader filters by layer
     const clampedCount = Math.min(totalCount, capacity);
+
+    bgMesh.instanceMatrix.clearUpdateRanges();
+    if (clampedCount > 0) {
+      bgMesh.instanceMatrix.addUpdateRange(0, clampedCount * 16);
+      bgMesh.instanceMatrix.needsUpdate = true;
+    }
+    markSocketBuffersForUpload(sharedBuffers, clampedCount);
+
     bgMesh.count = clampedCount;
     fgMesh.count = clampedCount;
     dirtyRef.current = false;
