@@ -996,6 +996,11 @@ export interface MinimapProps {
   zoomable?: boolean;
   /** Custom className for styling */
   className?: string;
+  /**
+   * Inline styles for the outer element, applied after the minimap's own so they win. A class
+   * cannot move the minimap, since its corner is an inline style.
+   */
+  style?: React.CSSProperties;
 }
 
 /** KookieFlow component props */

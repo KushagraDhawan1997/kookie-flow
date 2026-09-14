@@ -7,6 +7,10 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **The minimap takes a `style`.** It lands on the minimap's outer element after the minimap's own
+  inline styles, so it wins over them. A `className` could not move the minimap, since a stylesheet
+  rule loses to an inline style. An app whose canvas runs on under a floating panel uses it to keep
+  the minimap out from under the panel.
 - **! The selection toolbar has no card.** Its controls are glass, and glass holds on any ground,
   so it is now a KookieUI `Toolbar` row over the canvas: each segmented control and field stands on
   its own, and buttons that belong together share a `ToolbarGroup` capsule — the align buttons in

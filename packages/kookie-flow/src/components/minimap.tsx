@@ -127,6 +127,7 @@ export function Minimap({
   interactive = true,
   zoomable = false,
   className,
+  style,
 }: MinimapProps) {
   const store = useFlowStoreApi();
   const tokens = useTheme();
@@ -844,6 +845,9 @@ export function Minimap({
     overflow: 'hidden',
     boxShadow: 'var(--shadow-2)',
     pointerEvents: interactive ? 'auto' : 'none',
+    // Last, so a stated style wins over everything above. A stylesheet rule cannot beat an inline
+    // style, so without this an app had no way to move the minimap off its corner.
+    ...style,
   };
 
   return (

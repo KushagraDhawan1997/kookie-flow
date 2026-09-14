@@ -156,6 +156,18 @@ describe('Minimap shape', () => {
     const { visible } = mountMinimap(makeEntities());
     expect(visible.parentElement?.style.borderRadius).toBe('var(--radius-surface-1)');
   });
+
+  it('lets a stated style win over its corner', () => {
+    // A canvas that runs on under a floating panel moves the minimap out from under the panel.
+    const view = render(
+      <FlowProvider initialState={{ entities: makeEntities() }}>
+        <Minimap style={{ right: 346 }} />
+      </FlowProvider>
+    );
+    const box = view.container.querySelector('canvas')?.parentElement;
+    expect(box?.style.right).toBe('346px');
+    expect(box?.style.bottom).toBe('10px');
+  });
 });
 
 describe('Minimap entity layer caching', () => {

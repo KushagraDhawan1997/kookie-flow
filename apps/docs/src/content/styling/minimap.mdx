@@ -74,13 +74,17 @@ Follow three rules when you do this:
 | `height` | `number` | `150` | The height of the minimap, in pixels. |
 | `padding` | `number` | `20` | The space, in minimap pixels, between the graph and the minimap's edge. Ignored when `zoomable` is on. |
 | `className` | `string` | none | A class for the minimap's outer element. |
+| `style` | `CSSProperties` | none | Inline styles for the minimap's outer element, applied after its own. |
 
 The minimap sits 10 pixels in from both edges of its corner. Its corner radius comes from
 `--radius-surface-1` and its shadow from `--shadow-2`, both read from your KookieUI theme.
 
 The minimap sets its position, size, corner radius and shadow as inline styles. A `className`
 can add styles, such as a border, but an ordinary rule in your stylesheet can't override the
-inline ones.
+inline ones. `style` can, because it is applied after them. If a panel floats over the right
+side of the canvas, move the minimap out from under it with `style={{ right: 346 }}`: the width
+the panel covers, plus the 10-pixel inset. Change the size with `width` and `height`, not
+`style`, because the minimap draws at those.
 
 The minimap draws in the graph's proportions, not its own. A wide graph in a tall minimap fills
 the width and leaves space above and below, so pick a `width` and `height` close to the shape of
