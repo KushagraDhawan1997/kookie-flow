@@ -38,6 +38,7 @@ import {
   createMediaMaterial,
   applyObjectFitUV,
   setMediaBox,
+  setMediaMap,
   setMediaChrome,
 } from '../utils/media-quad';
 
@@ -422,7 +423,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
           // repaint while its bar fades, and while it is showing, so the played line keeps up.
           if (presence > 0.001) chromeFading = true;
           const u = mat.uniforms;
-          if (u.map.value !== texture) u.map.value = texture;
+          setMediaMap(mat, texture);
           u.opacity.value = 1;
           applyObjectFitUV(
             u.uvOffset.value as THREE.Vector2,

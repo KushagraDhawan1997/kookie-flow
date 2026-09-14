@@ -226,10 +226,10 @@
    against the system's own ink ladder. What is left in `blocks/code.css` is the block's half —
    the line washes, the diff gutter and the line numbers the sample paints around the tokens. */
 
-/* The wordmark's face. The variable is published on `<html>` by the root layout and consumed
-   here and nowhere else, which is the whole containment story: nothing inherits a display face,
-   and the one rule that applies it is the one place to look. Here it points at the body face —
-   the licensed display faces KookieUI's docs set their mark in cannot travel — so the rule is a
+/* The wordmark's face. The variable is published by globals.css and consumed here and nowhere
+   else, which is the whole containment story: nothing inherits a display face, and the one rule
+   that applies it is the one place to look. It names PP Playground, a licensed face that cannot
+   travel with the repo, so a clone without the file sets the mark in the body face. The rule is a
    seam rather than a costume: swap the variable and the mark changes face with nothing else.
 
    The fallback in the chain is load-bearing rather than defensive: if the variable is ever
@@ -304,8 +304,9 @@
    this is the docs doing that. */
 .kd-masthead .kui-type.kd-wordmark[data-size] {
   line-height: var(--kui-shell-row);
-  /* ONE LINE AT EVERY WIDTH THE SEPARATOR ALLOWS. The mark is two words here, so at the 240
-     floor a wrap would double the box and draw "Flow" over the first group label beneath. */
+  /* ONE LINE AT EVERY WIDTH THE SEPARATOR ALLOWS. The mark here is one word today, so this
+     guards the day it is two again: at the 240 floor a wrap would double the box and draw the
+     second word over the first group label beneath. */
   white-space: nowrap;
 }
 

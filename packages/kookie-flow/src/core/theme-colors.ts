@@ -46,7 +46,7 @@ export const THEME_COLORS = {
   // ============================================
   grid: {
     /** The dot lattice. Alpha is applied in grid.tsx per appearance. */
-    lines: '--neutral-7',
+    lines: '--neutral-8',
     /** @deprecated The grid draws dots and no accent lines; kept for the public prop's type. */
     linesAccent: '--neutral-4',
   },
@@ -147,6 +147,11 @@ export const THEME_COLORS = {
     trackHighContrast: '--neutral-6',
     /** The select chevron: neutral-12, drawn at the material's partial ink. */
     chevron: '--neutral-12',
+    /**
+     * A segmented control's raised thumb: the surface in light, a lift of the well in dark — never
+     * the grip's near-white, which the content ink printed over it could not be read against.
+     */
+    segmentThumb: { light: '--neutral-1', dark: '--neutral-6' },
   },
 
   text: {

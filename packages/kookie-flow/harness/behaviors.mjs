@@ -2875,6 +2875,111 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   check('opening and closing the picker changes nothing', tintAfter === tintBefore, `${tintBefore} -> ${tintAfter}`);
 });
 
+// ---------------------------------------------------------------- controls made of parts
+
+head('switch, segmented, vector, seed');
+
+/**
+ * The four controls a node editor was missing, pressed the way a person presses them.
+ *
+ * Points are taken from `widgetBox` — the same rectangle the renderer draws and the hit test
+ * answers — at a FRACTION of its width, because each of these controls means something different
+ * depending on where in the box the press lands: which segment, which component, the field or the
+ * die. A law that pressed the centre would test one part and call it the control.
+ */
+await withPage('scene=controls&widgets=1', async (page) => {
+  const at = (socketId, fx) =>
+    page.evaluate(
+      ([id, f]) => {
+        const h = window.__harness;
+        const s = h.store.getState();
+        const b = h.widgetBox('c', id);
+        if (!b) return null;
+        const rect = document.querySelector('canvas').getBoundingClientRect();
+        return {
+          x: (b.x + b.width * f) * s.viewport.zoom + s.viewport.x + rect.left,
+          y: (b.y + b.height / 2) * s.viewport.zoom + s.viewport.y + rect.top,
+        };
+      },
+      [socketId, fx]
+    );
+  const value = (id) => page.evaluate((i) => window.__harness.widgetValue('c', i), id);
+  const press = async (p) => {
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+  };
+  const editInput = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-kookie-flow-widget-edit]');
+      return el ? { focused: document.activeElement === el, value: el.value } : null;
+    });
+
+  // A switch toggles from anywhere on its row.
+  const live = await at('live', 0.95);
+  check('INSTRUMENT: the switch has a place on screen', live !== null, JSON.stringify(live));
+  await press(live);
+  const off = await value('live');
+  check('pressing a switch turns it off', off === false, String(off));
+  await press(await at('live', 0.5));
+  const on = await value('live');
+  check('pressing anywhere on its row turns it back on', on === true, String(on));
+
+  // A segmented control picks the part under the press.
+  await press(await at('fit', 5 / 6));
+  const fit = await value('fit');
+  check('pressing a segment picks its option', fit === 'Crop', String(fit));
+
+  // A vector component scrubs under a sideways drag. 30 screen px, less the 5px threshold, is 25
+  // steps of 0.1 on Y's 1.5: 4.0, and X and Z do not move.
+  const offY = await at('offset', 0.5);
+  await page.mouse.move(offY.x, offY.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(offY.x + i * 3, offY.y);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const scrubbed = await value('offset');
+  check(
+    'dragging a vector component scrubs that component alone',
+    Array.isArray(scrubbed) && scrubbed[0] === 0 && scrubbed[1] === 4 && scrubbed[2] === -2,
+    JSON.stringify(scrubbed)
+  );
+  check('a scrub opens no input', (await editInput()) === null);
+
+  // A click without travel types the component that was clicked, and writes it alone.
+  await press(await at('size', 0.75));
+  const editing = await editInput();
+  check(
+    'clicking a vector component opens a focused input holding that component',
+    editing !== null && editing.focused && editing.value === '768',
+    JSON.stringify(editing)
+  );
+  await page.keyboard.type('1024');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  const typed = await value('size');
+  check(
+    'typing into it writes that component alone',
+    Array.isArray(typed) && typed[0] === 512 && typed[1] === 1024,
+    JSON.stringify(typed)
+  );
+
+  // The die rolls a whole seed inside min/max; the field beside it types.
+  const before = await value('seed');
+  await press(await at('seed', 0.97));
+  const rolled = await value('seed');
+  check(
+    'pressing the die rolls a new whole seed in range',
+    Number.isInteger(rolled) && rolled >= 0 && rolled <= 999999 && rolled !== before,
+    `${before} -> ${rolled}`
+  );
+  await press(await at('seed', 0.4));
+  const seedEdit = await editInput();
+  check('pressing the seed field opens its input', seedEdit !== null && seedEdit.value === String(rolled), JSON.stringify(seedEdit));
+  await page.keyboard.press('Escape');
+});
+
 // ---------------------------------------------------------------- accessibility mirror
 
 head('accessibility mirror');
@@ -3159,17 +3264,17 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   check('a slider draws its readout', slider === 4, `${slider} glyphs for '0.20'`);
 
   /**
-   * The two kinds that deliberately print NOTHING, asserted rather than assumed.
+   * The kind that deliberately prints NOTHING, asserted rather than assumed.
    *
-   * A checkbox's tick is its value and a colour swatch's fill is its value, so both would be
-   * double-stating themselves — and 'true'/'false' beside every checkbox on every visible node is
-   * a real slice of the glyph budget. Without these two lines, someone adding a value string to
-   * every widget kind would break the decision and no law would notice.
+   * A checkbox's tick is its value, and 'true'/'false' beside every checkbox on every visible node
+   * is a real slice of the glyph budget. Without this line, someone adding a value string to every
+   * widget kind would break the decision and no law would notice.
    */
   const checkbox = await glyphsIn('flag');
   check('a checkbox draws no value text', checkbox === 0, `${checkbox} glyphs`);
+  // A colour prints its hex beside a leading swatch: six glyphs, no '#'.
   const colour = await glyphsIn('tint');
-  check('a colour widget draws no value text', colour === 0, `${colour} glyphs`);
+  check('a colour widget draws its hex', colour === 6, `${colour} glyphs`);
 
   /**
    * A VALUE CHANGE REPAINTS. This is the half the subscriptions exist for: a data-only change

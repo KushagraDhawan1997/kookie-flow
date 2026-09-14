@@ -1,5 +1,11 @@
 /* The studio's own CSS, deliberately this small. Everything visible is @kookie-ui/react; the
-   page paints --color-page and the faces are the package's system stack. */
+   page paints --color-page and the app reads in Inter, the face the canvas labels are cut from.
+   `:root:root` so this outranks tokens.css's `:root` whichever order the bundler emits them, and
+   both slots are stated because `--font-heading` substitutes where it is declared. */
+:root:root {
+  --font-body: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: var(--kd-font-heading), var(--font-body);
+}
 
 body {
   margin: 0;
@@ -14,6 +20,27 @@ body {
    published by layout.tsx. */
 .kd-canvas {
   font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* The mark's face, PP Playground, as the docs site's. It is Pangram Pangram's, so the file is
+   gitignored under `public/fonts`: a clone without it gets a 404 and sets the mark in Inter. */
+@font-face {
+  font-family: "PP Playground";
+  src: url("/fonts/PPPlayground-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Trimmed to the cap line and the baseline, so the header row centres the letters rather than the
+   face's ascent and descent allowance. `line-height: 1` is the fallback where `text-box` is not
+   supported. One line, so the two words stay one mark. */
+.kui-type.kd-wordmark[data-size] {
+  display: block;
+  font-family: "PP Playground", var(--font-body);
+  line-height: 1;
+  text-box: cap alphabetic;
+  white-space: nowrap;
 }
 
 html {

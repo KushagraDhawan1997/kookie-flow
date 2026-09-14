@@ -7,12 +7,33 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **! The selection toolbar has no card.** Its controls are glass, and glass holds on any ground,
+  so it is now a KookieUI `Toolbar` row over the canvas: each segmented control and field stands on
+  its own, and buttons that belong together share a `ToolbarGroup` capsule — the align buttons in
+  one, the distribute buttons in another. The dividers are gone. The row is one tab stop with arrow
+  keys inside it, so the aspect lock is a `ToolbarButton` rather than a `Toggle`, which was a second
+  stop. `cardProps` is removed; `size` sets the controls' size, and defaults to
+  `'3'`, v2's toolbar step.
 - **`accentHeader` is an aura, not a stripe.** The accent used to be a solid 1.5px line along the
   top edge, which read as trim on a glass card. Now the rim glows in the accent, brightest at
   top-centre and fading over the shoulders, and the glass beneath carries a faint reflection of it —
   diffusing wider and dimmer as it travels down, broken by the same grain the controls wear. An
   entity's own `color` draws its aura in its hue. Nothing moves: no geometry, no hit box, one
   shader branch per accented fragment.
+- **Four new widgets: `switch`, `segmented`, `vector` and `seed`.** A switch is an on/off toggle at
+  the row's trailing edge whose thumb travels on a spring. A segmented control shows its `options`
+  side by side under a raised thumb that travels to the pressed one as v2's does: the edge heading
+  into the new part leads, the edge leaving trails, so the thumb stretches and its tail catches up. A vector is one field cut into
+  `dimensions` components (2 to 4), each with its axis letter: drag a component sideways to scrub it
+  — one step per pixel, four for a whole-number step, clamped to `min`/`max` — or click it to type.
+  A seed is a whole-number field with a die at its end that rolls a new one between `min` and `max`.
+  `DEFAULT_SOCKET_TYPES` gains `seed`, `vec2`, `vec3` and `vec4`. A vector's value is a `number[]`,
+  and a pending write is compared with the entity's by element, so a consumer echoing a fresh array
+  does not cut a drag short. Each one has a control in the accessibility mirror.
+- **A colour widget is a swatch and its hex.** It used to paint the value across the whole field, the
+  loudest shape on the card. It is now a field like the others: a leading swatch whose corner is
+  concentric with the field's (a circle in a pill), and the value beside it as uppercase hex without
+  the `#`. The whole field still opens the picker.
 - **An edge starts at the socket's rim, not its centre.** It leaves along the socket's own axis —
   an output to the right, an input to the left — for a short straight leader before the curve
   begins, and a connected socket drops the ring of canvas colour that used to separate the two, so

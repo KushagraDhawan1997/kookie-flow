@@ -25,8 +25,13 @@ import { TextareaWidget } from './TextareaWidget';
 /**
  * Map of built-in widget types to their components.
  * Custom widgets can be added via the `widgetTypes` prop on KookieFlow.
+ *
+ * The canvas draws every built-in widget in GL; these DOM components remain for consumers who
+ * mount them themselves. The newer kinds borrow the nearest one that writes the same value type —
+ * a switch is a checkbox, a segmented control a select, a seed a number. A vector writes a
+ * `number[]` and no DOM component here does, so it has no entry rather than a wrong one.
  */
-export const BUILT_IN_WIDGETS: Record<WidgetType, React.ComponentType<WidgetProps>> = {
+export const BUILT_IN_WIDGETS: Record<Exclude<WidgetType, 'vector'>, React.ComponentType<WidgetProps>> = {
   slider: SliderWidget,
   number: NumberWidget,
   select: SelectWidget,
@@ -34,4 +39,7 @@ export const BUILT_IN_WIDGETS: Record<WidgetType, React.ComponentType<WidgetProp
   text: TextWidget,
   color: ColorWidget,
   textarea: TextareaWidget,
+  switch: CheckboxWidget,
+  segmented: SelectWidget,
+  seed: NumberWidget,
 };

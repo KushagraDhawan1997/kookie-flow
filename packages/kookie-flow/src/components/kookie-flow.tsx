@@ -130,6 +130,9 @@ import { measureText } from '../utils/text-layout';
 import { motionNow } from '../gl';
 import { stepEntityCursor } from '../utils/entity-cursor';
 import { WidgetEditOverlay } from './widget-edit-overlay';
+import { partIndexAt, isOnSeedButton, seedFieldBox, readPartBoxInto } from '../utils/widget-geometry';
+import { randomSeed, scrubValue, vectorComponents, vectorDimensions } from '../utils/widget-parts';
+import { inputWidgetType } from '../utils/widgets';
 import { WidgetPopoverGL } from './widget-popover';
 import { WidgetA11yMirror } from './widget-a11y-mirror';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
@@ -970,6 +973,23 @@ function InputHandler({
   const alignRange = useMemo(() => ({ x: 0, y: 0, width: 0, height: 0 }), []);
 
   const widgetDragRef = useRef<{ hit: WidgetHit; pointerId: number } | null>(null);
+  /**
+   * A press on a vector's component, undecided until the pointer moves or lets go: travel past the
+   * drag threshold scrubs that component, a release without travel types it. The screen x and the
+   * whole vector are taken at the press, so every move computes from one start instead of
+   * accumulating rounding; `last` is the component last emitted, so a move that does not cross a
+   * step emits nothing — a vector write is a new array, and a pointermove must not mint one for a
+   * value that did not change.
+   */
+  const vectorDragRef = useRef<{
+    hit: WidgetHit;
+    part: number;
+    pointerId: number;
+    startX: number;
+    start: number[];
+    last: number;
+    moved: boolean;
+  } | null>(null);
   /** A scrub in progress on a video's track: which clip, and how wide it is in world units. */
   /** Whether a checkbox is being held down, so its release knows to put the light out. */
   const checkboxPressRef = useRef(false);
@@ -1052,7 +1072,7 @@ function InputHandler({
   const openWidgetEdit = useCallback(
     (hit: WidgetHit | null) => {
       setWidgetEdit(hit);
-      store.getState().setEditingWidgetKey(hit ? widgetKey(hit.entityId, hit.socketId) : null);
+      store.getState().setEditingWidgetKey(hit ? widgetKey(hit.entityId, hit.socketId) : null, hit?.part);
     },
     [store]
   );
@@ -1423,7 +1443,8 @@ function InputHandler({
    * would overwrite an imperative write, since its style diff leaves keys it did not touch alone.
    */
   const baseCursorRef = useRef('default');
-  const widgetCursorRef = useRef(false);
+  // Which cursor a widget asks for: none, the pointer, or the sideways drag a vector scrubs with.
+  const widgetCursorRef = useRef<false | 'pointer' | 'ew-resize'>(false);
   /**
    * The cursor media chrome asks for (see `mediaEntityCursor`). Kept apart from the widget flag
    * because the two are decided in different places; a widget row and a piece of chrome never
@@ -1444,12 +1465,13 @@ function InputHandler({
     const base = baseCursorRef.current;
     // Media chrome, like a widget, only speaks over `default`: every other base names a mode.
     el.style.cursor =
-      base !== 'default' ? base : widgetCursorRef.current ? 'pointer' : chromeCursorRef.current ?? base;
+      base !== 'default' ? base : widgetCursorRef.current ? widgetCursorRef.current : chromeCursorRef.current ?? base;
   }, []);
   const setWidgetCursor = useCallback(
-    (wantPointer: boolean) => {
-      if (wantPointer === widgetCursorRef.current) return;
-      widgetCursorRef.current = wantPointer;
+    (want: boolean | 'ew-resize') => {
+      const next = want === true ? 'pointer' : want;
+      if (next === widgetCursorRef.current) return;
+      widgetCursorRef.current = next;
       applyCursor();
     },
     [applyCursor]
@@ -2106,7 +2128,7 @@ function InputHandler({
             // share one notion of where they are — and so the mirror a screen reader lands on
             // after a click is the node that was clicked, not wherever the cursor was left.
             store.getState().setFocusedEntityId(clickedEntity.id);
-            if (hit.config.type === 'checkbox') {
+            if (hit.config.type === 'checkbox' || hit.config.type === 'switch') {
               /**
                * Lit for as long as the finger is down.
                *
@@ -2133,6 +2155,52 @@ function InputHandler({
               widgetDragRef.current = { hit, pointerId: e.pointerId };
               containerRef.current?.setPointerCapture(e.pointerId);
               emitWidgetChange(hit.entityId, hit.socketId, sliderValueAt(hit, worldPos.x));
+              return;
+            }
+            if (hit.config.type === 'segmented') {
+              // The checkbox's gesture with a choice in it: the part under the press is picked at
+              // once, and the control is lit while held. No options means nothing to pick.
+              const options = hit.config.options;
+              if (options && options.length > 0) {
+                const next = options[partIndexAt(hit.box, options.length, worldPos.x)];
+                store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+                checkboxPressRef.current = true;
+                containerRef.current?.setPointerCapture(e.pointerId);
+                if (next !== hit.value) emitWidgetChange(hit.entityId, hit.socketId, next);
+              }
+              return;
+            }
+            if (hit.config.type === 'seed') {
+              if (isOnSeedButton(hit.box, worldPos.x)) {
+                // The roll: a new seed on the press, the die lit and turning while held.
+                store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+                checkboxPressRef.current = true;
+                containerRef.current?.setPointerCapture(e.pointerId);
+                emitWidgetChange(hit.entityId, hit.socketId, randomSeed(hit.config.min, hit.config.max));
+                return;
+              }
+              // The rest of the field types, in the box left of the button.
+              openWidgetEdit({ ...hit, box: seedFieldBox(hit.box) });
+              return;
+            }
+            if (hit.config.type === 'vector') {
+              // Undecided until the pointer moves or lets go — see `vectorDragRef`.
+              const n = vectorDimensions(hit.config);
+              const part = partIndexAt(hit.box, n, worldPos.x);
+              const start = vectorComponents(hit.value, n);
+              vectorDragRef.current = {
+                hit,
+                part,
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                start,
+                last: start[part],
+                moved: false,
+              };
+              store.getState().setHoveredWidget({ entityId: hit.entityId, socketId: hit.socketId });
+              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+              setWidgetCursor('ew-resize');
+              containerRef.current?.setPointerCapture(e.pointerId);
               return;
             }
             if (hit.config.type === 'select') {
@@ -2554,6 +2622,29 @@ function InputHandler({
         }
       }
 
+      const vectorDrag = vectorDragRef.current;
+      if (vectorDrag && vectorDrag.pointerId === e.pointerId) {
+        if ((e.buttons & 1) === 0) {
+          // A lost release, as the slider branch below handles it: clear, and let the net catch the rest.
+          vectorDragRef.current = null;
+        } else {
+          const dx = e.clientX - vectorDrag.startX;
+          if (!vectorDrag.moved && Math.abs(dx) <= DRAG_THRESHOLD) return;
+          vectorDrag.moved = true;
+          // Measured from the threshold, so the number does not leap by it on the first move.
+          const travel = dx - Math.sign(dx) * DRAG_THRESHOLD;
+          const { hit, part, start } = vectorDrag;
+          const v = scrubValue(start[part], travel, hit.config.step, hit.config.min, hit.config.max);
+          if (v !== vectorDrag.last) {
+            vectorDrag.last = v;
+            const next = start.slice();
+            next[part] = v;
+            emitWidgetChange(hit.entityId, hit.socketId, next);
+          }
+          return;
+        }
+      }
+
       const widgetDrag = widgetDragRef.current;
       if (widgetDrag && widgetDrag.pointerId === e.pointerId) {
         /**
@@ -2595,7 +2686,8 @@ function InputHandler({
           lastPointerPos.current ||
           // A slider drag whose pointer never sent another move of its own — the branch above only
           // clears the one it belongs to, and this net is meant to catch every stuck gesture.
-          widgetDragRef.current
+          widgetDragRef.current ||
+          vectorDragRef.current
         ) {
           // Cancel any active operations
           if (autoScrollRef.current.rafId) {
@@ -2633,6 +2725,7 @@ function InputHandler({
           lastPointerPos.current = null;
           hasDragged.current = false;
           widgetDragRef.current = null;
+          vectorDragRef.current = null;
         }
         // Fall through to hover state handling below
       }
@@ -3229,7 +3322,15 @@ function InputHandler({
             ? null
             : { entityId: newHoveredId, socketId: hoveredWidgetSocketId }
         );
-        setWidgetCursor(hoveredWidgetSocketId !== null);
+        // A vector says it drags sideways; everything else is pressed. Asked without a config:
+        // `inputWidgetType` allocates nothing, and this runs on every move over a widget.
+        setWidgetCursor(
+          hoveredWidgetSocketId === null || newHoveredId === null
+            ? false
+            : inputWidgetType(store.getState().entityMap.get(newHoveredId), hoveredWidgetSocketId, socketTypes) === 'vector'
+              ? 'ew-resize'
+              : true
+        );
         setChromeCursor(
           hoveredWidgetSocketId === null && newHoveredId !== null && newHoveredSocket === null && newHandle === null
             ? chromeCursorAt(newHoveredId, worldPos.x, worldPos.y)
@@ -3340,6 +3441,23 @@ function InputHandler({
         checkboxPressRef.current = false;
         store.getState().setPressedWidgetKey(null);
         containerRef.current?.releasePointerCapture(e.pointerId);
+        return;
+      }
+
+      const releasedVector = vectorDragRef.current;
+      if (releasedVector && releasedVector.pointerId === e.pointerId) {
+        vectorDragRef.current = null;
+        store.getState().setPressedWidgetKey(null);
+        containerRef.current?.releasePointerCapture(e.pointerId);
+        setWidgetCursor(false);
+        store.getState().setHoveredWidget(null);
+        // A press that never travelled was a click: type the component that was pressed. Only on a
+        // real release — a cancelled gesture, or a pointer leaving the canvas, opens nothing.
+        if (!releasedVector.moved && e.type === 'pointerup') {
+          const { hit, part } = releasedVector;
+          const box = readPartBoxInto({ x: 0, y: 0, width: 0, height: 0 }, hit.box, vectorDimensions(hit.config), part);
+          openWidgetEdit({ ...hit, part, box });
+        }
         return;
       }
 
@@ -4341,7 +4459,7 @@ function InputHandler({
       // A second finger does not start a pinch while a slider is being held. The pointer and touch
       // handlers run in parallel, so putting a finger down anywhere during a slider drag used to
       // zoom the canvas out from under the control the first finger was still on.
-      if (touchState.current.touches.size === 2 && !widgetDragRef.current) {
+      if (touchState.current.touches.size === 2 && !widgetDragRef.current && !vectorDragRef.current) {
         const touches = Array.from(touchState.current.touches.values());
         const dx = touches[1].x - touches[0].x;
         const dy = touches[1].y - touches[0].y;

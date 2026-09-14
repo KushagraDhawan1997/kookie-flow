@@ -5,6 +5,85 @@
 
 ---
 
+## 2026-09-14, the editor's chrome and its faces
+
+### + is loud
+
+Asked with a screenshot of the strip. The + button takes `emphasis="loud"`, since it is the way into
+the catalog. No tone: neutral, so it does not compete with Run's accent.
+
+Verified in a browser, light and dark. The button fills dark on light and light on dark, and still
+opens the palette. No page or console errors. `tsc` is clean for studio.
+
+### Undo and redo take Hugeicons' own drawings
+
+Asked with a screenshot of Hugeicons' "undo" results. The bottom row's buttons swap the turn arrows
+(`ArrowTurnBackward`, `ArrowTurnForward`) for `Undo` and `Redo`, the mirrored circle arrows. Both
+names clash with studio's own wrappers in `icons.tsx`, so they are imported as `UndoDrawing` and
+`RedoDrawing`.
+
+Verified in a browser, light and dark. Each button draws exactly Hugeicons' paths, and both are
+disabled on a fresh graph. Undo and redo of an added node land in the saved graph. No page or
+console errors. `tsc` is clean for studio.
+
+### Run becomes a split button, on a re-vendored v2
+
+Asked after the header work. v2 was rebuilt from its working tree and packed into `vendor/`.
+`SplitButton` was still uncommitted in v2, so the tarball carries it ahead of v2's own history.
+
+- **`pnpm install` kept the old copy.** The tarball keeps its name and version, so the lockfile
+  looked current and the install skipped it. `pnpm update -r @kookie-ui/react` read it again and
+  wrote the new integrity; `vendor/README.md` now says so. pnpm 12 runs on Node 24 here; the
+  shell's Node 22 shim fails.
+- **Run is the action, Run all is the menu.** The label runs what changed; the chevron's one row
+  runs everything.
+- **The halves sit outside the header's arrow-key order.** v2's toolbar notes say a plain Button in
+  a toolbar is its own tab stop, and `SplitButton` is two plain Buttons. v2 has no toolbar version
+  of it yet. Not tested.
+- **Studio's float-band CSS rule is gone.** v2 `140b252` makes a floating band's toolbar pass the
+  pointer itself.
+
+Verified in a browser, light and dark, on a scratch graph deleted afterwards. With a spy on the flow
+instance, Run calls `evaluateDirty` only, and Run all from the menu calls `evaluateAll` and closes
+the menu. The menu opens 4px under the button, flush with its end. Enter on the chevron opens it;
+Escape closes it and returns focus. The halves share one fill and the row's 40px height, with
+square inner corners. Presses beside the bands' controls reach the canvas without the old rule.
+⌘K still opens the palette, and a selected generation node still shows its own Run. No page or
+console errors. `tsc` is clean for studio, docs and the library.
+
+### Header, bottom row and the palette's openers
+
+Asked in a run of messages. The Studio mark leads the header and is the way home. The graph name
+moves right, before Run, Run all and the inspector toggle. The Home and search buttons go. The
+bottom-left row holds appearance, then Undo and Redo as separate buttons, then the save line.
+
+- **The save line is muted and says when.** It reads "Last saved at 12:04", "Saving…", or, before
+  the session's first save, "All changes saved". The status store holds no time, so `SaveStatus`
+  notes it when a save lands. "Not saved" and "Changed elsewhere, reload to keep editing" are not
+  muted.
+- **The palette keeps its open state in the + strip.** It was lifted into the editor for a header
+  search button that was then removed. The lift caused an "onOpenChange is not a function" error
+  on ⌘K in an open tab: hot reload applied the strip, which then required the prop, before the
+  editor that passed it. A fresh load was fine.
+
+### Faces
+
+- Inter reads in both apps; that switch landed from another session. The `layout.tsx` comments
+  that still called Inter the canvas's face alone are fixed.
+- PP Playground Medium sets the wordmark: "Flow" at step 8 in the docs sidebar, "Kookie© Flow" in
+  the docs footer, "Studio" at step 8 in the studio header. The file is Pangram Pangram's, so it
+  is copied into each app's gitignored `public/fonts`, and a clone without it sets the mark in
+  Inter.
+
+Verified in a browser, light and dark. The mark links home, and no Home or search button remains.
+The name leads the right cluster. The bottom row reads appearance, Undo, Redo, save line; Undo and
+Redo are disabled on a fresh graph and undo and redo an added node. The line turns to "Last saved
+at …" after a rename. + and ⌘K open the palette, and ⌘K closes it. Presses beside the bands'
+controls reach the canvas. Both wordmarks render in PP Playground as a web font. No page or
+console errors. `tsc` is clean for studio.
+
+---
+
 ## 2026-09-13, the node's shadow, and generation nodes that cost nothing
 
 ### The shadow was never KookieUI's
@@ -160,6 +239,83 @@ still refused and overwrites nothing. `tsc` is clean for studio and studio-core;
 
 Open: every open runs both generation nodes again. `evaluateAll` on mount posts two jobs per
 refresh — free against the mock, billed against a provider.
+
+### Run in the node toolbar, for generation nodes
+
+Asked for a Run button in the node toolbar, for generation nodes only. The studio now renders the
+library's `Toolbar`, and only manual node types get a toolbar entry (`node-toolbar.tsx`), so a math
+node shows none.
+
+- **One node at a time**, as the inspector's Run is. `evaluate` starts a node on the inputs it has
+  now, so Run on two selected nodes that form a chain would pay for the second on the picture the
+  first is about to replace. Two selected nodes show no button; the header's Run orders a batch.
+- **It spins while its node runs, and a press on a running node does nothing.** `evaluate` on a
+  running node cancels the run and starts it again, and a double click lands its second press
+  before the spinner has had a frame.
+- **An entry per type, not one render function for the whole toolbar.** With the latter, every
+  selection pays for the toolbar's bounds work on each pan frame, not only a selection that holds
+  a generation node.
+
+Also: generation nodes lost their accent glow. `accentHeader` is off on the canvas, and the five AI
+definitions no longer set `color`. A node saved with a colour keeps it.
+
+Verified by a browser script, 8 of 8, with jobs held three seconds so the running state could be
+seen. Nothing selected: no button. A lone generation node: Run, visible. A double click: one job,
+`aria-busy` during it and gone after. A selected Clamp: no button. Two generation nodes selected
+with Cmd+A: no button. No page or console errors. `tsc` is clean for studio.
+
+Open: tall nodes added from the library overlap. Placement assumes 180 px for a node with no stated
+height, and a generation node is about 520, so the second lands 204 px below the first.
+
+### The sidebar becomes a strip of tools
+
+Asked to replace the node library's sidebar with a dropdown on a vertical toolbar. The sidebar is
+gone, and the canvas has its width.
+
+- **A vertical toolbar halfway down the canvas's left edge**, level with the header's inset. Its +
+  opens a menu with a submenu per category, because as one list the catalog is taller than a
+  laptop screen. Its search opens a palette that matches through `registry.search`, so "prompt"
+  finds the generators by socket name, and Enter adds the highlighted node.
+- **Home leads the header**, where the sidebar's toggle was. **The appearance menu keeps the
+  bottom-left corner**, now in a floating footer of the content pane.
+- **The bands over the canvas take presses only on their controls.** v2's floating pane turns its
+  toolbar row's pointer events back on, so the header already swallowed presses across its whole
+  width. One rule in `globals.css` turns the row off again.
+
+Gaps in v2, for its own agent: a `ToolbarGroup` in a vertical toolbar stays a row (stacked here
+with an inline `flexDirection: column`); in a vertical toolbar, ArrowDown on a menu trigger opens
+the menu instead of moving to the next tool; and `.kui-pane-header[data-float] > *` outranks the
+toolbar row's own `pointer-events: none`.
+
+Verified by a browser script, 21 of 21, light and dark. No sidebar. The strip is vertical,
+stacked, level with home and centred. Appearance sits bottom-left. Presses beside the bands'
+controls reach the canvas, and home and appearance still take theirs. ArrowUp walks the strip.
++ › AI › Generate image and a search for "clamp" plus Enter each add their node. The palette
+reopens on the whole catalog. No page or console errors. `tsc` is clean for studio.
+
+### + opens the palette, and ⌘K does too
+
+Asked: search did the same job as the + menu, so + opens the search palette, the search button
+goes, and ⌘K opens it. The palette's list is in sections by category, not submenus.
+
+- **The strip holds one button.** With no group left, the inline `flexDirection: column` went too.
+- **⌘K and Ctrl-K open and close it**, from the canvas or a field. The listener is on the document
+  in the capture phase, so the canvas's key handling cannot take the chord first.
+- **The query clears as the palette opens, not as it closes.** Cleared on close, the list refilled
+  while the panel was still leaving, under the words that had narrowed it.
+
+v2 fixed the three toolbar gaps as `140b252`, but the vendored tarball predates it. Studio keeps
+its `globals.css` rule until the tarball is rebuilt.
+
+Verified by a browser script, 24 of 24, light and dark. The strip holds only +, level with home.
++ and ⌘K both open the palette with its field focused, on all 27 nodes in five sections. "prompt"
+leaves only the sections that match, and a query matching nothing says so. Escape and a second
+⌘K close it, and the next open starts on the whole catalog. "clamp" plus Enter adds a Clamp from
+a palette opened in the name field, without touching the name, and a click on a row adds that
+node. The bands still pass presses through. No page or console errors. `tsc` is clean for studio.
+
+Under software GL a close can take over a second, because the palette's blur covers the canvas.
+The script waits for the palette's state instead of sleeping.
 
 ---
 

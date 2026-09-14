@@ -27,10 +27,11 @@
  * A consumer that never echoes keeps showing the local value, which is the same trade the DOM
  * layer made and stated: a write arriving mid-edit loses to what the person chose.
  *
- * Widget values are primitives — a string, a number, a boolean — which is what makes `Object.is`
- * the right comparison for the baseline. A consumer storing an object under a socket id would
- * hand back a fresh reference every render and retire the override instantly; nothing in the
- * package produces one, and the widget types cannot express one.
+ * Widget values are primitives — a string, a number, a boolean — or, for a vector, an array of
+ * numbers. `Object.is` is the right comparison for a primitive; an array is compared by its
+ * elements, because a consumer echoing a vector hands back a fresh array every render, and a
+ * reference comparison would read that as an answer and retire the override mid-drag. Nothing
+ * deeper is compared: no widget type produces a nested value.
  *
  * The map is mutated in place and never replaced — a pointermove must not allocate — so the
  * store bumps `widgetValuesVersion` beside it for anything that needs to notice a change.
@@ -49,6 +50,16 @@ export function widgetKey(entityId: string, socketId: string): string {
   return `${entityId}:${socketId}`;
 }
 
+/** Two widget values are the same: `Object.is`, or two arrays whose elements are. */
+export function sameWidgetValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+  return true;
+}
+
 /**
  * Resolve what to show for one widget, and retire the local record once the consumer has answered.
  *
@@ -62,7 +73,7 @@ export function readWidgetValue(
 ): unknown {
   const mine = local.get(key);
   if (mine === undefined) return incoming;
-  if (!Object.is(mine.baseline, incoming)) {
+  if (!sameWidgetValue(mine.baseline, incoming)) {
     // The entity has moved since the local write, so the consumer has answered — whatever it
     // answered with. External writes win again.
     local.delete(key);

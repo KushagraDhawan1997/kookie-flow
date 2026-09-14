@@ -1,4 +1,4 @@
-The selection toolbar is a small card that floats above whatever is selected. It holds controls
+The selection toolbar is a row of glass controls that floats above whatever is selected. It holds controls
 for the selection: a font size for text, a colour for a sticky note, a width for a pen stroke, or
 buttons you write yourself. You decide which entity types get a toolbar and what goes in it.
 
@@ -21,21 +21,23 @@ would push it past the top of the canvas, it sits 8 pixels below the selection i
 while you drag, resize, draw a wire or drag a selection box, then comes back when the gesture
 ends.
 
-### Style the card
+### How it looks
 
-The toolbar draws its controls inside a KookieUI `Card` at size 1. `cardProps` passes props to that
-card. Use it to change the card's size, or set `backdrop` to tell the card that the canvas shows
-behind it. Without `backdrop`, the card is solid even when your theme uses a glass material.
+The toolbar has no card around it. It is a KookieUI `Toolbar` row, and every control in it is glass,
+so each one draws its own capsule over the canvas: a segmented control, a field, or a
+`ToolbarGroup` holding buttons that belong together. There are no dividers; the space between
+capsules separates them. The row tells its controls that the canvas passes behind them, so they
+show your theme's glass material. The whole row is one tab stop, and the arrow keys move inside it.
 
 ```tsx
 <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
-  <Toolbar cardProps={{ size: '2', backdrop: true }} />
+  <Toolbar size="2" />
 </KookieFlow>
 ```
 
 | Prop | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `cardProps` | `Omit<CardProps, 'children'>` | none | Props for the card around the controls. `CardProps` comes from `@kookie-ui/react`. |
+| `size` | `ToolbarProps['size']` from `@kookie-ui/react` | `'3'` | The size every control in the toolbar takes, unless a control states its own. |
 | `children` | `ToolbarRenderFn` | none | Replaces the toolbar's contents for every selection. See [Replace the toolbar's contents](#replace-the-toolbars-contents). |
 
 ## Turn on the built-in controls
@@ -89,8 +91,8 @@ names, an object with `defaults` and `extra`, or a render function.
 
 ## Pick which controls appear
 
-Pass an array instead of `true` to choose the controls and their order. The toolbar draws a divider
-between each one.
+Pass an array instead of `true` to choose the controls and their order. Each one stands on its own
+in the row.
 
 ```tsx
 const entityTypes: Record<string, EntityTypeDefinition> = {
@@ -100,8 +102,8 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
 
 Only text, comments, images and ink have default controls. On any other type, including the types
 you define, `toolbar: true` shows no toolbar, and an array is how you give that type built-in
-controls. A list such as `['arrange']` works on any type. With only one entity selected it shows an
-empty card, because `arrange` has nothing to show for one entity.
+controls. A list such as `['arrange']` works on any type. With only one entity selected it shows
+nothing, because `arrange` has nothing to show for one entity.
 
 To show no toolbar for a type, set `toolbar: false` or leave `toolbar` out.
 
@@ -109,10 +111,14 @@ To show no toolbar for a type, set `toolbar: false` or leave `toolbar` out.
 
 Pass an object with `defaults` and `extra` to keep built-in controls and add yours after them.
 `defaults` takes `true` or an array of widget names. `extra` is a function that returns the controls
-to add, and the toolbar puts a divider between the two groups.
+to add after them.
+
+Build your controls from KookieUI's toolbar parts. A `ToolbarButton` joins the row's keyboard, where
+a plain `Button` would be a second tab stop. Put buttons that belong together in a `ToolbarGroup`
+with `backdrop`, so they share one glass capsule like the built-in controls.
 
 ```tsx
-import { Button } from '@kookie-ui/react';
+import { ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
 import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
@@ -121,13 +127,11 @@ const entityTypes: Record<string, EntityTypeDefinition> = {
     toolbar: {
       defaults: ['arrange'],
       extra: ({ entities, update }) => (
-        <Button
-          size="2"
-          emphasis="quiet"
-          onClick={() => entities.forEach((entity) => update(entity.id, { status: 'warning' }))}
-        >
-          Flag
-        </Button>
+        <ToolbarGroup backdrop>
+          <ToolbarButton onClick={() => entities.forEach((entity) => update(entity.id, { status: 'warning' }))}>
+            Flag
+          </ToolbarButton>
+        </ToolbarGroup>
       ),
     },
   },
@@ -154,16 +158,16 @@ reports five.
 ## Replace the toolbar's contents
 
 Set `toolbar` to a function to draw that type's toolbar entirely yourself. The toolbar shows no
-built-in controls or dividers, only what your function returns.
+built-in controls, only what your function returns.
 
 ```tsx
 const entityTypes: Record<string, EntityTypeDefinition> = {
   step: {
     type: 'step',
     toolbar: ({ entities, update }) => (
-      <Button size="2" emphasis="quiet" onClick={() => update(entities[0].id, { label: 'Renamed' })}>
-        Rename
-      </Button>
+      <ToolbarGroup backdrop>
+        <ToolbarButton onClick={() => update(entities[0].id, { label: 'Renamed' })}>Rename</ToolbarButton>
+      </ToolbarGroup>
     ),
   },
 };
@@ -185,7 +189,7 @@ from `entities` what to show. Return `null` to show nothing.
 ```tsx title="board.tsx"
 'use client';
 
-import { Button, Flex } from '@kookie-ui/react';
+import { ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
 import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow';
 
 export function Board() {
@@ -197,10 +201,10 @@ export function Board() {
         <Toolbar>
           {({ entities: selected, align }) =>
             selected.length < 2 ? null : (
-              <Flex align="center" gap="1">
-                <Button size="2" emphasis="quiet" onClick={() => align('left')}>Align left</Button>
-                <Button size="2" emphasis="quiet" onClick={() => align('top')}>Align top</Button>
-              </Flex>
+              <ToolbarGroup backdrop>
+                <ToolbarButton onClick={() => align('left')}>Align left</ToolbarButton>
+                <ToolbarButton onClick={() => align('top')}>Align top</ToolbarButton>
+              </ToolbarGroup>
             )
           }
         </Toolbar>

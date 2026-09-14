@@ -19,7 +19,7 @@ import { KookieFlow } from '../../src/components/kookie-flow';
 import { Toolbar } from '../../src/components/toolbar';
 import { useFlowStoreApi } from '../../src/components/context';
 import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
-import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
+import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeControls, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
 import { capture } from '../../src/utils/canvas-runtime';
 import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
 import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
@@ -234,7 +234,7 @@ function params() {
     font: q.get('font'),
     /** A v2 density lever, set on the Theme element the way a product sets it. */
     scale: num('scale', 0),
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'media' | 'evaluation' | 'types' | 'preview',
+    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'controls' | 'media' | 'evaluation' | 'types' | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -1350,6 +1350,7 @@ function App() {
     if (p.scene === 'group') return makeGroup();
     if (p.scene === 'toolbar') return makeToolbarScene();
     if (p.scene === 'widgets') return makeWidgets();
+    if (p.scene === 'controls') return makeControls();
     if (p.scene === 'comments') return makeComments();
     if (p.scene === 'media') return makeMedia();
     if (p.scene === 'evaluation') return makeEvaluation();

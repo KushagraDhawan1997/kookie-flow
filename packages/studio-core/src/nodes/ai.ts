@@ -74,7 +74,6 @@ export const textToImage = defineNode({
   outputs: { image: socket('image') },
   evaluation: 'manual',
   where: 'server',
-  color: 'purple',
   width: NODE_WIDTH,
   run: async (inputs, ctx) => ({
     image: await generate('mock/text-to-image', { ...inputs }, ctx, 'image'),
@@ -102,7 +101,6 @@ export const editImage = defineNode({
   outputs: { image: socket('image') },
   evaluation: 'manual',
   where: 'server',
-  color: 'purple',
   width: NODE_WIDTH,
   run: async (inputs, ctx) => ({
     image: await generate('mock/edit-image', { ...inputs }, ctx, 'image'),
@@ -122,7 +120,6 @@ export const upscale = defineNode({
   outputs: { image: socket('image') },
   evaluation: 'manual',
   where: 'server',
-  color: 'purple',
   width: NODE_WIDTH,
   run: async (inputs, ctx) => ({
     image: await generate('mock/upscale', { ...inputs }, ctx, 'image'),
@@ -139,7 +136,6 @@ export const removeBackground = defineNode({
   outputs: { image: socket('image'), mask: socket('mask') },
   evaluation: 'manual',
   where: 'server',
-  color: 'purple',
   width: NODE_WIDTH,
   preview: 'image',
   run: async (inputs, ctx) => {
@@ -173,7 +169,6 @@ export const imageToVideo = defineNode({
   outputs: { video: socket('video') },
   evaluation: 'manual',
   where: 'server',
-  color: 'violet',
   width: NODE_WIDTH,
   run: async (inputs, ctx) => ({
     video: await generate('mock/image-to-video', { ...inputs }, ctx, 'video'),

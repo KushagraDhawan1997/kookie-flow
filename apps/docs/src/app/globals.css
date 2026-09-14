@@ -27,31 +27,13 @@
    whichever grotesque mono the OS happens to ship is not one document. All three slots are
    the app's, and all three are filled.
 
-   THE FACES ARE V2'S: Switzer reads, Neue Montreal Mono sets code, Boska sets the wordmark.
+   INTER READS, the same face the canvas's MSDF labels are cut from, published by layout.tsx
+   as `--kd-font-canvas`. Neue Montreal Mono sets code, PP Playground sets the wordmark.
 
-   @FONT-FACE OVER `public/fonts`, NOT `next/font/local`. None of these files may travel in a
-   repository — Switzer and Boska are Fontshare FFL, Neue Montreal Mono is Pangram Pangram — so
-   they are gitignored and a clone or a Vercel build does not have them. `next/font/local` fails
-   the build on a missing file; a url() here 404s and the stack below falls back to system-ui,
-   which is what V2 says a fresh clone should do.
-
-   The canvas keeps Inter through `.kd-canvas`, below. */
-@font-face {
-  font-family: "Switzer";
-  src: url("/fonts/Switzer.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Switzer";
-  src: url("/fonts/Switzer-Italic.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: italic;
-  font-display: swap;
-}
-
+   @FONT-FACE OVER `public/fonts`, NOT `next/font/local`, for the two licensed faces. Both are
+   Pangram Pangram's, so they are gitignored and a clone or a Vercel build does not have them.
+   `next/font/local` fails the build on a missing file; a url() here 404s and the stack below
+   falls back to the system. */
 @font-face {
   font-family: "Neue Montreal Mono";
   src: url("/fonts/NeueMontrealMono.woff2") format("woff2");
@@ -68,20 +50,22 @@
   font-display: swap;
 }
 
+/* One static cut, at the weight `<Wordmark>` asks for, so the browser never synthesizes a bolder
+   one by stroking the outline. */
 @font-face {
-  font-family: "Boska";
-  src: url("/fonts/Boska-Medium.woff2") format("woff2");
+  font-family: "PP Playground";
+  src: url("/fonts/PPPlayground-Medium.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 :root:root {
-  --kd-font-body: "Switzer";
+  --kd-font-body: var(--kd-font-canvas);
   --kd-font-mono: "Neue Montreal Mono";
-  --kd-font-wordmark: "Boska";
+  --kd-font-wordmark: "PP Playground";
   --font-body: var(--kd-font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-heading: var(--font-body);
+  --font-heading: var(--kd-font-heading), var(--font-body);
   --font-mono: var(--kd-font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 

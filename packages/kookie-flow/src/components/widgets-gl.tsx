@@ -40,7 +40,8 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
-import { sliderTrackWidth, wellRadius, getWidgetBox } from '../utils/widget-geometry';
+import { sliderTrackWidth, wellRadius, getWidgetBox, COLOR_SWATCH_INSET, SWITCH_HEIGHT_STEP, SWITCH_TRACK_RATIO } from '../utils/widget-geometry';
+import { segmentIndex, vectorDimensions } from '../utils/widget-parts';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
@@ -61,6 +62,7 @@ import {
   FOCUS_RING,
   easeColor,
   springStiff,
+  springMark,
   springLively,
   type RGBA,
   type CastLayer,
@@ -124,6 +126,11 @@ const KIND = {
   slider: 3,
   select: 4,
   color: 5,
+  switchOff: 6,
+  switchOn: 7,
+  segmented: 8,
+  vector: 9,
+  seed: 10,
 } as const;
 
 /** Which kind a widget type draws as. `text`, `number` and `textarea` are all a field. */
@@ -137,6 +144,14 @@ function kindFor(type: WidgetType, value: unknown): number {
       return KIND.select;
     case 'color':
       return KIND.color;
+    case 'switch':
+      return value ? KIND.switchOn : KIND.switchOff;
+    case 'segmented':
+      return KIND.segmented;
+    case 'vector':
+      return KIND.vector;
+    case 'seed':
+      return KIND.seed;
     default:
       return KIND.field;
   }
@@ -193,6 +208,24 @@ function colorOf(value: unknown): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0];
   writeColor(value, out, 0);
   return out;
+}
+
+/**
+ * A segmented control's traveling thumb, in parts: each edge's start, the part it is heading to,
+ * when it left, and which way (1 right, -1 left, 0 placed).
+ */
+interface SegmentMotion {
+  fromL: number;
+  fromR: number;
+  to: number;
+  start: number;
+  dir: number;
+}
+
+/** Where one thumb edge is at `now` — the shader's own curve, so a retarget starts on screen. */
+function travelEdge(from: number, to: number, start: number, duration: number, now: number, reduced: boolean): number {
+  const k = reduced || duration <= 0 ? 1 : springMark((now - start) / duration);
+  return from + (to - from) * k;
 }
 
 /**
@@ -286,6 +319,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uActiveContrast;
   uniform vec3 uThumb;
   uniform vec3 uChevron;
+  uniform vec3 uSegmentThumb;
   uniform vec3 uRing;
   uniform float uMarkSize;
   uniform float uMarkRadius;
@@ -312,6 +346,8 @@ const fragmentShader = /* glsl */ `
   uniform float uMotion;
   uniform vec4 uColourDur;
   uniform vec2 uMoveDur;
+  // A traveling thumb's leading and trailing edges, on --motion-spring.
+  uniform vec2 uTravelDur;
 
   varying vec2 vUv;
   varying vec2 vSize;
@@ -411,8 +447,37 @@ const fragmentShader = /* glsl */ `
       acc = over(acc, uThumb, fillSDF(gd, aa));
       // The ring sits on the grip and does not travel.
       acc = focusRing(acc, gd * squash, aa, ringOn, 1.0);
+    } else if (vKind > 5.5 && vKind < 7.5) {
+      // ---- the switch: v2's .kui-switch, at the row's trailing edge ----
+      float th = min(vSize.y, uMarkSize + ${SWITCH_HEIGHT_STEP.toFixed(1)});
+      float tw = th * ${SWITCH_TRACK_RATIO.toFixed(4)};
+      vec2 tp = p - vec2(halfSize.x - tw * 0.5, 0.0);
+      float td = sdRoundedBox(tp, vec2(tw * 0.5, th * 0.5), th * 0.5);
+      float inside = fillSDF(td, aa);
+      float on = step(6.5, vKind);
+      // The thumb's travel, on its own spring; the track's colour follows the travel, so the two
+      // can never disagree about which side the switch is on.
+      float travel = clamp(mix(vAnim.z, on, springStiff(progress(vAnim.w, uColourDur.z))), 0.0, 1.0);
+      vec3 rest = mix(mix(uMarkFill, uMarkFillHover, hov), uMarkFillActive, act);
+      vec3 onFill = mix(mix(uActive, uActiveHover, hov), uActivePressed, act);
+      acc = over(acc, mix(rest, onFill, travel), inside);
+      acc = overC(acc, mix(uMarkEdge, vec4(onFill, 1.0), travel), ringSDF(td, 1.0, aa));
+      // The thumb, 2 in from the track, stretching toward where it would go while pressed.
+      float gr = th * 0.5 - 2.0;
+      float stretch = 4.0 * press;
+      float span = tw * 0.5 - th * 0.5;
+      float gx = mix(-span, span, travel) + mix(stretch, -stretch, on) * 0.5;
+      vec2 gp = tp - vec2(gx, 0.0);
+      vec2 gb = vec2(gr + stretch * 0.5, gr);
+      float gd = sdRoundedBox(gp, gb, gr);
+      for (int i = 0; i < 2; i++) {
+        float dc = sdRoundedBox(gp - vec2(0.0, -uGripCast[i].x), gb + uGripCast[i].z, gr + uGripCast[i].z);
+        acc = glassCast(acc, dc, gd, uGripCast[i].y, uGripCastColor[i]);
+      }
+      acc = over(acc, uThumb, fillSDF(gd, aa));
+      acc = focusRing(acc, td, aa, ringOn, land);
     } else {
-      // ---- field, select, colour: v2's .kui-field in the regular material ----
+      // ---- field, select, colour, segmented, vector, seed: v2's .kui-field in the regular material ----
       float r = min(vRadius, min(halfSize.x, halfSize.y));
       float d = sdRoundedBox(p, halfSize, r);
       float inside = fillSDF(d, aa);
@@ -425,11 +490,19 @@ const fragmentShader = /* glsl */ `
       acc = glassGrain(acc, inside, px, uGrain);
       acc = glassRing(acc, d + 1.0, aa, 1.0, p, uRingTop, uRingUpper, uRingSide, uRingBottom, 1.0);
 
-      if (vKind > 4.5) {
-        float ds = d + 4.0;
+      if (vKind > 4.5 && vKind < 5.5) {
+        // A leading swatch, not a bar: the colour is the loudest thing a card can hold, so it gets
+        // a square the size of the text beside it and the field stays a field. Its corner is the
+        // field's minus the inset, so the two are concentric — a circle in a pill, a soft square
+        // in a square field. Geometry shared with the hex readout: utils/widget-geometry.ts.
+        float inset = ${COLOR_SWATCH_INSET.toFixed(1)};
+        float side = max(vSize.y - 2.0 * inset, 0.0);
+        vec2 sp = p - vec2(-halfSize.x + inset + side * 0.5, 0.0);
+        float sr = clamp(r - inset, 2.0, side * 0.5);
+        float ds = sdRoundedBox(sp, vec2(side * 0.5), sr);
         float sw = fillSDF(ds, aa);
         acc = over(acc, vTint, sw);
-        acc = glassLight(acc, sw, (halfSize.y - 4.0 - p.y) / (vSize.y - 8.0), uMarkLight);
+        acc = glassLight(acc, sw, (side * 0.5 - sp.y) / max(side, 1.0), uMarkLight);
         acc = overC(acc, uMarkEdge, ringSDF(ds, 1.0, aa) * 0.6);
       }
 
@@ -441,8 +514,85 @@ const fragmentShader = /* glsl */ `
         acc = over(acc, uChevron, fillSDF(dc, aa) * inside * uChevronAlpha);
       }
 
+      if (vKind > 7.5 && vKind < 8.5) {
+        // ---- segmented: a raised thumb under the chosen part, sliding between parts ----
+        float count = max(vTint.x, 1.0);
+        float segW = vSize.x / count;
+        float chosen = vTint.y;
+        // v2's traveling thumb: its two edges fly on their own clocks — the edge heading into the
+        // new part leads over --motion-travel-lead, the one leaving trails over -trail, both on
+        // --motion-spring — so the thumb stretches toward its seat and its tail catches up.
+        // Edges are in parts: from vAnim.z (left) and vTint.z (right), to chosen and chosen + 1.
+        float kLead = springMark(progress(vAnim.w, uTravelDur.x));
+        float kTrail = springMark(progress(vAnim.w, uTravelDur.y));
+        // Clamped to the track, as v2 clamps its insets with max(): the spring's overshoot may
+        // squash a thumb against the end of the track, never carry it past.
+        float edgeL = max(mix(vAnim.z, chosen, vValue > 0.0 ? kTrail : kLead), 0.0);
+        float edgeR = min(mix(vTint.z, chosen + 1.0, vValue > 0.0 ? kLead : kTrail), count);
+        if (chosen >= 0.0) {
+          // Inset 3: the field's ring owns the outer pixel, so this leaves 2px of track clear
+          // around the thumb. The corner shrinks by the same amount, so the two stay concentric.
+          vec2 sp = p - vec2(-halfSize.x + segW * (edgeL + edgeR) * 0.5, 0.0);
+          vec2 sb = vec2(max(segW * (edgeR - edgeL) * 0.5 - 3.0, 0.0), halfSize.y - 3.0);
+          float sr = min(max(r - 3.0, 0.0), min(sb.x, sb.y));
+          float sd = sdRoundedBox(sp, sb, sr);
+          for (int i = 0; i < 2; i++) {
+            float dc = sdRoundedBox(sp - vec2(0.0, -uGripCast[i].x), sb + uGripCast[i].z, sr + uGripCast[i].z);
+            acc = glassCast(acc, dc, sd, uGripCast[i].y, uGripCastColor[i] * vec4(1.0, 1.0, 1.0, 0.6));
+          }
+          float thumb = fillSDF(sd, aa);
+          acc = over(acc, uSegmentThumb, thumb);
+          // No hairline: the cast already lifts the thumb, and a ring 2px inside the field's own
+          // edge read as a doubled outline.
+          acc = glassLight(acc, thumb, (sb.y - sp.y) / max(sb.y * 2.0, 1.0), uMarkLight * 0.5);
+        }
+        // Hairlines between parts, faded beside the thumb so it reads as one raised piece.
+        for (int k = 1; k < 8; k++) {
+          float fk = float(k);
+          if (fk >= count) break;
+          float lx = -halfSize.x + segW * fk;
+          // Gone under and beside the thumb, wherever its edges are mid-flight, as v2 hides the
+          // separators either side of the checked segment.
+          float gap = max(max(edgeL - fk, fk - edgeR), 0.0);
+          float fade = chosen >= 0.0 ? smoothstep(0.0, 0.6, gap) : 1.0;
+          float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.45);
+          acc = overC(acc, uMarkEdge, line * fade * inside);
+        }
+      }
+
+      if (vKind > 8.5 && vKind < 9.5) {
+        // ---- vector: one field cut into its components by hairlines ----
+        float count = max(vTint.x, 1.0);
+        float segW = vSize.x / count;
+        for (int k = 1; k < 4; k++) {
+          float fk = float(k);
+          if (fk >= count) break;
+          float lx = -halfSize.x + segW * fk;
+          float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.5);
+          acc = overC(acc, uMarkEdge, line * inside);
+        }
+      }
+
+      if (vKind > 9.5) {
+        // ---- seed: a roll button at the trailing end, a die that turns while pressed ----
+        float bw = min(vSize.y, vSize.x * 0.5);
+        float lx = halfSize.x - bw;
+        float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.5);
+        acc = overC(acc, uMarkEdge, line * inside);
+        vec2 dp = p - vec2(halfSize.x - bw * 0.5, 0.0);
+        float turn = press * 1.5707963;
+        dp = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * dp;
+        float face = ringSDF(sdRoundedBox(dp, vec2(6.0), 2.5), 1.2, aa);
+        float pips = fillSDF(
+          min(min(sdCircle(dp - vec2(-2.7, 2.7), 1.2), sdCircle(dp, 1.2)), sdCircle(dp - vec2(2.7, -2.7), 1.2)),
+          aa
+        );
+        acc = over(acc, uChevron, max(face, pips) * inside * uChevronAlpha);
+      }
+
       // A field rings whenever it has the caret, at once; a trigger rings for the keyboard and lands.
-      float trigger = step(3.5, vKind);
+      // Select, colour and segmented are triggers; a vector and a seed are fields.
+      float trigger = ((vKind > 3.5 && vKind < 5.5) || (vKind > 7.5 && vKind < 8.5)) ? 1.0 : 0.0;
       acc = focusRing(acc, d, aa, ringOn, mix(1.0, land, trigger));
     }
 
@@ -602,6 +752,7 @@ export function WidgetsGL({
         uActiveContrast: { value: rgb(c.activeContrast) },
         uThumb: { value: rgb(c.thumb) },
         uChevron: { value: rgb(c.chevron) },
+        uSegmentThumb: { value: rgb(c.segmentThumb) },
         uMarkSize: { value: socketLayout.markSize },
         uMarkRadius: { value: resolvedStyle.markRadius },
         uTrackHeight: { value: socketLayout.trackHeight },
@@ -622,6 +773,7 @@ export function WidgetsGL({
         uMotion: { value: 1 },
         uColourDur: { value: new THREE.Vector4(MOTION.hoverIn, MOTION.hoverOut, MOTION.mark, MOTION.ring) },
         uMoveDur: { value: new THREE.Vector2(MOTION.press, MOTION.rise) },
+        uTravelDur: { value: new THREE.Vector2(MOTION.travelLead, MOTION.travelTrail) },
       },
       vertexShader,
       fragmentShader,
@@ -787,6 +939,14 @@ export function WidgetsGL({
     ),
     []
   );
+  // A switch's thumb travels on the stiff spring over `--motion-mark`, both ways — the checkbox
+  // tracker's durations are a colour's on the way out, and a thumb that crossed in 80ms would jump.
+  const switchTrack = useMemo(
+    () => new TransitionTracker(() => (reducedRef.current ? 0 : MOTION.mark), springStiff),
+    []
+  );
+  // Each segmented control's traveling thumb: where its two edges started, when, and which way.
+  const segmentMotion = useMemo(() => new Map<string, SegmentMotion>(), []);
   useEffect(() => {
     const restate = (key: string | null | undefined) => {
       if (!key) return;
@@ -809,7 +969,11 @@ export function WidgetsGL({
         const key = s.lastChangedWidgetKey;
         if (!key) return;
         const value = s.widgetValues.get(key)?.value;
-        if (typeof value === 'boolean') checkTrack.set(key, value ? 1 : 0, motionNow());
+        if (typeof value === 'boolean') {
+          const now = motionNow();
+          checkTrack.set(key, value ? 1 : 0, now);
+          switchTrack.set(key, value ? 1 : 0, now);
+        }
       }),
     ];
     return () => {
@@ -818,8 +982,10 @@ export function WidgetsGL({
       pressTrack.clear();
       ringTrack.clear();
       checkTrack.clear();
+      switchTrack.clear();
+      segmentMotion.clear();
     };
-  }, [store, colourTrack, pressTrack, ringTrack, checkTrack]);
+  }, [store, colourTrack, pressTrack, ringTrack, checkTrack, switchTrack, segmentMotion]);
 
   useFrame(({ size }) => {
     const bgMesh = bgMeshRef.current;
@@ -833,7 +999,18 @@ export function WidgetsGL({
     const pressMoving = pressTrack.active(now);
     const ringMoving = ringTrack.active(now);
     const checkMoving = checkTrack.active(now);
-    const moving = colourMoving || pressMoving || ringMoving || checkMoving;
+    const switchMoving = switchTrack.active(now);
+    // A thumb in flight keeps the clock running until its trailing edge lands.
+    let travelMoving = false;
+    if (!reducedRef.current) {
+      for (const m of segmentMotion.values()) {
+        if (now - m.start < MOTION.travelTrail) {
+          travelMoving = true;
+          break;
+        }
+      }
+    }
+    const moving = colourMoving || pressMoving || ringMoving || checkMoving || switchMoving || travelMoving;
     if (moving || dirtyRef.current) material.uniforms.uTime.value = now;
 
     const sizeChanged =
@@ -965,8 +1142,11 @@ export function WidgetsGL({
         if (config.type === 'color') {
           writeColor(value, buffers.tint, n * 3);
         } else {
-          buffers.tint[n * 3] = 0;
-          buffers.tint[n * 3 + 1] = 0;
+          // For the kinds made of parts, tint carries the part count and a segmented control's
+          // chosen part (-1 for none). Nothing else reads it.
+          buffers.tint[n * 3] =
+            config.type === 'segmented' ? (config.options?.length ?? 0) : config.type === 'vector' ? vectorDimensions(config) : 0;
+          buffers.tint[n * 3 + 1] = config.type === 'segmented' ? segmentIndex(config.options, value) : 0;
           buffers.tint[n * 3 + 2] = 0;
         }
         // Written unconditionally rather than only when lit, because these buffers are reused across
@@ -979,10 +1159,49 @@ export function WidgetsGL({
         const colourT = colourTrack.read(key);
         buffers.anim[n * 4] = colourT ? colourT.from : colour;
         buffers.anim[n * 4 + 1] = colourT ? colourT.start : SETTLED;
-        const checked = buffers.kind[n] === KIND.checkboxOn ? 1 : 0;
-        const checkT = config.type === 'checkbox' ? checkTrack.read(key) : undefined;
-        buffers.anim[n * 4 + 2] = checkT ? checkT.from : checked;
-        buffers.anim[n * 4 + 3] = checkT ? checkT.start : SETTLED;
+        if (config.type === 'segmented') {
+          /**
+           * The traveling thumb. A value change is noticed HERE, on the dirty frame it lands in,
+           * against the part this key last headed to. Each edge's start is where that edge IS at
+           * this instant — on its own clock — so a change mid-flight retargets from the stretched
+           * thumb on screen instead of snapping it back to a whole part. The direction picks which
+           * edge leads. One record per segmented control drawn; a change allocates nothing.
+           */
+          const chosen = buffers.tint[n * 3 + 1];
+          let m = segmentMotion.get(key);
+          if (!m) {
+            m = { fromL: chosen, fromR: chosen + 1, to: chosen, start: SETTLED, dir: 0 };
+            segmentMotion.set(key, m);
+          } else if (m.to !== chosen) {
+            if (chosen >= 0 && m.to >= 0) {
+              const reduced = reducedRef.current;
+              const leftLeads = m.dir < 0;
+              const l = travelEdge(m.fromL, m.to, m.start, leftLeads ? MOTION.travelLead : MOTION.travelTrail, now, reduced);
+              const r = travelEdge(m.fromR, m.to + 1, m.start, leftLeads ? MOTION.travelTrail : MOTION.travelLead, now, reduced);
+              m.fromL = l;
+              m.fromR = r;
+              m.dir = chosen > l ? 1 : -1;
+              m.start = now;
+            } else {
+              // Appearing or leaving: placed, not flown.
+              m.fromL = chosen;
+              m.fromR = chosen + 1;
+              m.dir = 0;
+              m.start = SETTLED;
+            }
+            m.to = chosen;
+          }
+          buffers.anim[n * 4 + 2] = m.fromL;
+          buffers.anim[n * 4 + 3] = m.start;
+          buffers.tint[n * 3 + 2] = m.fromR;
+          buffers.value[n] = m.dir;
+        } else {
+          const checked = buffers.kind[n] === KIND.checkboxOn || buffers.kind[n] === KIND.switchOn ? 1 : 0;
+          const checkT =
+            config.type === 'checkbox' ? checkTrack.read(key) : config.type === 'switch' ? switchTrack.read(key) : undefined;
+          buffers.anim[n * 4 + 2] = checkT ? checkT.from : checked;
+          buffers.anim[n * 4 + 3] = checkT ? checkT.start : SETTLED;
+        }
         const pressed = pressLevel(key, state);
         const pressT = pressTrack.read(key);
         buffers.motion[n * 3] = pressT ? pressT.from : pressed;

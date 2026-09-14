@@ -41,7 +41,7 @@ import { TITLE_LINE_BOX } from '../utils/style-resolver';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
-import { widgetValueText, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
+import { widgetValueText, widgetPartTexts, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
 import { measureText } from '../utils/text-layout';
 import type { EdgeType, EdgeLabelConfig, SocketType } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
@@ -551,6 +551,7 @@ export function MultiWeightTextRenderer({
         hiddenEntityIds,
         widgetValues,
         editingWidgetKey,
+        editingWidgetPart,
         getEvaluationRecord,
       } = store.getState();
 
@@ -828,7 +829,9 @@ export function MultiWeightTextRenderer({
             // The borrowed input owns this box for the length of an edit and prints the value
             // itself; see the store field for why the suppression is stated rather than left to
             // the overlay's opacity.
-            if (key === editingWidgetKey) continue;
+            // A vector with one component open keeps printing the others; see `editingWidgetPart`.
+            const editingHere = key === editingWidgetKey;
+            if (editingHere && editingWidgetPart < 0) continue;
             const config = resolveWidgetConfig(socket, socketTypes);
             if (!config) continue;
             const box = getWidgetBox(entity, i, socketLayout, defaultEntityWidth, socketLabelWidth);
@@ -838,49 +841,56 @@ export function MultiWeightTextRenderer({
               key,
               values?.[socket.id] ?? config.defaultValue
             );
-            const placed = widgetValueText(config, value, box, style.widgetPad);
-            if (!placed) continue;
+            // A widget made of parts prints one reading per part; every other kind prints one.
+            const parts = widgetPartTexts(config, value, box, editingHere ? editingWidgetPart : -1);
+            const single = parts ? null : widgetValueText(config, value, box, style.widgetPad);
+            const count = parts ? parts.length : single ? 1 : 0;
 
-            /**
-             * MEASURE FIRST, TRUNCATE ONLY IF IT DOES NOT FIT — and that order is load-bearing
-             * rather than a micro-optimisation. `truncateText` memoises on
-             * `text:maxWidth:fontSize` and, at a thousand entries, evicts by building an array of
-             * every key. A slider drag mints a new value string on every pointermove, so routing
-             * readouts through that cache churns it and puts an array-of-1000 allocation inside a
-             * gesture. `measureText` allocates nothing, and a numeric readout never needs cutting.
-             */
-            const fits =
-              measureText(placed.text, regularGlyphMap, regularKerningMap) * glyphScale <=
-              placed.maxWidth;
-            const text = fits
-              ? placed.text
-              : truncateText(
-                  placed.text,
-                  placed.maxWidth,
-                  widgetFont,
-                  regularFont.metrics.info.size,
-                  regularGlyphMap,
-                  regularKerningMap
-                );
+            for (let t = 0; t < count; t++) {
+              const placed = parts ? parts[t] : single;
+              if (!placed) continue;
 
-            regular.push({
-              text,
-              // Centred on the FIRST row of a multi-row widget rather than on the whole box, so a
-              // three-row textarea reads from its top line like the input that replaces it. The -7
-              // is the same visual centring the socket labels above use.
-              position: [
-                placed.x,
-                box.y + Math.min(box.height, socketLayout.widgetHeight) / 2 - (widgetFont * 7) / 12,
-                depth,
-              ],
-              fontSize: widgetFont,
-              // The value is CONTENT, like the entity header, not chrome like the socket's name —
-              // and neutral-12 is exactly what the borrowed input paints with, so opening an edit
-              // does not change the ink. A placeholder is not content, and takes the muted ink.
-              color: placed.muted ? secondaryTextColor : primaryTextColor,
-              anchor: placed.anchor,
-              fontWeight: 'regular',
-            });
+              /**
+               * MEASURE FIRST, TRUNCATE ONLY IF IT DOES NOT FIT — and that order is load-bearing
+               * rather than a micro-optimisation. `truncateText` memoises on
+               * `text:maxWidth:fontSize` and, at a thousand entries, evicts by building an array of
+               * every key. A slider drag mints a new value string on every pointermove, so routing
+               * readouts through that cache churns it and puts an array-of-1000 allocation inside a
+               * gesture. `measureText` allocates nothing, and a numeric readout never needs cutting.
+               */
+              const fits =
+                measureText(placed.text, regularGlyphMap, regularKerningMap) * glyphScale <=
+                placed.maxWidth;
+              const text = fits
+                ? placed.text
+                : truncateText(
+                    placed.text,
+                    placed.maxWidth,
+                    widgetFont,
+                    regularFont.metrics.info.size,
+                    regularGlyphMap,
+                    regularKerningMap
+                  );
+
+              regular.push({
+                text,
+                // Centred on the FIRST row of a multi-row widget rather than on the whole box, so a
+                // three-row textarea reads from its top line like the input that replaces it. The -7
+                // is the same visual centring the socket labels above use.
+                position: [
+                  placed.x,
+                  box.y + Math.min(box.height, socketLayout.widgetHeight) / 2 - (widgetFont * 7) / 12,
+                  depth,
+                ],
+                fontSize: widgetFont,
+                // The value is CONTENT, like the entity header, not chrome like the socket's name —
+                // and neutral-12 is exactly what the borrowed input paints with, so opening an edit
+                // does not change the ink. A placeholder is not content, and takes the muted ink.
+                color: placed.muted ? secondaryTextColor : primaryTextColor,
+                anchor: placed.anchor,
+                fontWeight: 'regular',
+              });
+            }
           }
         }
       }

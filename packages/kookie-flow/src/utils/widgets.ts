@@ -6,6 +6,7 @@
  */
 
 import type {
+  Entity,
   Socket,
   SocketType,
   WidgetType,
@@ -83,7 +84,35 @@ export function resolveWidgetConfig(
     placeholder: socket.placeholder,
     defaultValue: socket.defaultValue,
     rows: socket.rows,
+    dimensions: socket.dimensions ?? socketType?.dimensions,
   };
+}
+
+/**
+ * Which widget type a socket resolves to, without building a config.
+ *
+ * For the pointermove path, which asks on every move over a widget and must not allocate:
+ * `resolveWidgetConfig` returns a fresh object. Same three rules in the same order, so the two
+ * agree on `type` by construction.
+ */
+export function widgetTypeOf(socket: Socket, socketTypes: Record<string, SocketType>): WidgetType | null {
+  if (socket.widget === false) return null;
+  if (isInlineWidgetComponent(socket.widget)) return 'text';
+  return (typeof socket.widget === 'string' ? socket.widget : undefined) ?? socketTypes[socket.type]?.widget ?? null;
+}
+
+/** The widget type on input `socketId` of an entity, or null. Allocation-free, like widgetTypeOf. */
+export function inputWidgetType(
+  entity: Entity | undefined,
+  socketId: string,
+  socketTypes: Record<string, SocketType>
+): WidgetType | null {
+  const inputs = entity?.inputs;
+  if (!inputs) return null;
+  for (let i = 0; i < inputs.length; i++) {
+    if (inputs[i].id === socketId) return widgetTypeOf(inputs[i], socketTypes);
+  }
+  return null;
 }
 
 /**

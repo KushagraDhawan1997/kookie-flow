@@ -14,16 +14,20 @@ export interface GridProps {
   colorAccent?: string;
 }
 
+/** The zoom below which the lattice is fully faded and the quad is not drawn at all. */
+const GRID_FADE_START = 0.45;
+
 /**
  * The lattice's alpha per appearance, applied at material build.
  *
- * `--neutral-7` is one token in both themes; what differs is how much of it a dot needs to be
- * seen against its canvas. Light needs less: the canvas is a step below white and the dot is dark
- * on it, where in dark the dot is a mid grey on near-black and wants a touch more.
+ * The dot is `--neutral-8`. In light that is p3 .77 on a ground of .97 — 50 levels of 255 at full
+ * strength, and it takes all of them. Two rounds got here: `--neutral-7` at 0.14 sat four levels off
+ * the ground, on the belief that the token was dark (in v2 it is a pale grey, .85), and no demo
+ * showed a lattice at all; the same token at full strength reached 30 levels and still read as
+ * too light. In dark `--neutral-8` is .38 on .06, 81 levels at full, so half of it — 41 — keeps
+ * the lattice a quiet texture on near-black rather than a field of lit points.
  */
-/** The zoom below which the lattice is fully faded and the quad is not drawn at all. */
-const GRID_FADE_START = 0.45;
-const GRID_DOT_ALPHA = { dark: 0.18, light: 0.14 } as const;
+const GRID_DOT_ALPHA = { dark: 0.5, light: 1 } as const;
 
 /**
  * Infinite dot lattice rendered via shader on one full-screen quad.
@@ -37,6 +41,9 @@ export function Grid({
   color,
 }: GridProps) {
   const { camera } = useThree();
+  // The display's pixel ratio: the dot is sized in CSS px, and a window dragged to another screen
+  // changes it. Read as state, so the material is rebuilt on that rare change and never per frame.
+  const dpr = useThree((state) => state.viewport.dpr);
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -63,6 +70,7 @@ export function Grid({
         uColor: { value: new THREE.Color(gridColor) },
         uAlpha: { value: gridAlpha },
         uZoom: { value: 1 },
+        uPixelRatio: { value: dpr },
       },
       vertexShader: /* glsl */ `
         varying vec2 vWorldPos;
@@ -81,6 +89,7 @@ export function Grid({
         uniform float uZoom;
         uniform float uAlpha;
         uniform vec3 uColor;
+        uniform float uPixelRatio;
 
         varying vec2 vWorldPos;
 
@@ -90,9 +99,17 @@ export function Grid({
           // Offset from the nearest lattice point, in world units. The +0.5 puts the points on
           // integer multiples of the cell — where snapping lands a node — not on half-cells.
           vec2  g  = (fract(coord / uGridSize + 0.5) - 0.5) * uGridSize;
-          // One screen px in world units, so the dot stays ~1.2 screen px at every zoom.
-          float px = fwidth(coord.x);
-          float dot = 1.0 - smoothstep(0.6 * px, 1.6 * px, length(g));
+          /**
+           * Sized in CSS px, not framebuffer px. fwidth is one FRAMEBUFFER pixel in world units, and
+           * the dot used to be 1.1 of those: on a 2x display that is 0.55 CSS px, a quarter of the
+           * area the same dot has at 1x, and antialiasing spread its colour so thin that even a
+           * darker token read as too light. The radius is now 1.1 CSS px on every display, and the
+           * edge stays one device pixel wide, so a denser screen draws the same dot sharper rather
+           * than bigger and blurrier. At 1x this is exactly the old smoothstep from 0.6 to 1.6.
+           */
+          float devicePx = fwidth(coord.x);
+          float radius = 1.1 * devicePx * uPixelRatio;
+          float dot = 1.0 - smoothstep(radius - 0.5 * devicePx, radius + 0.5 * devicePx, length(g));
 
           // Gone below zoom 0.45, full from 0.9: a lattice denser than a few px moirés.
           float alpha = dot * uAlpha * smoothstep(${GRID_FADE_START.toFixed(2)}, 0.9, uZoom);
@@ -105,7 +122,7 @@ export function Grid({
       depthWrite: false,
       depthTest: false,
     });
-  }, [size, gridColor, gridAlpha]);
+  }, [size, gridColor, gridAlpha, dpr]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { gridMaterial.dispose(); }, [gridMaterial]);

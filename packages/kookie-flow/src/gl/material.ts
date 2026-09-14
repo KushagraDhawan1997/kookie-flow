@@ -226,6 +226,9 @@ export const MOTION = {
   mark: 0.38,
   ring: 0.26,
   floatingFall: 0.345,
+  /** `--motion-travel-lead` / `-trail`: a traveling thumb's leading and trailing edges. */
+  travelLead: 0.32,
+  travelTrail: 0.48,
 } as const;
 
 /** `--press-squash` and `--press-scale`. */

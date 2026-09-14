@@ -33,6 +33,6 @@ export const SOCKET_TYPES: Record<StudioSocketType, SocketType> = {
   int: { name: 'Integer', color: '#f76b15', widget: 'number', compatibleWith: ['seed'], step: 1 },
   bool: { name: 'Boolean', color: '#e54666', widget: 'checkbox' },
   color: { name: 'Color', color: '#d6409f', widget: 'color' },
-  seed: { name: 'Seed', color: '#12a594', widget: 'number', min: 0, step: 1 },
+  seed: { name: 'Seed', color: '#12a594', widget: 'seed', min: 0, step: 1 },
   any: { name: 'Any', color: '#8b8d98', compatibleWith: '*' },
 };

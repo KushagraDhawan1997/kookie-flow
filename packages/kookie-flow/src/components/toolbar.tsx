@@ -18,27 +18,26 @@ import {
   useState,
   useEffect,
   useMemo,
+  useInsertionEffect,
   createContext,
   useContext,
   type CSSProperties,
   type ReactNode,
 } from 'react';
 import {
-  Card,
-  Flex,
   TextField,
   Select,
   SelectTrigger,
   SelectContent,
   SelectItem,
-  Button,
   SegmentedControl,
   SegmentedItem,
-  Separator,
-  Toggle,
+  Toolbar as KuiToolbar,
+  ToolbarGroup,
+  ToolbarButton,
   iconStroke,
 } from '@kookie-ui/react';
-import type { CardProps } from '@kookie-ui/react';
+import type { ToolbarProps as KuiToolbarProps } from '@kookie-ui/react';
 import { useFlowStoreApi } from './context';
 import { getInteractionMode, observeInteractionMode } from './interaction-state';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -145,13 +144,17 @@ const toolbarContainerStyle: CSSProperties = {
 };
 
 export interface ToolbarProps {
-  /** Card props passed to the Kookie UI Card wrapper */
-  cardProps?: Omit<CardProps, 'children'>;
+  /**
+   * The size every control in the toolbar takes, unless a control states its own. Default: '3' —
+   * v2's own band step, one above an app's rest, because a floating row holds mostly icon-only
+   * controls that a pointer has to find over the canvas.
+   */
+  size?: KuiToolbarProps['size'];
   /** Override toolbar content entirely (ignores entityTypes toolbar config) */
   children?: ToolbarRenderFn;
 }
 
-export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
+export function Toolbar({ size = '3', children: renderOverride }: ToolbarProps) {
   const store = useFlowStoreApi();
   const { entityTypes, onEntitiesChange } = useToolbarContext();
   const socketLayout = useSocketLayout();
@@ -409,9 +412,16 @@ export function Toolbar({ cardProps, children: renderOverride }: ToolbarProps) {
       data-kookie-flow-toolbar=""
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <Card size="1" {...cardProps}>
+      {/*
+        NO CARD. Every control here is glass, and glass holds on any ground — so the canvas is the
+        toolbar's background, and each control or group draws its own capsule, as a v2 toolbar
+        does. A card around them was a second surface under the first, and the dividers it needed
+        were the cost of that. `backdrop` tells every glass-capable control in the row that the
+        canvas passes behind it, once, instead of on each one.
+      */}
+      <KuiToolbar size={size} backdrop aria-label="Selection">
         {toolbarContent}
-      </Card>
+      </KuiToolbar>
     </div>
   );
 }
@@ -447,21 +457,6 @@ export function hasSelectedEntityWithToolbar(
     if (typeDef?.toolbar != null && typeDef.toolbar !== false) return true;
   }
   return false;
-}
-
-/**
- * The toolbar's vertical tick.
- *
- * A Separator takes its length from whatever contains it, and a vertical one stretches to the
- * full height of the row it sits in — the whole toolbar. The 16px box is what the old `size="1"`
- * meant, stated in the one place it can now be stated.
- */
-function ToolbarDivider() {
-  return (
-    <Flex height="16px">
-      <Separator orientation="vertical" />
-    </Flex>
-  );
 }
 
 function resolveToolbarContent(
@@ -519,9 +514,10 @@ function resolveToolbarContent(
 
   if (defaultWidgets.length === 0 && !extraFn) return null;
 
+  // Straight into the row: the row spaces its children, and each child is its own capsule.
   return (
-    <Flex align="center" gap="3">
-      {defaultWidgets.map((widget, i) => (
+    <>
+      {defaultWidgets.map((widget) => (
         <BuiltInWidget
           key={widget}
           widget={widget}
@@ -530,16 +526,10 @@ function resolveToolbarContent(
           onEntitiesChange={onEntitiesChange}
           align={align}
           distribute={distribute}
-          showSeparator={i > 0}
         />
       ))}
-      {extraFn && (
-        <>
-          {defaultWidgets.length > 0 && <ToolbarDivider />}
-          {extraFn(renderProps)}
-        </>
-      )}
-    </Flex>
+      {extraFn?.(renderProps)}
+    </>
   );
 }
 
@@ -744,7 +734,8 @@ function ToolbarNumberInput({
   label,
   value,
   onChange,
-  width = 52,
+  // 64, not 52: at the toolbar's size 3 the field's own padding left 52 too narrow for "1.4".
+  width = 64,
 }: {
   /** Accessible name — these inputs carry no visible <label>. */
   label: string;
@@ -772,7 +763,7 @@ function ToolbarNumberInput({
   return (
     <TextField
       aria-label={label}
-      size="2"
+      backdrop
       inputMode="decimal"
       value={local}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
@@ -789,6 +780,31 @@ function ToolbarNumberInput({
   );
 }
 
+/**
+ * The native colour well draws its own square swatch inside its own padding and border, and both
+ * are pseudo-elements an inline style cannot reach — so the one rule that makes the swatch a round
+ * mark filling the input is injected once, keyed on an attribute, the way the widget edit overlay
+ * hides a number input's spinner. Without it the well was a hard 24px square sitting on top of the
+ * capsule it is meant to stand in.
+ */
+const SWATCH_ATTR = 'data-kookie-flow-swatch';
+const SWATCH_STYLE_ID = 'kookie-flow-swatch-style';
+const SWATCH_CSS = `
+[${SWATCH_ATTR}]::-webkit-color-swatch-wrapper { padding: 0; }
+[${SWATCH_ATTR}]::-webkit-color-swatch { border: none; border-radius: 999px; }
+[${SWATCH_ATTR}]::-moz-color-swatch { border: none; border-radius: 999px; }
+`;
+
+function useSwatchStylesheet(): void {
+  useInsertionEffect(() => {
+    if (document.getElementById(SWATCH_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = SWATCH_STYLE_ID;
+    style.textContent = SWATCH_CSS;
+    document.head.appendChild(style);
+  }, []);
+}
+
 /** Color input that throttles updates to avoid rapid-fire entity changes */
 function ToolbarColorInput({
   label,
@@ -802,6 +818,7 @@ function ToolbarColorInput({
 }) {
   const pendingRef = useRef<string | null>(null);
   const rafRef = useRef(0);
+  useSwatchStylesheet();
 
   const flush = useCallback(() => {
     rafRef.current = 0;
@@ -828,30 +845,36 @@ function ToolbarColorInput({
     };
   }, []);
 
+  // In a group of its own: a bare swatch has no capsule, and on glass every control stands on one.
   return (
-    <input
-      aria-label={label}
-      type="color"
-      value={value}
-      onChange={handleChange}
-      style={{
-        width: 24,
-        height: 24,
-        border: 'none',
-        // The MARK band, not the raw palette. `--radius-1` survived the v1 -> v2 rename by name
-        // and lost its meaning with it: in v1 it was a flat 6px, in v2 it is a palette index the
-        // radius axis re-authors per level, and at the default level (`full`) it resolves to
-        // 9999px — this 24x24 swatch would have rendered as a circle, and as a hard square under
-        // `radius="none"`. A colour well is a square control that IS its own mark, so it belongs
-        // on the band the mark family already designed for boxes that are not on the height
-        // ladder: it answers the radius axis (0/2/4/6), caps at 6px rather than rounding away,
-        // and lands on v1's rendered corner exactly at the default.
-        borderRadius: 'var(--radius-mark-2)',
-        padding: 0,
-        cursor: 'pointer',
-        background: 'none',
-      }}
-    />
+    <ToolbarGroup backdrop>
+      <input
+        aria-label={label}
+        type="color"
+        value={value}
+        onChange={handleChange}
+        {...{ [SWATCH_ATTR]: '' }}
+        style={{
+          // A round mark inside its capsule, as an icon sits inside an icon button's. Round
+          // whatever the radius level, because the capsule around it is: a square swatch in a
+          // pill reads as a second shape stacked on the first.
+          // Centred on its own: a group stretches its children to its hosted height, and a 20px
+          // swatch under `stretch` pins to the top. The side margins are read off that same hosted
+          // height, so the capsule is a square as tall as the row at every size — the shape an
+          // icon button's capsule has.
+          display: 'block',
+          alignSelf: 'center',
+          width: 20,
+          height: 20,
+          margin: '0 calc((var(--kui-ct-hosted-height, 28px) - 20px) / 2)',
+          border: 'none',
+          borderRadius: 999,
+          padding: 0,
+          cursor: 'pointer',
+          background: 'none',
+        }}
+      />
+    </ToolbarGroup>
   );
 }
 
@@ -879,7 +902,6 @@ function BuiltInWidget({
   onEntitiesChange,
   align,
   distribute,
-  showSeparator,
 }: {
   widget: ToolbarWidget;
   entities: Entity[];
@@ -887,7 +909,6 @@ function BuiltInWidget({
   onEntitiesChange?: (changes: EntityChange[]) => void;
   align: (edge: AlignEdge) => void;
   distribute: (axis: DistributeAxis) => void;
-  showSeparator: boolean;
 }) {
   // Display values from first entity; updates apply to all selected
   const data = entities[0].data as Record<string, unknown>;
@@ -905,7 +926,7 @@ function BuiltInWidget({
       const currentMode = (data.sizingMode as string) ?? 'auto-height';
       content = (
         <SegmentedControl
-          size="2"
+          backdrop
           aria-label="Sizing mode"
           value={currentMode}
           onValueChange={(newMode: unknown) => {
@@ -1010,7 +1031,6 @@ function BuiltInWidget({
     case 'fontWeight':
       content = (
         <Select
-          size="2"
           items={FONT_WEIGHT_LABELS}
           value={String((data.fontWeight as number) ?? 400)}
           onValueChange={(v) => {
@@ -1020,7 +1040,7 @@ function BuiltInWidget({
             batchUpdate({ fontWeight: Number(v) });
           }}
         >
-          <SelectTrigger aria-label="Font weight" />
+          <SelectTrigger backdrop aria-label="Font weight" />
           <SelectContent>
             <SelectItem value="400">Regular</SelectItem>
             <SelectItem value="600">Semibold</SelectItem>
@@ -1033,7 +1053,7 @@ function BuiltInWidget({
     case 'textAlign':
       content = (
         <SegmentedControl
-          size="2"
+          backdrop
           aria-label="Text alignment"
           value={(data.textAlign as string) ?? 'left'}
           onValueChange={(v: unknown) => batchUpdate({ textAlign: String(v) })}
@@ -1054,7 +1074,6 @@ function BuiltInWidget({
     case 'fontFamily':
       content = (
         <Select
-          size="2"
           items={FONT_FAMILY_LABELS}
           value={(data.fontFamily as string) ?? 'system-ui'}
           onValueChange={(v) => {
@@ -1062,7 +1081,7 @@ function BuiltInWidget({
             batchUpdate({ fontFamily: v });
           }}
         >
-          <SelectTrigger aria-label="Font family" />
+          <SelectTrigger backdrop aria-label="Font family" />
           <SelectContent>
             <SelectItem value="system-ui">System</SelectItem>
             <SelectItem value="serif">Serif</SelectItem>
@@ -1085,7 +1104,7 @@ function BuiltInWidget({
     case 'objectFit':
       content = (
         <SegmentedControl
-          size="2"
+          backdrop
           aria-label="Object fit"
           value={(data.objectFit as string) ?? 'fill'}
           onValueChange={(v: unknown) => batchUpdate({ objectFit: String(v) })}
@@ -1100,15 +1119,18 @@ function BuiltInWidget({
     case 'aspectLock': {
       const locked = (data.aspectLocked as boolean) ?? true;
       content = (
-        <Toggle
-          size="2"
-          iconOnly
-          pressed={locked}
-          onPressedChange={(v: boolean) => batchUpdate({ aspectLocked: v })}
-          aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
-        >
-          {locked ? <LockIcon /> : <UnlockIcon />}
-        </Toggle>
+        // A ToolbarButton carrying its own pressed state, not a Toggle: a Toggle does not enrol in
+        // the toolbar's keyboard, so it was a second tab stop the arrow keys never reached.
+        <ToolbarGroup backdrop>
+          <ToolbarButton
+            iconOnly
+            aria-pressed={locked}
+            onClick={() => batchUpdate({ aspectLocked: !locked })}
+            aria-label={locked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+          >
+            {locked ? <LockIcon /> : <UnlockIcon />}
+          </ToolbarButton>
+        </ToolbarGroup>
       );
       break;
     }
@@ -1161,24 +1183,27 @@ function BuiltInWidget({
         ['middle', 'Align vertical centres', <AlignEdgeMiddleIcon key="m" />],
         ['bottom', 'Align bottom edges', <AlignEdgeBottomIcon key="b" />],
       ];
+      // Two groups, because they are two meanings: lining edges up, and spacing things out.
       content = (
-        <Flex align="center" gap="1">
-          {edges.map(([edge, label, icon]) => (
-            <Button key={edge} size="2" emphasis="quiet" iconOnly aria-label={label} onClick={() => align(edge)}>
-              {icon}
-            </Button>
-          ))}
+        <>
+          <ToolbarGroup backdrop>
+            {edges.map(([edge, label, icon]) => (
+              <ToolbarButton key={edge} iconOnly aria-label={label} onClick={() => align(edge)}>
+                {icon}
+              </ToolbarButton>
+            ))}
+          </ToolbarGroup>
           {entities.length >= 3 && (
-            <>
-              <Button size="2" emphasis="quiet" iconOnly aria-label="Distribute horizontally" onClick={() => distribute('horizontal')}>
+            <ToolbarGroup backdrop>
+              <ToolbarButton iconOnly aria-label="Distribute horizontally" onClick={() => distribute('horizontal')}>
                 <DistributeHorizontalIcon />
-              </Button>
-              <Button size="2" emphasis="quiet" iconOnly aria-label="Distribute vertically" onClick={() => distribute('vertical')}>
+              </ToolbarButton>
+              <ToolbarButton iconOnly aria-label="Distribute vertically" onClick={() => distribute('vertical')}>
                 <DistributeVerticalIcon />
-              </Button>
-            </>
+              </ToolbarButton>
+            </ToolbarGroup>
           )}
-        </Flex>
+        </>
       );
       break;
     }
@@ -1187,10 +1212,5 @@ function BuiltInWidget({
       return null;
   }
 
-  return (
-    <>
-      {showSeparator && <ToolbarDivider />}
-      {content}
-    </>
-  );
+  return <>{content}</>;
 }

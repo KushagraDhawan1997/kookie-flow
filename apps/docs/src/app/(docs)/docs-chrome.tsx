@@ -229,11 +229,10 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
                 className="kd-masthead"
                 style={{ color: "inherit", textDecoration: "none" }}
               >
-                {/* STEP 6, not the default 8: "Kookie Flow" is two words against V2's one, and
-                    at the sidebar's 240 floor step 6 is the largest that leaves the search
-                    button inside the padding (measured 2026-09-11 in Inter: ink 24-160, button
-                    175-215). Re-judge once Boska is in `public/fonts`. */}
-                <Wordmark size="6" />
+                {/* STEP 8, the short form "Flow" (2026-09-14, Kushagra). One word in PP Playground
+                    runs 24-85 at this step (measured 2026-09-14), so it clears the search button
+                    even at the sidebar's 240 floor, where the button sits at 175-215. */}
+                <Wordmark size="8" />
               </Link>
               <DocsSearch index={buildSearchIndex()} />
             </Toolbar>
