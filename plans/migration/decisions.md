@@ -1416,3 +1416,18 @@ light did not come from anywhere).
 
 Cost: skipped entirely for unaccented cards; for accented ones, the fragments below the reach return
 before the blobs. No buffers, no geometry, no hit box moved.
+
+### Addendum, 2026-09-14 — v2's clocks run at 0.6
+
+v2 now emits every motion duration at 0.6 of its judged length (`motionSpeed` in its token config),
+springs keeping their shape and loops left alone. The GL controls copy those clocks, so
+`gl/material.ts` states the judged numbers and scales them the same way (`MOTION_SPEED`): hover in
+48ms and out 132ms, press 84ms, rise 330ms, mark 228ms, ring 156ms, a panel's fall 207ms, travel
+192/288ms. The D20 addenda above quote the figures from before. `gl/material.test.ts` reads the
+installed stylesheet and fails the day the two drift.
+
+The media chrome fade is flow's own judgement and takes the same factor, as a rate (12 / 0.6). Left
+alone, as v2 leaves its spinner: an animated edge's light, the drag line's dashes, the selection
+box's march, the caret blink, and the progress ring's chase, which is tuned to how often a handler
+reports. The success hold is a dwell, not a motion. The magnet is a live spring rather than a clock,
+and stiffening it by 1/0.36 at its 30Hz step cap would ring.

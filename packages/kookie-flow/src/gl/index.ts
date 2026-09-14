@@ -23,6 +23,7 @@ export {
 export {
   MATERIAL,
   MOTION,
+  MOTION_SPEED,
   PRESS_SQUASH,
   PRESS_SCALE,
   FOCUS_RING,

@@ -21,7 +21,7 @@ import { easeOutCubic } from './ease';
 
 /**
  * How long a step into state `to` takes, in seconds. v2 prices a step by where it is going: a hover
- * colour arrives in 80ms and leaves in 220ms, a press lands at once. The shader picks the same
+ * colour arrives in 48ms and leaves in 132ms, a press lands at once. The shader picks the same
  * duration by the same rule, so the tracker and the GPU agree on where a fade is.
  */
 export type DurationFor = (to: number) => number;

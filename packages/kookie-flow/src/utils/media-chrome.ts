@@ -10,6 +10,8 @@
  * shader, and the two agree because both take their numbers from the constants below.
  */
 
+import { MOTION_SPEED } from '../gl';
+
 /** How tall a video's control bar is, in world pixels. */
 export const CONTROL_BAR_HEIGHT = 28;
 /** The inset from the media's edges to the bar. */
@@ -31,9 +33,10 @@ export const EXPAND_BUTTON_SIZE = 28;
 
 /**
  * How fast chrome fades in and out, as a share of the remaining distance per second. Fast enough
- * to feel attached to the pointer, slow enough not to flicker when it crosses a corner.
+ * to feel attached to the pointer, slow enough not to flicker when it crosses a corner. Judged at
+ * 12 and run on v2's clock: a rate is a duration upside down, so it divides by the speed.
  */
-export const CHROME_FADE_RATE = 12;
+export const CHROME_FADE_RATE = 12 / MOTION_SPEED;
 
 /**
  * Move a fade toward where it should be and return where it now is.

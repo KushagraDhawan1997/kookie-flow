@@ -1451,7 +1451,7 @@ packages:
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
   '@kookie-ui/react@file:vendor/kookie-ui-react-0.0.0.tgz':
-    resolution: {integrity: sha512-+PkziEV81skikZMdOARaOuN5MscswPfGqBjvZouRP2oPrkh3M3NNbOXvMaFO6KA+vBOd9dGX3rVPqC51FmMKpw==, tarball: file:vendor/kookie-ui-react-0.0.0.tgz}
+    resolution: {integrity: sha512-PzD+Ri+NPNZOyV2kDYyRdNbxPBzgAa8ePkUduqbxqfB4yZuo8olM0h9fD0BLd8inY75L/F/O9SvUy93yI/sXgA==, tarball: file:vendor/kookie-ui-react-0.0.0.tgz}
     version: 0.0.0
     hasBin: true
     peerDependencies:

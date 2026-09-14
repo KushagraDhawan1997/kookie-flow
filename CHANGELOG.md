@@ -76,11 +76,12 @@ still moving, and a `!` on a heading means something that was there changed shap
   opens with the chosen row over the trigger and that row's label on the trigger's own label, is at
   least 112px wide, and is capped by the screen rather than by a row count — v2's own placement.
 - **Controls animate the way v2's do.** Colour and movement keep separate clocks: a hover colour
-  arrives in 80ms and leaves in 220ms, a press lands at once, and a mark or a grip squashes into a
+  arrives in 48ms and leaves in 132ms, a press lands at once, and a mark or a grip squashes into a
   press on v2's stiff spring and recovers on its lively one (both fitted to the stylesheet's own
-  `linear()` tables, within half a percent). The tick draws on over 380ms and clears at once. Each
+  `linear()` tables, within half a percent). The tick draws on over 228ms and clears at once. Each
   transition is interpolated in the shader from a start time per instance — no React and no buffer
-  traffic per frame (`src/gl/motion.ts`).
+  traffic per frame (`src/gl/motion.ts`). Every duration is v2's judged one times 0.6, as v2's own
+  are, and a clip's or a model's controls fade on the same faster clock.
 - **Reduced motion is honoured.** With the system setting on, every control state and the list's
   entrance land immediately, as v2 does with `transition: none`.
 - **Keyboard focus is visible on the canvas.** Moving the keyboard onto a node's controls rings the

@@ -52,7 +52,7 @@ export default function Error({ error, reset }: ErrorProps) {
             borderRadius: '8px',
             fontWeight: 500,
             cursor: 'pointer',
-            transition: 'opacity 0.2s',
+            transition: 'opacity 0.12s',
           }}
         >
           Try Again
@@ -69,7 +69,7 @@ export default function Error({ error, reset }: ErrorProps) {
             borderRadius: '8px',
             fontWeight: 500,
             textDecoration: 'none',
-            transition: 'border-color 0.2s',
+            transition: 'border-color 0.12s',
           }}
         >
           Go Home

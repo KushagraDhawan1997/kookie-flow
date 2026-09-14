@@ -291,10 +291,10 @@ const vertexShader = /* glsl */ `
  *
  * THREE CLOCKS, AS v2 KEEPS THEM. Colour and movement never share a clock in v2, and neither do
  * they here:
- *  - COLOUR (`vHover`: 0 rest, 1 hover or open, 2 pressed) arrives on hover in 80ms, leaves in
- *    220ms, and lands at once on a press, on `--motion-easing`.
- *  - MOVEMENT (`vMotion`: pressed or not) goes into a press on the stiff spring over 140ms and
- *    recovers on the lively spring over 550ms. Only a mark and a slider's grip move — they squash.
+ *  - COLOUR (`vHover`: 0 rest, 1 hover or open, 2 pressed) arrives on hover in 48ms, leaves in
+ *    132ms, and lands at once on a press, on `--motion-easing`.
+ *  - MOVEMENT (`vMotion`: pressed or not) goes into a press on the stiff spring over 84ms and
+ *    recovers on the lively spring over 330ms. Only a mark and a slider's grip move — they squash.
  *    A field never moves, and a select trigger holds still too: its value is drawn by the text
  *    layer, and a well that sank under still text would read as broken.
  *  - THE FOCUS RING (`vRing`) appears and leaves at once. On a mark or a trigger it lands from 6px
@@ -940,7 +940,7 @@ export function WidgetsGL({
     []
   );
   // A switch's thumb travels on the stiff spring over `--motion-mark`, both ways — the checkbox
-  // tracker's durations are a colour's on the way out, and a thumb that crossed in 80ms would jump.
+  // tracker's durations are a colour's on the way out, and a thumb that crossed in 48ms would jump.
   const switchTrack = useMemo(
     () => new TransitionTracker(() => (reducedRef.current ? 0 : MOTION.mark), springStiff),
     []
