@@ -32,8 +32,11 @@ export interface MediaPort {
 
 export interface JobRequest {
   entityId: string;
-  /** The model or task id in the provider registry. */
-  model: string;
+  /**
+   * What to do — `text-to-image`, `upscale` — never which model. The server picks the provider
+   * and the model, and a choice the node offers (which flavour of a model) travels in `input`.
+   */
+  task: string;
   input: Record<string, unknown>;
   signal: AbortSignal;
   progress?: (fraction: number) => void;
@@ -45,7 +48,11 @@ export interface JobResult {
 }
 
 export interface JobsPort {
-  /** Submit and wait. Resolves with the outputs once the result has been copied to storage. */
+  /**
+   * Submit and wait. Resolves with the outputs once the result has been copied to storage. The
+   * same task with the same inputs resolves to the same outputs without running again — the port
+   * or the server behind it keeps the answer — so a node may ask freely.
+   */
   run(request: JobRequest): Promise<JobResult>;
 }
 

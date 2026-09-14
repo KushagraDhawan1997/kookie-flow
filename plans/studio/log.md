@@ -5,6 +5,141 @@
 
 ---
 
+## 2026-09-14, a node is a model
+
+Asked in two steps once the key was in: "each node should be designed per model, so we can expose
+the controls each model exposes; rename it to the model name", then "why are edit and normal
+different nodes? As a user I don't know the difference."
+
+### What was built
+
+Every generation node is now one model, named for it, with that model's own controls and
+defaults from fal's endpoint document, and nothing invented. **GPT Image 2.5** is one node: a
+prompt alone makes a picture, and a connected picture (or reference) turns the same ask into an
+edit — the server picks the endpoint, so the person at the canvas never learns there are two.
+It carries variant (Flare, Sunburst), quality (auto to max), size (auto, custom with width and
+height, or a preset), background, format, compression, an optional reference and mask, and a
+reroll knob that stands in for the seed the model does not take. The server checks a custom
+size against the endpoint's rule (655,360 to 8,294,400 pixels, no side over 3840, sides within
+3 to 1) before anything is spent. **Clarity Upscaler** exposes factor, prompt and negative
+prompt, creativity, resemblance, guidance, steps and seed. **BiRefNet** exposes its three models,
+working resolution, edge refinement and format, and always asks for the mask. **Wan Image to
+Video** replaces the invented seconds-and-fps with the model's frames (81 to 100), fps (5 to
+24), resolution, aspect, guidance, shift, steps, prompt expansion, acceleration, negative prompt
+and seed. Node types changed with the names (`ai/gpt-image-2.5`, `ai/clarity-upscaler`,
+`ai/birefnet`, `video/wan-i2v`), as did the task ids; the owner's test graph holds three nodes
+of the old types, which now show as unknown. What a node cannot yet carry — sixteen reference
+pictures, several images per ask — waits for list sockets.
+
+### What was verified
+
+`tsc` clean for both packages. 35 studio-core tests; 23 studio tests, the fal table's among
+them: the endpoint follows the variant and turns to edit when a picture is connected; every
+control goes under the endpoint's name; compression is sent only with JPEG or WebP; an unknown
+choice falls back to the model's default; an empty prompt, a size too small, too large, too
+tall or over 3840 a side is refused before anything is sent; a mask with nothing to change is
+not sent; the other three models' bodies and files. The pipeline test runs on the new task ids.
+In a browser, light and dark, with nothing run: GPT Image 2.5 and BiRefNet land from the
+right-click menu with every control on the node and in the inspector, wait for Run, and nothing
+asked `/api/jobs`.
+
+### Open
+
+- Still not run against fal. The first real Run is the test of the shapes.
+- Width and height are shown whether or not Size says custom; a control that hides when it does
+  not apply needs a rule the socket table does not have.
+
+## 2026-09-14, jobs that survive the tab
+
+Asked as "durable streams: how will it survive browser refresh, long jobs", then "create an env
+local, I'll add the key, let's build the infrastructure", then "start with GPT Image 2.5
+Sunburst and Flare". The owner added a real `FAL_KEY` to `apps/studio/.env.local` mid-build.
+
+### What was built
+
+The job's state lives on the server, never in the tab. `POST /api/jobs` takes a task and inputs,
+submits, saves the row with the provider's own id and `provider_state` (fal's status, result and
+cancel URLs), and answers at once; the browser polls `GET /api/jobs/:id` every 1.5 s, holding no
+request open. A pending row is asked about on each poll, and a done one is finished right there:
+the file fetched, hashed, stored, and written back as a `MediaRef`. `DELETE /api/jobs/:id`
+cancels. A refresh, a closed tab or a server restart loses nothing: the same ask finds the same
+row by `key`, and the next poll carries on.
+
+The same ask is free. `key` is sha-256 over provider, task, model and the inputs' identities — a
+picture by its hash, so the URL it is reached by does not matter. A queued, running or finished
+row with the key answers the next ask; a failed or cancelled one does not, so a retry is a fresh
+submission. That is what makes opening a graph, which runs every node, cost nothing for what was
+already made. The browser's in-memory cache stays as a shortcut in front of it.
+
+Providers are a small interface in `src/server/providers/` (`model`, `submit`, `status`,
+`result`, `cancel`) that never touches the database or sees a `MediaRef`. Nodes name a task
+(`text-to-image`), never a model. The fal table (`fal-tasks.ts`) is hand-written from each
+endpoint's OpenAPI document: pictures are `openai/gpt-image-2.5/{flare,sunburst}/text-to-image`
+and `/edit`, chosen by a `model` select on the node, with a `quality` select (low, medium, high;
+medium by default). Those models take no seed, so the node's seed is the "another one" knob and
+says so. The size floor rose to 1024 a side because the endpoint wants 655,360 pixels at least.
+Upscale is `fal-ai/clarity-upscaler`, remove background `fal-ai/birefnet` with its mask, and
+animate `fal-ai/wan-i2v` at 720p with seconds and fps brought inside its 81–100 frames at 5–24.
+A picture the node holds is uploaded to fal's storage first (once per hash per process), since
+fal cannot reach this server. The mock is the same interface and now takes
+`STUDIO_MOCK_DELAY_MS` (default 2000) from the row's own timestamp, a quarter of it queued, so the
+whole path — row, poll, refresh, restart — runs with no key and no cost. `STUDIO_PROVIDER` picks
+one; unset, a key means fal.
+
+A provider's answer does not always state a file's size (birefnet's is nullable, wan's clip has
+none), and the server has no decoder, so `studio-core` gains `probeMedia`: the size and type of a
+PNG, JPEG, WebP, GIF or MP4 from its header, and an MP4's length from its movie header. Migration
+`0002` adds `task`, `key` and `provider_state` to `jobs`. The app gains vitest (`pnpm --filter
+studio test`) with the `@` alias.
+
+### What was verified
+
+`tsc` clean for studio and studio-core. studio-core: 35 tests, the probe's synthetic headers
+among them, and both fixture files probed for real. studio: 19 tests — the fal table's request
+shaping and result reading; the key's identity rules; the pipeline end to end on a throwaway
+PGlite with the mock (submit, found again by the same ask in any key order, finished by a poll
+into storage with the photograph's own size, a clip with its size, a cancelled row and a refused
+submission not answering the next ask, an unknown task refused); and the browser port against a
+scripted `/api/jobs` (submit then poll to done with progress 0.05, 0.5, 1; a settled answer
+returned at once; one failed poll ridden out and five in a row given up on; a gone or failed job
+stopped on at once; abort stops the waiting with nothing more asked).
+
+In a browser, light and dark, on new graphs, with nothing run: Generate image and Edit image
+land from the right-click menu with Model and Quality selects on the node and in the inspector,
+labelled, and wait for Run. The routes were exercised live too: the owner's own graph reloading
+after the restart made three asks, each answered and polled to its end.
+
+### What went wrong
+
+- The JPEG test fixture had a segment length one byte short, so the walk fell off it. The
+  fixture was wrong, not the walk.
+- The mock clip is a fragmented MP4: its movie header says a length of zero, and it has no
+  `mehd`. The probe took zero as the length and overrode the mock's stated 17.95 s. Zero is now
+  unknown, `mehd` is read when present, and the provider's word fills what the header lacks.
+- Prettier, run on the changed files, also reformatted `graphs.ts` and `storage.ts`, which were
+  not touched. Reverted, so the diff is the work.
+- The migration only applies on a fresh database open, and the dev server on 3002 was a
+  background task from an earlier Claude session, so it was stopped and relaunched the same way.
+  Next reloaded `.env.local` on its own when the key was added.
+
+### Open
+
+- The fal adapter has not run against fal. Its shapes are from fal's OpenAPI documents; the
+  first real run is the test. Sunburst and Flare accept an explicit size per the schema; if
+  they refuse one, the presets are the fallback.
+- Opening a graph still runs every generation node. Already-made ones are free; a node whose
+  inputs were never run is submitted on open, and one with an empty prompt or no picture makes a
+  failed row on every open (the owner's reloaded graph did exactly that, three rows a time, at no
+  cost). The honest fix is a load that asks for what exists without submitting, which needs the
+  engine to tell a load from a Run.
+- No webhook. Production would want `/api/hooks/fal` so a job nobody is watching lands the
+  moment it finishes rather than on the next open.
+- Cancel has a route and no button. The engine's abort stops the waiting, not the job, on
+  purpose: a cancel on every input change or navigation would lose the long jobs this exists for.
+- `graph_id` is not sent with an ask; the row has the node id only.
+- The plan's "with a key, mock by default" rule is superseded by the owner adding the key and
+  naming the models; the plan now says so.
+
 ## 2026-09-14, the editor's chrome and its faces
 
 ### Right-click adds a node

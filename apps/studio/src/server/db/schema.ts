@@ -5,6 +5,7 @@
 
 import { index, integer, jsonb, pgTable, real, text, timestamp } from 'drizzle-orm/pg-core';
 import type { GraphDocument } from 'studio-core';
+import type { JobStatus } from '@/shared/jobs';
 
 export const LOCAL_WORKSPACE = 'local';
 
@@ -46,9 +47,16 @@ export const assets = pgTable(
   (t) => [index('assets_workspace_idx').on(t.workspaceId, t.createdAt)]
 );
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type { JobStatus };
 
-/** One provider call. Survives the tab: the webhook or the next status poll finishes it. */
+/**
+ * One provider call. The row is what survives the tab: the provider keeps working whether or not
+ * anyone is watching, and the next status poll — from this tab after a refresh, or from the next
+ * one to open the graph — finishes it from here.
+ *
+ * `key` is what makes a repeat free. It names the provider, the model and the inputs' identities,
+ * and the same ask again finds this row instead of paying for a second run.
+ */
 export const jobs = pgTable(
   'jobs',
   {
@@ -57,9 +65,16 @@ export const jobs = pgTable(
     graphId: text('graph_id'),
     nodeId: text('node_id'),
     provider: text('provider').notNull(),
+    /** What the node asked for: `text-to-image` and so on. Absent on rows from before it existed. */
+    task: text('task'),
+    /** The provider's model or endpoint, which is the provider's choice for the task. */
     model: text('model').notNull(),
     /** The provider's own id for the request, for status and cancel. */
     providerId: text('provider_id'),
+    /** What the provider needs to ask about the request later: fal's status, result and cancel URLs. */
+    providerState: jsonb('provider_state').$type<Record<string, unknown>>(),
+    /** sha-256 over provider, task, model and the inputs' identities. Absent on rows from before it existed. */
+    key: text('key'),
     status: text('status').$type<JobStatus>().notNull().default('queued'),
     input: jsonb('input').$type<Record<string, unknown>>().notNull(),
     output: jsonb('output').$type<Record<string, unknown>>(),
@@ -72,5 +87,8 @@ export const jobs = pgTable(
   (t) => [
     index('jobs_workspace_status_idx').on(t.workspaceId, t.status),
     index('jobs_provider_id_idx').on(t.provider, t.providerId),
+    index('jobs_workspace_key_idx').on(t.workspaceId, t.key),
   ]
 );
+
+export type JobRow = typeof jobs.$inferSelect;

@@ -42,7 +42,14 @@ export interface Fixture {
 const FIXTURES: Record<FixtureKind, FixtureSpec> = {
   // Birmingham Museums Trust, via Unsplash.
   image: { file: 'image.jpg', mime: 'image/jpeg', width: 3999, height: 2896 },
-  video: { file: 'video.mp4', mime: 'video/mp4', width: 2560, height: 1440, duration: 17.951267, fps: 30000 / 1001 },
+  video: {
+    file: 'video.mp4',
+    mime: 'video/mp4',
+    width: 2560,
+    height: 1440,
+    duration: 17.951267,
+    fps: 30000 / 1001,
+  },
 };
 
 /**

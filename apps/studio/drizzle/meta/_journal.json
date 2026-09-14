@@ -15,6 +15,13 @@
       "when": 1789188988393,
       "tag": "0001_workable_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789373849479,
+      "tag": "0002_jobs_task_key_state",
+      "breakpoints": true
     }
   ]
 }

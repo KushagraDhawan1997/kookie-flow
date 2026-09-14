@@ -109,14 +109,24 @@ cancels the provider job.
 - **Storage.** `Storage` interface: `put(hash, bytes, mime)`, `url(key)`. `local` writes
   `apps/studio/.data/blobs/<hash>` and serves it at `/api/blob/<hash>`. `r2` uses presigned PUTs
   and a public bucket URL. Chosen by env.
-- **Jobs.** `POST /api/jobs` submits to the provider and stores `provider_id`. `GET /api/jobs/:id`
-  returns the row and, if still pending, asks the provider for status first. So dev works with no
-  public URL; the fal webhook at `/api/hooks/fal` is an optimisation for production. A finished job
-  fetches the provider's file, hashes it, stores it, and writes the `MediaRef` into `output`.
-- **Providers.** `Provider` interface: `submit`, `status`, `cancel`, `fetchResult`, `estimate`,
-  `verifyWebhook`. fal first. Model entries are generated from fal's per-endpoint OpenAPI schema
-  with a small hand-written map from schema fields to sockets. `MOCK_PROVIDERS=1` returns generated
-  placeholder images after a delay so the whole pipeline runs with no key and no cost.
+- **Jobs.** `POST /api/jobs` takes a task and inputs, submits to the provider, stores
+  `provider_id` and `provider_state` (fal's status, result and cancel URLs), and answers at once
+  with the row. `GET /api/jobs/:id` asks the provider if the row is still pending, and finishes a
+  done one there and then: fetch the file, hash it, store it, write the `MediaRef` into `output`.
+  The browser polls that every 1.5 s and holds no request open, so a refresh loses nothing. No
+  webhook: dev has no public URL, and a poll from whoever next asks does the same work later.
+- **The same ask is free.** `key` is sha-256 over provider, task, model and the inputs' identities
+  (a picture by its hash). A queued, running or finished row with the key answers the next ask;
+  a failed or cancelled one does not. So opening a graph, which runs every node, costs nothing
+  for what was already made, and Run on an unchanged node returns the picture it already has.
+- **Providers.** `Provider` interface: `model`, `submit`, `status`, `result`, `cancel`, in
+  `src/server/providers/`. A node is a model, named for it, with that model's own controls; it
+  names its task (`gpt-image-2.5`, `birefnet`) and the provider maps that to an endpoint — for
+  GPT Image, the Flare or Sunburst flavour from the node's choice, and the edit endpoint when a
+  picture is connected. The fal table is hand-written from each endpoint's OpenAPI document. `STUDIO_PROVIDER=mock|fal`
+  picks; unset, a `FAL_KEY` means fal and none means the mock, which answers with the two real
+  fixture files after `STUDIO_MOCK_DELAY_MS` so the whole path — row, poll, refresh — runs with
+  no key and no cost.
 
 ### Agent
 
@@ -190,8 +200,8 @@ switched to real providers once keys exist.
 - Never run a build; the watchers do that. Verify with `tsc --noEmit`, `vitest`, and the running dev
   server (Playwright screenshot for anything visual).
 - Keys go in `apps/studio/.env.local`, which is gitignored. Never in code, never in a commit.
-- No spend without a key; with a key, mock mode is the default and real calls are opt-in per run
-  until phase 5 is green.
+- No spend without a key. With a key, fal answers by default (the owner's call, 2026-09-14, on
+  adding the key), and `STUDIO_PROVIDER=mock` is the way back. The same inputs never pay twice.
 - The library's rules apply to the app: no React re-renders during interaction, no work on the main
   thread that a worker can do, no per-frame allocation.
 - Stop and leave a note in `plans/studio/log.md` rather than guess when a decision is the owner's:
