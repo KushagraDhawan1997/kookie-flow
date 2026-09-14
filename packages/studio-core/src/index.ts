@@ -1,5 +1,6 @@
 export * from './values';
 export * from './cache';
+export * from './media-probe';
 export * from './ports';
 export * from './define';
 export * from './sockets';
