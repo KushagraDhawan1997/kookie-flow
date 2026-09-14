@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Theme } from '@kookie-ui/react';
+import { Text, ToolbarButton } from '@kookie-ui/react';
 import {
   KookieFlow,
   useGraph,
@@ -22,6 +22,8 @@ import {
   type KookieFlowInstance,
   type OnEvaluate,
 } from '@kushagradhawan/kookie-flow';
+
+import { DemoFrame } from '../demo-frame';
 
 const ROW_MEDIA = 0;
 const ROW_NODES = 360;
@@ -131,54 +133,34 @@ export default function MediaDemoPage() {
   const generate = useCallback(() => flowRef.current?.evaluate('generate'), []);
 
   return (
-    <Theme>
-      <main style={{ width: '100%', height: '100vh', position: 'relative' }}>
-        <KookieFlow
-          ref={flowRef}
-          entities={entities}
-          edges={edges}
-          entityTypes={entityTypes}
-          socketTypes={socketTypes}
-          onEntitiesChange={onEntitiesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEvaluate={onEvaluate}
-          showSocketLabels
-          showGrid
-          header="inside"
-        />
-
-        <div style={panelStyle}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Media controls</div>
-          <div style={{ opacity: 0.8, lineHeight: 1.5, marginBottom: 10 }}>
-            Hover a picture, clip or model. The corner button opens the viewer. Clips have a play
-            bar. Drag a model to turn it. The last clip on the top row has its controls turned off.
-          </div>
-          <button style={buttonStyle} onClick={generate}>Run Generate</button>
-        </div>
-      </main>
-    </Theme>
+    <DemoFrame
+      title="Media"
+      actions={
+        <ToolbarButton emphasis="loud" tone="accent" onClick={generate}>
+          Run Generate
+        </ToolbarButton>
+      }
+      footer={
+        <Text size="2" emphasis="medium">
+          Hover a picture, clip or model. The corner button opens the viewer. Drag a model to turn it. The last clip
+          on the top row has its controls off.
+        </Text>
+      }
+    >
+      <KookieFlow
+        ref={flowRef}
+        entities={entities}
+        edges={edges}
+        entityTypes={entityTypes}
+        socketTypes={socketTypes}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEvaluate={onEvaluate}
+        showSocketLabels
+        showGrid
+        header="inside"
+      />
+    </DemoFrame>
   );
 }
-
-const panelStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: 16,
-  bottom: 16,
-  zIndex: 10,
-  maxWidth: 320,
-  padding: 14,
-  borderRadius: 12,
-  background: 'rgba(0,0,0,0.85)',
-  color: '#fff',
-  fontSize: 13,
-};
-
-const buttonStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderRadius: 8,
-  border: '1px solid rgba(255,255,255,0.25)',
-  background: 'rgba(255,255,255,0.1)',
-  color: '#fff',
-  cursor: 'pointer',
-};

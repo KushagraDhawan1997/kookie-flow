@@ -5,15 +5,16 @@ import {
   KookieFlow,
   useGraph,
   useFlowStoreApi,
-  useThemeTokens,
   type Entity,
   type Edge,
-  type EntityVariant,
   type KookieFlowInstance,
   type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
-import { Theme } from '@kookie-ui/react';
+import { Code, Flex, Switch, Text, Theme, ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
+
+import { DemoFrame } from '../demo-frame';
+import { MinusIcon, PlusIcon } from '../icons';
 
 // Socket type patterns designed to chain together
 // Each pattern's first output matches the next pattern's first input
@@ -87,26 +88,28 @@ const nodeColors = [
 // Phase 7C: Grouping Demo Nodes
 // ============================================================================
 
-// Group node with children - demonstrates parent-child relationships
+/**
+ * A frame holding a small pipeline, a reroute bending one of its wires, and two notes that say
+ * what to try. Laid out on the 240px node width: columns of 240 with 40px gutters, so no card
+ * covers another's sockets. Every wire runs forward, left to right.
+ */
 const groupingDemoNodes: Entity[] = [
-  // A group node
   {
     id: 'group-1',
     type: 'frame',
     position: { x: -3500, y: 0 },
-    width: 500,
-    height: 400,
+    width: 880,
+    height: 470,
     data: {
       label: 'Processing Pipeline',
       description: 'Image processing nodes',
     },
     color: 'violet',
   },
-  // Child nodes (inside the group)
   {
     id: 'child-1',
     type: 'default',
-    position: { x: -3450, y: 80 },
+    position: { x: -3460, y: 60 },
     parentId: 'group-1',
     data: { label: 'Input' },
     inputs: [],
@@ -116,7 +119,7 @@ const groupingDemoNodes: Entity[] = [
   {
     id: 'child-2',
     type: 'default',
-    position: { x: -3250, y: 80 },
+    position: { x: -3180, y: 60 },
     parentId: 'group-1',
     data: { label: 'Filter' },
     inputs: [{ id: 'child-2-in-0', name: 'In', type: 'image' }],
@@ -126,54 +129,56 @@ const groupingDemoNodes: Entity[] = [
   {
     id: 'child-3',
     type: 'default',
-    position: { x: -3250, y: 220 },
+    position: { x: -2900, y: 60 },
     parentId: 'group-1',
     data: { label: 'Output' },
     inputs: [{ id: 'child-3-in-0', name: 'In', type: 'image' }],
     outputs: [],
     color: 'orange',
   },
+  {
+    id: 'child-4',
+    type: 'default',
+    position: { x: -2900, y: 290 },
+    parentId: 'group-1',
+    data: { label: 'Preview' },
+    inputs: [{ id: 'child-4-in-0', name: 'In', type: 'image' }],
+    outputs: [],
+    color: 'pink',
+  },
 
-  // Comment/sticky note nodes - visual annotations
+  // The waypoint the Input -> Preview wire bends through: down the gutter beside Input, under
+  // Filter rather than across it.
+  {
+    id: 'reroute-1',
+    type: 'reroute',
+    position: { x: -3190, y: 430 },
+    parentId: 'group-1',
+    data: {},
+  },
+
+  // Sticky notes. No colours of their own: a note takes its tint from the theme, so these read in
+  // light and dark alike. `color` picks the hue.
   {
     id: 'comment-1',
     type: 'comment',
-    position: { x: -3500, y: 450 },
-    width: 250,
-    height: 100,
+    position: { x: -3500, y: 510 },
+    width: 320,
+    height: 96,
     data: {
-      content: 'This group contains the main image processing pipeline. Try dragging the group!',
-      backgroundColor: '#FFF9C4',
-      textColor: '#424242',
-      fontSize: 14,
+      content: 'A frame groups nodes. Drag the frame and everything inside it moves too.',
     },
   },
   {
     id: 'comment-2',
     type: 'comment',
-    position: { x: -3200, y: 450 },
-    width: 200,
-    height: 80,
+    position: { x: -3140, y: 510 },
+    width: 340,
+    height: 96,
     data: {
-      content: 'Reroute nodes let you create custom edge paths.',
-      backgroundColor: '#E1BEE7',
-      textColor: '#424242',
-      fontSize: 13,
+      content: 'The wire from Input to Preview bends through a reroute. Drag the dot to route it somewhere else.',
+      color: 'violet',
     },
-  },
-
-  // Reroute node - edge waypoint
-  {
-    id: 'reroute-1',
-    type: 'reroute',
-    position: { x: -3350, y: 150 },
-    data: {},
-  },
-  {
-    id: 'reroute-2',
-    type: 'reroute',
-    position: { x: -3100, y: 300 },
-    data: {},
   },
 ];
 
@@ -192,6 +197,20 @@ const groupingDemoEdges: Edge[] = [
     target: 'child-3',
     sourceSocket: 'child-2-out-0',
     targetSocket: 'child-3-in-0',
+  },
+  // Two edges, not one: a wire into the reroute and a wire out of it. The dot is the joint, and
+  // it names no socket on either side.
+  {
+    id: 'group-edge-3',
+    source: 'child-1',
+    target: 'reroute-1',
+    sourceSocket: 'child-1-out-0',
+  },
+  {
+    id: 'group-edge-4',
+    source: 'reroute-1',
+    target: 'child-4',
+    targetSocket: 'child-4-in-0',
   },
 ];
 
@@ -740,400 +759,84 @@ function generateEdges(nodeCount: number): Edge[] {
   return edges;
 }
 
-function ThemeTokensTest() {
-  const tokens = useThemeTokens();
-  const [mounted, setMounted] = useState(false);
+type ClipboardApi = {
+  copy: () => void;
+  cut: () => void;
+  paste: () => void;
+};
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    console.log('[ThemeTokens Test] Tokens loaded:', {
-      spacing: {
-        '--space-1': tokens['--space-1'],
-        '--space-2': tokens['--space-2'],
-        '--space-3': tokens['--space-3'],
-      },
-      radius: {
-        '--radius-3': tokens['--radius-3'],
-        '--radius-4': tokens['--radius-4'],
-      },
-      colors: {
-        '--neutral-1': tokens['--neutral-1'],
-        '--neutral-6': tokens['--neutral-6'],
-        '--accent-9': tokens['--accent-9'],
-      },
-      appearance: tokens.appearance,
-    });
-  }, [tokens]);
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        bottom: 16,
-        left: 16,
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 8,
-        fontSize: 11,
-        maxWidth: 280,
-      }}
-    >
-      <h3 style={{ fontSize: 12, margin: '0 0 8px' }}>Theme Tokens Test</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
-        <span style={{ color: '#888' }}>--space-3:</span>
-        <span>{tokens['--space-3']}px</span>
-        <span style={{ color: '#888' }}>--radius-4:</span>
-        <span>{tokens['--radius-4']}px</span>
-        <span style={{ color: '#888' }}>--neutral-6:</span>
-        <span
-          style={{ color: `rgb(${tokens['--neutral-6'].map((v) => Math.round(v * 255)).join(',')})` }}
-        >
-          ■ [{tokens['--neutral-6'].map((v) => v.toFixed(2)).join(', ')}]
-        </span>
-        <span style={{ color: '#888' }}>--accent-9:</span>
-        <span
-          style={{
-            color: `rgb(${tokens['--accent-9'].map((v) => Math.round(v * 255)).join(',')})`,
-          }}
-        >
-          ■ [{tokens['--accent-9'].map((v) => v.toFixed(2)).join(', ')}]
-        </span>
-        <span style={{ color: '#888' }}>appearance:</span>
-        <span>{tokens.appearance}</span>
-      </div>
-      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>Check console for full tokens</p>
-    </div>
-  );
-}
-
-function ClipboardDemo() {
+/**
+ * The clipboard lives on the flow's store, so this has to sit inside `<KookieFlow>`; the buttons
+ * that drive it sit in the band outside. It hands its actions out through a ref and reports how
+ * many entities are held, and registers the shortcuts.
+ */
+function ClipboardBridge({
+  apiRef,
+  preserveExternal,
+  onSize,
+}: {
+  apiRef: React.RefObject<ClipboardApi | null>;
+  preserveExternal: boolean;
+  onSize: (size: number) => void;
+}) {
   const store = useFlowStoreApi();
-  const { copy, paste, cut, hasClipboardContent } = useClipboard();
-  const [clipboardSize, setClipboardSize] = useState(0);
-  const [preserveExternal, setPreserveExternal] = useState(true);
+  const { copy, paste, cut } = useClipboard();
 
-  // Update clipboard size display when clipboard changes
+  useEffect(
+    () =>
+      store.subscribe(
+        (state) => state.internalClipboard,
+        (clipboard) => onSize(clipboard?.entities.length ?? 0)
+      ),
+    [store, onSize]
+  );
+
+  const doPaste = useCallback(
+    () => paste({ preserveExternalConnections: preserveExternal }),
+    [paste, preserveExternal]
+  );
+
   useEffect(() => {
-    const unsubscribe = store.subscribe(
-      (state) => state.internalClipboard,
-      (clipboard) => {
-        setClipboardSize(clipboard?.entities.length ?? 0);
-      }
-    );
-    return unsubscribe;
-  }, [store]);
+    apiRef.current = { copy, cut, paste: doPaste };
+  }, [apiRef, copy, cut, doPaste]);
 
-  // Set up keyboard shortcuts
   useKeyboardShortcuts({
     bindings: {
-      'mod+c': () => {
-        copy();
-        const clipboard = store.getState().internalClipboard;
-        setClipboardSize(clipboard?.entities.length ?? 0);
-      },
-      'mod+v': () => paste({ preserveExternalConnections: preserveExternal }),
-      'mod+x': () => {
-        cut();
-        setClipboardSize(0);
-      },
+      'mod+c': copy,
+      'mod+v': doPaste,
+      'mod+x': cut,
       'mod+a': () => store.getState().selectAll(),
       delete: () => store.getState().deleteSelected(),
       escape: () => store.getState().deselectAll(),
     },
   });
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 16,
-        right: 16,
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 8,
-        fontSize: 12,
-        minWidth: 220,
-        pointerEvents: 'auto',
-      }}
-    >
-      <h2 style={{ fontSize: 14, margin: '0 0 8px' }}>Clipboard</h2>
-      <p style={{ color: clipboardSize > 0 ? '#4ade80' : '#666' }}>
-        {clipboardSize > 0 ? `${clipboardSize} nodes copied` : 'Empty'}
-      </p>
-      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-        <button
-          onClick={copy}
-          style={{
-            padding: '4px 8px',
-            background: '#333',
-            border: '1px solid #555',
-            borderRadius: 4,
-            color: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          Copy
-        </button>
-        <button
-          onClick={() => paste({ preserveExternalConnections: preserveExternal })}
-          disabled={!hasClipboardContent()}
-          style={{
-            padding: '4px 8px',
-            background: hasClipboardContent() ? '#333' : '#222',
-            border: '1px solid #555',
-            borderRadius: 4,
-            color: hasClipboardContent() ? '#fff' : '#666',
-            cursor: hasClipboardContent() ? 'pointer' : 'not-allowed',
-          }}
-        >
-          Paste
-        </button>
-        <button
-          onClick={cut}
-          style={{
-            padding: '4px 8px',
-            background: '#333',
-            border: '1px solid #555',
-            borderRadius: 4,
-            color: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          Cut
-        </button>
-      </div>
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          marginTop: 10,
-          cursor: 'pointer',
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={preserveExternal}
-          onChange={(e) => setPreserveExternal(e.target.checked)}
-          style={{ cursor: 'pointer' }}
-        />
-        <span style={{ color: preserveExternal ? '#4ade80' : '#888' }}>
-          Keep external connections
-        </span>
-      </label>
-      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>
-        {preserveExternal
-          ? 'Pasted nodes will reconnect to original neighbors'
-          : 'Pasted nodes are isolated (internal edges only)'}
-      </p>
-      <p style={{ color: '#444', fontSize: 10, marginTop: 4 }}>Shortcuts: ⌘C ⌘V ⌘X ⌘A Del Esc</p>
-    </div>
-  );
+  return null;
 }
 
-// Widget values display panel
-function WidgetValuesPanel({ values }: { values: Record<string, Record<string, unknown>> }) {
-  const entries = Object.entries(values);
-  if (entries.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        bottom: 16,
-        right: 16,
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 8,
-        fontSize: 11,
-        maxWidth: 300,
-        maxHeight: 200,
-        overflow: 'auto',
-      }}
-    >
-      <h3 style={{ fontSize: 12, margin: '0 0 8px' }}>Widget Values</h3>
-      {entries.slice(-5).map(([nodeId, sockets]) => (
-        <div key={nodeId} style={{ marginBottom: 4 }}>
-          <span style={{ color: '#4ade80' }}>{nodeId}</span>
-          {Object.entries(sockets).map(([socketId, value]) => (
-            <div key={socketId} style={{ paddingLeft: 8, color: '#888' }}>
-              .{socketId.split('-').pop()} = {JSON.stringify(value)}
-            </div>
-          ))}
-        </div>
-      ))}
-      <p style={{ color: '#555', fontSize: 10, marginTop: 8 }}>Last 5 changed nodes shown</p>
-    </div>
-  );
-}
-
-// Viewport controls component
-function ViewportControls({ flowRef }: { flowRef: React.RefObject<KookieFlowInstance | null> }) {
-  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-
-  // Update viewport display periodically
+/** Written straight to the element on an interval: a pan would re-render the page at frame rate. */
+function ViewportReadout({ flowRef }: { flowRef: React.RefObject<KookieFlowInstance | null> }) {
+  const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const interval = setInterval(() => {
-      if (flowRef.current) {
-        setViewport(flowRef.current.getViewport());
-      }
+      const viewport = flowRef.current?.getViewport();
+      if (!viewport || !ref.current) return;
+      ref.current.textContent = `x ${viewport.x.toFixed(0)} · y ${viewport.y.toFixed(0)} · ${(viewport.zoom * 100).toFixed(0)}%`;
     }, 100);
     return () => clearInterval(interval);
   }, [flowRef]);
-
-  const buttonStyle = {
-    padding: '6px 12px',
-    background: '#333',
-    border: '1px solid #555',
-    borderRadius: 4,
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: 12,
-  };
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 100,
-        left: 16,
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 8,
-        fontSize: 12,
-        minWidth: 200,
-        pointerEvents: 'auto',
-      }}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <h3 style={{ fontSize: 13, margin: '0 0 10px' }}>Viewport Controls</h3>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button style={buttonStyle} onClick={() => flowRef.current?.fitView()}>
-          Fit All
-        </button>
-        <button
-          style={buttonStyle}
-          onClick={() => {
-            const selected = flowRef.current?.getSelectedEntities().map((n) => n.id);
-            if (selected && selected.length > 0) {
-              flowRef.current?.fitView({ entities: selected, padding: 100 });
-            }
-          }}
-        >
-          Fit Selection
-        </button>
-      </div>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button style={buttonStyle} onClick={() => flowRef.current?.zoomIn()}>
-          Zoom +
-        </button>
-        <button style={buttonStyle} onClick={() => flowRef.current?.zoomOut()}>
-          Zoom −
-        </button>
-        <button style={buttonStyle} onClick={() => flowRef.current?.setCenter(0, 0, { zoom: 1 })}>
-          Reset
-        </button>
-      </div>
-
-      <div style={{ color: '#666', fontSize: 11 }}>
-        <div>x: {viewport.x.toFixed(0)}</div>
-        <div>y: {viewport.y.toFixed(0)}</div>
-        <div>zoom: {(viewport.zoom * 100).toFixed(0)}%</div>
-      </div>
-    </div>
-  );
-}
-
-// All available node variants
-const VARIANTS: EntityVariant[] = ['surface', 'outline', 'soft', 'classic', 'ghost'];
-
-function VariantShowcase({
-  variant,
-  setVariant,
-}: {
-  variant: EntityVariant;
-  setVariant: (v: EntityVariant) => void;
-}) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        bottom: 200,
-        left: 16,
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 8,
-        fontSize: 12,
-        minWidth: 180,
-        pointerEvents: 'auto',
-      }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <h3 style={{ fontSize: 13, margin: '0 0 10px' }}>Node Variants</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {VARIANTS.map((v) => (
-          <label
-            key={v}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-            }}
-          >
-            <input
-              type="radio"
-              name="variant"
-              value={v}
-              checked={variant === v}
-              onChange={() => setVariant(v)}
-              style={{ cursor: 'pointer' }}
-            />
-            <span
-              style={{
-                color: variant === v ? '#4ade80' : '#888',
-                textTransform: 'capitalize',
-              }}
-            >
-              {v}
-              {v === 'classic' && ' (shadow)'}
-            </span>
-          </label>
-        ))}
-      </div>
-      <p style={{ color: '#555', fontSize: 10, marginTop: 10 }}>
-        Classic variant shows drop shadows
-      </p>
-    </div>
-  );
+  return <Code ref={ref}>—</Code>;
 }
 
 export default function DemoPage() {
   const nodeCount = 1000;
   const initialEntities = useMemo(() => generateEntities(nodeCount), [nodeCount]);
   const initialEdges = useMemo(() => generateEdges(nodeCount), [nodeCount]);
-  const [variant, setVariant] = useState<EntityVariant>('surface');
-  const [widgetValues, setWidgetValues] = useState<Record<string, Record<string, unknown>>>({});
   const flowRef = useRef<KookieFlowInstance>(null);
+  const clipboardRef = useRef<ClipboardApi | null>(null);
+  const widgetReadoutRef = useRef<HTMLElement>(null);
+  const [clipboardSize, setClipboardSize] = useState(0);
+  const [preserveExternal, setPreserveExternal] = useState(true);
 
   // Use ref to accumulate changes without triggering re-renders
   const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
@@ -1149,34 +852,29 @@ export default function DemoPage() {
   entitiesRef.current = entities;
 
   /**
-   * A widget change is ECHOED INTO THE GRAPH, not only into the display panel.
+   * A widget change is ECHOED INTO THE GRAPH, not only into the readout.
    *
    * The value a widget shows lives on the entity (`data.values[socketId]`), and the library
    * paints what the person set only until this echo arrives — after that the entity is the
-   * truth. This handler used to update the panel alone, with a comment saying so, and that was
-   * survivable only because the old DOM widgets each kept a `useState` of their own. The GL
-   * widgets do not, and a real consumer writes the value back; this is a real consumer.
+   * truth. The GL widgets keep no state of their own, and a real consumer writes the value back;
+   * this is a real consumer.
    *
    * Debounced, because `applyEntityChanges` rebuilds the derived indexes and a slider emits on
-   * every pointermove. The library bridges the gap by showing the in-flight value meanwhile.
+   * every pointermove. The library bridges the gap by showing the in-flight value meanwhile. The
+   * readout is written to the element, so a scrub does not re-render a thousand-node page.
    */
   const handleWidgetChange = useCallback(
     (nodeId: string, socketId: string, value: unknown) => {
-      // Accumulate in ref (no re-render)
-      pendingValuesRef.current = {
-        ...pendingValuesRef.current,
-        [nodeId]: {
-          ...pendingValuesRef.current[nodeId],
-          [socketId]: value,
-        },
-      };
+      if (widgetReadoutRef.current) {
+        widgetReadoutRef.current.textContent = `${nodeId}.${socketId.split('-').pop()} = ${JSON.stringify(value)}`;
+      }
+      (pendingValuesRef.current[nodeId] ??= {})[socketId] = value;
 
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
       debounceTimeoutRef.current = setTimeout(() => {
         const pending = pendingValuesRef.current;
-        setWidgetValues({ ...pending });
 
         // The store merges `data` one level deep, so each entity's whole `values` object goes
         // back — the untouched sockets included — or they would be dropped.
@@ -1194,8 +892,7 @@ export default function DemoPage() {
         });
         if (changes.length > 0) onEntitiesChange(changes);
         // Cleared once flushed. Held, this map only ever grows: every entity ever touched in the
-        // session gets rewritten on every later flush, so nudging one slider fifty times rewrites
-        // fifty entities that nobody has touched since.
+        // session gets rewritten on every later flush.
         pendingValuesRef.current = {};
         debounceTimeoutRef.current = null;
       }, 150);
@@ -1203,9 +900,8 @@ export default function DemoPage() {
     [onEntitiesChange]
   );
 
-  // A pending flush outlives the component otherwise, and fires `setWidgetValues` on an unmounted
-  // tree. React only warns about that in development, so in production it is a silent write into
-  // a dead closure — the last 150ms of anything the person typed, dropped without a sign.
+  // A pending flush outlives the component otherwise, and writes into a dead closure — the last
+  // 150ms of anything the person typed, dropped without a sign.
   useEffect(
     () => () => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
@@ -1256,30 +952,51 @@ export default function DemoPage() {
     [addEntity, addEdge]
   );
 
-  return (
-    <main style={{ width: '100vw', height: '100vh' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          zIndex: 10,
-          background: 'rgba(0,0,0,0.8)',
-          color: '#fff',
-          padding: '12px 16px',
-          borderRadius: 8,
-          fontSize: 14,
-        }}
-      >
-        <h1 style={{ fontSize: 18, margin: '0 0 8px' }}>Kookie Flow</h1>
-        <p style={{ color: '#888' }}>
-          {entities.length} entities, {edges.length} edges
-        </p>
-        <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-          Variant: <span style={{ color: '#4ade80', textTransform: 'capitalize' }}>{variant}</span>
-        </p>
-      </div>
+  const fitSelection = useCallback(() => {
+    const selected = flowRef.current?.getSelectedEntities().map((n) => n.id);
+    if (selected && selected.length > 0) flowRef.current?.fitView({ entities: selected, padding: 100 });
+  }, []);
 
+  return (
+    <DemoFrame
+      title="Playground"
+      actions={
+        <>
+          <ToolbarGroup>
+            <ToolbarButton onClick={() => clipboardRef.current?.copy()}>Copy</ToolbarButton>
+            <ToolbarButton onClick={() => clipboardRef.current?.cut()}>Cut</ToolbarButton>
+            <ToolbarButton disabled={clipboardSize === 0} onClick={() => clipboardRef.current?.paste()}>
+              Paste{clipboardSize > 0 ? ` ${clipboardSize}` : ''}
+            </ToolbarButton>
+          </ToolbarGroup>
+          <ToolbarGroup>
+            <ToolbarButton iconOnly aria-label="Zoom out" onClick={() => flowRef.current?.zoomOut()}>
+              <MinusIcon />
+            </ToolbarButton>
+            <ToolbarButton iconOnly aria-label="Zoom in" onClick={() => flowRef.current?.zoomIn()}>
+              <PlusIcon />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => flowRef.current?.fitView()}>Fit</ToolbarButton>
+            <ToolbarButton onClick={fitSelection}>Fit selection</ToolbarButton>
+          </ToolbarGroup>
+        </>
+      }
+      footer={
+        <>
+          <Flex gap="4" align="center">
+            <Text size="2" emphasis="medium">
+              {entities.length.toLocaleString()} entities · {edges.length.toLocaleString()} edges
+            </Text>
+            <ViewportReadout flowRef={flowRef} />
+            <Code ref={widgetReadoutRef}>Change a widget</Code>
+          </Flex>
+          <label style={switchLabelStyle}>
+            <Switch checked={preserveExternal} onCheckedChange={(checked) => setPreserveExternal(checked)} />
+            <Text size="2">Paste keeps external connections</Text>
+          </label>
+        </>
+      }
+    >
       <KookieFlow
         ref={flowRef}
         entities={entities}
@@ -1293,25 +1010,20 @@ export default function DemoPage() {
         minimapProps={{ zoomable: false }}
         showSocketLabels
         showEdgeLabels
-        // Styling props (Milestone 2)
         size="2"
-        // No variant: v2's Card is "one treatment and no variants", and `classic` was the only
-        // one reading a --shadow-N token — a DOM card's tight shadow on a thing that floats over
-        // a canvas. The default surface treatment is the node look, and it is what studio renders.
+        // No variant: v2's Card is "one treatment and no variants"; the default surface treatment
+        // is the node look, and it is what studio renders.
         radius="medium"
         header="outside"
         accentHeader
-        // Widget callback (uses DEFAULT_SOCKET_TYPES from package)
         onWidgetChange={handleWidgetChange}
         // Per-node accent color support for widgets
         ThemeComponent={Theme}
       >
-        <ClipboardDemo />
-        <ViewportControls flowRef={flowRef} />
-        <ThemeTokensTest />
-        <VariantShowcase variant={variant} setVariant={setVariant} />
-        <WidgetValuesPanel values={widgetValues} />
+        <ClipboardBridge apiRef={clipboardRef} preserveExternal={preserveExternal} onSize={setClipboardSize} />
       </KookieFlow>
-    </main>
+    </DemoFrame>
   );
 }
+
+const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };

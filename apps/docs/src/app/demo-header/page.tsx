@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Theme } from '@kookie-ui/react';
+import { Code, Switch, Text } from '@kookie-ui/react';
 import {
   KookieFlow,
   useGraph,
@@ -22,6 +22,8 @@ import {
   type HeaderPosition,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow';
+
+import { DemoFrame } from '../demo-frame';
 
 const initialEntities: Entity[] = [
   {
@@ -72,36 +74,37 @@ function Board({ position, note, accentHeader }: { position: HeaderPosition; not
 
   return (
     <section style={columnStyle}>
-      <header style={captionStyle}>
-        <code style={{ fontWeight: 600 }}>header=&quot;{position}&quot;</code>
-        <span style={{ opacity: 0.6 }}>{note}</span>
-      </header>
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-        <KookieFlow
-          ref={flowRef}
-          entities={entities}
-          edges={edges}
-          onEntitiesChange={onEntitiesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onWidgetChange={(entityId, socketId, value) => {
-            const entity = entities.find((e) => e.id === entityId);
-            const prev = (entity?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
-            onEntitiesChange([
-              {
-                type: 'data',
-                id: entityId,
-                data: { ...(entity?.data ?? {}), values: { ...prev, [socketId]: value } },
-              },
-            ]);
-          }}
-          showWidgets
-          showSocketLabels
-          showGrid
-          header={position}
-          accentHeader={accentHeader}
-          size="2"
-        />
+      <KookieFlow
+        ref={flowRef}
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onWidgetChange={(entityId, socketId, value) => {
+          const entity = entities.find((e) => e.id === entityId);
+          const prev = (entity?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
+          onEntitiesChange([
+            {
+              type: 'data',
+              id: entityId,
+              data: { ...(entity?.data ?? {}), values: { ...prev, [socketId]: value } },
+            },
+          ]);
+        }}
+        showWidgets
+        showSocketLabels
+        showGrid
+        header={position}
+        accentHeader={accentHeader}
+        size="2"
+      />
+      {/* Along the bottom of its own column, clear of the floating band across the top. */}
+      <div style={captionStyle}>
+        <Code>header=&quot;{position}&quot;</Code>
+        <Text size="2" emphasis="medium">
+          {note}
+        </Text>
       </div>
     </section>
   );
@@ -111,51 +114,39 @@ export default function DemoHeaderPage() {
   const [accentHeader, setAccentHeader] = useState(false);
 
   return (
-    <Theme>
-      <main style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={barStyle}>
-          <b>Header positions</b>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input
-              type="checkbox"
-              checked={accentHeader}
-              onChange={(e) => setAccentHeader(e.target.checked)}
-            />
-            accentHeader
-          </label>
-        </div>
-        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          {POSITIONS.map((p) => (
-            <Board key={p.position} position={p.position} note={p.note} accentHeader={accentHeader} />
-          ))}
-        </div>
-      </main>
-    </Theme>
+    <DemoFrame
+      title="Header positions"
+      actions={
+        <label style={switchLabelStyle}>
+          <Switch checked={accentHeader} onCheckedChange={(checked) => setAccentHeader(checked)} />
+          <Text size="2">Accent header</Text>
+        </label>
+      }
+    >
+      <div style={{ display: 'flex', height: '100%' }}>
+        {POSITIONS.map((p) => (
+          <Board key={p.position} position={p.position} note={p.note} accentHeader={accentHeader} />
+        ))}
+      </div>
+    </DemoFrame>
   );
 }
 
-const barStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 24,
-  alignItems: 'center',
-  padding: '10px 16px',
-  fontSize: 13,
-  borderBottom: '1px solid var(--gray-6)',
-};
-
 const columnStyle: React.CSSProperties = {
+  position: 'relative',
   flex: 1,
   minWidth: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  borderRight: '1px solid var(--gray-6)',
+  borderInlineEnd: '1px solid var(--neutral-6)',
 };
 
 const captionStyle: React.CSSProperties = {
+  position: 'absolute',
+  insetInlineStart: 16,
+  insetBlockEnd: 16,
   display: 'flex',
   gap: 10,
   alignItems: 'baseline',
-  padding: '8px 12px',
-  fontSize: 12,
-  fontFamily: 'ui-monospace, monospace',
+  pointerEvents: 'none',
 };
+
+const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };

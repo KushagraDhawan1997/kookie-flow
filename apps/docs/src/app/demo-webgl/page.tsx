@@ -1,16 +1,18 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Theme } from '@kookie-ui/react';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@kookie-ui/react';
 import {
   KookieFlow,
-  Toolbar,
+  Toolbar as EntityToolbar,
   useGraph,
   type Entity,
   type Edge,
   type XYPosition,
   type EntityTypeDefinition,
 } from '@kushagradhawan/kookie-flow';
+
+import { DemoFrame } from '../demo-frame';
 
 // Socket type patterns for type-aware edge connections
 const socketPatterns = [
@@ -392,59 +394,39 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
       size="2"
       header="outside"
     >
-      <Toolbar />
+      <EntityToolbar />
     </KookieFlow>
   );
 }
+
+const NODE_COUNT_ITEMS = Object.fromEntries(NODE_COUNT_OPTIONS.map((n) => [String(n), `${n.toLocaleString()} nodes`]));
 
 export default function DemoWebGLPage() {
   const [nodeCount, setNodeCount] = useState<number>(100);
 
   return (
-    <Theme>
-      <main style={{ width: '100%', height: '100vh', position: 'relative' }}>
-        <div
-          style={{
-            position: 'absolute',
-            top: 16,
-            left: 16,
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.85)',
-            padding: '12px 16px',
-            borderRadius: 8,
-            fontSize: 13,
-            color: '#fff',
-            pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
+    <DemoFrame
+      title="WebGL benchmark"
+      actions={
+        <Select
+          value={String(nodeCount)}
+          items={NODE_COUNT_ITEMS}
+          onValueChange={(value) => {
+            if (value) setNodeCount(Number(value));
           }}
-          onPointerDown={(e) => e.stopPropagation()}
         >
-          <span style={{ fontWeight: 600 }}>WebGL Benchmark</span>
-          <select
-            value={nodeCount}
-            onChange={(e) => setNodeCount(Number(e.target.value))}
-            style={{
-              padding: '4px 8px',
-              background: '#222',
-              border: '1px solid #555',
-              borderRadius: 4,
-              color: '#fff',
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
+          <SelectTrigger aria-label="Node count" backdrop />
+          <SelectContent>
             {NODE_COUNT_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n.toLocaleString()} nodes
-              </option>
+              <SelectItem key={n} value={String(n)}>
+                {NODE_COUNT_ITEMS[String(n)]}
+              </SelectItem>
             ))}
-          </select>
-        </div>
-
-        <WebGLBenchmarkGraph key={nodeCount} nodeCount={nodeCount} />
-      </main>
-    </Theme>
+          </SelectContent>
+        </Select>
+      }
+    >
+      <WebGLBenchmarkGraph key={nodeCount} nodeCount={nodeCount} />
+    </DemoFrame>
   );
 }

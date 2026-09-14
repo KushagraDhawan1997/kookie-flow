@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Theme } from '@kookie-ui/react';
+import { Code, Flex, Switch, Text, ToolbarButton } from '@kookie-ui/react';
 import {
   KookieFlow,
   useGraph,
@@ -29,6 +29,8 @@ import {
   type KookieFlowInstance,
   type OnEvaluate,
 } from '@kushagradhawan/kookie-flow';
+
+import { DemoFrame } from '../demo-frame';
 
 const X = [40, 340, 640, 940, 1240];
 const Y = 140;
@@ -126,7 +128,7 @@ export default function DemoEvaluationPage() {
   const [failGenerate, setFailGenerate] = useState(false);
   const failRef = useRef(false);
   failRef.current = failGenerate;
-  const [log, setLog] = useState<LogRow[]>([]);
+  const [last, setLast] = useState<LogRow | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
 
   /**
@@ -163,7 +165,7 @@ export default function DemoEvaluationPage() {
   }, []);
 
   const onStatusChange = useCallback((id: string, status: EvaluationStatus, message?: string) => {
-    setLog((prev) => [{ id, status, message, at: Date.now() }, ...prev].slice(0, 6));
+    setLast({ id, status, message, at: Date.now() });
     if (status === 'success' || status === 'idle') {
       const flow = flowRef.current;
       if (!flow) return;
@@ -184,93 +186,63 @@ export default function DemoEvaluationPage() {
   }, []);
 
   return (
-    <Theme>
-      <main style={{ width: '100%', height: '100vh', position: 'relative' }}>
-        <KookieFlow
-          ref={flowRef}
-          entities={entities}
-          edges={edges}
-          entityTypes={entityTypes}
-          onEntitiesChange={onEntitiesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEvaluate={onEvaluate}
-          onStatusChange={onStatusChange}
-          onWidgetChange={(entityId, socketId, value) => {
-            onEntitiesChange([
-              {
-                type: 'data',
-                id: entityId,
-                data: (() => {
-                  const e = entities.find((x) => x.id === entityId);
-                  const prev = (e?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
-                  return { ...(e?.data ?? {}), values: { ...prev, [socketId]: value } };
-                })(),
-              },
-            ]);
-          }}
-          showWidgets
-          showSocketLabels
-          showGrid
-          header="inside"
-          size="2"
-        />
-
-        <div style={panelStyle}>
-          <div style={{ minWidth: 180 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Evaluation</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <button style={buttonStyle} onClick={() => flowRef.current?.evaluate('generate')}>Run Generate</button>
-              <button style={buttonStyle} onClick={() => flowRef.current?.evaluateDirty()}>Run all stale</button>
-            </div>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="checkbox" checked={failGenerate} onChange={(e) => setFailGenerate(e.target.checked)} />
-              Generate fails
-            </label>
-          </div>
-          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.5, minWidth: 260 }}>
+    <DemoFrame
+      title="Evaluation"
+      actions={
+        <>
+          <label style={switchLabelStyle}>
+            <Switch checked={failGenerate} onCheckedChange={(checked) => setFailGenerate(checked)} />
+            <Text size="2">Generate fails</Text>
+          </label>
+          <ToolbarButton onClick={() => flowRef.current?.evaluateDirty()}>Run all stale</ToolbarButton>
+          <ToolbarButton emphasis="loud" tone="accent" onClick={() => flowRef.current?.evaluate('generate')}>
+            Run Generate
+          </ToolbarButton>
+        </>
+      }
+      footer={
+        <>
+          <Flex gap="4" align="center">
             {Object.entries(values).map(([k, v]) => (
-              <div key={k}><span style={{ opacity: 0.6 }}>{k}</span> = {v === undefined ? '—' : String(v)}</div>
+              <Code key={k}>
+                {k} = {v === undefined ? '—' : String(v)}
+              </Code>
             ))}
-          </div>
-          <div style={{ opacity: 0.75, fontSize: 12, lineHeight: 1.5, flex: 1 }}>
-            {log.map((r) => (
-              <div key={r.at + r.id + r.status}>
-                {r.id} → <b>{r.status}</b>{r.message ? `: ${r.message}` : ''}
-              </div>
-            ))}
-          </div>
-        </div>
-      </main>
-    </Theme>
+          </Flex>
+          {last && (
+            <Text size="2" emphasis="medium">
+              {last.id} → {last.status}
+              {last.message ? `: ${last.message}` : ''}
+            </Text>
+          )}
+        </>
+      }
+    >
+      <KookieFlow
+        ref={flowRef}
+        entities={entities}
+        edges={edges}
+        entityTypes={entityTypes}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEvaluate={onEvaluate}
+        onStatusChange={onStatusChange}
+        onWidgetChange={(entityId, socketId, value) => {
+          const e = entities.find((x) => x.id === entityId);
+          const prev = (e?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
+          onEntitiesChange([
+            { type: 'data', id: entityId, data: { ...(e?.data ?? {}), values: { ...prev, [socketId]: value } } },
+          ]);
+        }}
+        showWidgets
+        showSocketLabels
+        showGrid
+        header="inside"
+        size="2"
+      />
+    </DemoFrame>
   );
 }
 
-const panelStyle: React.CSSProperties = {
-  position: 'absolute',
-  // A strip along the bottom: the pipeline is one row across the middle after fitView, and a
-  // panel in any corner tall enough to hold the log sat on an end of it.
-  left: 16,
-  right: 16,
-  bottom: 16,
-  zIndex: 10,
-  display: 'flex',
-  gap: 24,
-  alignItems: 'flex-start',
-  background: 'rgba(0,0,0,0.85)',
-  color: '#fff',
-  padding: '12px 16px',
-  borderRadius: 8,
-  fontSize: 13,
-  pointerEvents: 'auto',
-};
-
-const buttonStyle: React.CSSProperties = {
-  background: '#3b5bdb',
-  color: '#fff',
-  border: 0,
-  borderRadius: 6,
-  padding: '6px 10px',
-  cursor: 'pointer',
-  fontSize: 13,
-};
+const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };

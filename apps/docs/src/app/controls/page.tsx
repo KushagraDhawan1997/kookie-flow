@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
-import { Theme } from '@kookie-ui/react';
+import { Code, Text, Theme } from '@kookie-ui/react';
+
+import { DemoFrame } from '../demo-frame';
 
 /**
  * Every built-in widget, on nodes shaped like the ones a real graph has.
@@ -105,24 +107,10 @@ const initialEntities: Entity[] = [
   },
 ];
 
-const PANEL: React.CSSProperties = {
-  position: 'absolute',
-  top: 16,
-  left: 16,
-  zIndex: 10,
-  maxWidth: 360,
-  background: 'rgba(0,0,0,0.8)',
-  color: '#fff',
-  padding: '12px 16px',
-  borderRadius: 8,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
 export default function ControlsPage() {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
   const flowRef = useRef<KookieFlowInstance>(null);
-  const readoutRef = useRef<HTMLPreElement>(null);
+  const readoutRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     flowRef.current?.fitView({ padding: 80, maxZoom: 1 });
@@ -167,18 +155,17 @@ export default function ControlsPage() {
   );
 
   return (
-    <main style={{ width: '100vw', height: '100vh' }}>
-      <div style={PANEL}>
-        <h1 style={{ fontSize: 16, margin: '0 0 6px' }}>Controls</h1>
-        <p style={{ color: '#aaa', margin: 0 }}>
-          Drag a vector number sideways to scrub it, or click it to type. The die rolls a seed. A switch toggles from
-          anywhere on its row.
-        </p>
-        <pre ref={readoutRef} style={{ color: '#4ade80', margin: '8px 0 0', whiteSpace: 'pre-wrap', fontSize: 12 }}>
-          Change a control
-        </pre>
-      </div>
-
+    <DemoFrame
+      title="Controls"
+      footer={
+        <>
+          <Text size="2" emphasis="medium">
+            Drag a vector number to scrub it, or click to type. The die rolls a seed.
+          </Text>
+          <Code ref={readoutRef}>Change a control</Code>
+        </>
+      }
+    >
       <KookieFlow
         ref={flowRef}
         entities={entities}
@@ -194,6 +181,6 @@ export default function ControlsPage() {
         accentHeader
         ThemeComponent={Theme}
       />
-    </main>
+    </DemoFrame>
   );
 }
