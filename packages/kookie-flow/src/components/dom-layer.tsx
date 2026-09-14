@@ -8,6 +8,9 @@ import {
 } from 'react';
 import { useFlowStoreApi } from './context';
 import type { EntityTypeDefinition, Entity, CommentEntityData, EntityChange } from '../types';
+import { useResolvedStyle } from '../contexts/StyleContext';
+import { noteHue, noteInk } from '../utils/note-ink';
+import { CORNER_K } from '../utils/corner-shader';
 import { TextEditOverlay } from './text-edit-overlay';
 import { ToolbarProvider } from './toolbar';
 
@@ -75,9 +78,25 @@ const DEFAULT_COMMENT_WIDTH = 200;
 const DEFAULT_COMMENT_HEIGHT = 100;
 
 /** Default comment styling */
-const DEFAULT_COMMENT_BG = '#FFF9C4'; // Light yellow sticky note
-const DEFAULT_COMMENT_TEXT_COLOR = '#424242';
 const DEFAULT_COMMENT_FONT_SIZE = 14;
+/** The space inside each edge of a note, in world px — it scales with zoom, like the text. */
+const COMMENT_PADDING = 12;
+/** A note's colours come from utils/note-ink.ts: one hue, mixed against the theme. */
+
+/**
+ * A NOTE WEARS A SURFACE CORNER: THE SQUIRCLE, AT v2's COMPENSATED RADIUS.
+ *
+ * The canvas draws every entity's hover and selection line as a squircle at the card radius x
+ * CORNER_K (entity-selection.tsx), and this div was a plain `border-radius` at the raw radius — a
+ * circle, and a rounder one. So the line and the paint disagreed exactly at the corners, the one
+ * place anyone looks at a corner. v2's own rule for a surface is the fix: `corner-shape: squircle`
+ * with the radius multiplied by --kui-corner-k (1.613) where the browser can draw one, and a
+ * circle at the raw radius where it cannot. Detected once; the shader side has no fallback to
+ * match, so outside Chrome the paint stays the circle v2 itself falls back to.
+ */
+const SUPPORTS_SQUIRCLE =
+  typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('corner-shape', 'squircle');
+const NOTE_CORNER_K = SUPPORTS_SQUIRCLE ? CORNER_K : 1;
 
 /**
  * Container for comment/sticky note entities.
@@ -92,6 +111,12 @@ function CommentsContainer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const commentsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingRef = useRef(false);
+  /**
+   * The canvas's card radius, so a note wears the corner a node does. Read through a ref because
+   * the paint path is a stable callback; the effect below repaints when the radius level changes.
+   */
+  const resolvedStyle = useResolvedStyle();
+  const radiusRef = useRef(resolvedStyle.borderRadius);
 
   // Track comment entities for React element creation
   const [commentEntities, setCommentEntities] = useState<Entity<CommentEntityData>[]>(() =>
@@ -123,7 +148,7 @@ function CommentsContainer() {
     const container = containerRef.current;
     if (!container) return;
 
-    const { viewport, entityMap, hiddenEntityIds, selectedEntityIds } = store.getState();
+    const { viewport, entityMap, hiddenEntityIds } = store.getState();
     const comments = commentsRef.current;
 
     // LOD: Hide entire container if zoomed out too far
@@ -179,8 +204,6 @@ function CommentsContainer() {
       const screenWidth = width * viewport.zoom;
       const screenHeight = height * viewport.zoom;
 
-      // Apply selection border
-      const isSelected = selectedEntityIds.has(entityId);
 
       // Content and presentation are written HERE, not in the JSX.
       //
@@ -201,15 +224,23 @@ function CommentsContainer() {
       // The `dataset` shadow is load-bearing: `el.style.backgroundColor` serialises, so a token
       // written as '#FFF9C4' reads back as 'rgb(255, 249, 196)' and a guard comparing against the
       // raw value would never hold — writing the style every frame for every comment.
-      const bg = data.backgroundColor ?? DEFAULT_COMMENT_BG;
+      // The hue: the note's own, else the entity's, else yellow. Explicit colours still win.
+      const ink = noteInk(noteHue(data.color, entity.color));
+      const bg = data.backgroundColor ?? ink.fill;
       if (el.dataset.bg !== bg) {
         el.dataset.bg = bg;
         el.style.backgroundColor = bg;
       }
-      const fg = data.textColor ?? DEFAULT_COMMENT_TEXT_COLOR;
+      const fg = data.textColor ?? ink.text;
       if (el.dataset.fg !== fg) {
         el.dataset.fg = fg;
         el.style.color = fg;
+      }
+      // A hairline in the hue. A note given a fill of its own gets none: the tint would not match it.
+      const edge = data.backgroundColor ? 'transparent' : ink.edge;
+      if (el.dataset.edge !== edge) {
+        el.dataset.edge = edge;
+        el.style.borderColor = edge;
       }
 
       // Comments always scale text with zoom since they're visual canvas elements (not labels)
@@ -230,22 +261,20 @@ function CommentsContainer() {
        * browser was re-resolving and re-laying-out every comment on screen to move a layer that a
        * single transform moves.
        *
-       * The shadow is the dear one — a multi-part value with a `var()` in it, re-parsed on every
-       * write — and it is also the one that changes least: twice in the life of a selection.
+       * The shadow is no longer written here at all: selection is the canvas's own ring
+       * (entity-selection.tsx), so a note's resting shadow is static style.
        */
-      const sizeKey = `${screenWidth}|${screenHeight}|${scaledFontSize}`;
+      // Corner and padding scale with zoom like the text does, so a zoomed-out note keeps its
+      // proportions instead of turning into a 12px frame around shrinking words.
+      const radius = radiusRef.current * NOTE_CORNER_K * viewport.zoom;
+      const sizeKey = `${screenWidth}|${screenHeight}|${scaledFontSize}|${radius}`;
       if (el.dataset.size !== sizeKey) {
         el.dataset.size = sizeKey;
         el.style.width = `${screenWidth}px`;
         el.style.height = `${screenHeight}px`;
         el.style.fontSize = `${scaledFontSize}px`;
-      }
-      const shadowKey = isSelected ? '1' : '0';
-      if (el.dataset.sel !== shadowKey) {
-        el.dataset.sel = shadowKey;
-        el.style.boxShadow = isSelected
-          ? '0 0 0 2px var(--indigo-9, #5c5ce0), 0 2px 8px rgba(0,0,0,0.15)'
-          : '0 2px 8px rgba(0,0,0,0.15)';
+        el.style.borderRadius = `${radius}px`;
+        el.style.padding = `${COMMENT_PADDING * viewport.zoom}px`;
       }
     });
   }, [store]);
@@ -257,6 +286,12 @@ function CommentsContainer() {
       queueMicrotask(updateComments);
     }
   }, [updateComments]);
+
+  // A radius level change is the one style change the paint path cannot see coming.
+  useLayoutEffect(() => {
+    radiusRef.current = resolvedStyle.borderRadius;
+    scheduleUpdate();
+  }, [resolvedStyle.borderRadius, scheduleUpdate]);
 
   // Setup subscriptions
   useLayoutEffect(() => {
@@ -302,11 +337,6 @@ function CommentsContainer() {
       () => scheduleUpdate()
     );
 
-    // Selection changes → update selection border
-    const unsubSelection = store.subscribe(
-      (state) => state.selectedEntityIds,
-      () => scheduleUpdate()
-    );
 
     // Resize observer
     const parent = containerRef.current?.parentElement;
@@ -327,7 +357,6 @@ function CommentsContainer() {
       unsubEntities();
       unsubViewport();
       unsubPositions();
-      unsubSelection();
       resizeObserver?.disconnect();
     };
     // `commentEntities` rather than `commentEntities.length`, and the dep is load-bearing rather
@@ -343,6 +372,8 @@ function CommentsContainer() {
     (entityId: string) => (el: HTMLDivElement | null) => {
       if (el) {
         commentsRef.current.set(entityId, el);
+        // Not in the style object: React's CSS types do not know the property yet.
+        el.style.setProperty('corner-shape', 'squircle');
       } else {
         commentsRef.current.delete(entityId);
       }
@@ -379,8 +410,12 @@ const commentStyle: CSSProperties = {
   left: 0,
   top: 0,
   visibility: 'hidden',
-  padding: '12px',
-  borderRadius: '4px',
+  // Padding and radius are written by the paint path: both scale with zoom.
+  // A second ring for selection would be a different shape from the canvas's; the canvas draws it.
+  boxShadow: 'var(--shadow-2, 0 2px 8px rgba(0,0,0,0.15))',
+  borderWidth: '1px',
+  borderStyle: 'solid',
+  borderColor: 'transparent',
   boxSizing: 'border-box',
   overflow: 'hidden',
   // `--font-sans` is defined by NEITHER design system — v1 emits `--default-font-family`, v2

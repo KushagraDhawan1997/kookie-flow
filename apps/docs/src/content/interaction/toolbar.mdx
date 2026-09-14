@@ -62,9 +62,11 @@ away, so typing "24" doesn't write a font size of 2 on the way.
 | --- | --- | --- | --- |
 | `sizingMode` | `text` | Auto width, auto height or fixed | `data.sizingMode`, and the width and height that mode gives the text |
 | `fontSize` | `text`, `comment` | Number | `data.fontSize` |
+| `noteColor` | `comment` | A hue: yellow, orange, red, pink, violet, blue, cyan, green or grey | `data.color`, and clears `data.backgroundColor` and `data.textColor` |
+| `backgroundColor` | none | Colour picker | `data.backgroundColor` |
 | `fontFamily` | `text` | System, Serif or Mono | `data.fontFamily`: `'system-ui'`, `'serif'` or `'monospace'` |
 | `fontWeight` | `text` | Regular, Semibold or Bold | `data.fontWeight`: `400`, `600` or `700` |
-| `textColor` | `text`, `comment` | Colour picker | `data.textColor` |
+| `textColor` | `text` | Colour picker | `data.textColor` |
 | `textAlign` | `text` | Left, centre or right | `data.textAlign` |
 | `lineHeight` | `text` | Number | `data.lineHeight` |
 | `letterSpacing` | `text` | Number | `data.letterSpacing` |
@@ -74,8 +76,10 @@ away, so typing "24" doesn't write a font size of 2 on the way.
 | `strokeWidth` | `draw` | Number | `data.strokeWidth`, and a box refitted to the new width |
 | `arrange` | none | Align and distribute buttons | New positions, reported as a drag reports them |
 
-The comment defaults also name `backgroundColor`, and the widget types include `color`. Neither
-draws a control, so a comment's toolbar shows its text colour and font size.
+A comment's toolbar picks its hue and its font size. The hue tints the note's fill, edge and text
+together and follows light and dark mode. List `backgroundColor` or `textColor` to also offer a
+colour picker for a note that needs a colour no hue gives; the pickers start from the colour the
+note is painted in. The widget types also include `color`, which draws no control.
 
 `arrange` works on any entity type. It shows six align buttons once two or more entities are
 selected, and two distribute buttons once three or more are. With one entity selected it shows

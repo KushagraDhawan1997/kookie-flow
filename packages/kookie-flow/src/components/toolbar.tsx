@@ -38,6 +38,7 @@ import {
   iconStroke,
 } from '@kookie-ui/react';
 import type { ToolbarProps as KuiToolbarProps } from '@kookie-ui/react';
+import { NOTE_HUES, noteHue, noteInk } from '../utils/note-ink';
 import { useFlowStoreApi } from './context';
 import { getInteractionMode, observeInteractionMode } from './interaction-state';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -120,7 +121,8 @@ const BUILTIN_DEFAULTS: Record<string, ToolbarWidget[]> = {
     'letterSpacing',
   ],
   image: ['objectFit', 'aspectLock'],
-  comment: ['backgroundColor', 'textColor', 'fontSize'],
+  // A hue, not two colour wells: one choice that tints fill, edge and text together and follows the theme.
+  comment: ['noteColor', 'fontSize'],
 };
 
 // ============================================================================
@@ -895,6 +897,67 @@ const FONT_FAMILY_LABELS: Record<string, ReactNode> = {
   monospace: 'Mono',
 };
 
+/** A dot in a note hue, drawn from the same ink the note is — so the choice looks like the result. */
+function NoteSwatch({ hue }: { hue: string }) {
+  const ink = noteInk(hue);
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block',
+        width: 10,
+        height: 10,
+        borderRadius: 999,
+        background: ink.fill,
+        boxShadow: `inset 0 0 0 1px ${ink.edge}`,
+        marginInlineEnd: 6,
+        verticalAlign: '-1px',
+      }}
+    />
+  );
+}
+
+/** Built once: each hue's label, swatch first, for both the trigger and the list. */
+const NOTE_HUE_LABELS: Record<string, ReactNode> = Object.fromEntries(
+  NOTE_HUES.map(({ hue, label }) => [
+    hue,
+    <>
+      <NoteSwatch hue={hue} />
+      {label}
+    </>,
+  ])
+);
+
+/**
+ * The colour a note is actually painted in, as #rrggbb for a colour well.
+ *
+ * A note's own colours are color-mix() strings the browser resolves against the theme, and a native
+ * colour input takes nothing but #rrggbb — so the well asks the painted element. Read on render,
+ * which is a selection change, never a frame.
+ */
+function renderedNoteColour(entityId: string, property: 'backgroundColor' | 'color'): string | null {
+  if (typeof document === 'undefined') return null;
+  let painted: HTMLElement | null = null;
+  for (const el of document.querySelectorAll<HTMLElement>(`[data-entity-id="${CSS.escape(entityId)}"]`)) {
+    // The note's own div is the one its paint path stamps; other layers carry the id too.
+    if (el.dataset.bg !== undefined) {
+      painted = el;
+      break;
+    }
+  }
+  if (!painted) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = '#000000';
+  ctx.fillStyle = getComputedStyle(painted)[property];
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function BuiltInWidget({
   widget,
   entities,
@@ -1095,8 +1158,57 @@ function BuiltInWidget({
       content = (
         <ToolbarColorInput
           label="Text colour"
-          value={(data.textColor as string) || '#ffffff'}
+          value={
+            (data.textColor as string) ||
+            // A note's text is tinted from its hue, so its well starts from what is on screen.
+            (entities[0].type === 'comment' ? renderedNoteColour(entities[0].id, 'color') : null) ||
+            '#ffffff'
+          }
           onChange={(v) => batchUpdate({ textColor: v })}
+        />
+      );
+      break;
+
+    case 'noteColor': {
+      const hue = noteHue(data.color as string | undefined, entities[0].color);
+      content = (
+        <Select
+          items={NOTE_HUE_LABELS}
+          value={hue}
+          onValueChange={(v) => {
+            if (v === null) return;
+            // A hue clears one-off colours: otherwise a note given a fill of its own would take the
+            // pick and show no change at all.
+            batchUpdate({ color: v, backgroundColor: undefined, textColor: undefined });
+          }}
+        >
+          <SelectTrigger backdrop aria-label="Note colour" />
+          <SelectContent>
+            {NOTE_HUES.map(({ hue: option }) => (
+              <SelectItem key={option} value={option}>
+                {NOTE_HUE_LABELS[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+      break;
+    }
+
+    /**
+     * A fill of the note's own. It was in the comment defaults and drew nothing — the switch had no
+     * case for it — so a consumer who listed it got a toolbar missing the control they asked for.
+     */
+    case 'backgroundColor':
+      content = (
+        <ToolbarColorInput
+          label="Fill colour"
+          value={
+            (data.backgroundColor as string) ||
+            (entities[0].type === 'comment' ? renderedNoteColour(entities[0].id, 'backgroundColor') : null) ||
+            '#ffffff'
+          }
+          onChange={(v) => batchUpdate({ backgroundColor: v })}
         />
       );
       break;

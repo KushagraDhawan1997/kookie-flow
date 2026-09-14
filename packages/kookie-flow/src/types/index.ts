@@ -288,9 +288,15 @@ export interface FrameEntityData extends EntityData {
 export interface CommentEntityData extends EntityData {
   /** Comment text content */
   content: string;
-  /** Background color (CSS color). Default: yellow-ish sticky note */
+  /**
+   * The note's hue. Its fill, edge and text are all mixed from this one colour against the theme's
+   * page and text colours, so a note reads in light and dark alike. Falls back to the entity's own
+   * `color`, then to yellow.
+   */
+  color?: AccentColor;
+  /** Replaces the fill the hue gives. Any CSS colour. */
   backgroundColor?: string;
-  /** Text color. Default: dark gray */
+  /** Replaces the text colour the hue gives. Any CSS colour. */
   textColor?: string;
   /** Font size in pixels. Default: 14 */
   fontSize?: number;
@@ -726,7 +732,12 @@ export type TextToolbarWidget = 'fontSize' | 'fontFamily' | 'fontWeight' | 'text
 export type ImageToolbarWidget = 'objectFit' | 'aspectLock';
 
 /** Built-in toolbar widget names for comment entities */
-export type CommentToolbarWidget = 'backgroundColor' | 'textColor' | 'fontSize';
+/**
+ * `noteColor` picks the note's hue (`data.color`), which tints its fill, edge and text together and
+ * follows light and dark. `backgroundColor` and `textColor` set one colour outright, for a note that
+ * needs a colour no hue gives.
+ */
+export type CommentToolbarWidget = 'noteColor' | 'backgroundColor' | 'textColor' | 'fontSize';
 
 /** Built-in toolbar widget names for ink */
 export type DrawToolbarWidget = 'strokeColor' | 'strokeWidth';

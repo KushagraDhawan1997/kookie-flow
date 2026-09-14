@@ -183,16 +183,17 @@ A comment is an entity with `type: 'comment'`. Put its text in `data.content`, a
 ```tsx
 const note: Entity = {
   id: 'review-note', type: 'comment', position: { x: 520, y: -40 }, width: 220, height: 120,
-  data: { content: 'Check the retry limit with the payments team.', backgroundColor: '#d8f5e5' },
+  data: { content: 'Check the retry limit with the payments team.', color: 'green' },
 };
 ```
 
-| Field             | Type     | Default     | Meaning                                                       |
-| ----------------- | -------- | ----------- | ------------------------------------------------------------- |
-| `content`         | `string` | required    | The note. Line breaks are kept and long lines wrap.           |
-| `backgroundColor` | `string` | `'#FFF9C4'` | The note's fill. Any CSS colour.                              |
-| `textColor`       | `string` | `'#424242'` | The colour of the text. Any CSS colour.                       |
-| `fontSize`        | `number` | `14`        | The size of the text. It scales with zoom, like the note.     |
+| Field             | Type          | Default                               | Meaning                                                                                  |
+| ----------------- | ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `content`         | `string`      | required                              | The note. Line breaks are kept and long lines wrap.                                      |
+| `color`           | `AccentColor` | the entity's `color`, then `'yellow'` | The note's hue. Its fill, edge and text are tinted from it, and follow light and dark.   |
+| `backgroundColor` | `string`      | tinted from `color`                   | Replaces the fill. Any CSS colour.                                                       |
+| `textColor`       | `string`      | tinted from `color`                   | Replaces the text colour. Any CSS colour.                                                |
+| `fontSize`        | `number`      | `14`                                  | The size of the text. It scales with zoom, like the note.                                |
 
 `CommentEntityData` is the type of this `data`, and `CommentEntity` is `Entity<CommentEntityData>`
 with `type: 'comment'`.
@@ -209,5 +210,5 @@ Comments differ from text entities in three ways:
 - **Comments hide when the zoom drops below 0.1**, so a zoomed-out graph isn't covered in notes.
 
 A comment inside a collapsed frame is hidden, as any entity is. Set `toolbar: true` on the
-`comment` entry of `entityTypes` to give people controls for a comment's background, text colour,
+`comment` entry of `entityTypes` to give people controls for a note's colour
 and font size. Like text, comments are never sent to `onEvaluate`.

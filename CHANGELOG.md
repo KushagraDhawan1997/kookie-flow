@@ -148,6 +148,15 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Fixed
 
+- **Sticky notes wear the theme.** A comment was a hardcoded Material yellow with grey text and a
+  4px corner — glaring in dark mode, and out of step with every other surface on the canvas. A note
+  now takes a hue (`data.color`, else the entity's `color`, else yellow) and mixes its fill, edge and
+  text from it against the theme's page and text colours, so it reads in both appearances. Its corner
+  is the canvas card's squircle — the curve the canvas already drew its hover and selection line
+  in, around a circle — its padding scales with zoom, and a selected note wears the canvas's ring
+  rather than a second, rounder one of its own. `backgroundColor` and `textColor` still override. The comment toolbar, which
+  listed a background control that never rendered and a text colour that showed white, now offers
+  a note colour.
 - **A click on the canvas drew the browser's focus ring around all of it.** The canvas focuses
   itself on every press so its keys work, and focus set by script counts as keyboard focus, so an
   app shell showed a ring around its whole content pane after any click. A press no longer draws

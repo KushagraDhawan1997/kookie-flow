@@ -1569,6 +1569,135 @@ await withPage('scene=comments', async (page) => {
   );
 });
 
+
+/**
+ * A NOTE'S CORNER IS THE CANVAS'S CORNER.
+ *
+ * The canvas draws the hover and selection line of every entity as a squircle at the card radius x
+ * 1.613, and the note div was a plain border-radius at the raw radius — a circle, rounder, and a
+ * different curve from the line drawn around it. The owner saw it as a squircle line with the wrong
+ * paint inside. v2's surface rule is the fix: corner-shape squircle at the compensated radius.
+ *
+ * Stated three ways, so it cannot be satisfied by accident: the corner is a squircle where the
+ * browser can draw one, the radius scales with zoom, and selecting the note leaves its own shadow
+ * alone — the canvas's ring is the selection, and a second ring painted here would be a circle.
+ */
+await withPage('scene=comments', async (page) => {
+  const read = () =>
+    page.evaluate(() => {
+      const el = [...document.querySelectorAll('[data-entity-id="note-a"]')].find((e) => e.dataset.bg !== undefined);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return {
+        supported: CSS.supports('corner-shape', 'squircle'),
+        shape: cs.getPropertyValue('corner-shape'),
+        radius: parseFloat(cs.borderTopLeftRadius),
+        shadow: cs.boxShadow,
+        zoom: window.__harness.store.getState().viewport.zoom,
+      };
+    });
+  const before = await read();
+  check('INSTRUMENT: the note is on the page', before !== null, String(before));
+  if (!before) return;
+  check(
+    'a note is drawn with a squircle corner where the browser can draw one',
+    !before.supported || before.shape === 'squircle',
+    `supported=${before.supported} corner-shape=${before.shape}`
+  );
+
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    s.setViewport({ ...s.viewport, zoom: s.viewport.zoom * 2 });
+  });
+  await page.waitForTimeout(200);
+  const zoomed = await read();
+  check(
+    'and its corner scales with zoom, as the canvas line around it does',
+    zoomed !== null && before.radius > 0 && Math.abs(zoomed.radius / before.radius - 2) < 0.05,
+    `${before.radius}px at zoom ${before.zoom}, ${zoomed?.radius}px at zoom ${zoomed?.zoom}`
+  );
+
+  await page.evaluate(() => window.__harness.store.getState().selectEntity?.('note-a'));
+  await page.evaluate(() => {
+    const s = window.__harness.store.getState();
+    if (!s.selectedEntityIds.has('note-a')) s.setSelectedEntityIds?.(new Set(['note-a']));
+  });
+  await page.waitForTimeout(200);
+  const selected = await read();
+  const isSelected = await page.evaluate(() => window.__harness.store.getState().selectedEntityIds.has('note-a'));
+  check('INSTRUMENT: the note is selected', isSelected, String(isSelected));
+  check(
+    'and selecting it paints no ring of its own: the canvas draws the selection',
+    selected !== null && selected.shadow === zoomed.shadow,
+    `resting ${zoomed?.shadow} / selected ${selected?.shadow}`
+  );
+});
+
+/**
+ * A NOTE WITH NO COLOURS OF ITS OWN READS IN BOTH APPEARANCES.
+ *
+ * A comment used to default to a Material yellow and a grey ink written as hex: fine on a white
+ * page, a glaring pastel slab on a dark one, and the same pastel whatever the theme. A note now
+ * mixes a hue with the theme's page and text colours. So the law asks what a person would: in
+ * light the fill is light, in dark it is dark, the text is legible on it in both (WCAG 4.5), and a
+ * different hue is a different fill.
+ */
+for (const appearance of ['light', 'dark']) {
+  await withPage(`scene=comments&appearance=${appearance}`, async (page) => {
+    const r = await page.evaluate(async () => {
+      const s = window.__harness.store.getState();
+      s.applyEntityChanges([
+        { type: 'add', entity: { id: 'note-plain', type: 'comment', position: { x: 80, y: 260 }, width: 200, height: 100, data: { content: 'plain' } } },
+        { type: 'add', entity: { id: 'note-green', type: 'comment', position: { x: 340, y: 260 }, width: 200, height: 100, data: { content: 'green', color: 'green' } } },
+      ]);
+      await new Promise((res) => setTimeout(res, 300));
+      const toRGB = (css) => {
+        const c = document.createElement('canvas');
+        c.width = 1;
+        c.height = 1;
+        const x = c.getContext('2d');
+        x.fillStyle = '#000';
+        x.fillStyle = css;
+        x.fillRect(0, 0, 1, 1);
+        const d = x.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]];
+      };
+      const lum = ([r, g, b]) => {
+        const f = (v) => {
+          v /= 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const read = (id) => {
+        const el = document.querySelector(`[data-entity-id="${id}"]`);
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        const bg = toRGB(cs.backgroundColor);
+        const fg = toRGB(cs.color);
+        const hi = Math.max(lum(bg), lum(fg));
+        const lo = Math.min(lum(bg), lum(fg));
+        return { bg, fg, bgLum: lum(bg), contrast: (hi + 0.05) / (lo + 0.05) };
+      };
+      return { plain: read('note-plain'), green: read('note-green') };
+    });
+    check(`INSTRUMENT: both ${appearance} notes render`, r.plain !== null && r.green !== null, JSON.stringify(r));
+    if (!r.plain || !r.green) return;
+    check(
+      `a plain note in ${appearance} has a ${appearance} fill`,
+      appearance === 'light' ? r.plain.bgLum > 0.6 : r.plain.bgLum < 0.2,
+      `fill rgb(${r.plain.bg}) luminance ${r.plain.bgLum.toFixed(3)}`
+    );
+    check(
+      `and its text is legible on it in ${appearance}`,
+      r.plain.contrast >= 4.5,
+      `contrast ${r.plain.contrast.toFixed(2)} (text rgb(${r.plain.fg}) on rgb(${r.plain.bg}))`
+    );
+    const hueDelta = Math.max(...r.plain.bg.map((v, k) => Math.abs(v - r.green.bg[k])));
+    check(`and a green note in ${appearance} is a different fill`, hueDelta > 12, `plain rgb(${r.plain.bg}) green rgb(${r.green.bg})`);
+  });
+}
+
 // ---------------------------------------------------------------- keyboard scope
 
 head('keyboard scope');
