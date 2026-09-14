@@ -232,7 +232,7 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
                 {/* STEP 8, the short form "Flow" (2026-09-14, Kushagra). One word in PP Playground
                     runs 24-85 at this step (measured 2026-09-14), so it clears the search button
                     even at the sidebar's 240 floor, where the button sits at 175-215. */}
-                <Wordmark size="8" />
+                <Wordmark size="7" />
               </Link>
               <DocsSearch index={buildSearchIndex()} />
             </Toolbar>

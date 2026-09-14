@@ -10,7 +10,7 @@ import { Heading } from '@kookie-ui/react';
  */
 export function Wordmark() {
   return (
-    <Heading size="8" weight="medium" className="kd-wordmark" render={<span aria-hidden="true" />}>
+    <Heading size="7" weight="medium" className="kd-wordmark" render={<span aria-hidden="true" />}>
       Studio
     </Heading>
   );

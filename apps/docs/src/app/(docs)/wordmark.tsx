@@ -39,7 +39,7 @@ import { Heading } from "@kookie-ui/react";
 type Form = "short" | "full";
 
 export function Wordmark({
-  size = "8",
+  size = "7",
   form = "short",
 }: {
   size?: "6" | "7" | "8" | "9";
