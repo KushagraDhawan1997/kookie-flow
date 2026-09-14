@@ -58,6 +58,7 @@ import { themeRoot } from '../utils/theme-root';
 
 import { VECTOR_LABEL_INSET, VECTOR_LABEL_WIDTH } from '../utils/widget-geometry';
 import { vectorComponent, vectorDimensions, withComponent } from '../utils/widget-parts';
+import { TEXTAREA_LINE_HEIGHT } from '../utils/widget-text';
 import type { WidgetHit } from '../utils/widget-hit';
 
 /**
@@ -97,6 +98,7 @@ const OVERLAY_STYLE_ID = 'kookie-flow-widget-edit-style';
 const OVERLAY_CSS = `
 [${OVERLAY_ATTR}]::-webkit-inner-spin-button,
 [${OVERLAY_ATTR}]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+[${OVERLAY_ATTR}]::-webkit-scrollbar { display: none; }
 `;
 
 /**
@@ -250,6 +252,10 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
   // GL centres the value on the FIRST row of a multi-row widget (text-renderer.tsx), so the line
   // box is one row tall, not the whole box — a three-row textarea reads from its top line.
   const rowHeight = Math.min(hit.box.height, socketLayout.widgetHeight);
+  const kind = inputTypeFor(hit.config.type);
+  // A textarea's lines step by the text's own line height, not a row each — the same step GL
+  // wraps at — with the first line centred on the first row where GL prints it.
+  const textareaLine = resolvedStyle.widgetFontSize * TEXTAREA_LINE_HEIGHT;
   const style: CSSProperties = {
     position: 'absolute',
     top: 0,
@@ -264,12 +270,17 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     fontSize: `${resolvedStyle.widgetFontSize}px`,
     fontWeight: 400,
     letterSpacing: 0,
-    lineHeight: `${rowHeight}px`,
+    lineHeight: kind === 'textarea' ? `${textareaLine}px` : `${rowHeight}px`,
     // A vector component's number is right-aligned past its axis letter, which GL keeps drawing.
     padding:
       hit.part !== undefined
         ? `${OVERLAY_PADDING_TOP}px ${VECTOR_LABEL_INSET}px 0 ${VECTOR_LABEL_INSET + VECTOR_LABEL_WIDTH + 4}px`
-        : `${OVERLAY_PADDING_TOP}px ${resolvedStyle.widgetPad}px 0`,
+        : kind === 'textarea'
+          ? `${(rowHeight - textareaLine) / 2}px ${resolvedStyle.widgetPad}px`
+          : `${OVERLAY_PADDING_TOP}px ${resolvedStyle.widgetPad}px 0`,
+    // It still scrolls past its rows, but a scrollbar would take width the GL wrap does not
+    // reserve, and push the lines onto different breaks the moment the edit opens.
+    scrollbarWidth: 'none',
     border: 0,
     outline: 'none',
     boxShadow: 'none',
@@ -292,8 +303,6 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
     appearance: 'none',
     WebkitAppearance: 'none',
   };
-
-  const kind = inputTypeFor(hit.config.type);
 
   // Firefox aliases -moz-appearance to appearance, so 'textfield' on the shared style would put
   // a native arrow back on other kinds. Only the number kind wants it, for its spin buttons.

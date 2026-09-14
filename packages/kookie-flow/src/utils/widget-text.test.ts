@@ -197,11 +197,18 @@ describe('widgetValueText: where the value sits', () => {
     expect(widgetValueText(config('slider', { step: 0.1 }), '0.5', BOX)?.text).toBe('0.5');
   });
 
-  it('cuts a textarea at its first line break', () => {
+  it('hands a textarea over whole, for the renderer to wrap', () => {
+    const placed = widgetValueText(config('textarea'), 'line one\nline two', BOX);
+    expect(placed?.text).toBe('line one\nline two');
+    expect(placed?.multiline).toBe(true);
+  });
+
+  it('cuts a text field at its first line break', () => {
     // `layoutText` has no newline handling: it skips the glyph it cannot find and lays the second
     // line straight along the first, on top of it.
-    const placed = widgetValueText(config('textarea'), 'line one\nline two', BOX);
+    const placed = widgetValueText(config('text'), 'line one\nline two', BOX);
     expect(placed?.text).toBe('line one…');
+    expect(placed?.multiline).toBeUndefined();
   });
 
   it('prints nothing when the box has no room inside its padding', () => {

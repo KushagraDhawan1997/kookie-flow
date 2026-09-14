@@ -34,6 +34,7 @@ import {
   populateGlyphBuffers,
   countGlyphs,
   truncateText,
+  wrapTextMSDF,
 } from '../utils/text-layout';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -41,7 +42,12 @@ import { TITLE_LINE_BOX } from '../utils/style-resolver';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
-import { widgetValueText, widgetPartTexts, WIDGET_VALUE_MIN_ZOOM } from '../utils/widget-text';
+import {
+  widgetValueText,
+  widgetPartTexts,
+  TEXTAREA_LINE_HEIGHT,
+  WIDGET_VALUE_MIN_ZOOM,
+} from '../utils/widget-text';
 import { measureText } from '../utils/text-layout';
 import type { EdgeType, EdgeLabelConfig, SocketType } from '../types';
 import { getEdgePointAtT, type SocketIndexMap } from '../utils/geometry';
@@ -849,6 +855,45 @@ export function MultiWeightTextRenderer({
             for (let t = 0; t < count; t++) {
               const placed = parts ? parts[t] : single;
               if (!placed) continue;
+
+              if (placed.multiline) {
+                /**
+                 * A textarea, wrapped to its inner width and stepped by the same line height the
+                 * borrowed `<textarea>` uses. The first line sits where a one-line value would, on
+                 * the first row; the rest follow for as many as fit before the last row's centre,
+                 * so the bottom keeps the same margin as the top. The wrap is cached on the string.
+                 */
+                const rowHeight = Math.min(box.height, socketLayout.widgetHeight);
+                const lineStep = widgetFont * TEXTAREA_LINE_HEIGHT;
+                const lines = wrapTextMSDF(placed.text, placed.maxWidth / glyphScale, regularGlyphMap, regularKerningMap);
+                const room = Math.max(1, Math.floor((box.height - rowHeight) / lineStep) + 1);
+                const shown = Math.min(lines.length, room);
+                for (let l = 0; l < shown; l++) {
+                  let line = lines[l];
+                  // The last line shown says there is more below it.
+                  if (l === shown - 1 && lines.length > shown) {
+                    const more = `${line.trimEnd()}…`;
+                    line =
+                      measureText(more, regularGlyphMap, regularKerningMap) * glyphScale <= placed.maxWidth
+                        ? more
+                        : truncateText(more, placed.maxWidth, widgetFont, regularFont.metrics.info.size, regularGlyphMap, regularKerningMap);
+                  }
+                  if (line === '') continue;
+                  regular.push({
+                    text: line,
+                    position: [
+                      placed.x,
+                      box.y + rowHeight / 2 + l * lineStep - (widgetFont * 7) / 12,
+                      depth,
+                    ],
+                    fontSize: widgetFont,
+                    color: primaryTextColor,
+                    anchor: 'left',
+                    fontWeight: 'regular',
+                  });
+                }
+                continue;
+              }
 
               /**
                * MEASURE FIRST, TRUNCATE ONLY IF IT DOES NOT FIT — and that order is load-bearing

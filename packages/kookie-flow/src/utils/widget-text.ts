@@ -85,7 +85,15 @@ export interface WidgetTextPlacement {
   muted: boolean;
   /** World width the text may occupy before it has to be truncated. */
   maxWidth: number;
+  /** Wrapped onto as many lines as the box has rows for, rather than cut to one. */
+  multiline?: boolean;
 }
+
+/**
+ * A textarea's line spacing, as a multiple of the widget font. GL steps its wrapped lines by this
+ * and the borrowed `<textarea>` sets it as `line-height`, so opening an edit does not move a line.
+ */
+export const TEXTAREA_LINE_HEIGHT = 1.5;
 
 /**
  * A number as a widget prints it.
@@ -322,8 +330,12 @@ export function widgetValueText(
           ? { text: config.placeholder, x: box.x + pad, anchor: 'left', muted: true, maxWidth: inner }
           : null;
       }
-      // ONE LINE ONLY. `layoutText` has no newline handling — it skips glyphs it cannot find in
-      // the atlas — so a textarea's second line would be laid out straight along the first, on
+      // A textarea wraps: the renderer breaks it into lines and places each one on its own.
+      if (config.type === 'textarea') {
+        return { text: printed, x: box.x + pad, anchor: 'left', muted: false, maxWidth: inner, multiline: true };
+      }
+      // ONE LINE ONLY for a text field. `layoutText` has no newline handling — it skips glyphs it
+      // cannot find in the atlas — so a second line would be laid out straight along the first, on
       // top of it. Cut at the break and say so with an ellipsis instead.
       const brk = printed.indexOf('\n');
       const text = brk >= 0 ? `${printed.slice(0, brk)}…` : printed;
