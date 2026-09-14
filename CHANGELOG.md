@@ -157,6 +157,10 @@ still moving, and a `!` on a heading means something that was there changed shap
   rather than a second, rounder one of its own. `backgroundColor` and `textColor` still override. The comment toolbar, which
   listed a background control that never rendered and a text colour that showed white, now offers
   a note colour.
+- **A wire through a reroute meets the dot.** A reroute has no sockets, so an edge into or out of
+  one fell back to the entity's side edge — 240px to the right of the dot on the way out — and no
+  wire ever passed through a waypoint. Both ends now anchor on the reroute's centre, in the drawn
+  edge and in the edge hit test.
 - **A click on the canvas drew the browser's focus ring around all of it.** The canvas focuses
   itself on every press so its keys work, and focus set by script counts as keyboard focus, so an
   app shell showed a ring around its whole content pane after any click. A press no longer draws

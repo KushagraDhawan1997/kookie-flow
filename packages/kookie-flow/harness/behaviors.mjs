@@ -1138,6 +1138,48 @@ await withPage('count=6&seed=3&grid=0&typed=1&preserveBuffer=1', async (page) =>
 head('edges');
 
 /**
+ * A WIRE THROUGH A REROUTE MEETS THE DOT, FROM BOTH SIDES.
+ *
+ * A reroute has no sockets, so an edge into or out of one fell back to the socketless rule — the
+ * entity's side edge, halfway down its computed height — which for a dot with no width put the
+ * outgoing wire 240px to its right and the incoming one beside it. Nothing covered reroutes, so a
+ * demo note promising they "create custom edge paths" sat next to two dots no wire touched.
+ *
+ * Read off the drawn vertices: the wire in must reach the centre from the left, the wire out must
+ * leave it to the right, each within a ribbon half-width.
+ */
+await withPage('count=1&grid=0', async (page) => {
+  const near = await page.evaluate(async () => {
+    const h = window.__harness;
+    const s = h.store.getState();
+    const dot = { x: 900, y: 420 };
+    s.applyEntityChanges([
+      { type: 'add', entity: { id: 'rr-a', type: 'default', position: { x: 520, y: 260 }, data: { label: 'A' }, inputs: [], outputs: [{ id: 'o', name: 'Out', type: 'any' }] } },
+      { type: 'add', entity: { id: 'rr-b', type: 'default', position: { x: 1100, y: 300 }, data: { label: 'B' }, inputs: [{ id: 'i', name: 'In', type: 'any' }], outputs: [] } },
+      { type: 'add', entity: { id: 'rr-dot', type: 'reroute', position: dot, data: {} } },
+    ]);
+    s.applyEdgeChanges?.([
+      { type: 'add', edge: { id: 'rr-in', source: 'rr-a', sourceSocket: 'o', target: 'rr-dot' } },
+      { type: 'add', edge: { id: 'rr-out', source: 'rr-dot', target: 'rr-b', targetSocket: 'i' } },
+    ]);
+    s.setViewport({ x: 0, y: 0, zoom: 1 });
+    await new Promise((r) => setTimeout(r, 300));
+    const verts = h.drawnVertices();
+    let left = Infinity;
+    let right = Infinity;
+    for (const v of verts) {
+      const d = Math.hypot(v.x - dot.x, v.y - dot.y);
+      if (v.x <= dot.x) left = Math.min(left, d);
+      if (v.x >= dot.x) right = Math.min(right, d);
+    }
+    return { edges: window.__harness.store.getState().edges.length, left, right, hasApply: typeof s.applyEdgeChanges === 'function' };
+  });
+  check('INSTRUMENT: the two reroute edges were added', near.hasApply && near.edges >= 2, JSON.stringify(near));
+  check('a wire into a reroute reaches the dot', near.left <= 6, `nearest vertex from the left ${near.left.toFixed(1)} world px from the centre`);
+  check('and the wire out of it leaves from the dot', near.right <= 6, `nearest vertex from the right ${near.right.toFixed(1)} world px from the centre`);
+});
+
+/**
  * A bezier must end on the socket it names.
  *
  * `edges.tsx` re-derived socket Y with `max(1, out + in) * rowHeight` — a UNIFORM row height —

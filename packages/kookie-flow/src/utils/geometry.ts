@@ -634,10 +634,13 @@ export function getEdgeAtPosition(
      */
     const sourceRim = edge.sourceSocket ? EDGE_SOCKET_RIM : 0;
     const targetRim = edge.targetSocket ? EDGE_SOCKET_RIM : 0;
-    const x0 = getSocketWorldX(sourceEntity, false) + sourceRim;
-    const y0 = sourceEntity.position.y + sourceYOffset;
-    const x1 = getSocketWorldX(targetEntity, true) - targetRim;
-    const y1 = targetEntity.position.y + targetYOffset;
+    // A reroute is its own anchor: the rule edges.tsx draws by, so a press lands on the wire it sees.
+    const sourceIsReroute = sourceEntity.type === 'reroute';
+    const targetIsReroute = targetEntity.type === 'reroute';
+    const x0 = sourceIsReroute ? sourceEntity.position.x : getSocketWorldX(sourceEntity, false) + sourceRim;
+    const y0 = sourceEntity.position.y + (sourceIsReroute ? 0 : sourceYOffset);
+    const x1 = targetIsReroute ? targetEntity.position.x : getSocketWorldX(targetEntity, true) - targetRim;
+    const y1 = targetEntity.position.y + (targetIsReroute ? 0 : targetYOffset);
     const lx0 = x0 + (edge.sourceSocket ? EDGE_LEADER : 0);
     const lx1 = x1 - (edge.targetSocket ? EDGE_LEADER : 0);
 
@@ -734,10 +737,12 @@ export function getEdgePointAtT(
   const sourceYOffset = calculateSocketYOffset(sourceEntity, edge.sourceSocket, false, socketIndexMap, layout);
   const targetYOffset = calculateSocketYOffset(targetEntity, edge.targetSocket, true, socketIndexMap, layout);
 
-  const x0 = getSocketWorldX(sourceEntity, false);
-  const y0 = sourceEntity.position.y + sourceYOffset;
-  const x1 = getSocketWorldX(targetEntity, true);
-  const y1 = targetEntity.position.y + targetYOffset;
+  // A reroute is its own anchor, as in the hit test above and in edges.tsx: a label placed along a
+  // wire through a waypoint would otherwise sit on a line 240px from the one drawn.
+  const x0 = sourceEntity.type === 'reroute' ? sourceEntity.position.x : getSocketWorldX(sourceEntity, false);
+  const y0 = sourceEntity.position.y + (sourceEntity.type === 'reroute' ? 0 : sourceYOffset);
+  const x1 = targetEntity.type === 'reroute' ? targetEntity.position.x : getSocketWorldX(targetEntity, true);
+  const y1 = targetEntity.position.y + (targetEntity.type === 'reroute' ? 0 : targetYOffset);
 
   const edgeType = edge.type ?? defaultEdgeType;
 

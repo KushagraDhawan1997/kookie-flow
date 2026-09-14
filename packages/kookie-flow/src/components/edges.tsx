@@ -1243,10 +1243,18 @@ export function Edges({
          * curve takes over. The leader is what gives the join a direction you can read, and it is
          * why the curve no longer has to aim at a point it cannot reach.
          */
-        const cx0 = getSocketWorldX(sourceEntity, false);
-        const cy0 = sourceEntity.position.y + sourceYOffset;
-        const cx1p = getSocketWorldX(targetEntity, true);
-        const cy1p = targetEntity.position.y + targetYOffset;
+        /**
+         * A REROUTE IS ITS OWN ANCHOR. Its position is the dot's centre and it has no sockets, so the
+         * socketless fallback — the entity's side edge, halfway down its computed height — put a
+         * wire's end 240px to the right of the dot on the way out and beside it on the way in: a
+         * waypoint no wire ever passed through. Both ends meet the dot instead.
+         */
+        const sourceIsReroute = sourceEntity.type === 'reroute';
+        const targetIsReroute = targetEntity.type === 'reroute';
+        const cx0 = sourceIsReroute ? sourceEntity.position.x : getSocketWorldX(sourceEntity, false);
+        const cy0 = sourceEntity.position.y + (sourceIsReroute ? 0 : sourceYOffset);
+        const cx1p = targetIsReroute ? targetEntity.position.x : getSocketWorldX(targetEntity, true);
+        const cy1p = targetEntity.position.y + (targetIsReroute ? 0 : targetYOffset);
         // An edge that names no socket lands on the entity's centre, where there is no rim to
         // leave from and no axis to leave along: it keeps the old behaviour.
         const sourceRim = sourceSocketInfo ? EDGE_SOCKET_RIM : 0;
