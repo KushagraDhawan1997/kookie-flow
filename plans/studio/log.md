@@ -7,6 +7,86 @@
 
 ## 2026-09-14, the editor's chrome and its faces
 
+### Right-click adds a node
+
+Asked after the empty state. A right-click on the canvas opens v2's `ContextMenu`: "Add node" over
+one submenu per category, in the catalog's order. A node chosen there lands with its corner where
+the right-click was. The canvas box is the trigger itself, through `render`, and the rows live in
+`canvas-menu.tsx`. `onAdd` takes an optional position for it; + and ⌘K still place new nodes in the
+middle of the view.
+
+The menu opens on empty canvas only. Over a node, the minimap or a node's toolbar, the handler
+stands Base UI down and refuses the platform's menu as well, since that menu means nothing over a
+graph. A text field keeps the platform's menu. Whether a node is under the pointer is read from the
+flow store's `hoveredEntityId`, once per right-click: a `StoreBridge` inside the canvas hands the
+store out, rather than a subscription copying the hover out on every store write. The minimap takes
+a `kd-minimap` class so the handler can tell it apart.
+
+Verified in a browser, light and dark, each on a new graph. A right-click on empty canvas opens the
+menu at the pointer, with the platform's menu refused. Its rows are Sources, Text, Math, Video and
+AI. Math opens its nodes, and Clamp lands exactly at the right-clicked point and closes the menu. A
+right-click on the node or on the minimap opens nothing and still refuses the platform's menu.
+Escape closes the menu without adding anything, undo takes the node back, and a left-click still
+selects. No page or console errors. `tsc` is clean for studio.
+
+The first run failed one check, and the check was wrong: Base UI stops the event after refusing the
+platform's menu, so a listener on the window never saw it. The check now listens in the capture
+phase. Not checked: opening the menu from the keyboard.
+
+### The inspector's empty state
+
+Asked with a screenshot of the pane holding one line of grey text. The pane now shows the empty
+state from v2's docs blocks, copied to `src/app/empty-state.tsx` because studio cannot import from
+v2's docs app: a title and one sentence, centred, with the title a span rather than a heading. It
+comes in two versions, as the builder's Layers panel does. A graph with no nodes says "No nodes
+yet" and points at +. A graph with nodes and nothing selected says "Nothing selected" and says to
+click a node. Neither has an action, because what fills the pane happens on the canvas. It sits
+straight in the pane rather than in a scroller, whose content has no height, so it centres in the
+pane.
+
+Verified in a browser, light and dark, each on a new graph. Both versions show the right words,
+centre exactly across and down the pane, and add no heading. + still opens the palette, choosing a
+node closes it, clicking the canvas shows "Nothing selected", and clicking the node brings its
+settings back. No page or console errors. `tsc` is clean for studio.
+
+### The canvas runs under the inspector, which is glass
+
+Asked once the inspector floated: nothing passed behind it, so it could not be glass. The inspector
+states `backdrop`, and the canvas container is the whole content pane again, undoing the stop in
+the entry below. That stop had two reasons, and each now has its own answer:
+
+- **The minimap** sat at the container's bottom-right, which is now under the pane, and had no way
+  to move. The library's `MinimapProps` gains `style`, applied after the minimap's own inline
+  styles, which a stylesheet rule cannot beat. Studio passes
+  `right: calc(10px + var(--kui-shell-inset-inline-end, 0px))`. The changelog, the minimap docs
+  page and a test (`minimap.dom.test.tsx`, "lets a stated style win over its corner") carry it.
+- **A new node landed at the container's centre.** The canvas now holds an inert box that stops at
+  the reach, and `placeAt` measures that instead. `containerRef` is renamed `visibleRef`.
+
+Closing the inspector no longer resizes the GL surface; only the minimap moves.
+
+Verified in a browser, light and dark. The canvas and its GL surface reach the window's edge under
+the pane. The pane is translucent with a backdrop filter and still takes its own presses; the canvas
+beside it takes its presses too. The measured box ends one gap (8px) short of the pane. The minimap
+sits 18px clear of the pane, goes back to 10px from the corner when the pane closes, and clears the
+pane again when it reopens. A node added with + lands at x 552, the middle of the part in view,
+where the whole canvas's middle is 720. No page errors or inset warnings. `tsc` is clean for studio
+and the library, and the minimap tests pass (7/7).
+
+### The inspector floats
+
+Asked after the v2 builder got the same. `ShellInspector` takes `flush={false}` and drops
+`width={320}`, which only restated the frame's token: the reach the content pane publishes is
+derived from the token, so a pane stating its own width drifts from it. The canvas container now
+ends at `--kui-shell-inset-inline-end` instead of running under the pane, because the minimap has
+no style prop and sits at the container's bottom-right, and a new node lands at the container's
+centre.
+
+Verified in a browser, light and dark. The pane sits 8px off the window's edges and the published
+reach matches it (336px). The canvas ends 8px short of it, the header's controls and the minimap
+clear it, and closing the pane gives the canvas the full width back. No page errors or inset
+warnings. `tsc` is clean for studio.
+
 ### + is loud
 
 Asked with a screenshot of the strip. The + button takes `emphasis="loud"`, since it is the way into

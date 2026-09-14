@@ -74,7 +74,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   const { entities, edges, onEntitiesChange, onEdgesChange, undo, redo, canUndo, canRedo } = graph;
   const { onConnect: connectEdge } = graph;
   const flowRef = React.useRef<KookieFlowInstance | null>(null);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const visibleRef = React.useRef<HTMLDivElement | null>(null);
   const [name, setName] = React.useState(initialName);
   const autosave = useAutosave(id, entities, edges, name, flowRef, initial, revision);
 
@@ -106,13 +106,14 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   }, [initial]);
 
   /**
-   * Where a node from the library lands: the middle of what is on screen, moved down and across
-   * past anything already there. Nodes placed earlier in the same batch count too — they are not
-   * in the graph yet, so without remembering them a batch of five would stack on one spot.
+   * Where a node from the library lands: the middle of the canvas the inspector leaves in view,
+   * moved down and across past anything already there. Nodes placed earlier in the same batch count
+   * too — they are not in the graph yet, so without remembering them a batch of five would stack on
+   * one spot.
    */
   const placeAt = React.useCallback((taken: XYPosition[]) => {
     const flow = flowRef.current;
-    const el = containerRef.current;
+    const el = visibleRef.current;
     let x = 0;
     let y = 0;
     if (flow && el) {
@@ -248,7 +249,11 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     [applyOps]
   );
   const onRemove = React.useCallback((nodeId: string) => applyOps([{ op: 'remove_node', id: nodeId }]), [applyOps]);
-  const onAdd = React.useCallback((type: string) => applyOps([{ op: 'add_node', type }]), [applyOps]);
+  /** Without a position, a node lands where `placeAt` puts it; the canvas's menu passes the click's. */
+  const onAdd = React.useCallback(
+    (type: string, position?: XYPosition) => applyOps([{ op: 'add_node', type, position }]),
+    [applyOps]
+  );
 
   return (
     <Box height="100dvh">
@@ -305,7 +310,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           </ShellPaneHeader>
           <Canvas
             flowRef={flowRef}
-            containerRef={containerRef}
+            visibleRef={visibleRef}
             bus={bus}
             entities={entities}
             edges={edges}
@@ -319,6 +324,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             onViewport={autosave.noteViewport}
             onUndo={stepBack}
             onRedo={stepForward}
+            onAdd={onAdd}
           />
           {/* Halfway down the left edge, in line with the header's own inset. */}
           <Box
@@ -350,7 +356,10 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           </ShellPaneFooter>
         </ShellContent>
 
-        <ShellInspector aria-label="Inspector" defaultOpen width={320}>
+        {/* Not flush: it floats with the frame's gap around it, and the graph runs on under it, so
+            it states `backdrop` and is glass over the graph. No `width`: the pane takes the frame's
+            own token, so the reach the minimap and the bands clear by is this pane's real extent. */}
+        <ShellInspector aria-label="Inspector" flush={false} backdrop defaultOpen>
           <Inspector
             entities={entities}
             edges={edges}

@@ -24,6 +24,7 @@ import {
 import type { Edge, Entity, EvaluationStatus, KookieFlowInstance, WidgetType } from '@kushagradhawan/kookie-flow';
 import { isMediaRef, registry, SOCKET_TYPES, valueBag, type SocketSpec } from 'studio-core';
 
+import { EmptyState } from '@/app/empty-state';
 import { RunIcon, TrashIcon } from '@/app/icons';
 import type { EditorBus } from './editor-bus';
 
@@ -68,11 +69,15 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
     return map;
   }, [edges, entity]);
 
+  // The two emptinesses read differently, as the builder's Layers panel's do: telling someone to
+  // click a node on a graph with none sends them looking for something that is not there. Neither
+  // has an action, because what fills this pane happens on the canvas. Straight in the pane rather
+  // than in a scroller, whose content has no height, so the state centres in the pane's.
   if (!entity) {
-    return (
-      <ShellScroll>
-        <Text emphasis="medium">Select a node to see its settings.</Text>
-      </ShellScroll>
+    return entities.length === 0 ? (
+      <EmptyState title="No nodes yet" description="Press + beside the canvas to add one." />
+    ) : (
+      <EmptyState title="Nothing selected" description="Click a node on the canvas to see its settings." />
     );
   }
 

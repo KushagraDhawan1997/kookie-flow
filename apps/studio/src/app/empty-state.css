@@ -1,0 +1,21 @@
+/* The empty state's own half, copied with the block (see empty-state.tsx). Every length is a token
+   or a text measure, so nothing here decides a value the package has not.
+
+   It centres its prose, the one place the app does: an empty state is one object read at a glance,
+   not a column. `block-size: 100%` lets it centre in a region that has a height, and in one that
+   does not it hugs. `42ch` holds the measure, since centred lines without one make the reader hunt
+   for where each starts. */
+.kd-empty {
+  block-size: 100%;
+  text-align: center;
+  max-inline-size: 42ch;
+  margin-inline: auto;
+}
+
+/* The mark is one line of the title, step 5, so the caller passes no size. `display: block` so an
+   inline svg does not reserve descender space under itself. */
+.kd-empty-mark > :first-child {
+  display: block;
+  inline-size: var(--line-height-5);
+  block-size: var(--line-height-5);
+}
