@@ -17,7 +17,7 @@ function scripted(answers: Answer[]) {
     if (init?.signal?.aborted) throw new Error('aborted');
     const next = answers.shift();
     if (!next) throw new Error(`no answer scripted for ${url}`);
-    return new Response(JSON.stringify(next.body), {
+    return new Response(next.status === 204 ? null : JSON.stringify(next.body), {
       status: next.status,
       headers: { 'content-type': 'application/json' },
     });
@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 describe('the jobs port', () => {
-  it('submits, polls by id until the job is done, and reports how far along it is', async () => {
+  it('submits, polls by id until the job is done, and reports only the progress it was given', async () => {
     const calls = scripted([
       { status: 200, body: { id: 'j1', status: 'queued' } },
       { status: 200, body: { id: 'j1', status: 'running', progress: 0.5 } },
@@ -70,14 +70,15 @@ describe('the jobs port', () => {
       { url: '/api/jobs/j1', method: 'GET' },
       { url: '/api/jobs/j1', method: 'GET' },
     ]);
-    expect(progress.mock.calls.map((c) => c[0])).toEqual([0.05, 0.5, 1]);
+    // Queued says nothing, so the ring keeps travelling; only the provider's 0.5 is a number.
+    expect(progress.mock.calls.map((c) => c[0])).toEqual([0.5]);
   });
 
   it('answers at once when the server already has the result', async () => {
     const calls = scripted([
       { status: 200, body: { id: 'j2', status: 'succeeded', output: { image: 1 } } },
     ]);
-    expect((await settle(request())).output).toEqual({ image: 1 });
+    expect((await settle(request()))?.output).toEqual({ image: 1 });
     expect(calls).toHaveLength(1);
   });
 
@@ -87,7 +88,7 @@ describe('the jobs port', () => {
       { status: 502, body: { error: 'gateway' } },
       { status: 200, body: { id: 'j3', status: 'succeeded', output: {} } },
     ]);
-    expect((await settle(request())).output).toEqual({});
+    expect((await settle(request()))?.output).toEqual({});
 
     scripted([
       { status: 200, body: { id: 'j4', status: 'running' } },
@@ -109,6 +110,21 @@ describe('the jobs port', () => {
       { status: 200, body: { id: 'j6', status: 'failed', error: 'prompt is empty' } },
     ]);
     await expect(settle(request())).rejects.toThrow('prompt is empty');
+  });
+
+  it('a restore answers nothing, and polls nothing, when the job was never asked for', async () => {
+    const calls = scripted([{ status: 204, body: null }]);
+    const result = await settle(
+      ports.jobs.run({
+        entityId: 'n1',
+        task: 'text-to-image',
+        input: { prompt: '' },
+        restore: true,
+        signal: new AbortController().signal,
+      })
+    );
+    expect(result).toBeNull();
+    expect(calls).toEqual([{ url: '/api/jobs', method: 'POST' }]);
   });
 
   it('surfaces a refused submission with its reason', async () => {

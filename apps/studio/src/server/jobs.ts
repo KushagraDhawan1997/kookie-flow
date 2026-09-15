@@ -16,8 +16,17 @@
  */
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { canonicalJson, isMediaRef, probeMedia, sha256, type MediaRef } from 'studio-core';
+import {
+  canonicalJson,
+  estimateModelMicros,
+  isMediaRef,
+  probeMedia,
+  sha256,
+  withFee,
+  type MediaRef,
+} from 'studio-core';
 import type { JobStatus, JobView } from '@/shared/jobs';
+import { billingEnabled, hold, settle } from './billing';
 import { getDb, type Db } from './db';
 import { assets, jobs, LOCAL_WORKSPACE, type JobRow } from './db/schema';
 import { getProvider, providerById } from './providers';
@@ -93,9 +102,21 @@ export function toView(row: JobRow, progress?: number): JobView {
   if (row.output) view.output = row.output;
   if (row.error) view.error = row.error;
   if (row.cost !== null) view.cost = row.cost;
+  if (row.modelMicros !== null && row.feeMicros !== null) {
+    view.charge = {
+      model: row.modelMicros,
+      fee: row.feeMicros,
+      total: row.modelMicros + row.feeMicros,
+    };
+  }
   return view;
 }
 
+/**
+ * Move a row, and settle its money when the move ends it. Every ending passes through here — a
+ * refused submission, a failure the provider reports, a cancel, a finished result — so no ending
+ * can leave a hold behind.
+ */
 async function setStatus(
   db: Db,
   row: JobRow,
@@ -108,7 +129,8 @@ async function setStatus(
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(jobs.id, row.id))
     .returning();
-  return updated ?? { ...row, ...patch };
+  const next = updated ?? { ...row, ...patch };
+  return next.billing === 'held' ? settle(db, next) : next;
 }
 
 export async function getJob(id: string, workspaceId = LOCAL_WORKSPACE): Promise<JobRow | null> {
@@ -122,12 +144,14 @@ export async function getJob(id: string, workspaceId = LOCAL_WORKSPACE): Promise
 }
 
 /**
- * The row that answers an ask: the one already holding its key, else a new one submitted now.
- *
- * A submission that fails is a failed row, not a thrown request: the failure is the job's, it is
- * recorded where the next ask can see it, and the browser reads it off the status like any other.
+ * The row already answering an ask — queued, running or finished — or null. Never submits: this is
+ * what a graph opening asks, so it gets back what was made and pays for nothing.
  */
-export async function findOrSubmit(ask: JobAsk, workspaceId = LOCAL_WORKSPACE): Promise<JobRow> {
+export async function findJob(ask: JobAsk, workspaceId = LOCAL_WORKSPACE): Promise<JobRow | null> {
+  return (await lookUp(ask, workspaceId)).found;
+}
+
+async function lookUp(ask: JobAsk, workspaceId: string) {
   const provider = getProvider();
   const model = provider.model(ask.task, ask.input);
   if (!model) throw new BadJobRequest(`${provider.id} cannot run ${ask.task || '(no task)'}`);
@@ -146,23 +170,52 @@ export async function findOrSubmit(ask: JobAsk, workspaceId = LOCAL_WORKSPACE): 
     )
     .orderBy(desc(jobs.createdAt))
     .limit(1);
+  return { provider, model, key, db, found: found ?? null };
+}
+
+/**
+ * The row that answers an ask: the one already holding its key, else a new one submitted now.
+ *
+ * A submission that fails is a failed row, not a thrown request: the failure is the job's, it is
+ * recorded where the next ask can see it, and the browser reads it off the status like any other.
+ *
+ * With billing on, the estimate plus the fee is held in the same transaction as the insert, and a
+ * balance that cannot cover it throws `InsufficientBalance` with no row written. An ask answered
+ * by an existing row holds nothing: it was already paid for.
+ */
+export async function findOrSubmit(ask: JobAsk, workspaceId = LOCAL_WORKSPACE): Promise<JobRow> {
+  const { provider, model, key, db, found } = await lookUp(ask, workspaceId);
   if (found) return found;
 
-  const [row] = await db
-    .insert(jobs)
-    .values({
-      id: jobId(),
-      workspaceId,
-      graphId: ask.graphId ?? null,
-      nodeId: ask.nodeId ?? null,
-      provider: provider.id,
-      task: ask.task,
-      model,
-      key,
-      status: 'queued',
-      input: ask.input,
-    })
-    .returning();
+  const values = {
+    id: jobId(),
+    workspaceId,
+    graphId: ask.graphId ?? null,
+    nodeId: ask.nodeId ?? null,
+    provider: provider.id,
+    task: ask.task,
+    model,
+    key,
+    status: 'queued' as const,
+    input: ask.input,
+  };
+
+  let row: JobRow | undefined;
+  if (billingEnabled()) {
+    const estimate = estimateModelMicros(ask.task, ask.input);
+    if (estimate === undefined) throw new BadJobRequest(`${ask.task} has no price yet, so it cannot run`);
+    const charge = withFee(estimate);
+    row = await db.transaction(async (tx) => {
+      await hold(tx, workspaceId, values.id, charge);
+      const [inserted] = await tx
+        .insert(jobs)
+        .values({ ...values, billing: 'held', holdMicros: charge.total })
+        .returning();
+      return inserted;
+    });
+  } else {
+    [row] = await db.insert(jobs).values(values).returning();
+  }
   if (!row) throw new Error('insert returned nothing');
 
   try {

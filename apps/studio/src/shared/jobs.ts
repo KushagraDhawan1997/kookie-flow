@@ -15,8 +15,10 @@ export interface JobView {
   output?: Record<string, unknown>;
   /** What went wrong, on `failed`. */
   error?: string;
-  /** In credits, once known. */
+  /** Unused since billing moved to micros. */
   cost?: number;
+  /** What the run was charged, in micros, once it succeeded with billing on. */
+  charge?: { model: number; fee: number; total: number };
 }
 
 /** Still going: worth asking again. */

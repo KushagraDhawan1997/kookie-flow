@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cancel, getJob, refresh, toView } from '@/server/jobs';
+import { currentUser, signInRequired } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,10 @@ type Params = { params: Promise<{ id: string }> };
  * A fault reaching the provider is a 502 and changes nothing on the row; the browser asks again.
  */
 export async function GET(_request: Request, { params }: Params) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const { id } = await params;
-  const row = await getJob(id);
+  const row = await getJob(id, user.id);
   if (!row) return NextResponse.json({ error: 'not found' }, { status: 404 });
   try {
     const fresh = await refresh(row);
@@ -28,8 +31,10 @@ export async function GET(_request: Request, { params }: Params) {
 
 /** Stop a pending job. A settled one is answered as it stands. */
 export async function DELETE(_request: Request, { params }: Params) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const { id } = await params;
-  const row = await getJob(id);
+  const row = await getJob(id, user.id);
   if (!row) return NextResponse.json({ error: 'not found' }, { status: 404 });
   try {
     return NextResponse.json(toView(await cancel(row)));

@@ -1,15 +1,18 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Box, Card, Code, Flex, Heading, Link, Stack, Text } from '@kookie-ui/react';
 import NextLink from 'next/link';
 import { parseDocument } from 'studio-core';
 import { getGraph } from '@/server/graphs';
+import { currentUser } from '@/server/session';
 import { Editor } from '@/editor/editor';
 
 export const dynamic = 'force-dynamic';
 
 export default async function GraphPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const row = await getGraph(id);
+  const user = await currentUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(`/g/${id}`)}`);
+  const row = await getGraph(id, user.id);
   if (!row) notFound();
   const doc = parseDocument(row.doc);
 

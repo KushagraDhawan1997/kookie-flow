@@ -36,6 +36,7 @@ import {
 } from 'studio-core';
 
 import { AppearanceToggle } from '@/app/appearance-toggle';
+import { BalanceMenu } from '@/app/balance-menu';
 import { PanelRightIcon, RedoIcon, RunIcon, UndoIcon } from '@/app/icons';
 import { Wordmark } from '@/app/wordmark';
 import { ports } from '@/runtime/ports';
@@ -100,9 +101,10 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
       flow.setViewport(carried.doc.viewport);
     }
     // A loaded graph is marked stale by nothing: the store is created holding these same entities
-    // and edges, so the first sync diffs to nothing. Run all of it once so the board opens with
-    // every value on screen rather than every node waiting.
-    void flow.evaluateAll();
+    // and edges, so the first sync diffs to nothing. Restore all of it once so the board opens with
+    // every value on screen: cheap nodes run, and paid ones fetch what they already made but submit
+    // nothing, since opening a graph is not pressing Run.
+    void flow.restoreAll();
   }, [initial]);
 
   /**
@@ -297,6 +299,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
                 >
                   Run
                 </SplitButton>
+                <BalanceMenu inToolbar />
                 <ShellTrigger
                   target="inspector"
                   render={
@@ -358,8 +361,10 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
 
         {/* Not flush: it floats with the frame's gap around it, and the graph runs on under it, so
             it states `backdrop` and is glass over the graph. No `width`: the pane takes the frame's
-            own token, so the reach the minimap and the bands clear by is this pane's real extent. */}
-        <ShellInspector aria-label="Inspector" flush={false} backdrop defaultOpen>
+            own token, so the reach the minimap and the bands clear by is this pane's real extent.
+            Closed by default: the node already carries every control, so the pane is opened only
+            for what the card cannot show — the description, the label, a long prompt at full width. */}
+        <ShellInspector aria-label="Inspector" flush={false} backdrop>
           <Inspector
             entities={entities}
             edges={edges}

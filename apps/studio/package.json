@@ -21,11 +21,13 @@
     "@kushagradhawan/kookie-flow": "workspace:*",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
+    "better-auth": "1.7.4",
     "drizzle-orm": "^0.45.2",
     "next": "^16.3.5",
     "postgres": "^3.4.9",
     "react": "~19.2.8",
     "react-dom": "~19.2.8",
+    "stripe": "22.6.2",
     "studio-core": "workspace:*",
     "three": "^0.186.0",
     "zod": "^4.6.2"

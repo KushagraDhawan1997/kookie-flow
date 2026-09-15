@@ -22,7 +22,18 @@ import {
   TextField,
 } from '@kookie-ui/react';
 import type { Edge, Entity, EvaluationStatus, KookieFlowInstance, WidgetType } from '@kushagradhawan/kookie-flow';
-import { isMediaRef, registry, SOCKET_TYPES, valueBag, type SocketSpec } from 'studio-core';
+import {
+  estimateModelMicros,
+  formatUsd,
+  isMediaRef,
+  MARKUP,
+  registry,
+  SOCKET_TYPES,
+  TASK_BY_NODE_TYPE,
+  valueBag,
+  withFee,
+  type SocketSpec,
+} from 'studio-core';
 
 import { EmptyState } from '@/app/empty-state';
 import { RunIcon, TrashIcon } from '@/app/icons';
@@ -93,18 +104,31 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
   const message = bus.message(entity.id);
   const values = valueBag(entity);
 
+  // The price of pressing Run, quoted with the same table the server charges from. Inputs resolve as
+  // the engine resolves them: a wired one reads what its source holds, the rest their own value.
+  const task = TASK_BY_NODE_TYPE[entity.type];
+  let quote: ReturnType<typeof withFee> | null = null;
+  if (def && task) {
+    const resolved: Record<string, unknown> = {};
+    for (const [id, spec] of Object.entries(def.inputs)) {
+      const edge = wired.get(id);
+      resolved[id] =
+        edge && edge.sourceSocket ? flow?.getSocketValue(edge.source, edge.sourceSocket) : (values[id] ?? spec.default);
+    }
+    const model = estimateModelMicros(task, resolved);
+    if (model !== undefined) quote = withFee(model);
+  }
+
   return (
     <>
       <ShellScroll>
         <Stack gap="5">
           <Stack gap="1">
-            <Heading size="4">{def?.label ?? entity.type}</Heading>
-            <Code size="1">{entity.id} · {entity.type}</Code>
-            {def && (
-              <Text size="2" emphasis="medium">
-                {def.description}
-              </Text>
-            )}
+            <Heading size="4">{def?.label ?? 'Unknown node'}</Heading>
+            {/* The summary, not the description: that one is written for the agent. */}
+            <Text size="2" emphasis="medium">
+              {def?.summary ?? 'This node type no longer exists.'}
+            </Text>
           </Stack>
 
           <Field>
@@ -164,6 +188,12 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
         </Stack>
       </ShellScroll>
       <ShellPaneFooter>
+        {quote && (
+          <Text size="1" emphasis="medium" style={{ display: 'block', marginBlockEnd: 'var(--space-2)' }}>
+            About {formatUsd(quote.total)} to run: model {formatUsd(quote.model)} + {Math.round(MARKUP * 100)}% fee{' '}
+            {formatUsd(quote.fee)}
+          </Text>
+        )}
         <Flex justify="space-between" align="center" gap="2">
           <Button
             emphasis="loud"
@@ -295,12 +325,16 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
       break;
     case 'select':
       control = (
-        <Select value={typeof value === 'string' ? value : undefined} onValueChange={(v) => v !== null && onChange(v)}>
+        <Select
+          value={typeof value === 'string' ? value : undefined}
+          onValueChange={(v) => v !== null && onChange(v)}
+          items={spec.optionLabels}
+        >
           <SelectTrigger placeholder="Choose" />
           <SelectContent>
             {(spec.options ?? []).map((o) => (
               <SelectItem key={o} value={o}>
-                {o}
+                {spec.optionLabels?.[o] ?? o}
               </SelectItem>
             ))}
           </SelectContent>

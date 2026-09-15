@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isMediaRef } from 'studio-core';
-import { BadJobRequest, cancel, findOrSubmit, getJob, refresh } from './jobs';
+import { BadJobRequest, cancel, findJob, findOrSubmit, getJob, refresh } from './jobs';
 
 const DELAY = 400;
 let dataDir: string;
@@ -112,6 +112,15 @@ describe('the job pipeline', () => {
     } finally {
       process.env.STUDIO_PROVIDER = 'mock';
     }
+  });
+
+  it('finds an ask already made, and never submits one that was not', async () => {
+    const ask = { task: 'gpt-image-2.5', input: { prompt: '', seed: 6 } };
+    expect(await findJob(ask)).toBeNull();
+    // Asking again still finds nothing: the look made no row.
+    expect(await findJob(ask)).toBeNull();
+    const row = await findOrSubmit(ask);
+    expect((await findJob(ask))?.id).toBe(row.id);
   });
 
   it('refuses a task nobody can run', async () => {

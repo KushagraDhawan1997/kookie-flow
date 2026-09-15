@@ -2,14 +2,17 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { parseDocument, type GraphDocument } from 'studio-core';
 import { deleteGraph, getGraph, updateGraph } from '@/server/graphs';
+import { currentUser, signInRequired } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const { id } = await params;
-  const row = await getGraph(id);
+  const row = await getGraph(id, user.id);
   if (!row) return NextResponse.json({ error: 'not found' }, { status: 404 });
   return NextResponse.json({
     id: row.id,
@@ -38,6 +41,8 @@ const PutBody = z.object({
  * document still lands.
  */
 export async function PUT(request: Request, { params }: Params) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const { id } = await params;
   const body = PutBody.safeParse(await request.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: body.error.message }, { status: 400 });
@@ -56,10 +61,12 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'nothing to write' }, { status: 400 });
   }
 
-  const result = await updateGraph(id, patch, {
-    revision: body.data.revision,
-    supersedes: body.data.supersedes,
-  });
+  const result = await updateGraph(
+    id,
+    patch,
+    { revision: body.data.revision, supersedes: body.data.supersedes },
+    user.id
+  );
   if (result.kind === 'missing') return NextResponse.json({ error: 'not found' }, { status: 404 });
   if (result.kind === 'stale') {
     // Someone else wrote this graph since the client loaded it. Refusing is the whole point:
@@ -76,8 +83,10 @@ export async function PUT(request: Request, { params }: Params) {
 export const POST = PUT;
 
 export async function DELETE(_request: Request, { params }: Params) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const { id } = await params;
-  const gone = await deleteGraph(id);
+  const gone = await deleteGraph(id, user.id);
   return gone
     ? new NextResponse(null, { status: 204 })
     : NextResponse.json({ error: 'not found' }, { status: 404 });

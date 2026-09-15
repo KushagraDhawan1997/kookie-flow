@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sha256 } from 'studio-core';
 import { getDb } from '@/server/db';
-import { assets, LOCAL_WORKSPACE } from '@/server/db/schema';
+import { assets } from '@/server/db/schema';
+import { currentUser, signInRequired } from '@/server/session';
 import { getStorage, storageKey } from '@/server/storage';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,8 @@ function seconds(form: FormData, name: string): number | null {
  * refused, several times over for a handful of concurrent requests.
  */
 export async function POST(request: Request) {
+  const user = await currentUser();
+  if (!user) return signInRequired();
   const declared = Number(request.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > MAX_BYTES) {
     return NextResponse.json({ error: 'file too large' }, { status: 413 });
@@ -67,7 +70,7 @@ export async function POST(request: Request) {
     .insert(assets)
     .values({
       id: hash,
-      workspaceId: LOCAL_WORKSPACE,
+      workspaceId: user.id,
       key,
       mime: file.type,
       bytes: bytes.byteLength,
