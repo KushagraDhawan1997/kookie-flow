@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { documentFingerprint, emptyDocument, parseDocument, type GraphDocument } from 'studio-core';
+import { documentFingerprint, emptyDocument, parseDocument, registry, type GraphDocument } from 'studio-core';
 import { getDb } from './db';
 import { graphs, jobs, LOCAL_WORKSPACE } from './db/schema';
 
@@ -10,27 +10,67 @@ export interface GraphSummary {
   updatedAt: string;
   /** The newest picture a run in this graph made, for the card. Null until one has. */
   cover: string | null;
-  /** Where the nodes sit, so a graph with no picture yet still shows its own shape. */
-  layout: { x: number; y: number; w: number; h: number }[];
+  /** Where the nodes sit and how they are wired, so a graph with no picture yet shows its shape. */
+  layout: GraphLayout;
+}
+
+export interface GraphLayout {
+  /** `media` marks a node with a picture band, drawn as a tinted top. */
+  nodes: { x: number; y: number; w: number; h: number; media: boolean }[];
+  /** From a source's right edge to a target's left edge, as the canvas draws them. */
+  wires: { x1: number; y1: number; x2: number; y2: number }[];
 }
 
 /** Node boxes kept per card: enough to read the graph's shape, small enough to stay cheap. */
 const LAYOUT_LIMIT = 48;
+const WIRE_LIMIT = 96;
 
-/** A node with no stated size draws at the editor's placement box. */
-const DEFAULT_BOX = { w: 240, h: 180 };
+/**
+ * A saved node drops a size that equals its type's own (`stripResolved`), so the size comes back
+ * from the type table here. Heights are not in the table — the canvas measures them — so a node is
+ * drawn at a typical height: taller with a picture band, since the band is most of such a node.
+ */
+const FALLBACK_WIDTH = 220;
+const PLAIN_HEIGHT = 120;
+const MEDIA_HEIGHT = 260;
 
-/** The database hands back `[x, y, w, h]` rows; anything that is not a finite position is dropped. */
-function readLayout(raw: unknown): GraphSummary['layout'] {
-  if (!Array.isArray(raw)) return [];
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  return raw.flatMap((row) => {
-    if (!Array.isArray(row)) return [];
-    const x = num(row[0]);
-    const y = num(row[1]);
-    if (x === null || y === null) return [];
-    return [{ x, y, w: num(row[2]) ?? DEFAULT_BOX.w, h: num(row[3]) ?? DEFAULT_BOX.h }];
-  });
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/**
+ * The database hands back `[id, type, x, y, w, h]` node rows and `[source, target]` wire rows;
+ * anything without a finite position is dropped, and a wire whose end was dropped goes with it.
+ */
+function readLayout(rawNodes: unknown, rawWires: unknown): GraphLayout {
+  const types = registry.entityTypes();
+  const byId = new Map<string, GraphLayout['nodes'][number]>();
+  if (Array.isArray(rawNodes)) {
+    for (const row of rawNodes) {
+      if (!Array.isArray(row) || typeof row[0] !== 'string') continue;
+      const x = num(row[2]);
+      const y = num(row[3]);
+      if (x === null || y === null) continue;
+      const type = typeof row[1] === 'string' ? types[row[1]] : undefined;
+      const media = type?.preview !== undefined;
+      byId.set(row[0], {
+        x,
+        y,
+        w: num(row[4]) ?? type?.defaultWidth ?? FALLBACK_WIDTH,
+        h: num(row[5]) ?? type?.defaultHeight ?? (media ? MEDIA_HEIGHT : PLAIN_HEIGHT),
+        media,
+      });
+    }
+  }
+  const wires: GraphLayout['wires'] = [];
+  if (Array.isArray(rawWires)) {
+    for (const row of rawWires) {
+      if (!Array.isArray(row)) continue;
+      const a = typeof row[0] === 'string' ? byId.get(row[0]) : undefined;
+      const b = typeof row[1] === 'string' ? byId.get(row[1]) : undefined;
+      if (!a || !b) continue;
+      wires.push({ x1: a.x + a.w, y1: a.y + a.h / 2, x2: b.x, y2: b.y + b.h / 2 });
+    }
+  }
+  return { nodes: [...byId.values()], wires };
 }
 
 export async function listGraphs(workspaceId = LOCAL_WORKSPACE): Promise<GraphSummary[]> {
@@ -45,12 +85,21 @@ export async function listGraphs(workspaceId = LOCAL_WORKSPACE): Promise<GraphSu
       nodeCount: sql<number>`coalesce(jsonb_array_length(case when jsonb_typeof(${graphs.doc} -> 'entities') = 'array' then ${graphs.doc} -> 'entities' end), 0)`,
       // Only the boxes leave the database, never the document: the same reason as the count.
       layout: sql<unknown>`(
-        select coalesce(jsonb_agg(jsonb_build_array(e -> 'position' -> 'x', e -> 'position' -> 'y', e -> 'width', e -> 'height')), '[]'::jsonb)
+        select coalesce(jsonb_agg(jsonb_build_array(e -> 'id', e -> 'type', e -> 'position' -> 'x', e -> 'position' -> 'y', e -> 'width', e -> 'height')), '[]'::jsonb)
         from (
           select e from jsonb_array_elements(
             case when jsonb_typeof("graphs"."doc" -> 'entities') = 'array' then "graphs"."doc" -> 'entities' else '[]'::jsonb end
           ) e
           limit ${sql.raw(String(LAYOUT_LIMIT))}
+        ) s
+      )`,
+      wires: sql<unknown>`(
+        select coalesce(jsonb_agg(jsonb_build_array(e -> 'source', e -> 'target')), '[]'::jsonb)
+        from (
+          select e from jsonb_array_elements(
+            case when jsonb_typeof("graphs"."doc" -> 'edges') = 'array' then "graphs"."doc" -> 'edges' else '[]'::jsonb end
+          ) e
+          limit ${sql.raw(String(WIRE_LIMIT))}
         ) s
       )`,
       // THE OUTER COLUMNS ARE SPELLED OUT. In a single-table select Drizzle writes `${graphs.id}`
@@ -76,7 +125,7 @@ export async function listGraphs(workspaceId = LOCAL_WORKSPACE): Promise<GraphSu
     nodeCount: Number(r.nodeCount),
     updatedAt: r.updatedAt.toISOString(),
     cover: r.cover,
-    layout: readLayout(r.layout),
+    layout: readLayout(r.layout, r.wires),
   }));
 }
 

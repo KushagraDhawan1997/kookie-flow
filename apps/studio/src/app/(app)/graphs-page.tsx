@@ -268,28 +268,64 @@ function GraphCard({ graph, onRename, onDuplicate, onDelete }: GraphCardProps) {
 }
 
 /**
- * A graph with no picture yet still has a shape: its nodes, drawn as boxes where they sit on the
- * canvas. An empty graph draws nothing and the cover's ground carries it.
+ * The smallest stretch of canvas a cover shows, in canvas units at the cover's 4:3. Fitting the
+ * graph alone blew two nodes up to fill the tile; with a floor, a small graph reads as small.
+ */
+const MIN_VIEW = { w: 1000, h: 750 };
+
+/**
+ * A graph with no picture yet still has a shape: a mini-map of its nodes and the wires between
+ * them, at their canvas positions. An empty graph draws nothing and the cover's ground carries it.
  */
 function LayoutSketch({ layout }: { layout: GraphSummary['layout'] }) {
   // The meta line already says "0 nodes"; the bare ground is the empty graph.
-  if (layout.length === 0) return null;
+  if (layout.nodes.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const b of layout) {
+  for (const b of layout.nodes) {
     minX = Math.min(minX, b.x);
     minY = Math.min(minY, b.y);
     maxX = Math.max(maxX, b.x + b.w);
     maxY = Math.max(maxY, b.y + b.h);
   }
-  const pad = Math.max(maxX - minX, maxY - minY) * 0.12 + 40;
-  const box = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+  const pad = 120;
+  const w = Math.max(maxX - minX + pad * 2, MIN_VIEW.w, ((maxY - minY + pad * 2) * 4) / 3);
+  const h = (w * 3) / 4;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
   return (
-    <svg viewBox={box} preserveAspectRatio="xMidYMid meet" aria-hidden className="kd-graph-sketch">
-      {layout.map((b, i) => (
-        <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={16} />
+    <svg
+      viewBox={`${cx - w / 2} ${cy - h / 2} ${w} ${h}`}
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden
+      className="kd-graph-sketch"
+    >
+      {layout.wires.map((l, i) => {
+        const bend = Math.max(60, Math.abs(l.x2 - l.x1) / 2);
+        return (
+          <path
+            key={`w${i}`}
+            className="kd-graph-sketch-wire"
+            d={`M${l.x1} ${l.y1} C${l.x1 + bend} ${l.y1} ${l.x2 - bend} ${l.y2} ${l.x2} ${l.y2}`}
+          />
+        );
+      })}
+      {layout.nodes.map((b, i) => (
+        <g key={i}>
+          <rect className="kd-graph-sketch-node" x={b.x} y={b.y} width={b.w} height={b.h} rx={20} />
+          {b.media && (
+            <rect
+              className="kd-graph-sketch-band"
+              x={b.x + 10}
+              y={b.y + 10}
+              width={b.w - 20}
+              height={Math.min(160, b.h - 20)}
+              rx={12}
+            />
+          )}
+        </g>
       ))}
     </svg>
   );

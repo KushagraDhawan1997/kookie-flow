@@ -46,15 +46,27 @@
   transform: scale(1.03);
 }
 
+/* The mini-map fills the cover; its own scale floor keeps a small graph small. */
 .kd-graph-sketch {
-  inline-size: 78%;
-  block-size: 78%;
+  inline-size: 100%;
+  block-size: 100%;
 }
 
-.kd-graph-sketch rect {
-  fill: color-mix(in oklab, var(--color-text) 9%, transparent);
+.kd-graph-sketch-node {
+  fill: var(--color-panel-solid, #fff);
+  stroke: color-mix(in oklab, var(--color-text) 10%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.kd-graph-sketch-band {
+  fill: color-mix(in oklab, var(--color-text) 7%, transparent);
+}
+
+.kd-graph-sketch-wire {
+  fill: none;
   stroke: color-mix(in oklab, var(--color-text) 22%, transparent);
-  stroke-width: 3;
+  stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
 
