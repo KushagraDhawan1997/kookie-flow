@@ -18,6 +18,7 @@ const ctx = (): EvaluationContext => ({
   entity: { id: 'n1', type: 't', position: { x: 0, y: 0 }, data: {} },
   signal: new AbortController().signal,
   progress: () => {},
+  restore: false,
 });
 
 /** A node that adds `a` and `n`, at whichever tier the test needs. */
@@ -27,6 +28,7 @@ function doubler(where: Where, run: (inputs: { a: number; n: number }) => { out:
       type: 't/double',
       label: 'Double',
       category: 'math',
+      summary: '',
       description: '',
       inputs: { a: socket('float', { default: 1 }), n: socket('int', { default: 0 }) },
       outputs: { out: socket('float') },
@@ -62,6 +64,7 @@ describe('createOnEvaluate', () => {
         type: 't/decimals',
         label: 'Decimals',
         category: 'text',
+        summary: '',
         description: '',
         inputs: { decimals: socket('int', { default: 0, min: 0, max: 6 }) },
         outputs: { out: socket('float') },

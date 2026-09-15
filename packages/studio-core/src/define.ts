@@ -49,6 +49,8 @@ export interface SocketSpec<T extends StudioSocketType = StudioSocketType> {
   max?: number;
   step?: number;
   options?: string[];
+  /** What each option reads as, by value. The value is what is stored and sent. */
+  optionLabels?: Record<string, string>;
   placeholder?: string;
   rows?: number;
   layout?: SocketLayoutMode;
@@ -105,6 +107,8 @@ export interface NodeDefinition<I extends SocketSpecs = SocketSpecs, O extends S
   type: string;
   label: string;
   category: Category;
+  /** One short, plain sentence a person reads in the inspector: what the node does. */
+  summary: string;
   /** One or two sentences the agent reads to decide whether this is the node it wants. */
   description: string;
   inputs: I;
@@ -120,8 +124,12 @@ export interface NodeDefinition<I extends SocketSpecs = SocketSpecs, O extends S
   color?: AccentColor;
   width?: number;
   // Methods rather than properties so a specific definition assigns to the erased one: a method
-  // parameter is checked bivariantly, a property's function type is not.
-  run(inputs: Values<I>, ctx: RunContext): Promise<Partial<Values<O>>> | Partial<Values<O>>;
+  // parameter is checked bivariantly, a property's function type is not. Nothing back is a restore
+  // that found nothing (`ctx.restore`): the node stays waiting for Run.
+  run(
+    inputs: Values<I>,
+    ctx: RunContext
+  ): Promise<Partial<Values<O>> | undefined> | Partial<Values<O>> | undefined;
   estimate?(inputs: Partial<Values<I>>): Estimate;
 }
 
@@ -135,6 +143,7 @@ export interface AnyNodeDefinition {
   type: string;
   label: string;
   category: Category;
+  summary: string;
   description: string;
   inputs: SocketSpecs;
   outputs: SocketSpecs;

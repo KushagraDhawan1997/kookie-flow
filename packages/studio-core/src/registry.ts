@@ -23,6 +23,7 @@ function toSocket(id: string, spec: SocketSpec): Socket {
   if (spec.max !== undefined) s.max = spec.max;
   if (spec.step !== undefined) s.step = spec.step;
   if (spec.options !== undefined) s.options = spec.options;
+  if (spec.optionLabels !== undefined) s.optionLabels = spec.optionLabels;
   if (spec.placeholder !== undefined) s.placeholder = spec.placeholder;
   if (spec.rows !== undefined) s.rows = spec.rows;
   if (spec.layout !== undefined) s.layout = spec.layout;
@@ -87,6 +88,7 @@ export class NodeRegistry {
       const hay = [
         def.type,
         def.label,
+        def.summary,
         def.description,
         ...Object.keys(def.inputs),
         ...Object.keys(def.outputs),

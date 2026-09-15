@@ -38,6 +38,11 @@ export interface JobRequest {
    */
   task: string;
   input: Record<string, unknown>;
+  /**
+   * Only find a job already asked for; never submit one. A graph opening asks this way, so it gets
+   * back what was made without paying for what never was.
+   */
+  restore?: boolean;
   signal: AbortSignal;
   progress?: (fraction: number) => void;
 }
@@ -51,9 +56,10 @@ export interface JobsPort {
   /**
    * Submit and wait. Resolves with the outputs once the result has been copied to storage. The
    * same task with the same inputs resolves to the same outputs without running again — the port
-   * or the server behind it keeps the answer — so a node may ask freely.
+   * or the server behind it keeps the answer — so a node may ask freely. Null only for a
+   * `restore` that found nothing.
    */
-  run(request: JobRequest): Promise<JobResult>;
+  run(request: JobRequest): Promise<JobResult | null>;
 }
 
 export interface AssetsPort {
@@ -74,6 +80,11 @@ export interface RunContext extends Ports {
   signal: AbortSignal;
   /** Report 0..1. */
   progress(fraction: number): void;
+  /**
+   * The graph is being opened, not run: hand back a result that already exists, or nothing. A node
+   * that costs money must not spend it here.
+   */
+  restore: boolean;
 }
 
 /** The error a port throws for something it cannot do yet. Surfaces as the node's status. */

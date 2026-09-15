@@ -15,6 +15,7 @@ export const template = defineNode({
   type: 'text/template',
   label: 'Template',
   category: 'text',
+  summary: 'Fills the gaps in a sentence, like "{a} in the style of {b}".',
   description:
     'Fill a template: "{a} in the style of {b}". Slots a–d are the inputs. An empty slot disappears, and so does the space or comma that led up to it.',
   inputs: {
@@ -49,6 +50,7 @@ export const concat = defineNode({
   type: 'text/concat',
   label: 'Join',
   category: 'text',
+  summary: 'Joins pieces of text together.',
   description: 'Join up to four texts with a separator. Empty inputs are skipped.',
   inputs: {
     separator: socket('text', { default: ', ' }),
@@ -66,6 +68,7 @@ export const replace = defineNode({
   type: 'text/replace',
   label: 'Replace',
   category: 'text',
+  summary: 'Swaps one piece of text for another.',
   description: 'Replace every occurrence of a piece of text. Matching is literal, not a pattern.',
   inputs: {
     text: socket('text', { default: '' }),
@@ -91,6 +94,7 @@ export const length = defineNode({
   type: 'text/length',
   label: 'Length',
   category: 'text',
+  summary: 'Counts the characters and words in a text.',
   description: 'How many characters and words a text has. A character means what a reader sees, so an emoji counts once.',
   inputs: { text: socket('text', { default: '' }) },
   outputs: { characters: socket('int'), words: socket('int') },
@@ -106,6 +110,7 @@ export const numberToText = defineNode({
   type: 'text/from-number',
   label: 'Number to text',
   category: 'text',
+  summary: 'Turns a number into text.',
   description: 'Write a number as text, with a fixed number of decimals.',
   inputs: {
     value: socket('float', { widget: 'number', default: 0 }),

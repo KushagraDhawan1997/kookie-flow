@@ -8,5 +8,6 @@ export * from './registry';
 export * from './document';
 export * from './ops';
 export * from './evaluate';
+export * from './pricing';
 export { registry, createRegistry } from './nodes';
 export { evaluateExpression } from './nodes/math';

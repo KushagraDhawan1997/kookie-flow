@@ -23,21 +23,27 @@ import { defineNode, socket, type SocketSpec } from '../define';
 import type { RunContext } from '../ports';
 import { isMediaRef, type MediaRef } from '../values';
 
-/** Ask the jobs port for one task and pull a named media output off the answer. */
-async function generate(
+/**
+ * Ask the jobs port for one task. Null when the graph is opening and this ask was never made, so
+ * the node answers nothing and waits for Run.
+ */
+async function ask(
   task: string,
   input: Record<string, unknown>,
-  ctx: RunContext,
-  key: string
-): Promise<MediaRef | undefined> {
-  const { output } = await ctx.jobs.run({
+  ctx: RunContext
+): Promise<Record<string, unknown> | null> {
+  const result = await ctx.jobs.run({
     entityId: ctx.entityId,
     task,
     input,
+    restore: ctx.restore,
     signal: ctx.signal,
     progress: ctx.progress,
   });
-  const value = output[key];
+  return result?.output ?? null;
+}
+
+function media(value: unknown): MediaRef | undefined {
   return isMediaRef(value) ? value : undefined;
 }
 
@@ -69,13 +75,36 @@ function prompt(
 }
 
 /** One of a model's named choices, with the model's default. */
+/** An option the provider names one way and a person reads another: `['png', 'PNG']`. */
+type Choice = string | readonly [value: string, label: string];
+
+/**
+ * A select. Values are the provider's own spellings, since they are sent as they are; labels are
+ * the words on the node. A plain string already reads well and is its own label.
+ */
 function choice(
-  options: string[],
+  options: readonly Choice[],
   fallback: string,
   description: string,
   label?: string
 ): SocketSpec<'text'> {
-  return socket('text', { widget: 'select', options, default: fallback, description, label });
+  const values: string[] = [];
+  const optionLabels: Record<string, string> = {};
+  for (const option of options) {
+    if (typeof option === 'string') values.push(option);
+    else {
+      values.push(option[0]);
+      optionLabels[option[0]] = option[1];
+    }
+  }
+  return socket('text', {
+    widget: 'select',
+    options: values,
+    optionLabels,
+    default: fallback,
+    description,
+    label,
+  });
 }
 
 /** Wider than a math node: these carry a prompt and a picture, not two numbers. */
@@ -89,21 +118,43 @@ const NODE_WIDTH = 300;
  * closely. One node and a choice, rather than two nodes that differ in nothing else.
  */
 const variant = choice(
-  ['flare', 'sunburst'],
+  [
+    ['flare', 'Flare'],
+    ['sunburst', 'Sunburst'],
+  ],
   'flare',
   'Flare is fast and the usual choice. Sunburst is slower, dearer and more exact.'
 );
 const quality = choice(
-  ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+  [
+    ['auto', 'Auto'],
+    ['low', 'Low'],
+    ['medium', 'Medium'],
+    ['high', 'High'],
+    ['xhigh', 'Extra high'],
+    ['max', 'Max'],
+  ],
   'medium',
   'More detail is slower and costs more. Auto lets the model choose.'
 );
 const background = choice(
-  ['auto', 'transparent', 'opaque'],
+  [
+    ['auto', 'Auto'],
+    ['transparent', 'Transparent'],
+    ['opaque', 'Opaque'],
+  ],
   'auto',
   'Transparent needs PNG or WebP.'
 );
-const format = choice(['png', 'jpeg', 'webp'], 'png', 'The kind of file to make.');
+const format = choice(
+  [
+    ['png', 'PNG'],
+    ['jpeg', 'JPEG'],
+    ['webp', 'WebP'],
+  ],
+  'png',
+  'The kind of file to make.'
+);
 const compression = socket('int', {
   min: 0,
   max: 100,
@@ -145,15 +196,16 @@ const height = socket('int', {
   description: 'Pixels down, when Size is custom.',
 });
 
-const SIZE_PRESETS = [
-  'auto',
-  'custom',
-  'square_hd',
-  'square',
-  'portrait_4_3',
-  'portrait_16_9',
-  'landscape_4_3',
-  'landscape_16_9',
+// fal names a portrait by the landscape ratio it turns on end; the label says the shape it is.
+const SIZE_PRESETS: readonly Choice[] = [
+  ['auto', 'Auto'],
+  ['custom', 'Custom'],
+  ['square_hd', 'Square HD'],
+  ['square', 'Square'],
+  ['portrait_4_3', 'Portrait 3:4'],
+  ['portrait_16_9', 'Portrait 9:16'],
+  ['landscape_4_3', 'Landscape 4:3'],
+  ['landscape_16_9', 'Landscape 16:9'],
 ];
 
 /** Sunburst costs about twice what Flare does, and each quality step about doubles again. */
@@ -176,6 +228,7 @@ export const gptImage = defineNode({
   type: 'ai/gpt-image-2.5',
   label: 'GPT Image 2.5',
   category: 'ai',
+  summary: 'Makes an image from a prompt, or edits one you connect.',
   description:
     "OpenAI's picture model. A prompt alone makes a picture; with a picture connected it changes that one, keeping the subject and composition. Flare for most work, Sunburst for the finest detail. Costs credits and runs only when you press Run.",
   inputs: {
@@ -203,9 +256,10 @@ export const gptImage = defineNode({
   evaluation: 'manual',
   where: 'server',
   width: NODE_WIDTH,
-  run: async (inputs, ctx) => ({
-    image: await generate('gpt-image-2.5', { ...inputs }, ctx, 'image'),
-  }),
+  run: async (inputs, ctx) => {
+    const output = await ask('gpt-image-2.5', { ...inputs }, ctx);
+    return output ? { image: media(output.image) } : undefined;
+  },
   estimate: (inputs) => ({ credits: gptCredits(inputs), seconds: gptSeconds(inputs) }),
 });
 
@@ -215,6 +269,7 @@ export const clarityUpscaler = defineNode({
   type: 'ai/clarity-upscaler',
   label: 'Clarity Upscaler',
   category: 'ai',
+  summary: 'Makes an image larger and sharper.',
   description:
     'Enlarge a picture and invent the detail that enlarging it would otherwise lose. Creativity is how much it invents; resemblance is how closely it keeps to the original.',
   inputs: {
@@ -274,9 +329,10 @@ export const clarityUpscaler = defineNode({
   evaluation: 'manual',
   where: 'server',
   width: NODE_WIDTH,
-  run: async (inputs, ctx) => ({
-    image: await generate('clarity-upscaler', { ...inputs }, ctx, 'image'),
-  }),
+  run: async (inputs, ctx) => {
+    const output = await ask('clarity-upscaler', { ...inputs }, ctx);
+    return output ? { image: media(output.image) } : undefined;
+  },
   estimate: (inputs) => ({ credits: 2, seconds: 4 * Number(inputs.factor ?? 2) }),
 });
 
@@ -286,6 +342,7 @@ export const birefnet = defineNode({
   type: 'ai/birefnet',
   label: 'BiRefNet',
   category: 'ai',
+  summary: 'Removes the background from an image.',
   description: 'Cut the subject out of a picture. Gives the cutout and the mask that made it.',
   inputs: {
     image: socket('image'),
@@ -295,7 +352,10 @@ export const birefnet = defineNode({
       'Heavy is slower and more careful. Portrait is for people.'
     ),
     resolution: choice(
-      ['1024x1024', '2048x2048'],
+      [
+        ['1024x1024', '1024 × 1024'],
+        ['2048x2048', '2048 × 2048'],
+      ],
       '1024x1024',
       'The working size. Larger is slower and keeps finer edges.'
     ),
@@ -303,7 +363,14 @@ export const birefnet = defineNode({
       default: true,
       description: 'Clean the edges of the cutout with the mask.',
     }),
-    format: choice(['png', 'webp'], 'png', 'The kind of file to make.'),
+    format: choice(
+      [
+        ['png', 'PNG'],
+        ['webp', 'WebP'],
+      ],
+      'png',
+      'The kind of file to make.'
+    ),
   },
   outputs: { image: socket('image'), mask: socket('mask') },
   evaluation: 'manual',
@@ -311,17 +378,8 @@ export const birefnet = defineNode({
   width: NODE_WIDTH,
   preview: 'image',
   run: async (inputs, ctx) => {
-    const { output } = await ctx.jobs.run({
-      entityId: ctx.entityId,
-      task: 'birefnet',
-      input: { ...inputs },
-      signal: ctx.signal,
-      progress: ctx.progress,
-    });
-    return {
-      image: isMediaRef(output.image) ? output.image : undefined,
-      mask: isMediaRef(output.mask) ? output.mask : undefined,
-    };
+    const output = await ask('birefnet', { ...inputs }, ctx);
+    return output ? { image: media(output.image), mask: media(output.mask) } : undefined;
   },
   estimate: (inputs) => ({ credits: 1, seconds: inputs.model === 'General Use (Heavy)' ? 8 : 4 }),
 });
@@ -332,6 +390,7 @@ export const wanImageToVideo = defineNode({
   type: 'video/wan-i2v',
   label: 'Wan Image to Video',
   category: 'video',
+  summary: 'Turns an image into a short video.',
   description:
     'Move a still picture into a short clip: 81 to 100 frames at 5 to 24 a second, so between three and twenty seconds.',
   inputs: {
@@ -359,7 +418,7 @@ export const wanImageToVideo = defineNode({
       description: 'Frames a second.',
     }),
     resolution: choice(['480p', '720p'], '720p', '480p costs half.'),
-    aspect: choice(['auto', '16:9', '9:16', '1:1'], 'auto', 'Auto follows the picture.'),
+    aspect: choice([['auto', 'Auto'], '16:9', '9:16', '1:1'], 'auto', 'Auto follows the picture.'),
     guidance: socket('float', {
       min: 1,
       max: 10,
@@ -387,7 +446,10 @@ export const wanImageToVideo = defineNode({
       description: 'Let the model rewrite the prompt at length first.',
     }),
     acceleration: choice(
-      ['regular', 'none'],
+      [
+        ['regular', 'Regular'],
+        ['none', 'None'],
+      ],
       'regular',
       'Regular is faster at little cost. None is the slow, exact path.'
     ),
@@ -400,9 +462,10 @@ export const wanImageToVideo = defineNode({
   evaluation: 'manual',
   where: 'server',
   width: NODE_WIDTH,
-  run: async (inputs, ctx) => ({
-    video: await generate('wan-i2v', { ...inputs }, ctx, 'video'),
-  }),
+  run: async (inputs, ctx) => {
+    const output = await ask('wan-i2v', { ...inputs }, ctx);
+    return output ? { video: media(output.video) } : undefined;
+  },
   estimate: (inputs) => ({
     credits:
       (inputs.resolution === '480p' ? 6 : 12) * (Number(inputs.frames ?? 81) > 81 ? 1.25 : 1),

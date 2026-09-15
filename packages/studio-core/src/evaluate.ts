@@ -81,6 +81,7 @@ export function createOnEvaluate(options: EvaluatorOptions): OnEvaluate {
       entityId,
       signal: ctx.signal,
       progress: ctx.progress,
+      restore: ctx.restore,
     };
 
     // An inline node is arithmetic on a few numbers: hashing its inputs to look for a saved
@@ -95,8 +96,10 @@ export function createOnEvaluate(options: EvaluatorOptions): OnEvaluate {
     const hit = cache.get(key);
     if (hit) return hit;
 
-    const outputs = (await def.run(inputs, runCtx)) ?? {};
+    const outputs = await def.run(inputs, runCtx);
     if (ctx.signal.aborted) return; // the engine drops it anyway; do not cache a cancelled run
+    // Nothing back is a restore that found nothing: remembered, it would answer the real Run.
+    if (!outputs) return;
     cache.set(key, outputs);
     return outputs;
   };

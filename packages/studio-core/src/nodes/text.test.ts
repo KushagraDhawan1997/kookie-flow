@@ -9,8 +9,9 @@ const ctx = {} as RunContext;
  * A node may answer with a promise, so its declared type is a union. These three answer straight
  * away, and the tests read the values directly rather than awaiting a promise that never comes.
  */
-function sync<T>(result: T | Promise<T>): T {
+function sync<T>(result: T | Promise<T | undefined> | undefined): T {
   if (result instanceof Promise) throw new Error('this node was expected to answer synchronously');
+  if (result === undefined) throw new Error('this node answered nothing');
   return result;
 }
 

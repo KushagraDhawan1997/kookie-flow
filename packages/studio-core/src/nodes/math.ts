@@ -3,6 +3,7 @@ import { defineNode, socket } from '../define';
 const binary = (
   name: string,
   label: string,
+  summary: string,
   description: string,
   f: (a: number, b: number) => number,
   defaults: [number, number] = [0, 0]
@@ -11,6 +12,7 @@ const binary = (
     type: `math/${name}`,
     label,
     category: 'math',
+    summary,
     description,
     inputs: {
       a: socket('float', { widget: 'number', default: defaults[0] }),
@@ -21,18 +23,19 @@ const binary = (
     run: ({ a, b }) => ({ out: f(a, b) }),
   });
 
-export const add = binary('add', 'Add', 'a + b.', (a, b) => a + b);
-export const subtract = binary('subtract', 'Subtract', 'a − b.', (a, b) => a - b);
-export const multiply = binary('multiply', 'Multiply', 'a × b.', (a, b) => a * b, [1, 1]);
-export const divide = binary('divide', 'Divide', 'a ÷ b. Division by zero gives 0.', (a, b) => (b === 0 ? 0 : a / b), [1, 1]);
-export const power = binary('power', 'Power', 'a to the power b.', (a, b) => Math.pow(a, b), [1, 1]);
-export const min = binary('min', 'Min', 'The smaller of a and b.', Math.min);
-export const max = binary('max', 'Max', 'The larger of a and b.', Math.max);
+export const add = binary('add', 'Add', 'Adds two numbers.', 'a + b.', (a, b) => a + b);
+export const subtract = binary('subtract', 'Subtract', 'Subtracts one number from another.', 'a − b.', (a, b) => a - b);
+export const multiply = binary('multiply', 'Multiply', 'Multiplies two numbers.', 'a × b.', (a, b) => a * b, [1, 1]);
+export const divide = binary('divide', 'Divide', 'Divides one number by another.', 'a ÷ b. Division by zero gives 0.', (a, b) => (b === 0 ? 0 : a / b), [1, 1]);
+export const power = binary('power', 'Power', 'Raises a number to a power.', 'a to the power b.', (a, b) => Math.pow(a, b), [1, 1]);
+export const min = binary('min', 'Min', 'Picks the smaller of two numbers.', 'The smaller of a and b.', Math.min);
+export const max = binary('max', 'Max', 'Picks the larger of two numbers.', 'The larger of a and b.', Math.max);
 
 export const remap = defineNode({
   type: 'math/remap',
   label: 'Remap',
   category: 'math',
+  summary: 'Moves a number from one range to another.',
   description: 'Map a value from one range to another. 0.5 in 0..1 becomes 50 in 0..100.',
   inputs: {
     value: socket('float', { widget: 'number', default: 0 }),
@@ -53,6 +56,7 @@ export const clamp = defineNode({
   type: 'math/clamp',
   label: 'Clamp',
   category: 'math',
+  summary: 'Keeps a number between a lowest and a highest value.',
   description: 'Keep a value between min and max.',
   inputs: {
     value: socket('float', { widget: 'number', default: 0 }),
@@ -68,6 +72,7 @@ export const round = defineNode({
   type: 'math/round',
   label: 'Round',
   category: 'math',
+  summary: 'Rounds a number.',
   description: 'Round to the nearest whole number, or to a number of decimals.',
   inputs: {
     value: socket('float', { widget: 'number', default: 0 }),
@@ -248,6 +253,7 @@ export const expression = defineNode({
   type: 'math/expression',
   label: 'Expression',
   category: 'math',
+  summary: 'Works out a formula you write, like a * 2 + b.',
   description:
     'A formula over a, b, c and d: "a * 2 + sin(b)". Functions: abs floor ceil round sqrt sin cos tan atan2 exp log min max pow mix clamp step smoothstep; constants pi e tau.',
   inputs: {
