@@ -5,6 +5,173 @@
 
 ---
 
+## 2026-09-15, sign-in and a dollar balance
+
+Asked as "we can build with better auth", then "keep dollar amount, very transparent about our
+markup, 1$ = 1$", then Stripe in test mode (the owner is an autónomo in Spain; Stripe onboarding
+chose Managed Payments). This is the start of phase 9, ahead of phases 3 and 5–8.
+
+### What was built
+
+- **Sign-in.** Better Auth 1.7.4, email and password, on the app's own database (`auth_*` tables).
+  The first account is always allowed and takes over everything under the `local` workspace;
+  after it only `STUDIO_SIGNUP_EMAILS` may sign up. The workspace is the user's id. `proxy.ts`
+  sends a request with no session cookie to `/sign-in` (pages) or 401 (API); every route and page
+  checks the real session (`server/session.ts`). Open paths: `/sign-in`, `/api/auth`, the webhook.
+  `/api/blob` is now behind sign-in too.
+- **Prices.** `studio-core/pricing.ts`: money in micros; `MARKUP = 0.5`, shown as its own line
+  everywhere. fal's prices as of today, from its pricing API and model pages: GPT Image 2.5 by
+  fal's size × quality table (nearest listed size, $0.01 per connected picture for input tokens,
+  `auto` quality priced as high), Clarity $0.03/MP of the result, BiRefNet $0.0008/compute s
+  estimated at 10 s, Wan $0.40 720p / $0.20 480p, ×1.25 past 81 frames. The inspector quotes
+  "About $X to run: model $Y + 50% fee $Z" from the same table the server charges from.
+- **Ledger.** `ledger` table, append-only: topup, hold, release, charge. Balance is the sum. A new
+  job holds estimate + fee in the transaction that inserts it, under a per-workspace advisory lock,
+  and a short balance is 402 with the amounts in the node's message. Every ending passes through
+  `setStatus`, which settles once (a conditional `billing = 'held'` update): success releases the
+  hold and charges the price of what came back; failure and cancel release. An ask answered by an
+  existing row holds nothing. Billing is on when `STRIPE_SECRET_KEY` is set (or `STUDIO_BILLING`).
+- **Stripe.** `POST /api/billing/checkout` makes a Checkout Session for $5, $10 or $25, with
+  Managed Payments stated explicitly (on unless `STRIPE_MANAGED_PAYMENTS=off`) and tax code
+  `txcd_10105001` (AI as a Service, cloud, personal use; `STRIPE_TAX_CODE` overrides). The webhook
+  verifies the signature, credits the amount chosen from metadata (never the total with tax), keyed
+  by session id. `/billing` shows the balance, the top-ups and the history; the balance menu sits
+  in the editor header and on the graph list.
+
+### What was verified
+
+`tsc` clean for studio and studio-core. studio-core 41 tests (pricing among them). studio: billing
+on a throwaway PGlite (refuse with nothing written, top-up credited once, hold then real charge
+once across repeated polls, release on cancel and on a refused submission, workspaces apart),
+sign-up rules (first account claims `local`, stranger refused, invited allowed), the webhook
+(unsigned and forged refused, paid credited once across retries, unpaid and non-top-up ignored).
+Against the running server: `/` redirects to sign-in, `/api/graphs` and `/api/blob` answer 401, an
+unsigned webhook 400. In Stripe test mode, a session with the route's exact parameters was created
+and paid with 4242 on the hosted page: $5.00 + IVA 21% = $6.05, `complete paid`, the forwarded
+webhook answered 200 and the server logged "credited $5.00 to e2e-check".
+
+### What went wrong
+
+- **The keys and the CLI were different Stripe sandboxes.** `stripe login` authorised
+  `acct_1UFgPl…`; the keys in `.env.local` belong to `acct_1UFgNs…`, so the first listener heard
+  nothing. The owner then replaced the keys with the CLI sandbox's own (`acct_1UFgPl…`); the
+  webhook secret was regenerated for it, and a second test payment there ($6.05 with IVA) was
+  forwarded, answered 200 and credited $5.00.
+- **Managed Payments is on by default for the account** and refuses a line item with no product
+  tax code, and `stripe trigger checkout.session.completed` fails under it (shipping parameters).
+- Stripe added 21% IVA for a Spanish card, which is why credit comes from metadata.
+- The first proxy matcher sent `/fonts/*.woff2` to sign-in; fonts are now excluded.
+- **The owner's first top-up went to the old sandbox and came back to sign-in.** Two causes. The
+  Stripe client was cached once per process, so after the keys changed the checkout still used the
+  old account, whose webhooks nobody forwards (test money; nothing credited). And the return URL
+  came from `request.url`, which named `localhost:3002` while the session cookie lived on
+  `127.0.0.1:3002`. Now the client is cached per key, the return URL is `BETTER_AUTH_URL`, and a
+  page asked for under any other Host gets a tiny page that moves the browser to that address. A
+  307 was tried first and looped in the browser: Next rewrote its Location to a bare path, since
+  both names are its own origin. After a restart for fresh env: `localhost` answers the moving page
+  pointing at `127.0.0.1:3002`, `127.0.0.1` pages behave normally, API under `localhost` still 401.
+  Neither of the owner's two checkouts reached the new sandbox, so neither credited.
+- A test-mode ledger row exists for workspace `e2e-check` ($5.00). It belongs to no one.
+
+### Open
+
+- The owner's account is not created. `/sign-in` is one screen, "Sign in" with "Create one"; the
+  first account made there inherits the existing graphs, jobs and pictures, with no screen of its
+  own (the "Create the owner account" heading was dropped at the owner's ask).
+- The balance starts at $0, so every paid node is refused until a test top-up.
+- The listener is a background task of this session; `stripe listen --api-key … --forward-to
+  http://127.0.0.1:3002/api/billing/webhook` has to be running for top-ups to land locally.
+- GPT Image's real charge is fal's table, not fal's token bill; fal does not report the tokens a
+  request used. BiRefNet's seconds are an estimate for the same reason.
+- No refunds of unused balance, no email verification, no password reset (needs an email service).
+
+## 2026-09-15, the ring travels when the length is unknown
+
+Asked as: the ring does almost a full spin, starts again, and sticks at centre right. The canvas
+already draws a travelling arc when a run reports no progress. The jobs port reported a token 0.05
+once the POST answered queued, and 0.3 while running with no provider number, so the arc (one lap
+in about 3.3 s) snapped to a sweep and eased to 0.3, a quarter-plus of the perimeter from
+top-centre: centre right, held for the rest of the job. The port now reports only a number the
+provider gave, and no closing 1 (the success hold completes the ring). The port test expects
+`[0.5]`. Not watched in a browser: that needs a real Run, which spends.
+
+## 2026-09-15, the inspector speaks to people
+
+Asked with a screenshot of the inspector header: "whats this n1 stuff? And why is the copy so
+weird?" The header printed the node's id and type, and the description the agent reads.
+
+### What was built
+
+- Every node definition gains a required `summary`: one short, plain sentence for a person. The
+  `description` stays as the agent's text. Search matches both.
+- The inspector shows the label and the summary. The id and type line is gone. A node whose type
+  no longer exists reads "Unknown node" and says so, rather than printing its type.
+
+### What was verified
+
+`tsc` clean for studio-core and studio; studio-core 35/35, studio 25/25. In a browser on a new
+graph with nothing run, the selected GPT Image 2.5 shows "Makes an image from a prompt, or edits
+one you connect.", with no id line and none of the agent's text. Test graph deleted.
+
+## 2026-09-15, options read as words
+
+Asked with screenshots of the Size list (`square_hd`, `portrait_4_3`) and "png", "auto": options
+should read as a person would write them.
+
+### What was built
+
+- **Library.** A socket's `optionLabels` maps a value to its label. The closed select, the GL list
+  (labels resolved once per open, measured for width), segmented, the accessibility mirror and the
+  DOM select print the label; the stored value is unchanged. Docs (sockets) and changelog.
+- **studio-core.** `SocketSpec.optionLabels`, passed through the registry. `choice` takes
+  `[value, label]` pairs. Labels: Flare, Sunburst; Auto, Low, Medium, High, Extra high, Max; Auto,
+  Transparent, Opaque; PNG, JPEG, WebP; Auto, Custom, Square HD, Square, Portrait 3:4, Portrait
+  9:16, Landscape 4:3, Landscape 16:9 (fal's `portrait_4_3` is 3:4 tall); 1024 × 1024, 2048 × 2048;
+  Regular, None. Values sent to fal did not change, so saved graphs and job keys still match.
+- **Inspector.** Passes the labels to `Select` as `items`, so the trigger reads the label too.
+
+### What was verified
+
+`tsc` clean for all three. Library 890/890 (a new test: label or value fallback, closed select,
+segments), studio-core 35/35, studio 25/25. In a browser on a new graph with nothing run: the node
+reads Flare, Medium, Auto, Auto, PNG; the inspector triggers read the same; the mirror lists the
+labelled options. The open GL list was not screenshotted. Test graphs deleted.
+
+## 2026-09-15, opening a graph asks, it does not run
+
+Asked as "I refresh, and I see prompt is empty error, why is this an error". Opening a graph ran
+every node, paid ones included, so a GPT Image node with an empty prompt was submitted on every
+load and came back red.
+
+### What was built
+
+- **Library.** `restoreAll()` on the engine, store and instance. It marks everything stale, runs
+  reactive nodes, and opens manual ones with `ctx.restore = true`. A manual node that returns
+  nothing stays dirty and holds its downstream. `EvaluationContext.restore` is false on every other
+  run. `evaluate(id)` now also clears a leftover forced flag. Docs (evaluation, saving, instance)
+  and the changelog carry it.
+- **studio-core.** `RunContext.restore` and `JobRequest.restore`; `JobsPort.run` returns null for
+  a restore that found nothing; a node's `run` may return nothing; the evaluator does not cache
+  nothing.
+- **Server.** `findJob` looks up a queued, running or finished row and never submits. `POST
+  /api/jobs` with `restore` answers that row, or 204.
+- **Editor.** Opens with `restoreAll()` instead of `evaluateAll()`. Run and Run all are unchanged,
+  so a node never made is submitted only when pressed.
+
+### What was verified
+
+`tsc` clean for the library, studio-core and studio. Library evaluation tests 59/59 (three new:
+restore flags reach only gates, a miss stays dirty and a later Run runs it for real, `evaluate`
+never restores). studio-core 35/35. studio 25/25 (a restore that gets 204 answers null and polls
+nothing; `findJob` finds nothing twice without making a row, then finds the submitted one). In a
+browser: a new graph with GPT Image 2.5 and an empty prompt, reloaded; the only `/api/jobs` ask
+carried `restore: true` (a non-restore ask was blocked by the check), no "prompt is empty", no red
+ring, no page errors. The throwaway graph was deleted.
+
+### Open
+
+- A job that failed is not restored, so its node opens waiting rather than showing the failure.
+
 ## 2026-09-14, a node is a model
 
 Asked in two steps once the key was in: "each node should be designed per model, so we can expose
@@ -742,3 +909,41 @@ needed; the database is embedded (`apps/studio/.data/pg`) and files go to `apps/
 - The minimap's viewport rectangle runs past the minimap's top edge when the view is larger than
   the content. This is the library's minimap, seen in the screenshots and not changed.
 - An ultracode audit of the app is running; its fixes land after this entry.
+
+## 2026-09-15 — The graph list and billing move into KookieUI's Shell
+
+Research (Figma, Linear, Vercel, Krea, Flora, Runway, Leonardo, Weavy, Lovable, v0, Anthropic and
+OpenAI consoles) agreed on: a sidebar shell, the balance small in the shell with detail on its own
+page, one "Add credits" button opening a dialog, a thumbnail grid for projects, and per-item
+actions in a "…" menu rather than a bare delete icon.
+
+- `app/(app)/` route group: one `Shell` for every screen outside the editor. Sidebar: mark, Graphs,
+  Billing with the balance beside it, account menu (appearance, sign out) in the footer. Each page
+  is `AppPane`: a floating band (sidebar toggle, mirrored `ToolbarTitle`, the page's one action)
+  and a `Page` title in a `ShellScroll`.
+- Graphs: grid of cards. Cover is the newest image a run in the graph made, else a sketch of the
+  node boxes. Search, relative edit time, menu with Rename, Duplicate, Delete. `listGraphs` returns
+  `cover` and `layout`; `POST /api/graphs` takes `from` to duplicate.
+- Billing: balance and pricing cards, Add credits dialog, Activity table filtered All/Runs/Payments.
+  Holds and releases are hidden (a hold shows only while its run is going); run rows show task,
+  model and the model + fee split, joined from `jobs` in `listEntries`.
+- The editor's balance menu now links to Billing and opens the dialog with `/billing?add=1`.
+- Verified: `tsc` clean; light and dark screenshots on an isolated copy with the mock provider.
+  Not yet seen: a populated activity table and a card with a real cover.
+
+### Same day: two more passes, judged by walking the screens in one session
+
+- Structure: the pricing card and the card chrome are gone from Billing. Balance is a plain figure,
+  the description is one sentence, Activity is a table with end-aligned amounts. Graph tiles have
+  no card: the picture, then name and edit time. Every page shares one 64rem column (a per-page
+  width moved the title on every switch).
+- Fixed: graph covers were always empty. In a single-table select Drizzle writes `${graphs.id}` as
+  a bare "id", which the job subquery read as its own. The outer columns are spelled out now.
+- Run rows use the node's label from the registry ("GPT Image 2.5") and show only the model + fee
+  split; raw model ids are gone. Dates are short ("Sep 15, 1:36 PM").
+- The editor hides the minimap while the graph is empty.
+- Phone width: two tile columns, one-line meta; Billing drops the Date column and puts the date in
+  each row's detail line.
+- Verified: `tsc` clean; tours in light and dark at 1440 and at 390 wide, the title measured at the
+  same position on Graphs, Billing and back. Not verified: the Stripe return notices, a graph whose
+  cover is a video.
