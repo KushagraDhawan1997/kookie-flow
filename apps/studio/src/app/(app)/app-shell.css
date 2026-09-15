@@ -1,0 +1,11 @@
+/* Only what the Shell does not own: the pages' shared measure, and figures that line up. */
+
+.kd-app-column {
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding-block-end: var(--layout-space-9);
+}
+
+.kd-num {
+  font-variant-numeric: tabular-nums;
+}

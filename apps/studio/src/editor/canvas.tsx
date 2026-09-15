@@ -140,7 +140,8 @@ function CanvasImpl(props: CanvasProps) {
           connectionMode="strict"
           allowCycles={false}
           showGrid
-          showMinimap
+          // An empty graph has nothing to map, and an empty white box in the corner reads as broken.
+          showMinimap={props.entities.length > 0}
           minimapProps={{
             position: 'bottom-right',
             width: 160,

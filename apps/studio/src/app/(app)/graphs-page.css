@@ -1,0 +1,119 @@
+/* The graph list's own half: the grid, the cover, and the stretched link. */
+
+.kd-graphs-search {
+  inline-size: min(20rem, 100%);
+}
+
+/* As many columns as fit at a card's floor, so the grid fills the pane at any width. */
+.kd-graphs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  column-gap: var(--layout-space-5);
+  row-gap: var(--layout-space-7);
+}
+
+.kd-graph-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-space-3);
+}
+
+/* The picture is the tile: no card around it, so it takes the smallest surface corner — the app's full-radius theme makes the larger steps read as pills. */
+.kd-graph-cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-surface-1, 12px);
+  transition: background-color 160ms ease;
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+}
+
+.kd-graph-cover img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.kd-graph-card:hover .kd-graph-cover {
+  background: color-mix(in oklab, var(--color-text) 8%, transparent);
+}
+
+.kd-graph-card:hover .kd-graph-cover img {
+  transform: scale(1.03);
+}
+
+.kd-graph-sketch {
+  inline-size: 78%;
+  block-size: 78%;
+}
+
+.kd-graph-sketch rect {
+  fill: color-mix(in oklab, var(--color-text) 9%, transparent);
+  stroke: color-mix(in oklab, var(--color-text) 22%, transparent);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.kd-graph-meta {
+  padding-inline-start: var(--layout-space-1);
+}
+
+.kd-graph-words {
+  min-inline-size: 0;
+}
+
+.kd-graph-when,
+.kd-graph-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kd-graph-link {
+  color: inherit;
+  text-decoration: none;
+  outline: none;
+}
+
+/* The name's link covers the whole card, so a press anywhere opens the graph. */
+.kd-graph-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.kd-graph-link:focus-visible::after {
+  outline: 2px solid var(--color-focus, currentColor);
+  outline-offset: 4px;
+  border-radius: var(--radius-surface-1, 12px);
+}
+
+/* Above the stretched link, so the menu opens rather than the graph. */
+.kd-graph-menu {
+  position: relative;
+  z-index: 1;
+}
+
+/* A phone: two columns rather than one tile a screen tall, and the search spans the grid it filters. */
+@media (max-width: 520px) {
+  .kd-graphs-search {
+    inline-size: 100%;
+  }
+
+  .kd-graphs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--layout-space-3);
+    row-gap: var(--layout-space-5);
+  }
+
+  /* Half a phone is too narrow for both facts; when it was touched is the one scanned for. */
+  .kd-graph-count {
+    display: none;
+  }
+}

@@ -1,0 +1,39 @@
+/* The billing page's own half. */
+
+.kd-billing-table {
+  overflow-x: auto;
+}
+
+.kd-billing-date {
+  white-space: nowrap;
+  inline-size: 1%;
+}
+
+.kd-billing-amounts {
+  inline-size: 100%;
+}
+
+.kd-billing-total {
+  padding-block-start: var(--layout-space-4);
+  border-block-start: 1px solid color-mix(in oklab, var(--color-text) 10%, transparent);
+}
+
+/* Shown only on a phone, where the date moves into the description's detail line. */
+.kd-billing-when {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .kd-billing-date {
+    display: none;
+  }
+
+  .kd-billing-when {
+    display: inline;
+  }
+
+  /* The description becomes the first column, so it takes the first column's flush start. */
+  .kd-billing-table :is(th, td):nth-child(2) {
+    padding-inline-start: 0;
+  }
+}
