@@ -246,6 +246,7 @@
    `display: block` because a line box cannot be collapsed on an inline element. */
 .kd-wordmark {
   font-family: var(--kd-font-wordmark), var(--font-body);
+  font-feature-settings: "liga", "dlig";
 }
 
 .kui-type.kd-wordmark[data-size] {

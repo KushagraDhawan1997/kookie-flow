@@ -1,10 +1,10 @@
 import { Heading } from '@kookie-ui/react';
 
 /**
- * The studio's mark, set in PP Playground at the step the docs site's sidebar uses; globals.css
+ * The studio's mark, set in PP Acma at the step the docs site's sidebar uses; globals.css
  * declares the face.
  *
- * `weight="medium"` because the one file loaded is the Medium cut, and a heading asking for more
+ * `weight="medium"` because the one file loaded is the Semibold cut, declared at weight 500, and a heading asking for more
  * makes the browser stroke a bolder one. `aria-hidden` because it is a picture of the name: the
  * link around it carries the name, and a span puts nothing in the document outline.
  */

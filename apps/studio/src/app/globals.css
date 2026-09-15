@@ -22,12 +22,12 @@ body {
   font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
-/* The mark's face, PP Hatton (PP Playground until 2026-09-14), as the docs site's. It is Pangram
-   Pangram's, so the file is gitignored under `public/fonts`: a clone without it gets a 404 and
-   sets the mark in Inter. */
+/* The mark's face, PP Acma (PP Hatton until 2026-09-15, PP Playground before that), as the docs
+   site's. It is Pangram Pangram's, so the file is gitignored under `public/fonts`: a clone without
+   it gets a 404 and sets the mark in Inter. */
 @font-face {
-  font-family: "PP Hatton";
-  src: url("/fonts/PPHatton-MediumItalic.woff2") format("woff2");
+  font-family: "PP Acma";
+  src: url("/fonts/PPAcma-Semibold.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -38,7 +38,8 @@ body {
    supported. One line, so the two words stay one mark. */
 .kui-type.kd-wordmark[data-size] {
   display: block;
-  font-family: "PP Hatton", var(--font-body);
+  font-family: "PP Acma", var(--font-body);
+  font-feature-settings: "liga", "dlig";
   line-height: 1;
   text-box: cap alphabetic;
   white-space: nowrap;
