@@ -39,7 +39,7 @@ import { MeshSceneManager, frameCamera } from '../utils/mesh-loader';
 import { classifyPreviewValue, sameSource, type PreviewSource } from '../utils/preview-source';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { previewBandRect, type BandRect } from '../utils/preview-band';
-import { easeChromePresence, fitsControls, fitsExpand, orbitDirection } from '../utils/media-chrome';
+import { easeChromePresence, fitsControls, fitsDownload, fitsExpand, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, registerVideoOps, subscribeOrbit } from '../utils/media-runtime';
 import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import type { Entity } from '../types';
@@ -335,7 +335,10 @@ export function PreviewEntities() {
       }
       playing = videoManager.isPlaying(source.src);
     }
-    setMediaChrome(mat, bar && presence > 0.001 ? 1 : 0, progress, playing, bar ? presence : 0, presence);
+    // A decoded bitmap has no file behind it, so only a band showing a URL offers a download.
+    const download =
+      source.kind !== 'bitmap' && source.kind !== 'none' && fitsDownload(band.width, band.height) ? presence : 0;
+    setMediaChrome(mat, bar && presence > 0.001 ? 1 : 0, progress, playing, bar ? presence : 0, presence, download);
     return presence !== (wants ? 1 : 0);
   }
 

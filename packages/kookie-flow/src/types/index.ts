@@ -103,6 +103,8 @@ export interface WidgetProps {
   step?: number;
   /** Options (for select) */
   options?: string[];
+  /** What each option reads as, by value. An option with no entry reads as its value. */
+  optionLabels?: Record<string, string>;
   /** Placeholder text (for text input) */
   placeholder?: string;
   /** Number of visible text lines (for textarea) */
@@ -126,6 +128,8 @@ export interface ResolvedWidgetConfig {
   step?: number;
   /** Options for select */
   options?: string[];
+  /** What each option reads as, by value */
+  optionLabels?: Record<string, string>;
   /** How many components a vector has, 2 to 4 */
   dimensions?: number;
   /** Placeholder for text input */
@@ -173,6 +177,11 @@ export interface Socket {
   step?: number;
   /** Options for select and segmented widgets */
   options?: string[];
+  /**
+   * What each option reads as, by value: `{ png: 'PNG' }`. The value is what is stored and
+   * evaluated; the label is only what a person sees. An option with no entry reads as its value.
+   */
+  optionLabels?: Record<string, string>;
   /** Component count override for a vector widget */
   dimensions?: 2 | 3 | 4;
   /** Placeholder for text widget */
@@ -239,6 +248,8 @@ export interface WidgetPopover {
   box: { x: number; y: number; width: number; height: number };
   /** The list, for a select; empty for a colour picker. */
   options: string[];
+  /** What each row reads as, index for index with `options`. Absent: the options themselves. */
+  labels?: string[];
   /** The value the trigger showed when the panel opened. */
   value: string;
   /** The widest option, in world px at the row font size, so the list can outgrow its trigger. */
@@ -364,9 +375,10 @@ export interface ImageEntityData extends EntityData {
   /** Lock aspect ratio during resize (default true for images; Shift inverts) */
   aspectLocked?: boolean;
   /**
-   * The expand button, drawn in the top-right corner under the pointer. Default: true.
+   * The expand and download buttons, drawn in the top-right corner under the pointer. Default: true.
    *
-   * It opens the picture in a viewer over the page. `false` for a picture used as decoration.
+   * Expand opens the picture in a viewer over the page; download saves its file. `false` for a
+   * picture used as decoration.
    */
   controls?: boolean;
 }
@@ -440,9 +452,10 @@ export interface MeshEntityData extends EntityData {
    */
   orbit?: boolean;
   /**
-   * The expand button, drawn in the top-right corner under the pointer. Default: true.
+   * The expand and download buttons, drawn in the top-right corner under the pointer. Default: true.
    *
-   * It opens the model in a viewer over the page, where it can be turned at full size.
+   * Expand opens the model in a viewer over the page, where it can be turned at full size;
+   * download saves its file.
    */
   controls?: boolean;
 }
@@ -605,7 +618,8 @@ export interface EntityPreview {
   /**
    * The same controls a media entity carries, drawn on the band under the pointer. Default: true.
    *
-   * Every band gets the expand button. A clip also gets its play bar, and a model turns when the
+   * Every band gets the expand button, and a band showing a file gets a download button beside
+   * it. A clip also gets its play bar, and a model turns when the
    * band is dragged — the rest of the card still moves the node.
    */
   controls?: boolean;
@@ -1293,6 +1307,11 @@ export interface KookieFlowInstance {
   evaluateDirty: () => Promise<void>;
   /** Mark everything stale and run all of it. */
   evaluateAll: () => Promise<void>;
+  /**
+   * Mark everything stale and bring it back: reactive entities run, manual ones are asked with
+   * `ctx.restore` for a result they already have. For opening a saved graph.
+   */
+  restoreAll: () => Promise<void>;
   /** Inject an output value. Downstream is marked stale; the entity itself is not re-run. */
   setSocketValue: (entityId: string, socketId: string, value: unknown) => void;
   /** Read a computed output value. */

@@ -159,6 +159,11 @@ on every step, not start a generation on every step.
 `evaluate(id)` runs a manual entity, and reactive entities downstream follow it as usual.
 `evaluateDirty()` and `evaluateAll()` run manual entities too.
 
+`restoreAll()` is for opening a saved graph. Reactive entities run, and manual ones are called with
+`ctx.restore` set to `true`. Return a result you already have, such as one your server stored, or
+return nothing. An entity that returns nothing stays dirty, and so does everything downstream of
+it, until something runs it for real.
+
 <Example name="evaluation" />
 
 Drag either slider. Number and Add run on every step, while Render dims and waits. Press
@@ -295,6 +300,7 @@ These methods are on the `KookieFlowInstance` you get from `ref`.
 | `evaluate(entityId)`                   | `Promise<void>`    | Runs one entity now, whatever its type's mode, then lets reactive entities downstream follow. Resolves when that entity's run ends. |
 | `evaluateDirty()`                      | `Promise<void>`    | Runs every dirty entity in order, manual ones included. Resolves when nothing is running and nothing else can start. |
 | `evaluateAll()`                        | `Promise<void>`    | Marks every entity dirty, then runs them all as `evaluateDirty()` does.                                             |
+| `restoreAll()`                         | `Promise<void>`    | Marks every entity dirty and runs reactive ones. Manual ones run with `ctx.restore`; one that returns nothing stays dirty. |
 | `setSocketValue(entityId, socketId, value)` | `void`        | Puts a value on an output without running the entity. Everything the entity feeds becomes dirty.                   |
 | `getSocketValue(entityId, socketId)`   | `unknown`          | The value on an output, or `undefined` if nothing has put one there.                                                |
 | `getEvaluationStatus(entityId)`        | `EvaluationStatus` | The entity's status. `idle` for an entity that has never been marked.                                               |

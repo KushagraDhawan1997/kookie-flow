@@ -43,7 +43,7 @@ import {
   setMediaBox,
   setMediaChrome,
 } from '../utils/media-quad';
-import { easeChromePresence, fitsExpand, isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
+import { easeChromePresence, fitsDownload, fitsExpand, isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, subscribeOrbit } from '../utils/media-runtime';
 
 const RENDER_ORDER_BG = 1;
@@ -528,7 +528,8 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
           0,
           false,
           hasStrip ? presence : 0,
-          hasExpand ? presence : 0
+          hasExpand ? presence : 0,
+          hasExpand && data.src && fitsDownload(w, h) ? presence : 0
         );
         if (mat.uniforms.map.value !== target.rt.texture) {
           mat.uniforms.map.value = target.rt.texture;

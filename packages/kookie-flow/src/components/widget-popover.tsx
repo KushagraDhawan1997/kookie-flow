@@ -498,7 +498,7 @@ export function WidgetPopoverGL() {
           if (row >= pop.options.length) break;
           const top = layout.y + POPOVER_PAD + i * layout.rowHeight;
           entries.push({
-            text: truncateText(pop.options[row], maxWidth, rowFont, font.metrics.info.size, font.glyphMap, font.kerningMap),
+            text: truncateText(pop.labels?.[row] ?? pop.options[row], maxWidth, rowFont, font.metrics.info.size, font.glyphMap, font.kerningMap),
             // The same visual centring the widget readouts use.
             position: [x, top + layout.rowHeight / 2 - (rowFont * 7) / 12 - ay, 0.5],
             fontSize: rowFont,

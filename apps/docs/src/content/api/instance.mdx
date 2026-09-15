@@ -122,6 +122,7 @@ type PortMapping = {
 | `evaluate(entityId: string): Promise<void>` | – | Runs one entity now, whatever its evaluation mode. Reactive entities downstream of it then run too. | [Evaluation](/data/evaluation) |
 | `evaluateDirty(): Promise<void>` | – | Runs every entity marked out of date, manual ones included, and resolves when nothing is left to run. | [Evaluation](/data/evaluation) |
 | `evaluateAll(): Promise<void>` | – | Marks every entity out of date and runs all of them. | [Evaluation](/data/evaluation) |
+| `restoreAll(): Promise<void>` | – | Marks every entity out of date and runs reactive ones. Manual ones run with `ctx.restore` and stay out of date if they return nothing. | [Evaluation](/data/evaluation) |
 | `setSocketValue(entityId: string, socketId: string, value: unknown): void` | – | Puts a value on an output socket and marks everything downstream out of date. The entity itself doesn't run. | [Evaluation](/data/evaluation) |
 | `getSocketValue(entityId: string, socketId: string): unknown` | Reads | Returns the value on an output socket. | [Evaluation](/data/evaluation) |
 | `getEvaluationStatus(entityId: string): EvaluationStatus` | Reads | Returns the entity's evaluation status, or `'idle'` if the engine has never been asked to run it. | [Evaluation](/data/evaluation) |

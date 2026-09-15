@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@kookie-ui/react';
 import type { WidgetProps } from '../../types';
+import { optionLabel } from '../../utils/widget-parts';
 
 const EMPTY_OPTIONS: string[] = [];
 
@@ -15,6 +16,7 @@ export function SelectWidget({
   onChange,
   disabled,
   options = EMPTY_OPTIONS,
+  optionLabels,
   placeholder,
 }: WidgetProps) {
   // '' is how this widget spells "nothing chosen", and Base UI agrees: an empty serialized value
@@ -40,9 +42,10 @@ export function SelectWidget({
         value={strValue}
         onValueChange={handleValueChange}
         disabled={disabled}
+        // Base UI paints the closed trigger from `items` alone. Without labels an option's value
+        // is already the right words, so no map is passed.
+        items={optionLabels}
       >
-        {/* No `items` map: an option's label IS its value here, so the raw value Base UI paints
-            on the closed trigger is already the right words. */}
         <SelectTrigger
           aria-label={label}
           placeholder={placeholder ?? 'Select...'}
@@ -51,7 +54,7 @@ export function SelectWidget({
         <SelectContent>
           {options.map((option) => (
             <SelectItem key={option} value={option}>
-              {option}
+              {optionLabel(optionLabels, option)}
             </SelectItem>
           ))}
         </SelectContent>

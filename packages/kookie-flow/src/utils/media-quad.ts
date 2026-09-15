@@ -33,6 +33,7 @@ import {
   CONTROL_BUTTON_SIZE,
   CONTROL_GAP,
   CONTROL_TRACK_END_PAD,
+  DOWNLOAD_BUTTON_GAP,
   EXPAND_BUTTON_SIZE,
   MESH_DRAG_STRIP_HEIGHT,
 } from './media-chrome';
@@ -92,6 +93,8 @@ uniform float uCornerRadius;
 uniform vec4 uChrome;
 /** How present the expand button is, 0..1. Separate from uChrome.w: a picture has a button and no bar. */
 uniform float uExpand;
+/** How present the download button is, 0..1. Separate from uExpand: a decoded bitmap has no file. */
+uniform float uDownload;
 
 // The glass (utils/media-glass.ts).
 uniform vec3 uGround;
@@ -259,6 +262,9 @@ void main() {
     vec2 ec = vec2(uSize.x - ${f(CONTROL_BAR_INSET)} - eh, ${f(CONTROL_BAR_INSET)} + eh);
     vec2 ep = vec2(px.x - ec.x, ec.y - px.y);
 
+    vec2 dc = vec2(ec.x - ${f(EXPAND_BUTTON_SIZE + DOWNLOAD_BUTTON_GAP)}, ec.y);
+    vec2 dp = vec2(px.x - dc.x, dc.y - px.y);
+
     vec2 bh = vec2(uSize.x * 0.5 - ${f(CONTROL_BAR_INSET)}, ${f(CONTROL_BAR_HEIGHT / 2)});
     vec2 bc = vec2(uSize.x * 0.5, uSize.y - ${f(CONTROL_BAR_INSET)} - bh.y);
     vec2 bp = vec2(px.x - bc.x, bc.y - px.y);
@@ -270,10 +276,11 @@ void main() {
     bool hasBar = uChrome.w > 0.001 && uChrome.x > 0.5 && uChrome.x < 1.5;
     bool hasGrip = uChrome.w > 0.001 && uChrome.x > 1.5;
     bool nearE = uExpand > 0.001 && near(ep, vec2(eh), reach);
+    bool nearD = uDownload > 0.001 && near(dp, vec2(eh), reach);
     bool nearB = hasBar && near(bp, bh, reach);
     bool nearG = hasGrip && near(gp, gh, reach);
 
-    if (nearE || nearB || nearG) {
+    if (nearE || nearD || nearB || nearG) {
       vec4 ui = vec4(0.0);
 
       if (nearG) {
@@ -317,6 +324,17 @@ void main() {
         float da = min(sdSegment(m, vec2(2.5, 5.0), vec2(5.0, 5.0), 0.75), sdSegment(m, vec2(5.0, 2.5), vec2(5.0, 5.0), 0.75));
         e = over(e, uInk, fillSDF(da, aa) * fillSDF(sdRoundedBox(ep, vec2(eh), uControlRadius), aa));
         ui = overC(ui, e, uExpand);
+      }
+
+      if (nearD) {
+        vec4 dl = glassControl(px, dp, vec2(eh), aa);
+        // An arrow down onto a tray, in the same stroke as the brackets.
+        float dd = min(
+          min(sdSegment(dp, vec2(0.0, 5.0), vec2(0.0, -2.0), 0.75), sdSegment(vec2(abs(dp.x), dp.y), vec2(3.0, 1.0), vec2(0.0, -2.0), 0.75)),
+          sdSegment(dp, vec2(-5.0, -5.0), vec2(5.0, -5.0), 0.75)
+        );
+        dl = over(dl, uInk, fillSDF(dd, aa) * fillSDF(sdRoundedBox(dp, vec2(eh), uControlRadius), aa));
+        ui = overC(ui, dl, uDownload);
       }
 
       color = over(color, ui.rgb, ui.a);
@@ -419,6 +437,7 @@ export function createMediaMaterial(glass: MediaGlass): THREE.ShaderMaterial {
       // See the shader: kind, progress, playing, presence. All zero is a bare picture.
       uChrome: { value: new THREE.Vector4(0, 0, 0, 0) },
       uExpand: { value: 0 },
+      uDownload: { value: 0 },
       ...glass,
     },
     vertexShader: MEDIA_VERTEX_SHADER,
@@ -433,8 +452,9 @@ export function createMediaMaterial(glass: MediaGlass): THREE.ShaderMaterial {
 /**
  * Tell a media material what chrome to draw. See `uChrome` and `uExpand` in the shader.
  *
- * `presence` is how faded in the bar or grip is and `expand` how faded in the corner button is;
- * the renderers ease both under the pointer so controls arrive rather than blink.
+ * `presence` is how faded in the bar or grip is, `expand` how faded in the corner button is, and
+ * `download` the button beside it; the renderers ease them under the pointer so controls arrive
+ * rather than blink.
  */
 export function setMediaChrome(
   material: THREE.ShaderMaterial,
@@ -442,11 +462,13 @@ export function setMediaChrome(
   progress: number,
   playing: boolean,
   presence: number,
-  expand: number
+  expand: number,
+  download: number
 ): void {
   const v = material.uniforms.uChrome.value as THREE.Vector4;
   v.set(kind, progress, playing ? 1 : 0, presence);
   material.uniforms.uExpand.value = expand;
+  material.uniforms.uDownload.value = download;
 }
 
 /**

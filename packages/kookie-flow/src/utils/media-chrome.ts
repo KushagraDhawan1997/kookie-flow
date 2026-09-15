@@ -78,6 +78,30 @@ export function hitExpandButton(localX: number, localY: number, width: number, h
   );
 }
 
+/** The gap between the expand button and the download button to its left. */
+export const DOWNLOAD_BUTTON_GAP = 6;
+
+/**
+ * Whether media this size can carry the download button as well. It needs room for two squares;
+ * below that the expand button keeps the corner alone, and the viewer is one press away.
+ */
+export function fitsDownload(width: number, height: number): boolean {
+  return width >= 104 && fitsExpand(width, height);
+}
+
+/** Whether a press, in the media's own coordinates, lands on the download button. */
+export function hitDownloadButton(localX: number, localY: number, width: number, height: number): boolean {
+  if (!fitsDownload(width, height)) return false;
+  const right = width - CONTROL_BAR_INSET - EXPAND_BUTTON_SIZE - DOWNLOAD_BUTTON_GAP;
+  const top = CONTROL_BAR_INSET;
+  return (
+    localX >= right - EXPAND_BUTTON_SIZE &&
+    localX <= right &&
+    localY >= top &&
+    localY <= top + EXPAND_BUTTON_SIZE
+  );
+}
+
 /**
  * The strip along the top of a model preview that MOVES the entity.
  *
@@ -185,7 +209,13 @@ export function mediaEntityCursor(
   controls: boolean,
   orbit: boolean
 ): ChromeCursor | null {
-  if (hasSrc && controls && hitExpandButton(localX, localY, width, height)) return 'pointer';
+  if (
+    hasSrc &&
+    controls &&
+    (hitExpandButton(localX, localY, width, height) || hitDownloadButton(localX, localY, width, height))
+  ) {
+    return 'pointer';
+  }
   if (kind === 'video') return controls && isOnVideoControls(localX, localY, width, height) ? 'pointer' : null;
   // A model with orbit off drags from its body like any node, so it gets the plain cursor.
   if (kind === 'mesh' && orbit) return isMeshDragStrip(localY, height) ? 'move' : 'grab';
@@ -204,6 +234,8 @@ export function bandCursor(
   height: number
 ): ChromeCursor | null {
   if (source !== 'none' && hitExpandButton(localX, localY, width, height)) return 'pointer';
+  // A decoded bitmap has no file behind it, so it carries no download button.
+  if (source !== 'none' && source !== 'bitmap' && hitDownloadButton(localX, localY, width, height)) return 'pointer';
   if (source === 'video') return isOnVideoControls(localX, localY, width, height) ? 'pointer' : null;
   if (source === 'mesh') return 'grab';
   return null;

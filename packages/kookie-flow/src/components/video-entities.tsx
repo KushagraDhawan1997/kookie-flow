@@ -30,7 +30,7 @@ import { DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT, MIN_VIDEO_HEIGHT } from '../
 import { VideoTextureManager } from '../utils/video-loader';
 import type { VideoEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
-import { easeChromePresence, fitsControls, fitsExpand } from '../utils/media-chrome';
+import { easeChromePresence, fitsControls, fitsDownload, fitsExpand } from '../utils/media-chrome';
 import { registerVideoOps } from '../utils/media-runtime';
 import {
   sharedGeometry,
@@ -417,7 +417,8 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
             played,
             src ? texManager.isPlaying(src) : false,
             presence,
-            presence
+            presence,
+            fitsDownload(w, h) ? presence : 0
           );
           // A clip that is running redraws its own frames anyway; one that is paused still has to
           // repaint while its bar fades, and while it is showing, so the played line keeps up.

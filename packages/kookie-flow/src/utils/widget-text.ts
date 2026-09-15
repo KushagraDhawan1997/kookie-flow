@@ -29,7 +29,7 @@ import {
   VECTOR_LABEL_WIDTH,
   SEGMENT_TEXT_INSET,
 } from './widget-geometry';
-import { VECTOR_AXES, segmentIndex, vectorComponent, vectorDimensions } from './widget-parts';
+import { VECTOR_AXES, optionLabel, segmentIndex, vectorComponent, vectorDimensions } from './widget-parts';
 import { MIN_WIDGET_ZOOM } from './widget-hit';
 import type { WidgetBox } from './widget-geometry';
 import type { ResolvedWidgetConfig } from '../types';
@@ -167,7 +167,7 @@ export function widgetPartTexts(
     for (let i = 0; i < options.length; i++) {
       if (options[i] === '') continue;
       out.push({
-        text: options[i],
+        text: optionLabel(config.optionLabels, options[i]),
         x: box.x + w * (i + 0.5),
         anchor: 'center',
         muted: i !== chosen,
@@ -292,7 +292,7 @@ export function widgetValueText(
 
     case 'select': {
       const chosen = typeof value === 'string' && value !== '' ? value : null;
-      const text = chosen ?? config.placeholder ?? 'Select…';
+      const text = chosen !== null ? optionLabel(config.optionLabels, chosen) : (config.placeholder ?? 'Select…');
       return {
         text,
         x: box.x + pad,

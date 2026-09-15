@@ -84,6 +84,7 @@ import { mediaEntity, mediaKindOfFile, mediaKindOfUrl } from '../utils/media-pas
 import { simplifyStroke, strokeBounds } from '../utils/stroke-geometry';
 import { DEFAULT_STROKE_WIDTH } from './draw-entities';
 import {
+  hitDownloadButton,
   hitExpandButton,
   hitVideoControls,
   bandCursor,
@@ -98,6 +99,7 @@ import {
 import { getOrbit, hasOrbit, setOrbit, videoOps, type VideoSurface } from '../utils/media-runtime';
 import { previewBandRect, type BandRect } from '../utils/preview-band';
 import { classifyPreviewValue, type PreviewSource } from '../utils/preview-source';
+import { downloadMedia } from '../utils/download-media';
 import { BAND_MODEL_DIRECTION } from './preview-entities';
 import { MediaViewer, type MediaView } from './media-viewer';
 import { capture } from '../utils/canvas-runtime';
@@ -131,7 +133,7 @@ import { motionNow } from '../gl';
 import { stepEntityCursor } from '../utils/entity-cursor';
 import { WidgetEditOverlay } from './widget-edit-overlay';
 import { partIndexAt, isOnSeedButton, seedFieldBox, readPartBoxInto } from '../utils/widget-geometry';
-import { randomSeed, scrubValue, vectorComponents, vectorDimensions } from '../utils/widget-parts';
+import { optionLabel, randomSeed, scrubValue, vectorComponents, vectorDimensions } from '../utils/widget-parts';
 import { inputWidgetType } from '../utils/widgets';
 import { WidgetPopoverGL } from './widget-popover';
 import { WidgetA11yMirror } from './widget-a11y-mirror';
@@ -746,6 +748,7 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
         evaluate: (entityId) => store.getState().evaluate(entityId),
         evaluateDirty: () => store.getState().evaluateDirty(),
         evaluateAll: () => store.getState().evaluateAll(),
+        restoreAll: () => store.getState().restoreAll(),
         setSocketValue: (entityId, socketId, value) =>
           store.getState().setSocketValue(entityId, socketId, value),
         getSocketValue: (entityId, socketId) => store.getState().getSocketValue(entityId, socketId),
@@ -1141,12 +1144,15 @@ function InputHandler({
     (hit: WidgetHit) => {
       const kind = hit.config.type === 'select' ? 'select' : 'color';
       const options = kind === 'select' ? (hit.config.options ?? []) : [];
+      // Resolved once per open, so the renderer reads a row's words without a lookup per frame.
+      const optionLabels = hit.config.optionLabels;
+      const labels = optionLabels ? options.map((o) => optionLabel(optionLabels, o)) : undefined;
       const font = regularFontRef.current;
       let widest = 0;
       if (font) {
         const scale = popoverDepsRef.current.resolvedStyle.widgetFontSize / font.metrics.info.size;
-        for (const option of options) {
-          widest = Math.max(widest, measureText(option, font.glyphMap, font.kerningMap) * scale);
+        for (const text of labels ?? options) {
+          widest = Math.max(widest, measureText(text, font.glyphMap, font.kerningMap) * scale);
         }
       }
       const popover = {
@@ -1156,6 +1162,7 @@ function InputHandler({
         key: widgetKey(hit.entityId, hit.socketId),
         box: { x: hit.box.x, y: hit.box.y, width: hit.box.width, height: hit.box.height },
         options,
+        labels,
         value: hit.value === undefined || hit.value === null ? '' : String(hit.value),
         widest,
         openedAt: motionNow(),
@@ -2258,16 +2265,16 @@ function InputHandler({
             clickedEntity.type === 'image' ? [DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT]
             : clickedEntity.type === 'video' ? [DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT]
             : [DEFAULT_MESH_WIDTH, DEFAULT_MESH_HEIGHT];
-          if (
-            data.src &&
-            (data.controls ?? true) &&
-            hitExpandButton(
-              worldPos.x - clickedEntity.position.x,
-              worldPos.y - clickedEntity.position.y,
-              clickedEntity.width ?? dw,
-              clickedEntity.height ?? dh
-            )
-          ) {
+          const lx = worldPos.x - clickedEntity.position.x;
+          const ly = worldPos.y - clickedEntity.position.y;
+          const mw = clickedEntity.width ?? dw;
+          const mh = clickedEntity.height ?? dh;
+          if (data.src && (data.controls ?? true) && hitDownloadButton(lx, ly, mw, mh)) {
+            claimMediaPress(clickedEntity.id);
+            void downloadMedia(data.src, clickedEntity.type);
+            return;
+          }
+          if (data.src && (data.controls ?? true) && hitExpandButton(lx, ly, mw, mh)) {
             claimMediaPress(clickedEntity.id);
             if (clickedEntity.type === 'video') {
               const startTime = videoOps(store, 'entity')?.currentTime(clickedEntity.id) ?? 0;
@@ -2302,6 +2309,15 @@ function InputHandler({
             );
             const lx = worldPos.x - band.x;
             const ly = worldPos.y - band.y;
+
+            if (
+              (source.kind === 'image' || source.kind === 'video' || source.kind === 'mesh') &&
+              hitDownloadButton(lx, ly, band.width, band.height)
+            ) {
+              claimMediaPress(clickedEntity.id);
+              void downloadMedia(source.src, source.kind);
+              return;
+            }
 
             if (source.kind !== 'none' && hitExpandButton(lx, ly, band.width, band.height)) {
               claimMediaPress(clickedEntity.id);

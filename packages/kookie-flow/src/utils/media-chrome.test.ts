@@ -4,12 +4,15 @@ import {
   CONTROL_BAR_INSET,
   CONTROL_BUTTON_SIZE,
   CONTROL_TRACK_END_PAD,
+  DOWNLOAD_BUTTON_GAP,
   EXPAND_BUTTON_SIZE,
   MESH_DRAG_STRIP_HEIGHT,
   ORBIT_MAX_PITCH,
   easeChromePresence,
   fitsControls,
+  fitsDownload,
   fitsExpand,
+  hitDownloadButton,
   hitExpandButton,
   bandCursor,
   hitVideoControls,
@@ -21,6 +24,7 @@ import {
   orbitFromDrag,
   seekPositionAt,
 } from './media-chrome';
+import { downloadFileName } from './download-media';
 
 describe('the expand button', () => {
   const inset = CONTROL_BAR_INSET;
@@ -45,6 +49,44 @@ describe('the expand button', () => {
     expect(fitsExpand(90, 60)).toBe(true);
     expect(fitsExpand(40, 30)).toBe(false);
     expect(hitExpandButton(38, 10, 40, 30)).toBe(false);
+  });
+});
+
+describe('the download button', () => {
+  const inset = CONTROL_BAR_INSET;
+  const x = W - inset - EXPAND_BUTTON_SIZE - DOWNLOAD_BUTTON_GAP - EXPAND_BUTTON_SIZE / 2;
+  const y = inset + EXPAND_BUTTON_SIZE / 2;
+
+  it('sits left of the expand button, and the two never share a point', () => {
+    expect(hitDownloadButton(x, y, W, H)).toBe(true);
+    expect(hitExpandButton(x, y, W, H)).toBe(false);
+    for (let px = 0; px <= W; px += 1) {
+      expect(hitDownloadButton(px, y, W, H) && hitExpandButton(px, y, W, H)).toBe(false);
+    }
+  });
+
+  it('drops out on media with room for only one square, leaving expand', () => {
+    expect(fitsExpand(90, 60)).toBe(true);
+    expect(fitsDownload(90, 60)).toBe(false);
+  });
+
+  it('is a pointer under the cursor, but not on a band showing a bitmap with no file', () => {
+    expect(mediaEntityCursor('image', x, y, W, H, true, true, true)).toBe('pointer');
+    expect(bandCursor('video', x, y, W, H)).toBe('pointer');
+    expect(bandCursor('bitmap', x, y, W, H)).toBeNull();
+  });
+});
+
+describe('a downloaded file name', () => {
+  it('keeps the URL file name, without its query', () => {
+    expect(downloadFileName('https://cdn.test/a/lighthouse.png?v=2', 'image', '')).toBe('lighthouse.png');
+  });
+
+  it('falls back to the kind and the content type', () => {
+    expect(downloadFileName('https://cdn.test/files/abc123', 'image', 'image/jpeg')).toBe('image.jpg');
+    expect(downloadFileName('data:video/mp4;base64,AAAA', 'video', 'video/mp4')).toBe('video.mp4');
+    expect(downloadFileName('blob:https://x/1', 'mesh', 'model/gltf-binary')).toBe('mesh.glb');
+    expect(downloadFileName('https://cdn.test/files/abc123', 'image', '')).toBe('image');
   });
 });
 

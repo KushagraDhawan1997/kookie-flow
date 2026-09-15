@@ -250,6 +250,64 @@ describe('manual gates', () => {
     expect(ran.sort()).toEqual(['a', 'g1', 'g2']);
     ev.dispose();
   });
+
+  it('restoreAll runs reactive entities and asks manual ones to restore', async () => {
+    const w = world(
+      [ent('a', [], [sock('o')]), ent('gen', [sock('i')], [sock('o')], 'ai/generate'), ent('post', [sock('i')])],
+      [edge('a', 'o', 'gen', 'i'), edge('gen', 'o', 'post', 'i')]
+    );
+    w.modes.set('ai/generate', 'manual');
+    const asked: Array<[string, boolean]> = [];
+    const ev = new Evaluator(hostFor(w), (id, _type, _inputs, ctx) => {
+      asked.push([id, ctx.restore]);
+      return { o: id };
+    });
+
+    await ev.restoreAll();
+
+    // Only the gate is told it is a restore; the cascade past it runs as usual.
+    expect(asked).toEqual([['a', false], ['gen', true], ['post', false]]);
+    expect(ev.getSocketValue('gen', 'o')).toBe('gen');
+    ev.dispose();
+  });
+
+  it('a restore that finds nothing leaves the gate waiting, and its downstream behind it', async () => {
+    const w = world(
+      [ent('a', [], [sock('o')]), ent('gen', [sock('i')], [sock('o')], 'ai/generate'), ent('post', [sock('i')])],
+      [edge('a', 'o', 'gen', 'i'), edge('gen', 'o', 'post', 'i')]
+    );
+    w.modes.set('ai/generate', 'manual');
+    const asked: Array<[string, boolean]> = [];
+    const ev = new Evaluator(hostFor(w), (id, _type, _inputs, ctx) => {
+      asked.push([id, ctx.restore]);
+      if (id === 'gen' && ctx.restore) return; // never made
+      return { o: id };
+    });
+
+    await ev.restoreAll();
+    expect(ev.status('gen')).toBe('dirty');
+    expect(ev.status('post')).toBe('dirty');
+    expect(asked).toEqual([['a', false], ['gen', true]]);
+
+    // The real trigger still finds it stale, and runs it as a run.
+    await ev.evaluateDirty();
+    expect(asked.slice(2)).toEqual([['gen', false], ['post', false]]);
+    expect(ev.status('post')).toBe('success');
+    ev.dispose();
+  });
+
+  it('a gate run with evaluate() is never told it is a restore', async () => {
+    const w = world([ent('gen', [], [sock('o')], 'ai/generate')]);
+    w.modes.set('ai/generate', 'manual');
+    const asked: boolean[] = [];
+    const ev = new Evaluator(hostFor(w), (_id, _type, _inputs, ctx) => {
+      asked.push(ctx.restore);
+      return { o: 1 };
+    });
+    await ev.evaluate('gen');
+    expect(asked).toEqual([false]);
+    ev.dispose();
+  });
 });
 
 describe('cancellation', () => {

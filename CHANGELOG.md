@@ -7,6 +7,17 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ### Added
 
+- **An option can read differently from its value.** A socket's `optionLabels` maps a value to
+  the words a person sees: `{ png: 'PNG', auto: 'Auto' }`. The value is still what is stored and
+  evaluated. The closed select, its open list, a segmented control, the accessibility mirror and
+  the DOM select all print the label, and an option with no entry prints its value as before.
+- **`restoreAll()` opens a saved graph without running what costs money.** It marks everything
+  stale and runs reactive entities as `evaluateAll()` does, but calls each manual entity with
+  `ctx.restore` set. The entity hands back a result that already exists, or nothing, and nothing
+  leaves it and its downstream stale until a real run. `EvaluationContext` gains `restore`, false
+  on every other run. Before this, an app had to pick between an opened board with nothing on
+  screen and one that re-ran every paid node.
+
 - **The minimap takes a `style`.** It lands on the minimap's outer element after the minimap's own
   inline styles, so it wins over them. A `className` could not move the minimap, since a stylesheet
   rule loses to an inline style. An app whose canvas runs on under a floating panel uses it to keep

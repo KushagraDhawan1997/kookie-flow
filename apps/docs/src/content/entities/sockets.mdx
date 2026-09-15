@@ -46,6 +46,7 @@ with no `height` grows to fit every row.
 | `max` | `number` | from the type | The highest value of a slider. |
 | `step` | `number` | from the type | The increment a slider snaps to, and the decimal places a slider or number field shows. |
 | `options` | `string[]` | none | The choices in a select. |
+| `optionLabels` | `Record<string, string>` | none | What each option reads as, by value, such as `{ png: 'PNG' }`. The value is still what's stored. An option with no entry reads as its value. |
 | `placeholder` | `string` | none | The text an empty text, text area, number or select widget shows. |
 | `defaultValue` | `unknown` | none | The value the widget shows until the entity holds one. |
 | `layout` | `SocketLayoutMode` | `'inline'` | `'inline'` puts the widget beside the label. `'stacked'` puts it under the label. |
@@ -273,6 +274,7 @@ const widgetTypes = { number: StarRating };
 | `onChange` | `(value: unknown) => void` | Call it with the new value. It reaches `onWidgetChange`. |
 | `min`, `max`, `step` | `number` | From the socket, falling back to its type. |
 | `options` | `string[]` | From the socket. |
+| `optionLabels` | `Record<string, string>` | From the socket. |
 | `placeholder` | `string` | From the socket. |
 | `rows` | `number` | From the socket. |
 | `disabled` | `boolean` | Not set by the canvas, because a connected input has no widget. |

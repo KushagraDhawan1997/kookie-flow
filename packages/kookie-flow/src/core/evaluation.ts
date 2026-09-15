@@ -72,6 +72,13 @@ export interface EvaluationContext {
   signal: AbortSignal;
   /** Report 0..1. Drives the running indicator; clamped, never required. */
   progress: (fraction: number) => void;
+  /**
+   * True when a manual entity was opened by `restoreAll()` rather than by a person asking for a
+   * run. Answer with a result that already exists, or return nothing: nothing leaves the entity
+   * dirty, waiting for its real trigger. Always false for a reactive entity, which is cheap enough
+   * to simply run.
+   */
+  restore: boolean;
 }
 
 /** The consumer's one function. Return outputs keyed by output socket id, or nothing. */
@@ -245,7 +252,9 @@ export class Evaluator {
     const entity = this.host.getEntity(id);
     if (!entity) return;
     this.dirty.delete(id);
-    await this.start(entity, true);
+    this.forced.delete(id);
+    this.restoring.delete(id);
+    await this.start(entity, false);
   }
 
   /** Run every dirty entity, manual gates included, and wait for the graph to go quiet. */
@@ -258,7 +267,34 @@ export class Evaluator {
     }
     // Opening every gate at once is correct: each waits for its own upstream to settle in
     // `flush`, and the gates themselves are what `evaluateDirty` exists to open.
-    for (const id of gates) this.forced.add(id);
+    for (const id of gates) {
+      this.forced.add(id);
+      // A real trigger outranks a restore still waiting on its upstream.
+      this.restoring.delete(id);
+    }
+    this.schedule();
+    await this.settled();
+  }
+
+  /**
+   * Mark the whole graph stale and bring it back as it was: reactive entities run, and manual ones
+   * are opened with `ctx.restore` so they can hand back a result they already have without doing
+   * the slow or paid work again. One that has nothing stays dirty until it is run for real.
+   *
+   * WHY NOT `evaluateAll`. Opening a saved graph needs every value back on screen, but a manual
+   * type exists because running it costs something. `evaluateAll` runs it; a restore only asks.
+   */
+  async restoreAll(): Promise<void> {
+    if (this.disposed) return;
+    const all: string[] = [];
+    for (const id of this.host.entityIds()) all.push(id);
+    this.markDirty(all);
+    for (const id of this.dirty) {
+      const entity = this.host.getEntity(id);
+      if (!entity || this.host.evaluationMode(entity) !== 'manual') continue;
+      this.forced.add(id);
+      this.restoring.add(id);
+    }
     this.schedule();
     await this.settled();
   }
@@ -344,6 +380,7 @@ export class Evaluator {
       this.clearHold(id);
       this.dirty.delete(id);
       this.forced.delete(id);
+      this.restoring.delete(id);
       this.records.delete(id);
       prefixes.push(socketValueKey(id, ''));
     }
@@ -372,6 +409,8 @@ export class Evaluator {
 
   /** Manual entities `evaluateDirty` has opened; consumed by `flush`. */
   private readonly forced = new Set<string>();
+  /** The subset of `forced` that `restoreAll` opened; consumed with it. */
+  private readonly restoring = new Set<string>();
 
   private schedule(): void {
     if (this.scheduled || this.disposed) return;
@@ -412,8 +451,8 @@ export class Evaluator {
     }
 
     for (const entity of ready) {
-      const forced = this.forced.delete(entity.id);
-      void this.start(entity, forced);
+      this.forced.delete(entity.id);
+      void this.start(entity, this.restoring.delete(entity.id));
     }
 
     this.notifyIfQuiet();
@@ -434,7 +473,7 @@ export class Evaluator {
     return true;
   }
 
-  private async start(entity: Entity, _forced: boolean): Promise<void> {
+  private async start(entity: Entity, restore: boolean): Promise<void> {
     const id = entity.id;
     this.dirty.delete(id);
     this.abort(id);
@@ -479,6 +518,7 @@ export class Evaluator {
         if (rec) rec.progress = Math.min(1, Math.max(0, fraction));
         this.host.onChange();
       },
+      restore,
     };
 
     let outputs: Record<string, unknown> | void;
@@ -494,6 +534,14 @@ export class Evaluator {
 
     if (this.runs.get(id) !== run) return; // inputs changed mid-run; result discarded
     this.runs.delete(id);
+
+    if (restore && !outputs) {
+      // Nothing was made before: the entity is as stale as it was, and what it feeds stays
+      // blocked behind it rather than running on an empty input.
+      this.setStatus(id, 'dirty');
+      this.notifyIfQuiet();
+      return;
+    }
 
     if (outputs) {
       for (const key of Object.keys(outputs)) {

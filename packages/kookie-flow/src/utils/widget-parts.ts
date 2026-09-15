@@ -104,6 +104,14 @@ export function randomSeed(min: number | undefined, max: number | undefined, ran
   return lo + Math.floor(random() * (hi - lo + 1));
 }
 
+/**
+ * What an option reads as: its label where the socket gives one, else the value itself. No
+ * allocation — a lookup on the record the socket already holds.
+ */
+export function optionLabel(labels: Record<string, string> | undefined, value: string): string {
+  return (labels && Object.prototype.hasOwnProperty.call(labels, value) && labels[value]) || value;
+}
+
 /** Which option a segmented value names, or -1. */
 export function segmentIndex(options: readonly string[] | undefined, value: unknown): number {
   if (!options || typeof value !== 'string') return -1;

@@ -181,6 +181,7 @@ const SocketWidget = memo(
         max={config.max}
         step={config.step}
         options={config.options}
+        optionLabels={config.optionLabels}
         placeholder={config.placeholder}
         rows={config.rows}
       />

@@ -384,6 +384,8 @@ export interface FlowState {
   evaluateDirty: () => Promise<void>;
   /** Mark everything stale and run it all. */
   evaluateAll: () => Promise<void>;
+  /** Mark everything stale; run reactive entities and ask manual ones to restore. */
+  restoreAll: () => Promise<void>;
   /** Inject an output value; downstream is marked stale. */
   setSocketValue: (entityId: string, socketId: string, value: unknown) => void;
   getSocketValue: (entityId: string, socketId: string) => unknown;
@@ -1582,6 +1584,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       evaluate: (entityId) => evaluator.evaluate(entityId),
       evaluateDirty: () => evaluator.evaluateDirty(),
       evaluateAll: () => evaluator.evaluateAll(),
+      restoreAll: () => evaluator.restoreAll(),
       setSocketValue: (entityId, socketId, value) => evaluator.setSocketValue(entityId, socketId, value),
       getSocketValue: (entityId, socketId) => evaluator.getSocketValue(entityId, socketId),
       getEvaluationStatus: (entityId) => evaluator.status(entityId),

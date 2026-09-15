@@ -31,7 +31,7 @@ import { DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT, MIN_IMAGE_HEIGHT } from '../
 import { ImageTextureManager } from '../utils/image-loader';
 import type { ImageEntityData, EntityChange } from '../types';
 import { entityDepth } from '../utils/entity-depth';
-import { easeChromePresence, fitsExpand } from '../utils/media-chrome';
+import { easeChromePresence, fitsDownload, fitsExpand } from '../utils/media-chrome';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
@@ -468,7 +468,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
           setMediaBox(mat, w, h, resolvedStyle.borderRadius);
-          setMediaChrome(mat, 0, 0, false, 0, presence);
+          setMediaChrome(mat, 0, 0, false, 0, presence, fitsDownload(w, h) ? presence : 0);
           const u = mat.uniforms;
           if (u.map.value !== texture) {
             u.map.value = texture;

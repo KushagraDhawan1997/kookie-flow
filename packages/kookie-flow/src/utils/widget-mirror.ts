@@ -110,6 +110,13 @@ export function sameMirrorShape(a: MirrorEntry[], b: MirrorEntry[]): boolean {
       if (!ao || !bo || ao.length !== bo.length) return false;
       for (let j = 0; j < ao.length; j++) if (ao[j] !== bo[j]) return false;
     }
+    const al = x.config.optionLabels;
+    const bl = y.config.optionLabels;
+    if (al !== bl) {
+      if (!al || !bl) return false;
+      // Keyed by the options just compared, so walking them covers every label that shows.
+      for (const o of ao ?? []) if (al[o] !== bl[o]) return false;
+    }
   }
   return true;
 }

@@ -78,7 +78,9 @@ back a version of the graph you replaced.
 
 A save holds no computed values. If your graph evaluates, load it with a key, and call
 `evaluateAll()` in an effect when the board mounts, or put stored results back with
-`setSocketValue`. The [Evaluation](/data/evaluation) chapter covers both.
+`setSocketValue`. If some types are manual because they cost money, call `restoreAll()` instead,
+so that opening the board fetches their results rather than running them. The
+[Evaluation](/data/evaluation) chapter covers all three.
 
 ## What a save leaves out
 

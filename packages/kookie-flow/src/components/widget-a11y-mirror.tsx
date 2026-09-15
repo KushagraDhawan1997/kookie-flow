@@ -65,7 +65,7 @@ import { shallow } from 'zustand/shallow';
 import { useFlowStoreApi } from './context';
 import { listEntityWidgets, mirrorDisplayValue, sameMirrorShape, type MirrorEntry } from '../utils/widget-mirror';
 import { readWidgetValue, widgetKey } from '../utils/widget-values';
-import { VECTOR_AXES, parseVectorText, vectorDimensions } from '../utils/widget-parts';
+import { VECTOR_AXES, optionLabel, parseVectorText, vectorDimensions } from '../utils/widget-parts';
 import type { Entity, SocketType } from '../types';
 
 /** Any control this file mounts. */
@@ -485,7 +485,7 @@ function MirrorControlElement({
           <option value="">{config.placeholder ?? 'Select…'}</option>
           {(config.options ?? []).map((o) => (
             <option key={o} value={o}>
-              {o}
+              {optionLabel(config.optionLabels, o)}
             </option>
           ))}
         </select>
@@ -511,7 +511,7 @@ function MirrorControlElement({
         <select {...common} ref={onMount}>
           {(config.options ?? []).map((o) => (
             <option key={o} value={o}>
-              {o}
+              {optionLabel(config.optionLabels, o)}
             </option>
           ))}
         </select>
