@@ -34,8 +34,10 @@ function fakeBitmap(width = 64, height = 64) {
 
 /** Reach into the manager the way the upload queue does, without a GPU. */
 function enqueue(mgr: InstanceType<typeof ImageTextureManager>, src: string, tier: 'thumbnail' | 'full', bmp: ImageBitmap) {
+  const owner = mgr.getEntry(src);
+  if (!owner) throw new Error('Seed an entry before queuing an upload');
   // @ts-expect-error — private by design; this is the seam the drain reads.
-  mgr.uploadQueue.push({ src, bitmap: bmp, tier, generateMipmaps: tier === 'full' });
+  mgr.uploadQueue.push({ src, owner, bitmap: bmp, tier, generateMipmaps: tier === 'full' });
 }
 
 function seed(mgr: InstanceType<typeof ImageTextureManager>, src: string) {

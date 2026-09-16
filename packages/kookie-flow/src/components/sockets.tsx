@@ -1,3 +1,4 @@
+import { connectedSocketKey } from '../utils/socket-key';
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { ViewportCuller } from '../utils/viewport-culler';
@@ -270,7 +271,6 @@ export function Sockets({
    */
   const hoverDirtyRef = useRef(false);
   const hoverTouchedRef = useRef<Set<string>>(new Set());
-  const lastPosVersionRef = useRef(-1);
   const initializedRef = useRef(false);
 
   // Reverse index: entityId → the run of instances that entity owns, for O(K) position updates.
@@ -626,21 +626,14 @@ export function Sockets({
   useEffect(() => {
     const unsubEntities = store.subscribe(
       (state) => state.entities,
+      () => { dirtyRef.current = true; cullerRef.current?.invalidate(); }
+    );
+    const unsubPositions = store.subscribe(
+      (state) => state.positionVersion,
       () => {
-        // Check if this is a position-only change (from updateEntityPositions)
-        // vs a structural change (add/remove/dimensions)
-        const currentPosVersion = store.getState().positionVersion;
-        if (currentPosVersion !== lastPosVersionRef.current) {
-          lastPosVersionRef.current = currentPosVersion;
-          positionDirtyRef.current = true;
-          // NOT `invalidate()`. A re-collect forces the full rebuild this layer's position fast
-          // path exists to avoid, and a drag bumps this on every frame. What a move can do to the
-          // cull — bring an entity that had no instances into view — is caught exactly, and only
-          // when it happens, by the missing-range check in that fast path.
-        } else {
-          dirtyRef.current = true;
-          cullerRef.current?.invalidate();
-        }
+        // Keep the existing instance ranges for moves. The position pass detects an entity
+        // entering view without a range and falls back to a full rebuild when necessary.
+        positionDirtyRef.current = true;
       }
     );
     /**
@@ -735,6 +728,7 @@ export function Sockets({
     return () => {
       unsubStack();
       unsubEntities();
+      unsubPositions();
       unsubViewport();
       unsubHoveredSocket();
       unsubHidden();
@@ -912,7 +906,7 @@ export function Sockets({
       sourceSocketCacheRef.current = null;
       return null;
     }
-    const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+    const cacheKey = connectedSocketKey(connectionDraft.source.entityId, connectionDraft.source.socketId, connectionDraft.source.isInput);
     if (sourceSocketCacheRef.current?.key === cacheKey) {
       return sourceSocketCacheRef.current.type;
     }

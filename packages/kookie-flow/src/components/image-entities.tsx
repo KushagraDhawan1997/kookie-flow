@@ -263,17 +263,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     });
     // Position/dimension changes — fires on drag/resize but useFrame is now O(k) not O(n)
     const unsubPositions = store.subscribe((s) => s.positionVersion, markFullDirty);
-    // Data changes (src, objectFit, etc.) — skip position-only updates already handled above
-    let lastPosVersion = store.getState().positionVersion;
-    const unsubEntities = store.subscribe((s) => s.entities, () => {
-      const pv = store.getState().positionVersion;
-      if (pv !== lastPosVersion) {
-        // Position version also bumped → position-only update, already handled
-        lastPosVersion = pv;
-        return;
-      }
-      markFullDirty();
-    });
+    // Data and structural changes; movement only publishes positionVersion.
+    const unsubEntities = store.subscribe((s) => s.entities, markFullDirty);
     /**
      * NO `viewport` SUBSCRIPTION, deliberately. The camera is asked once a frame by the gate at the
      * top of the frame loop instead — a subscription could only say "it changed", and what this

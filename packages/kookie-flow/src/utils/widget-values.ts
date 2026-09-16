@@ -1,3 +1,4 @@
+import { entitySocketKey } from './socket-key';
 /**
  * The value a widget SHOWS, when what the person set and what the entity holds disagree.
  *
@@ -47,7 +48,7 @@ export interface WidgetOverride {
 
 /** One key per widget, in the shape `connectedSockets` already uses for the same pair. */
 export function widgetKey(entityId: string, socketId: string): string {
-  return `${entityId}:${socketId}`;
+  return entitySocketKey(entityId, socketId);
 }
 
 /** Two widget values are the same: `Object.is`, or two arrays whose elements are. */

@@ -1,3 +1,4 @@
+import { entitySocketKey } from '../utils/socket-key';
 import type { Entity } from '../types';
 import { DEFAULT_ENTITY_WIDTH, DEFAULT_ENTITY_HEIGHT } from './constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
@@ -606,7 +607,7 @@ export class SocketQuadtree {
    * Generate a unique key for a socket.
    */
   private static getKey(entityId: string, socketId: string, isInput: boolean): string {
-    return `${entityId}:${socketId}:${isInput ? 'i' : 'o'}`;
+    return `${entitySocketKey(entityId, socketId)}:${isInput ? 'i' : 'o'}`;
   }
 
   /**

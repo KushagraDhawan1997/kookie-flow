@@ -1,3 +1,4 @@
+import { connectedSocketKey } from './socket-key';
 /**
  * Which widget a world point is on.
  *
@@ -90,7 +91,7 @@ export function getWidgetAt(
   for (let i = 0; i < inputs.length; i++) {
     const socket = inputs[i];
     // A connected socket has no widget — its value comes down the edge.
-    if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+    if (connectedSockets.has(connectedSocketKey(entity.id, socket.id, true))) continue;
     const config = resolveWidgetConfig(socket, socketTypes);
     if (!config) continue;
     const box = getWidgetBox(entity, i, socketLayout, defaultWidth, labelWidth);
@@ -151,7 +152,7 @@ export function getWidgetSocketIdAt(
   if (!inputs) return null;
   for (let i = 0; i < inputs.length; i++) {
     const socket = inputs[i];
-    if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+    if (connectedSockets.has(connectedSocketKey(entity.id, socket.id, true))) continue;
     if (!resolveWidgetConfig(socket, socketTypes)) continue;
     const box = readWidgetBoxInto(SCRATCH, entity, i, socketLayout, defaultWidth, labelWidth);
     if (!box) continue;

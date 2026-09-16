@@ -142,14 +142,18 @@ export function entityDepth(
  */
 export function topmostEntityId(
   ids: readonly string[],
-  stackOrder: ReadonlyMap<string, number>
+  stackOrder: ReadonlyMap<string, number>,
+  selectedEntityIds?: ReadonlySet<string>
 ): string | null {
   let best: string | null = null;
   let bestIndex = -Infinity;
+  let bestSelected = false;
   for (const id of ids) {
     const index = stackOrder.get(id) ?? 0;
-    if (index > bestIndex) {
+    const selected = selectedEntityIds?.has(id) ?? false;
+    if (best === null || (selected && !bestSelected) || (selected === bestSelected && index > bestIndex)) {
       bestIndex = index;
+      bestSelected = selected;
       best = id;
     }
   }

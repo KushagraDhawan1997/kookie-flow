@@ -1,3 +1,4 @@
+import { connectedSocketKey } from '../utils/socket-key';
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -289,7 +290,7 @@ export function ConnectionLine({
     }
 
     // O(1) socket lookup via cache (only compute once per connection draft)
-    const cacheKey = `${connectionDraft.source.entityId}:${connectionDraft.source.socketId}:${connectionDraft.source.isInput ? 'input' : 'output'}`;
+    const cacheKey = connectedSocketKey(connectionDraft.source.entityId, connectionDraft.source.socketId, connectionDraft.source.isInput);
     let socketIndex: number;
     let socket: { id: string; type: string; position?: number };
 

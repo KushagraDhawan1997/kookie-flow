@@ -1,3 +1,4 @@
+import { entitySocketKey } from '../utils/socket-key';
 /**
  * Graph Engine (Phase 8)
  *
@@ -1052,7 +1053,7 @@ export function computeCollapseToSubgraph(
   // Create frame input ports for boundary incoming edges
   const seenInputs = new Map<string, string>(); // "entityId:socketId" → framePortId
   for (const edge of boundaryIncoming) {
-    const key = `${edge.target}:${edge.targetSocket ?? DEFAULT_SOCKET}`;
+    const key = entitySocketKey(edge.target, edge.targetSocket ?? DEFAULT_SOCKET);
     let framePortId = seenInputs.get(key);
     if (!framePortId) {
       framePortId = `gin-${frameInputs.length}`;
@@ -1080,7 +1081,7 @@ export function computeCollapseToSubgraph(
   // Create frame output ports for boundary outgoing edges
   const seenOutputs = new Map<string, string>(); // "entityId:socketId" → framePortId
   for (const edge of boundaryOutgoing) {
-    const key = `${edge.source}:${edge.sourceSocket ?? DEFAULT_SOCKET}`;
+    const key = entitySocketKey(edge.source, edge.sourceSocket ?? DEFAULT_SOCKET);
     let framePortId = seenOutputs.get(key);
     if (!framePortId) {
       framePortId = `gout-${frameOutputs.length}`;

@@ -5,6 +5,25 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Core audit and performance
+
+- Evaluation schedules newly ready nodes using dependency counts, removing repeated whole-queue
+  scans on long chains. Rewiring, insertion, bypass and type-default changes invalidate affected
+  computations; content-only entities no longer enter the evaluator.
+- **! Store movement notifications:** drag/resize updates the store-owned `entities` array in
+  place and publishes `positionVersion`. Consumers observing movement must subscribe to that
+  version. Input arrays and `toObject()` snapshots remain independent of those writes.
+- **! Socket map keys:** use `entitySocketKey` / `socketValueKey` and `connectedSocketKey` for
+  flat maps. Entity ids containing `:` or `%` are escaped; ordinary ids keep their existing keys.
+- History shortcuts belong to the focused graph and preserve undo in editable fields. Custom
+  canvases or wrapped change handlers can set `history.containerRef`.
+- Deleting a frame detaches and reveals surviving children. Parent assignment rejects existing
+  cycles. Hit testing honours the selected foreground layer. Deleted ids lose runtime mute state.
+- Deferred full-resolution image fetches abort on release, reject stale uploads after reacquisition,
+  and retry failures with exponential backoff (1 second to 30 seconds).
+- KookieUI is declared as a required peer, matching the main entry's runtime imports. Scoped
+  workspace overrides patch the legacy esbuild loader and fflate advisory versions.
+
 ### Added
 
 - **An option can read differently from its value.** A socket's `optionLabels` maps a value to

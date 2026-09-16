@@ -37,7 +37,9 @@
  */
 
 import type { Entity, Socket } from '../types';
-import { getIncomers, getOutgoers, type AdjacencyIndex } from './graph';
+import { getOutgoers, type AdjacencyIndex } from './graph';
+import { isEvaluated } from '../utils/entity-kind';
+import { entitySocketKey } from '../utils/socket-key';
 
 /** The states an entity moves through. `idle` is the state of never having been asked. */
 export type EvaluationStatus = 'idle' | 'dirty' | 'running' | 'success' | 'error';
@@ -130,7 +132,7 @@ function now(): number {
 
 /** Key for a stored output value. Same shape `connectedSockets` and `widgetKey` use. */
 export function socketValueKey(entityId: string, socketId: string): string {
-  return `${entityId}:${socketId}`;
+  return entitySocketKey(entityId, socketId);
 }
 
 interface Run {
@@ -150,6 +152,12 @@ export class Evaluator {
   private onStatusChange: OnStatusChange | null;
 
   private readonly dirty = new Set<string>();
+  private readonly candidates = new Set<string>();
+  private readonly blockedInputs = new Map<string, number>();
+  private readinessIndex: AdjacencyIndex | null = null;
+  private readonly markStack: string[] = [];
+  private readonly ready: Entity[] = [];
+  private readonly outputKeys = new Map<string, Set<string>>();
   private readonly runs = new Map<string, Run>();
   private readonly holds = new Map<string, ReturnType<typeof setTimeout>>();
   private runCounter = 0;
@@ -181,7 +189,7 @@ export class Evaluator {
     // Handlers arriving can change the answer for something already dirty: a graph mounted
     // before onEvaluate existed sat honestly stale, and a type table that just turned a gate
     // reactive has released it. A pass is due either way; it is a no-op if nothing is ready.
-    this.schedule();
+    this.wake();
   }
 
   status(id: string): EvaluationStatus {
@@ -201,7 +209,7 @@ export class Evaluator {
    * entity itself is NOT re-run (it did not compute this); what it feeds is marked stale.
    */
   setSocketValue(entityId: string, socketId: string, value: unknown): void {
-    this.socketValues.set(socketValueKey(entityId, socketId), value);
+    this.writeOutput(entityId, socketId, value);
     this.markDirty(getOutgoers(this.host.index(), entityId));
     this.host.onChange();
   }
@@ -212,21 +220,29 @@ export class Evaluator {
    */
   markDirty(ids: string | readonly string[]): void {
     if (this.disposed) return;
-    const list = typeof ids === 'string' ? [ids] : ids;
-    const index = this.host.index();
+    const index = this.refreshReadiness();
     let changed = false;
 
     // A manual stack rather than the generator in graph.ts, because this runs on every
     // pointermove of a slider drag and a generator allocates per step.
-    const stack: string[] = [];
-    for (const id of list) stack.push(id);
+    const stack = this.markStack;
+    const base = stack.length;
+    if (typeof ids === 'string') stack.push(ids);
+    else for (const id of ids) stack.push(id);
 
-    while (stack.length > 0) {
+    while (stack.length > base) {
       const id = stack.pop() as string;
+      const entity = this.host.getEntity(id);
+      if (!entity || !isEvaluated(entity.type)) continue;
       const rec = this.records.get(id);
       const status = rec?.status ?? 'idle';
 
-      if (status === 'dirty') continue; // subtree already marked — the invariant
+      if (status === 'dirty') {
+        // A topology change can unblock an already-dirty target without changing its status.
+        this.candidates.add(id);
+        changed = true;
+        continue;
+      }
       if (status === 'running') {
         // Inputs changed under a run: the result would be for values that no longer exist.
         // Then on into its subtree like any other mark. A run started by `evaluate(id)` from a
@@ -237,7 +253,8 @@ export class Evaluator {
 
       this.setStatus(id, 'dirty');
       changed = true;
-      for (const next of getOutgoers(index, id)) stack.push(next);
+      const ports = index.outgoing.get(id);
+      if (ports) for (const edges of ports.values()) for (const edge of edges) stack.push(edge.target);
     }
 
     if (changed) this.schedule();
@@ -250,7 +267,7 @@ export class Evaluator {
   async evaluate(id: string): Promise<void> {
     if (this.disposed) return;
     const entity = this.host.getEntity(id);
-    if (!entity) return;
+    if (!entity || !isEvaluated(entity.type)) return;
     this.dirty.delete(id);
     this.forced.delete(id);
     this.restoring.delete(id);
@@ -272,7 +289,7 @@ export class Evaluator {
       // A real trigger outranks a restore still waiting on its upstream.
       this.restoring.delete(id);
     }
-    this.schedule();
+    this.wake();
     await this.settled();
   }
 
@@ -374,25 +391,21 @@ export class Evaluator {
    * node that produced a picture and was then deleted held that picture for the life of the store.
    */
   forget(ids: Iterable<string>): void {
-    const prefixes: string[] = [];
+    this.refreshReadiness();
     for (const id of ids) {
       this.abort(id);
       this.clearHold(id);
       this.dirty.delete(id);
       this.forced.delete(id);
       this.restoring.delete(id);
+      this.candidates.delete(id);
+      this.updateBlockedInputs(id, this.status(id), 'idle');
       this.records.delete(id);
-      prefixes.push(socketValueKey(id, ''));
+      const keys = this.outputKeys.get(id);
+      if (keys) for (const key of keys) this.socketValues.delete(key);
+      this.outputKeys.delete(id);
     }
-    if (prefixes.length === 0) return;
-    for (const key of this.socketValues.keys()) {
-      for (const prefix of prefixes) {
-        if (key.startsWith(prefix)) {
-          this.socketValues.delete(key);
-          break;
-        }
-      }
-    }
+    if (this.candidates.size) this.schedule();
     this.notifyIfQuiet();
   }
 
@@ -402,7 +415,52 @@ export class Evaluator {
    * already dirty, and marking them again is the no-op the invariant promises.
    */
   wake(): void {
+    this.refreshReadiness();
+    for (const id of this.dirty) this.candidates.add(id);
     this.schedule();
+  }
+
+  private writeOutput(entityId: string, socketId: string, value: unknown): void {
+    const key = socketValueKey(entityId, socketId);
+    let keys = this.outputKeys.get(entityId);
+    if (!keys) { keys = new Set(); this.outputKeys.set(entityId, keys); }
+    keys.add(key);
+    this.socketValues.set(key, value);
+  }
+
+  /** Rebuild only when topology changes. Normal completions touch outgoing edges only. */
+  private refreshReadiness(): AdjacencyIndex {
+    const index = this.host.index();
+    if (index === this.readinessIndex) return index;
+    this.readinessIndex = index;
+    this.blockedInputs.clear();
+    for (const [id, ports] of index.outgoing) {
+      if (!this.isBlocking(this.status(id))) continue;
+      for (const edges of ports.values()) for (const edge of edges) {
+        this.blockedInputs.set(edge.target, (this.blockedInputs.get(edge.target) ?? 0) + 1);
+      }
+    }
+    for (const id of this.dirty) this.candidates.add(id);
+    return index;
+  }
+
+  private isBlocking(status: EvaluationStatus): boolean {
+    return status === 'dirty' || status === 'running' || status === 'error';
+  }
+
+  private updateBlockedInputs(id: string, before: EvaluationStatus, after: EvaluationStatus): void {
+    const delta = Number(this.isBlocking(after)) - Number(this.isBlocking(before));
+    if (!delta) return;
+    const ports = this.readinessIndex?.outgoing.get(id);
+    if (!ports) return;
+    for (const edges of ports.values()) for (const edge of edges) {
+      const count = (this.blockedInputs.get(edge.target) ?? 0) + delta;
+      if (count > 0) this.blockedInputs.set(edge.target, count);
+      else {
+        this.blockedInputs.delete(edge.target);
+        if (this.dirty.has(edge.target)) this.candidates.add(edge.target);
+      }
+    }
   }
 
   // ── Internals ────────────────────────────────────────────────────────
@@ -426,17 +484,18 @@ export class Evaluator {
   /**
    * Start every dirty entity whose inputs are settled and whose mode allows it.
    *
-   * Order is not needed: readiness gating enforces it. An entity starts only when nothing it
-   * reads from is dirty or running, so a chain runs front to back by construction and siblings
-   * run at once. Iterating the dirty set rather than the topological order keeps a pass
-   * proportional to what is stale, not to the graph.
+   * Only reconsider entities whose inputs or gates changed. Scanning the remaining dirty set
+   * after each completion makes an n-node chain quadratic, even when each computation is free.
    */
   private flush(): void {
     if (this.disposed) return;
-    const index = this.host.index();
-    const ready: Entity[] = [];
+    this.refreshReadiness();
+    const ready = this.ready;
+    ready.length = 0;
 
-    for (const id of this.dirty) {
+    for (const id of this.candidates) {
+      this.candidates.delete(id);
+      if (!this.dirty.has(id)) continue;
       const entity = this.host.getEntity(id);
       if (!entity) {
         // Deleted while dirty.
@@ -446,31 +505,19 @@ export class Evaluator {
       }
       const forced = this.forced.has(id);
       if (!forced && this.host.evaluationMode(entity) === 'manual') continue; // a gate
-      if (!this.upstreamSettled(index, id)) continue;
+      if (this.blockedInputs.has(id)) continue;
+      if (!this.onEvaluate && !this.host.isMuted(id)) continue;
       ready.push(entity);
     }
 
     for (const entity of ready) {
+      if (!this.dirty.has(entity.id) || this.blockedInputs.has(entity.id)) continue;
       this.forced.delete(entity.id);
       void this.start(entity, this.restoring.delete(entity.id));
     }
+    ready.length = 0;
 
     this.notifyIfQuiet();
-  }
-
-  /**
-   * Whether everything an entity reads from has a value it can trust.
-   *
-   * Dirty or running upstream: no — wait. Error upstream: also no. Running a node on the stale
-   * output of a node that just failed produces a result that looks fine and is wrong; the failed
-   * node holds the chain until it is fixed, and its downstream stays visibly stale meanwhile.
-   */
-  private upstreamSettled(index: AdjacencyIndex, id: string): boolean {
-    for (const up of getIncomers(index, id)) {
-      const s = this.status(up);
-      if (s === 'dirty' || s === 'running' || s === 'error') return false;
-    }
-    return true;
   }
 
   private async start(entity: Entity, restore: boolean): Promise<void> {
@@ -488,7 +535,7 @@ export class Evaluator {
       const outSockets = entity.outputs ?? [];
       const n = Math.min(inSockets.length, outSockets.length);
       for (let i = 0; i < n; i++) {
-        this.socketValues.set(socketValueKey(id, outSockets[i].id), inputs[inSockets[i].id]);
+        this.writeOutput(id, outSockets[i].id, inputs[inSockets[i].id]);
       }
       this.finish(id, 'success');
       this.propagate(id);
@@ -545,7 +592,7 @@ export class Evaluator {
 
     if (outputs) {
       for (const key of Object.keys(outputs)) {
-        this.socketValues.set(socketValueKey(id, key), outputs[key]);
+        this.writeOutput(id, key, outputs[key]);
       }
     }
     this.finish(id, 'success');
@@ -554,10 +601,8 @@ export class Evaluator {
 
   /** After a run lands, what this entity feeds is stale and a pass is due. */
   private propagate(id: string): void {
-    const outgoers = getOutgoers(this.host.index(), id);
-    // Downstream was marked dirty when this entity was; marking again is the no-op the invariant
-    // promises. What matters is the schedule: with this entity settled, they may now be ready.
-    if (outgoers.length > 0) this.markDirty(outgoers);
+    const ports = this.host.index().outgoing.get(id);
+    if (ports) for (const edges of ports.values()) for (const edge of edges) this.markDirty(edge.target);
     this.schedule();
   }
 
@@ -575,6 +620,7 @@ export class Evaluator {
   }
 
   private setStatus(id: string, status: EvaluationStatus, message?: string): void {
+    this.refreshReadiness();
     let rec = this.records.get(id);
     if (!rec) {
       // Born idle, then transitioned, so the FIRST change on an entity is reported like every
@@ -584,12 +630,13 @@ export class Evaluator {
       this.records.set(id, rec);
     }
     const prev = rec.status;
+    this.updateBlockedInputs(id, prev, status);
     rec.status = status;
     rec.since = now();
     rec.message = message;
     if (status !== 'running') rec.progress = undefined;
 
-    if (status === 'dirty') this.dirty.add(id);
+    if (status === 'dirty') { this.dirty.add(id); this.candidates.add(id); }
     else this.dirty.delete(id);
     if (status !== 'success') this.clearHold(id);
 

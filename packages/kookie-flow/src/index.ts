@@ -98,6 +98,7 @@ export type {
   OnStatusChange,
 } from './core/evaluation';
 export { SUCCESS_HOLD_MS, socketValueKey } from './core/evaluation';
+export { entitySocketKey, connectedSocketKey } from './utils/socket-key';
 
 // Layout
 export type { LayoutOptions, LayoutNode, LayoutEdge, LayoutResult } from './core/layout';

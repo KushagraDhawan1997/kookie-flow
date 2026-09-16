@@ -1,3 +1,4 @@
+import { connectedSocketKey } from '../utils/socket-key';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
@@ -78,6 +79,10 @@ export interface FlowState {
    * What the consumer handed over is theirs and untouched; this is that array with anything a
    * node left unsaid filled in from its type. Everything downstream — hit testing, layout, the
    * engine, the renderers — reads these, so none of them needs to know a type table exists.
+   *
+   * This is a live, store-owned array: drag/resize replaces its changed elements in place.
+   * Subscribe to positionVersion for movement, entities for structural/data changes.
+   * Use toObject() when retaining a snapshot; caller-owned input arrays remain untouched.
    */
   entities: Entity[];
   /** Edges in the graph */
@@ -885,10 +890,10 @@ function rebuildConnectedSockets(edges: Edge[], widgetValues?: Map<string, Widge
   const connected = new Set<string>();
   for (const edge of edges) {
     if (edge.targetSocket) {
-      connected.add(`${edge.target}:${edge.targetSocket}:input`);
+      connected.add(connectedSocketKey(edge.target, edge.targetSocket, true));
     }
     if (edge.sourceSocket) {
-      connected.add(`${edge.source}:${edge.sourceSocket}:output`);
+      connected.add(connectedSocketKey(edge.source, edge.sourceSocket, false));
     }
   }
 
@@ -977,7 +982,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   let entityTypeCache = createEntityTypeCache();
   const resolve = (entities: Entity[]) => resolveEntities(entities, entityTypesRef, entityTypeCache);
   const resolveOne = (entity: Entity) => resolveEntity(entity, entityTypesRef, entityTypeCache);
-  const initialEntities = resolve(initialState?.entities ?? []);
+  // Own the array so hot position writes never modify a consumer-owned array.
+  const initialEntities = resolve(initialState?.entities ?? []).slice();
   const initialEdges = initialState?.edges ?? [];
   /**
    * The resolved socket layout, when the caller already knows it — and <KookieFlow> does, because
@@ -1101,6 +1107,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
     },
   };
   const evaluator = new Evaluator(evaluationHost);
+  const forgetEntities = (ids: readonly string[] | ReadonlySet<string>): void => {
+    evaluator.forget(ids);
+    const muted = getState?.().mutedEntityIds;
+    if (!muted?.size) return;
+    let next: Set<string> | undefined;
+    for (const id of ids) {
+      if (!muted.has(id)) continue;
+      next ??= new Set(muted);
+      next.delete(id);
+    }
+    if (next) setState?.({ mutedEntityIds: next });
+  };
 
   return create<FlowState>()(
     subscribeWithSelector((set, get) => ((getState = get), (setState = set), {
@@ -1338,14 +1356,14 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           // outputs released. Unreachable on the fast path, where the id set is unchanged.
           const gone: string[] = [];
           for (const id of state.entityMap.keys()) if (!derived.entityMap.has(id)) gone.push(id);
-          if (gone.length > 0) evaluator.forget(gone);
+          if (gone.length > 0) forgetEntities(gone);
         }
         // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
         // a key left behind for an id that is no longer here comes back to life if that id does,
         // and shows a value the restored entity never held.
         const widgetValuesDropped = reconcileWidgetValues(state.widgetValues, entities);
         set({
-          entities,
+          entities: entities.slice(),
           ...derived,
           topologyVersion: state.topologyVersion + 1,
           positionVersion: state.positionVersion + 1,
@@ -1378,27 +1396,40 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           entityTypes,
           entityTypeCache
         );
+        const changedInputs: string[] = [];
+        for (const entity of entities) {
+          const prev = state.entityMap.get(entity.id);
+          if (prev && (prev.inputs !== entity.inputs || prev.outputs !== entity.outputs)) {
+            changedInputs.push(entity.id);
+          }
+        }
         set({
           entityTypes,
           entities,
           ...rebuildDerivedState(entities, state.collapsedGroupIds, state.socketLayout),
           topologyVersion: state.topologyVersion + 1,
         });
-        // The new table may have turned a manual type reactive, releasing gates on entities that
-        // are already dirty. Nothing new is stale, so nothing is marked; a pass is simply due.
+        if (changedInputs.length) evaluator.markDirty(changedInputs);
+        // Mode-only changes can release already-dirty manual gates.
         evaluator.wake();
       },
       setEdges: (edges) => {
         cachedAnalysis = null;
-        // A wire appearing or disappearing changes what its target reads. Diffed by id so a
-        // prop sync that changed nothing marks nothing.
+        // IDs identify wires, not their endpoints. Reconnection keeps the ID but changes inputs.
         const prevEdges = get().edges;
         const nextIds = new Set<string>();
         for (const e of edges) nextIds.add(e.id);
-        const prevIds = new Set<string>();
-        for (const e of prevEdges) prevIds.add(e.id);
+        const prevById = new Map<string, Edge>();
+        for (const e of prevEdges) prevById.set(e.id, e);
         const touched: string[] = [];
-        for (const e of edges) if (!prevIds.has(e.id)) touched.push(e.target);
+        for (const e of edges) {
+          const prev = prevById.get(e.id);
+          if (!prev) touched.push(e.target);
+          else if (prev.source !== e.source || prev.target !== e.target ||
+            prev.sourceSocket !== e.sourceSocket || prev.targetSocket !== e.targetSocket) {
+            touched.push(prev.target, e.target);
+          }
+        }
         for (const e of prevEdges) if (!nextIds.has(e.id)) touched.push(e.target);
         set({
           edges,
@@ -1719,7 +1750,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 nextEntities.splice(index, 1);
                 topologyChanged = true;
                 get().stackOrder.delete(change.id);
-                evaluator.forget([change.id]);
+                forgetEntities([change.id]);
                 // The stack index was already cleaned up here; the widget overrides were not, and
                 // an id that returns must not inherit them.
                 if (dropWidgetValues(get().widgetValues, removed)) widgetValuesDropped = true;
@@ -2086,10 +2117,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Efficient batch position update for dragging
       // Updates positions and quadtree incrementally without full rebuild
-      // O(n+k) where n=entities, k=updates (builds index map once, then O(1) per update)
+      // Work scales with the moved entities and their spatial-index updates, not graph size.
+      // Structural changes own a new array; movement replaces only the affected entity objects.
+      // Renderers subscribe to positionVersion instead of waking all entity-array subscribers.
       updateEntityPositions: (updates) => {
         const { entities, entityMap, quadtree, socketQuadtree, positionVersion, socketLayout, hiddenEntityIds } = get();
-        const nextEntities = [...entities];
+        const nextEntities = entities;
 
         // Populate moved entity IDs side-channel for renderers
         movedEntityIds.clear();
@@ -2157,7 +2190,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const existing = entityMap.get(id);
         if (!existing) return;
 
-        const nextEntities = [...entities];
+        const nextEntities = entities;
         const index = resolveIndex(nextEntities, id);
         if (index < 0) return;
 
@@ -2360,7 +2393,6 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // an error against it.
         for (const e of newEntities) if (isEvaluated(e.type)) arrivedInputs.push(e.id);
         for (const e of newEdges) arrivedInputs.push(e.target);
-        if (arrivedInputs.length > 0) evaluator.markDirty(arrivedInputs);
 
         if (newEntities.length === 0 && newEdges.length === 0) return;
 
@@ -2459,10 +2491,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           topologyVersion: get().topologyVersion + 1,
           stackVersion: stackVersion + 1,
         });
+        if (arrivedInputs.length > 0) evaluator.markDirty(arrivedInputs);
       },
 
       deleteElements: (batch) => {
-        const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree, stackOrder, stackVersion, widgetValues, widgetValuesVersion } = get();
+        const { entities, edges, selectedEntityIds, selectedEdgeIds, entityMap, quadtree, socketQuadtree, stackOrder, stackVersion, widgetValues, widgetValuesVersion, hiddenEntityIds, socketLayout } = get();
         // The target of every wire that goes with this delete loses an input. A deleted target
         // is not marked: the engine forgets a dirty entity it can no longer find.
         {
@@ -2502,9 +2535,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // applyEntityChanges' remove branch already did the stackOrder half; this is the same
         // removal reached through the batch API.
         let widgetValuesDropped = false;
+        let hierarchyChanged = false;
         for (const entityId of entityIdsToDelete) {
           const entity = entityMap.get(entityId);
           if (entity) {
+            if (entity.type === 'frame' || hiddenEntityIds.has(entityId)) hierarchyChanged = true;
             if (entity.inputs) {
               for (const socket of entity.inputs) {
                 socketQuadtree.remove(entityId, socket.id, true);
@@ -2521,10 +2556,17 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           stackOrder.delete(entityId);
         }
         quadtree.incrementalRemove(Array.from(entityIdsToDelete));
-        evaluator.forget(entityIdsToDelete);
+        forgetEntities(entityIdsToDelete);
 
         // Filter out deleted elements
         const nextEntities = entities.filter((n) => !entityIdsToDelete.has(n.id));
+        for (let i = 0; i < nextEntities.length; i++) {
+          const entity = nextEntities[i];
+          if (entity.parentId && entityIdsToDelete.has(entity.parentId)) {
+            nextEntities[i] = { ...entity, parentId: undefined };
+            hierarchyChanged = true;
+          }
+        }
         const nextEdges = edges.filter((e) => !edgeIdsToDelete.has(e.id));
 
         // Update selection - remove deleted items
@@ -2549,6 +2591,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           stackVersion: stackVersion + 1,
           selectedEntityIds: nextSelectedEntityIds,
           selectedEdgeIds: nextSelectedEdgeIds,
+          // Ordinary node deletion keeps incremental indices; hierarchy edits must reveal survivors.
+          ...(hierarchyChanged ? rebuildDerivedState(nextEntities, undefined, socketLayout) : {}),
           ...(widgetValuesDropped ? { widgetValuesVersion: widgetValuesVersion + 1 } : {}),
         });
       },
@@ -2761,8 +2805,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
           // Check if parentId is a descendant of entityId
           let current: string | undefined = parent.parentId;
+          const visited = new Set<string>([parentId]);
           while (current) {
-            if (current === entityId) return false; // Would create cycle
+            if (current === entityId || visited.has(current)) return false;
+            visited.add(current);
             const currentEntity = entityMap.get(current);
             current = currentEntity?.parentId;
           }
@@ -2879,6 +2925,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const edge = state.edges.find((e) => e.id === edgeId);
         if (!edge) return;
 
+        newEntity = resolveOne(newEntity);
+
         const changes = graphEngine.computeInsertOnEdge(
           edge,
           newEntity,
@@ -2908,6 +2956,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           ...derived,
         });
+        evaluator.markDirty(newEntity.id);
+        evaluator.markDirty(edge.target);
       },
 
       bypassEntity: (entityId: string): void => {
@@ -2926,6 +2976,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // A bypass removes an entity, so it owes the same sweep every other removal owes: the two
         // in-place maps keyed by entity id are not derived state and no rebuild will clear them.
         const bypassed = state.entityMap.get(changes.removeEntityId);
+        forgetEntities([changes.removeEntityId]);
         state.stackOrder.delete(changes.removeEntityId);
         const widgetValuesDropped = bypassed
           ? dropWidgetValues(state.widgetValues, bypassed)
@@ -2953,6 +3004,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
             : {}),
         });
+        for (const edge of changes.newEdges) evaluator.markDirty(edge.target);
+        // Unpaired outgoing edges disappear too; their targets now read their default inputs.
+        for (const edge of state.edges) {
+          if (edge.source === entityId && edge.target !== entityId) evaluator.markDirty(edge.target);
+        }
       },
 
       muteEntity: (entityId: string): void => {

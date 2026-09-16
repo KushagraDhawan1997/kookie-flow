@@ -5,3 +5,8 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+
+# Security patches for the legacy loader and media dependencies used by the workspace apps.
+overrides:
+  '@esbuild-kit/core-utils>esbuild': '^0.25.0'
+  'three-stdlib>fflate': '^0.6.11'

@@ -43,6 +43,9 @@ export interface TextureEntry {
   blob: Blob | null;
   /** Whether full-res decode is in progress */
   fullLoadState: 'idle' | 'loading';
+  /** Failed upgrades keep the thumbnail and back off instead of retrying on every redraw. */
+  fullRetryAt?: number;
+  fullFailures?: number;
   /** Timer ID for blob eviction (cleared on loadFull or release) */
   blobTimerId: ReturnType<typeof setTimeout> | null;
   /** Timestamp of last getTexture access (for LRU eviction of full-res) */
@@ -56,6 +59,7 @@ export interface TextureEntry {
 
 interface PendingUpload {
   src: string;
+  owner: TextureEntry;
   bitmap: ImageBitmap;
   tier: 'thumbnail' | 'full';
   generateMipmaps: boolean;
@@ -177,7 +181,7 @@ export class ImageTextureManager {
     for (let i = 0; i < count; i++) {
       const item = this.uploadQueue.shift()!;
       const entry = this.cache.get(item.src);
-      if (!entry) {
+      if (!entry || entry !== item.owner) {
         // Entry was disposed while queued — clean up bitmap
         item.bitmap.close();
         continue;
@@ -274,7 +278,8 @@ export class ImageTextureManager {
     if (screenWidth > LOD_THRESHOLD_PX) {
       if (entry.full) return entry.full;
       // Trigger deferred full-res decode (re-fetches if blob was evicted)
-      if (entry.fullLoadState === 'idle') {
+      if (entry.state === 'loaded' && entry.fullLoadState === 'idle' &&
+        performance.now() >= (entry.fullRetryAt ?? 0)) {
         this.loadFull(src, entry);
       }
     }
@@ -357,6 +362,7 @@ export class ImageTextureManager {
         entry.naturalHeight = result.naturalHeight;
         this.enqueueUpload({
           src,
+          owner: entry,
           bitmap: result.bitmap,
           tier: 'thumbnail',
           generateMipmaps: false,
@@ -379,6 +385,7 @@ export class ImageTextureManager {
         if (thumbBitmap !== bitmap) bitmap.close();
         this.enqueueUpload({
           src,
+          owner: entry,
           bitmap: thumbBitmap,
           tier: 'thumbnail',
           generateMipmaps: false,
@@ -409,6 +416,9 @@ export class ImageTextureManager {
   private async loadFull(src: string, entry: TextureEntry): Promise<void> {
     if (entry.fullLoadState !== 'idle') return;
     entry.fullLoadState = 'loading';
+    const controller = new AbortController();
+    entry.abort = controller;
+    const current = () => !controller.signal.aborted && this.cache.get(src) === entry;
 
     // Cancel blob eviction timer — we're using/fetching it now
     if (entry.blobTimerId !== null) {
@@ -422,20 +432,21 @@ export class ImageTextureManager {
       if (!blob) {
         // Abortable: releasing an image mid-decode used to leave the fetch running to completion
         // and be discarded afterwards.
-        const response = await fetch(src, entry.abort ? { signal: entry.abort.signal } : undefined);
+        const response = await fetch(src, { signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         blob = await response.blob();
-        if (!this.cache.has(src)) return;
+        if (!current()) return;
       }
 
       const worker = this.getDecodeWorker();
 
       if (worker) {
         const result = await worker.decode(this.maxTextureSize, blob);
-        if (!this.cache.has(src)) { result.bitmap.close(); return; }
+        if (!current()) { result.bitmap.close(); return; }
 
         this.enqueueUpload({
           src,
+          owner: entry,
           bitmap: result.bitmap,
           tier: 'full',
           generateMipmaps: true,
@@ -443,10 +454,10 @@ export class ImageTextureManager {
       } else {
         // Main-thread fallback
         const bitmap = await createImageBitmap(blob);
-        if (!this.cache.has(src)) { bitmap.close(); return; }
+        if (!current()) { bitmap.close(); return; }
 
         const fullBitmap = await downscale(bitmap, this.maxTextureSize);
-        if (!this.cache.has(src)) {
+        if (!current()) {
           fullBitmap.close();
           if (fullBitmap !== bitmap) bitmap.close();
           return;
@@ -455,6 +466,7 @@ export class ImageTextureManager {
         if (fullBitmap !== bitmap) bitmap.close();
         this.enqueueUpload({
           src,
+          owner: entry,
           bitmap: fullBitmap,
           tier: 'full',
           generateMipmaps: true,
@@ -465,10 +477,17 @@ export class ImageTextureManager {
       // still queued for upload at this point, and saying "idle" invites the next zoom to start
       // the same fetch again. The drain clears it, once the texture actually exists.
       entry.blob = null;
+      entry.fullFailures = 0;
+      entry.fullRetryAt = 0;
       this.onLoad?.();
     } catch (err) {
+      if (!current()) return;
       console.warn(`[KookieFlow] Full-res image decode failed for "${src}":`, err);
-      entry.fullLoadState = 'idle'; // Allow retry on next zoom
+      entry.fullFailures = (entry.fullFailures ?? 0) + 1;
+      entry.fullRetryAt = performance.now() + Math.min(30_000, 1000 * 2 ** Math.min(entry.fullFailures - 1, 5));
+      entry.fullLoadState = 'idle';
+    } finally {
+      if (entry.abort === controller) entry.abort = null;
     }
   }
 }

@@ -1,3 +1,4 @@
+import { entitySocketKey } from '../utils/socket-key';
 /**
  * A real DOM input, borrowed for one edit, over one text widget.
  *
@@ -179,7 +180,7 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
    * Seeded once per edit, keyed on the widget's identity so opening a different field re-seeds.
    */
   // The part is in the key: typing X then pressing Y re-seeds with Y's number.
-  const editKey = hit ? `${hit.entityId}:${hit.socketId}:${hit.part ?? ''}` : '';
+  const editKey = hit ? `${entitySocketKey(hit.entityId, hit.socketId)}:${hit.part ?? ''}` : '';
   const [draft, setDraft] = useState('');
   const seededFor = useRef('');
   if (hit && seededFor.current !== editKey) {

@@ -627,6 +627,7 @@ export function Entities() {
       () => { viewMovedRef.current = true; }
     );
     // Subscribe to hidden entity changes (Phase 7C) - O(1) lookup in hot path
+    const unsubPositions = store.subscribe((state) => state.positionVersion, markDirty);
     const unsubHidden = store.subscribe((state) => state.hiddenEntityIds, markDirty);
     // Subscribe to selection changes so selected entities render in foreground mesh
     const unsubSelection = store.subscribe((state) => state.selectedEntityIds, markDirty);
@@ -636,6 +637,7 @@ export function Entities() {
 
     return () => {
       unsubEntities();
+      unsubPositions();
       unsubViewport();
       unsubHidden();
       unsubSelection();

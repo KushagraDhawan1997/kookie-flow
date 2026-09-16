@@ -42,8 +42,7 @@ export function Flow() {
   pointer through to the canvas, so a button without it can't be pressed.
 - **Most canvas keys don't reach your controls.** Keys like Delete and the arrows work only while
   the canvas itself has focus, so typing in an input in your panel doesn't delete nodes. The
-  exception is undo: with `useGraph({ history: true })`, Cmd/Ctrl+Z in an input inside the canvas
-  undoes the graph rather than the text.
+  undo shortcut also respects inputs and editable content inside the canvas.
 - **Outside `KookieFlow`, use the ref.** `useFlowStoreApi()` throws when it's called in a component
   that isn't rendered inside `KookieFlow`, including the component that renders it. The
   [ref instance](/api/instance) covers what you can do from there.
@@ -82,7 +81,7 @@ which matters as soon as you subscribe to it.
 
 | Field | Type | Changes |
 | --- | --- | --- |
-| `entities` | `Entity[]` | On every edit, and on every frame of a drag. Sockets, size and label are filled in from `entityTypes`. |
+| `entities` | `Entity[]` | A live, store-owned array. Structural/data edits replace the array; drag/resize replaces affected elements in place. Subscribe to `positionVersion` for movement. |
 | `edges` | `Edge[]` | When edges are added, removed or replaced. |
 | `viewport` | `Viewport` | On every frame of a pan or zoom. |
 | `selectedEntityIds` | `Set<string>` | When the entity selection changes. |
@@ -156,8 +155,10 @@ export function SelectionCount() {
 
 Two rules keep `useFlowStore` from costing you frames:
 
-- **Don't select `entities`, `viewport` or `positionVersion`.** Each one changes on every frame of
-  a drag or a pan, so the component would render on every frame too. Subscribe with a ref instead.
+- **Don't select `viewport` or `positionVersion` for interaction readouts.** Each changes during
+  a gesture, so the component would render on every frame. Subscribe with a ref instead.
+- **An `entities` selector observes array replacements, not drag/resize.** Read the current entity
+  from `entityMap` in a `positionVersion` subscriber to follow movement.
 - **Return a value that stays the same when nothing changed:** a number, a string, a boolean, or a
   reference the store already holds. A selector that builds a new array or object on every call
   never returns the same value twice, and React renders again and again.
@@ -280,3 +281,13 @@ Selection and the camera exist only in the store, so selection and viewport acti
 a controlled graph. If your `entities` and `edges` arrays never change identity, the store is the
 only copy of the graph, and its edits last. The
 [Controlled and uncontrolled state](/start/state) chapter explains both setups.
+
+## Retain snapshots and address sockets
+
+`getState().entities` is live. Use `toObject()` for a graph snapshot rather than retaining that
+array across moves. Input arrays supplied by your app are not mutated by drag/resize.
+
+Use `socketValueKey(entityId, socketId)` or `entitySocketKey(entityId, socketId)` for flat value
+maps, and `connectedSocketKey(entityId, socketId, isInput)` for `connectedSockets` and
+`SocketIndexMap`. The helpers escape delimiters in entity ids, so ids containing `:` or `%` do
+not alias a different entity/socket pair. Avoid constructing these keys by concatenation.

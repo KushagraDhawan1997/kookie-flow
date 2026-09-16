@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type RefObject } from 'react';
+import { historyOwner } from './history-owner';
 import type { Entity, Edge, EntityChange, EdgeChange, Connection, TextEntityData } from '../types';
 import { resizableForSizingMode } from '../utils/text-texture';
 import {
@@ -34,6 +35,8 @@ export interface UseGraphHistoryOptions {
    * text fields, which is exactly what a bare window listener does.
    */
   shortcuts?: boolean;
+  /** Focus boundary for custom canvases or wrapped change handlers. KookieFlow binds automatically. */
+  containerRef?: RefObject<HTMLElement | null>;
 }
 
 export interface UseGraphReturn {
@@ -141,28 +144,6 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     syncHistoryFlags();
   }, [historyOn, syncHistoryFlags]);
 
-  /**
-   * Cmd/Ctrl+Z, and its two redo spellings, while the graph has focus.
-   *
-   * The focus test is what keeps a page that embeds a canvas from losing undo in its own text
-   * fields. A bare window listener would take the key everywhere on the page, which is a defect
-   * this codebase has already recorded once for the graph's own shortcuts.
-   */
-  useEffect(() => {
-    if (!historyOn || !historyShortcuts) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      const key = e.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
-      const active = document.activeElement;
-      if (!active || !active.closest('[data-kookie-flow-container]')) return;
-      e.preventDefault();
-      if (key === 'y' || e.shiftKey) redo();
-      else undo();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [historyOn, historyShortcuts, undo, redo]);
 
   const onEntitiesChange = useCallback((changes: EntityChange[]) => {
     remember(changes);
@@ -307,6 +288,38 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
 
     setEdges((eds) => [...eds, newEdge]);
   }, [remember]);
+
+  const historyContainerRef = typeof history === 'object' ? history.containerRef : undefined;
+
+  /**
+   * Cmd/Ctrl+Z, and its two redo spellings, while the graph has focus.
+   *
+   * The focus test is what keeps a page that embeds a canvas from losing undo in its own text
+   * fields. A bare window listener would take the key everywhere on the page, which is a defect
+   * this codebase has already recorded once for the graph's own shortcuts.
+   */
+  useEffect(() => {
+    if (!historyOn || !historyShortcuts) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return;
+      if (active.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      const explicit = historyContainerRef?.current;
+      const container = active.closest('[data-kookie-flow-container]');
+      if (historyContainerRef
+        ? !explicit?.contains(active)
+        : !container || historyOwner(container) !== onEntitiesChange) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [historyOn, historyShortcuts, historyContainerRef, onEntitiesChange, undo, redo]);
+
 
   const addEntity = useCallback((entity: Entity) => {
     setEntities((nds) => [...nds, entity]);

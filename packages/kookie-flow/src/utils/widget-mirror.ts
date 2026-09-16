@@ -1,3 +1,4 @@
+import { connectedSocketKey } from './socket-key';
 /**
  * Which widgets ONE entity exposes to the accessibility tree.
  *
@@ -68,7 +69,7 @@ export function listEntityWidgets(
     // A connected socket has no widget — its value comes down the edge. The `:input` suffix is
     // not decoration: the connected set is keyed per direction, and dropping it here would mirror
     // every socket whose OUTPUT side happens to be wired.
-    if (connectedSockets.has(`${entity.id}:${socket.id}:input`)) continue;
+    if (connectedSockets.has(connectedSocketKey(entity.id, socket.id, true))) continue;
     const config = resolveWidgetConfig(socket, socketTypes);
     if (!config) continue;
     // Already a real DOM control, mounted by widgets-layer.tsx. See the docstring.

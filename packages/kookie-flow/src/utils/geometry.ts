@@ -1,3 +1,4 @@
+import { connectedSocketKey, entitySocketKey } from './socket-key';
 import type { Entity, Edge, XYPosition, Viewport, SocketHandle, EdgeType } from '../types';
 import {
   DEFAULT_ENTITY_WIDTH,
@@ -342,7 +343,7 @@ const socketQueryResults: SocketEntry[] = [];
  * itself: two spellings of one key is a socket that lights up while a different one connects.
  */
 export function socketKey(entityId: string, socketId: string, isInput: boolean): string {
-  return `${entityId}:${socketId}:${isInput ? 'i' : 'o'}`;
+  return `${entitySocketKey(entityId, socketId)}:${isInput ? 'i' : 'o'}`;
 }
 
 export function getSocketAtPositionFast(
@@ -501,7 +502,7 @@ function pointToSegmentDistanceSq(
   return pdx * pdx + pdy * pdy;
 }
 
-/** Socket info for O(1) lookup */
+/** Socket info for O(1) lookup, keyed by connectedSocketKey(entityId, socketId, isInput). */
 export type SocketIndexMap = Map<string, { index: number; socket: { id: string; type: string; position?: number } }>;
 
 
@@ -533,7 +534,7 @@ function calculateSocketYOffset(
 
     // Try socketIndexMap for explicit position override (O(1))
     if (socketIndexMap) {
-      const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+      const key = connectedSocketKey(entity.id, socketId, isInput);
       const socketInfo = socketIndexMap.get(key);
       if (socketInfo?.socket.position !== undefined) {
         return socketInfo.socket.position * height;
@@ -545,7 +546,7 @@ function calculateSocketYOffset(
     // Find by socketId via socketIndexMap or findIndex
     let index = -1;
     if (socketIndexMap) {
-      const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+      const key = connectedSocketKey(entity.id, socketId, isInput);
       const socketInfo = socketIndexMap.get(key);
       if (socketInfo) index = socketInfo.index;
     }
@@ -569,7 +570,7 @@ function calculateSocketYOffset(
 
   // Try socketIndexMap first (O(1))
   if (socketIndexMap) {
-    const key = `${entity.id}:${socketId}:${isInput ? 'input' : 'output'}`;
+    const key = connectedSocketKey(entity.id, socketId, isInput);
     const socketInfo = socketIndexMap.get(key);
     if (socketInfo) {
       if (socketInfo.socket.position !== undefined) {
@@ -599,7 +600,7 @@ function calculateSocketYOffset(
  * Returns the edge closest to the point if within hit tolerance.
  *
  * @param socketIndexMap - Optional pre-built map for O(1) socket lookups.
- *                         Key format: "${entityId}:${socketId}:input|output"
+ *                         Keys: connectedSocketKey(entityId, socketId, isInput)
  *                         If not provided, falls back to O(k) findIndex per edge.
  * @param layout - Optional resolved socket layout for tokenized positioning
  */

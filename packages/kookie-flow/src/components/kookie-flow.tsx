@@ -1,3 +1,5 @@
+import { entitySocketKey } from '../utils/socket-key';
+import { bindHistoryOwner } from '../hooks/history-owner';
 import {
   useEffect,
   useRef,
@@ -2094,7 +2096,7 @@ function InputHandler({
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(worldPos.x, worldPos.y, queryResultsRef.current);
         const clickedEntity =
-          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
+          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder, store.getState().selectedEntityIds) ?? '') ?? null;
 
         /**
          * A widget takes the press before the entity does.
@@ -2144,7 +2146,7 @@ function InputHandler({
                * what you wanted looks like nothing happened at all. The shader path for this has
                * existed since the widgets moved into GL; only the slider was driving it.
                */
-              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+              store.getState().setPressedWidgetKey(entitySocketKey(hit.entityId, hit.socketId));
               checkboxPressRef.current = true;
               containerRef.current?.setPointerCapture(e.pointerId);
               emitWidgetChange(hit.entityId, hit.socketId, !hit.value);
@@ -2157,7 +2159,7 @@ function InputHandler({
               // the one that most needs to say it is being answered.
               store.getState().setHoveredWidget({ entityId: hit.entityId, socketId: hit.socketId });
               // Pressed, not merely hovered: the thumb wears its halo for the whole drag.
-              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+              store.getState().setPressedWidgetKey(entitySocketKey(hit.entityId, hit.socketId));
               setWidgetCursor(true);
               widgetDragRef.current = { hit, pointerId: e.pointerId };
               containerRef.current?.setPointerCapture(e.pointerId);
@@ -2170,7 +2172,7 @@ function InputHandler({
               const options = hit.config.options;
               if (options && options.length > 0) {
                 const next = options[partIndexAt(hit.box, options.length, worldPos.x)];
-                store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+                store.getState().setPressedWidgetKey(entitySocketKey(hit.entityId, hit.socketId));
                 checkboxPressRef.current = true;
                 containerRef.current?.setPointerCapture(e.pointerId);
                 if (next !== hit.value) emitWidgetChange(hit.entityId, hit.socketId, next);
@@ -2180,7 +2182,7 @@ function InputHandler({
             if (hit.config.type === 'seed') {
               if (isOnSeedButton(hit.box, worldPos.x)) {
                 // The roll: a new seed on the press, the die lit and turning while held.
-                store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+                store.getState().setPressedWidgetKey(entitySocketKey(hit.entityId, hit.socketId));
                 checkboxPressRef.current = true;
                 containerRef.current?.setPointerCapture(e.pointerId);
                 emitWidgetChange(hit.entityId, hit.socketId, randomSeed(hit.config.min, hit.config.max));
@@ -2205,7 +2207,7 @@ function InputHandler({
                 moved: false,
               };
               store.getState().setHoveredWidget({ entityId: hit.entityId, socketId: hit.socketId });
-              store.getState().setPressedWidgetKey(`${hit.entityId}:${hit.socketId}`);
+              store.getState().setPressedWidgetKey(entitySocketKey(hit.entityId, hit.socketId));
               setWidgetCursor('ew-resize');
               containerRef.current?.setPointerCapture(e.pointerId);
               return;
@@ -3052,7 +3054,7 @@ function InputHandler({
             queryResultsRef.current
           );
           const clickedEntity =
-            entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
+            entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder, store.getState().selectedEntityIds) ?? '') ?? null;
 
           if (clickedEntity) {
             // Start entity dragging
@@ -3278,7 +3280,7 @@ function InputHandler({
         // bounds — where the quadtree says nothing is hovered and the corner dots would vanish
         // under a resize cursor. A handle hit counts as hovering its entity.
         const newHoveredId =
-          handleHit?.entityId ?? topmostEntityId(queryResultsRef.current, store.getState().stackOrder);
+          handleHit?.entityId ?? topmostEntityId(queryResultsRef.current, store.getState().stackOrder, store.getState().selectedEntityIds);
 
         // Only update if changed to avoid unnecessary re-renders
         if (newHoveredId !== hoveredEntityId) {
@@ -3749,7 +3751,7 @@ function InputHandler({
         queryResultsRef.current.length = 0;
         quadtree.queryPoint(clickPos.x, clickPos.y, queryResultsRef.current);
         const clickedEntity =
-          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder) ?? '') ?? null;
+          entityMap.get(topmostEntityId(queryResultsRef.current, store.getState().stackOrder, store.getState().selectedEntityIds) ?? '') ?? null;
 
         if (clickedEntity) {
           // Track multi-click count (for double/triple/quad click detection)
@@ -3987,6 +3989,7 @@ function InputHandler({
    * the audit files separately as #86, and copying that pattern here would re-commit it.
    */
   const onEntitiesChangeRef = useRef(onEntitiesChange);
+  useEffect(() => bindHistoryOwner(containerRef.current, () => onEntitiesChangeRef.current), [containerRef]);
   const onEdgesChangeRef = useRef(onEdgesChange);
   /** The keyboard's move step reads these; same reason as the callbacks above. */
   const snapRef = useRef<{ enabled: boolean; grid: [number, number] }>({

@@ -347,6 +347,7 @@ export function EntitySelection() {
 
     // These affect both outline and handle meshes
     const unsubEntities = store.subscribe((state) => state.entities, markBothDirty);
+    const unsubPositions = store.subscribe((state) => state.positionVersion, markBothDirty);
     /**
      * A ZOOM is a rebuild; a PAN is a question for the gate.
      *
@@ -378,6 +379,7 @@ export function EntitySelection() {
 
     return () => {
       unsubEntities();
+      unsubPositions();
       unsubViewport();
       unsubSelection();
       unsubHovered();

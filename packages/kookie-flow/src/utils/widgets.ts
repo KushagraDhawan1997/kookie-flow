@@ -1,3 +1,4 @@
+import { connectedSocketKey, entitySocketKey } from './socket-key';
 /**
  * Widget resolution utilities for Phase 7D: Socket Widgets
  *
@@ -132,7 +133,7 @@ export function isSocketConnected(
 ): boolean {
   // Inputs only: a widget stands in for a value the socket does not receive, and only an input
   // receives one. The direction suffix is not decoration — see rebuildConnectedSockets.
-  return connectedSockets.has(`${entityId}:${socketId}:input`);
+  return connectedSockets.has(connectedSocketKey(entityId, socketId, true));
 }
 
 /**
@@ -147,7 +148,7 @@ export function buildConnectedSocketsSet(
   const connected = new Set<string>();
   for (const edge of edges) {
     if (edge.targetSocket) {
-      connected.add(`${edge.target}:${edge.targetSocket}`);
+      connected.add(entitySocketKey(edge.target, edge.targetSocket));
     }
   }
   return connected;

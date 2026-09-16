@@ -87,3 +87,14 @@ What to look for: at `awake` the ring thickens and the tip is a separate head he
 `recognised` the tip reaches the rim; at `fused` the hole is closed, the dot has swelled and the
 neck has merged into it. A refusing socket must look untouched at every stage.
 
+
+## CPU regression benchmarks
+
+Run `pnpm harness:store` and `pnpm harness:evaluation` from `packages/kookie-flow`. The former
+measures single-node moves in 1k/10k/50k socket-bearing grids and counts entity-array notifications.
+The latter runs chains through 50k nodes and counts entity lookups as well as checking the final
+value. These scripts create temporary bundles only; they do not build the distributed package.
+
+To compare revisions, set `KOOKIE_BENCH_SOURCE` to another checkout's absolute `src` directory
+with its dependencies installed. Timings are CPU-only observations on the current machine, not
+browser FPS. The regression suite enforces a lookup bound for chains without timing thresholds.

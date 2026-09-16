@@ -1,3 +1,4 @@
+import { entitySocketKey } from '../utils/socket-key';
 /**
  * WidgetsLayer - Interactive widgets for socket inputs (Phase 7D)
  *
@@ -294,7 +295,7 @@ export function WidgetsLayer({
 
       for (let inputIndex = 0; inputIndex < entity.inputs.length; inputIndex++) {
         const socket = entity.inputs[inputIndex];
-        const key = `${entity.id}:${socket.id}`;
+        const key = entitySocketKey(entity.id, socket.id);
 
         // Skip if socket is connected. The connected set is keyed per direction; these are
         // inputs.

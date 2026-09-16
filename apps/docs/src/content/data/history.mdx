@@ -139,8 +139,13 @@ Pass an object instead of `true` to change either default. Its type is `UseGraph
 | `limit`     | `number`  | `50`    | How many steps are kept. Past the limit, the oldest step is dropped.                      |
 | `shortcuts` | `boolean` | `true`  | Binds Cmd/Ctrl+Z to undo, and Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y to redo, while the canvas has focus. |
 
-The shortcuts work only while focus is inside the canvas, which a press or a Tab gives it. A text
-field elsewhere on your page keeps its own undo.
+The shortcuts affect only the graph whose canvas has focus. Text fields and editable content,
+including controls inside the canvas, keep their native undo. Events another handler has already
+handled are ignored.
+
+Pass the returned `onEntitiesChange` directly to `KookieFlow` so it can identify its history owner.
+If you wrap that handler, or use a custom canvas, pass `history: { containerRef }` with a React ref
+to that graph's focusable container. Each graph needs its own container.
 
 To bind the keys yourself, turn `shortcuts` off first. Both listeners would otherwise run, and one
 key press would undo two steps. This board binds them with `useKeyboardShortcuts`, which listens on

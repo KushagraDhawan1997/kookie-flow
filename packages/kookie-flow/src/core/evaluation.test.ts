@@ -70,6 +70,96 @@ function hostFor(w: World): EvaluationHost {
 /** Let queued microtasks and resolved promises drain. */
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
+describe('incremental scheduling under load', () => {
+  it('keeps a long chain linear in entity lookups and produces every result', async () => {
+    const n = 2000;
+    const entities = Array.from({ length: n }, (_, i) => ent(String(i), [sock('in', 0)], [sock('out')]));
+    const edges = entities.slice(1).map((e, i) => edge(String(i), 'out', e.id, 'in'));
+    const w = world(entities, edges);
+    const host = hostFor(w);
+    const lookup = vi.fn(host.getEntity);
+    let runs = 0;
+    const ev = new Evaluator({ ...host, getEntity: lookup }, (_, __, inputs) => {
+      runs++;
+      return { out: Number(inputs.in) + 1 };
+    });
+    try {
+      await ev.evaluateAll();
+      expect(runs).toBe(n);
+      expect(ev.getSocketValue(String(n - 1), 'out')).toBe(n);
+      // A work bound, not a noisy wall-clock assertion. A whole-dirty-set rescan needs ~n²/2.
+      expect(lookup.mock.calls.length).toBeLessThan(n * 10);
+    } finally { ev.dispose(); }
+  });
+
+  it('handles wide fan-out, reconvergence and two sockets from one predecessor', async () => {
+    const width = 128;
+    const leaves = Array.from({ length: width }, (_, i) => ent(`leaf${i}`, [sock('in')], [sock('out')]));
+    const inputs = Array.from({ length: width * 2 }, (_, i) => sock(`in${i}`));
+    const edges = leaves.flatMap((e, i) => [
+      edge('root', 'out', e.id, 'in'),
+      edge(e.id, 'out', 'join', `in${2 * i}`),
+      edge(e.id, 'out', 'join', `in${2 * i + 1}`),
+    ]);
+    const w = world([ent('root', [], [sock('out')]), ...leaves, ent('join', inputs, [sock('out')])], edges);
+    const calls = new Map<string, number>();
+    const ev = new Evaluator(hostFor(w), async (id, _, values) => {
+      calls.set(id, (calls.get(id) ?? 0) + 1);
+      if (id === 'root') return { out: 1 };
+      if (id === 'join') return { out: Object.values(values).reduce<number>((sum, v) => sum + Number(v), 0) };
+      await Promise.resolve();
+      return { out: Number(values.in) + 1 };
+    });
+    try {
+      await ev.evaluateAll();
+      expect(ev.getSocketValue('join', 'out')).toBe(width * 4);
+      expect([...calls.values()]).toEqual(Array(width + 2).fill(1));
+      w.edges = edges.filter(e => e.target !== 'join');
+      ev.markDirty('join');
+      await ev.settled();
+      expect(calls.get('join')).toBe(2);
+    } finally { ev.dispose(); }
+  });
+
+  it('recomputes readiness when an error-blocked target is rewired to a settled source', async () => {
+    const w = world([ent('bad', [], [sock('out')]), ent('good', [], [sock('out')]), ent('target', [sock('in')], [sock('out')])], [edge('bad', 'out', 'target', 'in')]);
+    const ev = new Evaluator(hostFor(w), (id, _, values) => {
+      if (id === 'bad') throw new Error('unavailable');
+      return { out: id === 'good' ? 42 : values.in };
+    });
+    try {
+      await ev.evaluateAll();
+      expect(ev.status('target')).toBe('dirty');
+      w.edges = [edge('good', 'out', 'target', 'in')];
+      ev.markDirty('target');
+      await ev.settled();
+      expect(ev.getSocketValue('target', 'out')).toBe(42);
+    } finally { ev.dispose(); }
+  });
+
+  it('matches an independent topological reference on a deterministic mixed DAG', async () => {
+    const count = 160;
+    const entities: Entity[] = [];
+    const edges: Edge[] = [];
+    const expected: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const parents = [...new Set([i - 1, Math.floor(i / 2), (i * 17) % Math.max(1, i)])].filter(p => p >= 0 && p < i);
+      entities.push(ent(String(i), parents.map(p => sock(`from${p}`)), [sock('out')]));
+      for (const p of parents) edges.push(edge(String(p), 'out', String(i), `from${p}`));
+      expected.push((1 + parents.reduce((sum, p) => sum + expected[p], 0)) % 100003);
+    }
+    const w = world(entities, edges);
+    const ev = new Evaluator(hostFor(w), (_, __, values) => ({ out: (1 + Object.values(values).reduce<number>((sum, v) => sum + Number(v), 0)) % 100003 }));
+    try {
+      await ev.evaluateAll();
+      expect(entities.map(e => ev.getSocketValue(e.id, 'out'))).toEqual(expected);
+      ev.markDirty('0');
+      await ev.settled();
+      expect(entities.map(e => ev.getSocketValue(e.id, 'out'))).toEqual(expected);
+    } finally { ev.dispose(); }
+  });
+});
+
 describe('a change runs what it touched, in order, with resolved inputs', () => {
   it('runs a reactive chain front to back and passes outputs along the wire', async () => {
     // a(x) -> b(y) -> c(z): each doubles. b must see a's output, c must see b's.

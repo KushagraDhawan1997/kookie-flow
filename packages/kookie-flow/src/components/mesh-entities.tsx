@@ -206,15 +206,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
       });
     });
     const unsubPositions = store.subscribe((s) => s.positionVersion, markFullDirty);
-    let lastPosVersion = store.getState().positionVersion;
-    const unsubEntities = store.subscribe((s) => s.entities, () => {
-      const pv = store.getState().positionVersion;
-      if (pv !== lastPosVersion) {
-        lastPosVersion = pv;
-        return;
-      }
-      markFullDirty();
-    });
+    const unsubEntities = store.subscribe((s) => s.entities, markFullDirty);
     /**
      * NO `viewport` SUBSCRIPTION, deliberately. The camera is asked once a frame by the gate at the
      * top of the frame loop instead — a subscription could only say "it changed", and what this

@@ -110,17 +110,19 @@ These changes mark an entity dirty:
 - A person changes a widget on it.
 - Your app gives its `data.values` a new object, as an undo or a preset does. Changing a value
   inside the existing object isn't noticed.
-- A wire into it is added or removed. Deleting the node at the other end of a wire counts.
+- A wire into it is added, removed or rewired, including edits that keep the edge id.
+- Its resolved type inputs or outputs change.
 - It's muted or unmuted.
-- It arrives through the store's `addElements`, as a pasted node does.
+- It arrives through `addElements`, `insertOnEdge` or a replacement `entities` array.
 
 Moving, resizing, selecting and renaming an entity don't mark it. To mark entities after a change
 the canvas can't see, call `markDirty` on the [store](/data/store) from a component inside
 `KookieFlow`.
 
-The graph you mount with starts `idle`, and so does an entity your app adds to its own `entities`
-array. Neither runs until one of the changes above reaches it, or until you run it from code.
-That's why the board above calls `evaluateAll()` once after it mounts.
+The graph you mount with starts `idle` until you mark it or run it from code. That's why the
+board above calls `evaluateAll()` once after it mounts. Newly added computation nodes are marked
+dirty automatically; manual types still wait for their trigger. Content kinds such as images,
+text and frames are excluded from evaluation.
 
 A failed entity holds its chain. Everything downstream stays dirty rather than running on an
 output the failed run never replaced. The entity runs again when its inputs change, or when you
@@ -354,3 +356,6 @@ A muted entity doesn't call `onEvaluate`. Its input values pass straight to its 
 position: the first input to the first output, the second to the second, and so on. Muting and
 unmuting both mark the entity dirty, so what it feeds runs again. Mute an entity with
 `muteEntity(entityId)` and unmute it with `unmuteEntity(entityId)` on [the flow store](/data/store).
+
+Deleting or bypassing an entity clears its runtime mute state along with its run and outputs.
+Reusing the id starts unmuted.

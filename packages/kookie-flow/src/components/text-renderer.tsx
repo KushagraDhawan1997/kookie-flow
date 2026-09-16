@@ -1,3 +1,4 @@
+import { connectedSocketKey } from '../utils/socket-key';
 /**
  * TextRenderer - High-performance WebGL text rendering using instanced MSDF
  *
@@ -515,13 +516,13 @@ export function MultiWeightTextRenderer({
       if (n.inputs) {
         for (let i = 0; i < n.inputs.length; i++) {
           const s = n.inputs[i];
-          socketIndexMapRef.current.set(`${n.id}:${s.id}:input`, { index: i, socket: s });
+          socketIndexMapRef.current.set(connectedSocketKey(n.id, s.id, true), { index: i, socket: s });
         }
       }
       if (n.outputs) {
         for (let i = 0; i < n.outputs.length; i++) {
           const s = n.outputs[i];
-          socketIndexMapRef.current.set(`${n.id}:${s.id}:output`, { index: i, socket: s });
+          socketIndexMapRef.current.set(connectedSocketKey(n.id, s.id, false), { index: i, socket: s });
         }
       }
     }

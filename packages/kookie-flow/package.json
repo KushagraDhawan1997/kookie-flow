@@ -70,7 +70,9 @@
     "harness:spike:magnet": "node harness/spikes/magnet.mjs",
     "harness:counts": "node harness/spikes/counts.mjs",
     "harness:tokens": "node harness/spikes/token-census.mjs",
-    "test:browser": "node harness/build.mjs && node harness/behaviors.mjs"
+    "test:browser": "node harness/build.mjs && node harness/behaviors.mjs",
+    "harness:store": "node harness/spikes/core-store-bench.mjs",
+    "harness:evaluation": "node harness/spikes/evaluation-bench.mjs"
   },
   "dependencies": {
     "zustand": "^5.0.15"
@@ -82,11 +84,6 @@
     "react-dom": ">=19.0.0",
     "three": ">=0.170.0",
     "@kookie-ui/react": "*"
-  },
-  "peerDependenciesMeta": {
-    "@kookie-ui/react": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@react-three/drei": "^10.7.8",
