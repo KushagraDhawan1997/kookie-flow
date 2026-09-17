@@ -1,0 +1,153 @@
+/* Home's template grid and a template's page. The tiles match the graph list's: a bare box at the
+   smallest surface corner, words below. Pictures are grey boxes until templates are real. */
+
+.kd-templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  column-gap: var(--layout-space-5);
+  row-gap: var(--layout-space-7);
+}
+
+.kd-template-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-space-3);
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-surface-1, 12px);
+  outline: none;
+}
+
+.kd-template-tile:focus-visible .kd-template-cover {
+  outline: 2px solid var(--color-focus, currentColor);
+  outline-offset: 4px;
+}
+
+.kd-template-cover,
+.kd-template-input-image,
+.kd-template-output-box {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border-radius: var(--radius-surface-1, 12px);
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+}
+
+.kd-template-cover {
+  aspect-ratio: 4 / 3;
+  transition: background-color 160ms ease;
+}
+
+.kd-template-tile:hover .kd-template-cover {
+  background: color-mix(in oklab, var(--color-text) 8%, transparent);
+}
+
+.kd-template-words {
+  padding-inline-start: var(--layout-space-1);
+}
+
+.kd-template-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Inputs take the narrower column; what comes out is the larger claim. */
+.kd-template-io {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--layout-space-7);
+  align-items: start;
+}
+
+.kd-template-input-image {
+  aspect-ratio: 4 / 3;
+}
+
+.kd-template-outputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--layout-space-3);
+  align-items: start;
+}
+
+/* Columns by count: one fills the column, three sit in a row, four make a square. So a set of
+   crops at 1:1, 4:5 and 9:16 stands side by side instead of one tall box stacking under two. */
+.kd-template-outputs[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.kd-template-outputs[data-count="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kd-template-output {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-space-2);
+  margin: 0;
+}
+
+.kd-template-output-box {
+  aspect-ratio: 4 / 3;
+}
+
+.kd-template-output figcaption {
+  padding-inline-start: var(--layout-space-1);
+}
+
+.kd-template-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  inline-size: 3rem;
+  block-size: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.kd-template-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--layout-space-4);
+}
+
+.kd-template-steps li {
+  display: flex;
+  gap: var(--layout-space-3);
+  align-items: baseline;
+}
+
+.kd-template-step-n {
+  flex: none;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: var(--font-size-1);
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in oklab, var(--color-text) 7%, transparent);
+  transform: translateY(0.3em);
+}
+
+@media (max-width: 720px) {
+  .kd-template-io {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .kd-templates-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--layout-space-3);
+    row-gap: var(--layout-space-5);
+  }
+}
