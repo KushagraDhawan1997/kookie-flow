@@ -970,6 +970,50 @@ function isValueBag(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const INPUTS_CHANGED = 1;
+const OVERRIDES_RETIRED = 2;
+
+/**
+ * Prop sync and change batches must agree about an input edit. The common move/rename path
+ * compares references only; socket/value scans are reserved for changed declarations or values.
+ * Flags avoid allocating a result object for every entity on every controlled drag frame.
+ */
+function reconcileEvaluationInputs(
+  prev: Entity,
+  next: Entity,
+  widgetValues: Map<string, WidgetOverride>
+): number {
+  if (prev === next) return 0;
+  let result = prev.type !== next.type || prev.inputs !== next.inputs || prev.outputs !== next.outputs
+    ? INPUTS_CHANGED : 0;
+  const a = (prev.data as { values?: unknown } | undefined)?.values;
+  const b = (next.data as { values?: unknown } | undefined)?.values;
+  if (a === b) return result;
+
+  const prevValues = isValueBag(a) ? a : undefined;
+  const nextValues = isValueBag(b) ? b : undefined;
+  const socketIds = new Set<string>([
+    ...(prevValues ? Object.keys(prevValues) : []),
+    ...(nextValues ? Object.keys(nextValues) : []),
+  ]);
+  for (const socketId of socketIds) {
+    const before = prevValues?.[socketId];
+    const after = nextValues?.[socketId];
+    if (Object.is(before, after)) continue;
+    const key = widgetKey(next.id, socketId);
+    const pending = widgetValues.get(key);
+    if (pending && Object.is(pending.value, after)) {
+      // Retire this socket's own echo without cancelling the run its local write started.
+      // A schema edit still invalidates, even if it arrives with that echo.
+      widgetValues.delete(key);
+      result |= OVERRIDES_RETIRED;
+    } else {
+      result |= INPUTS_CHANGED;
+    }
+  }
+  return result;
+}
+
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial entities and edges
   /**
@@ -1204,11 +1248,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       setEntities: (rawEntities) => {
         const state = get();
         const entities = resolve(rawEntities);
-        // An entity whose `data.values` object was REPLACED has new inputs — an undo, a preset,
-        // a consumer write. Reference compare: this runs on every prop sync, and the consumer's
-        // immutable update is what produces a new reference. Skipped where a local widget write
-        // is still pending for the entity, because then the echo IS the answer to a mark
-        // `setWidgetValue` already made, and marking again would abort the run that mark started.
+        // Type/socket declarations and external value edits invalidate evaluation. A socket's
+        // own pending widget echo retires its override without restarting the same computation.
         const changedInputs: string[] = [];
         let overridesRetired = false;
         for (const next of entities) {
@@ -1222,46 +1263,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             if (isEvaluated(next.type)) changedInputs.push(next.id);
             continue;
           }
-          const a = (prev.data as { values?: unknown } | undefined)?.values;
-          const b = (next.data as { values?: unknown } | undefined)?.values;
-          if (a === b) continue;
-          /**
-           * WHICH SOCKET MOVED, AND WAS IT THIS PERSON'S OWN WRITE COMING BACK?
-           *
-           * The question used to be asked per ENTITY — "is any widget write pending on this
-           * node?" — and one pending write vetoed the mark for every socket on it. That alone
-           * would be a narrow bug; what made it permanent is that an override whose value
-           * already equalled what the entity held could never retire, because retirement waits
-           * for the entity to move OFF the baseline and it was already there. One such record
-           * froze evaluation for that node for good: every later change through the controlled
-           * prop — the inspector, an undo, an agent — was read as an echo and ignored.
-           *
-           * Asked per socket, both halves are answered: an echo of exactly what was set retires
-           * the record it belongs to, and anything else is a real change and marks the node.
-           */
-          const prevValues = isValueBag(a) ? a : undefined;
-          const nextValues = isValueBag(b) ? b : undefined;
-          const socketIds = new Set<string>([
-            ...(prevValues ? Object.keys(prevValues) : []),
-            ...(nextValues ? Object.keys(nextValues) : []),
-          ]);
-          let external = false;
-          for (const socketId of socketIds) {
-            const before = prevValues?.[socketId];
-            const after = nextValues?.[socketId];
-            if (Object.is(before, after)) continue;
-            const key = widgetKey(next.id, socketId);
-            const pending = state.widgetValues.get(key);
-            if (pending && Object.is(pending.value, after)) {
-              // The consumer answered this socket with exactly what was set: the record has
-              // nothing left to protect, and a mark here would abort the run that write started.
-              state.widgetValues.delete(key);
-              overridesRetired = true;
-              continue;
-            }
-            external = true;
-          }
-          if (external) changedInputs.push(next.id);
+          const changed = reconcileEvaluationInputs(prev, next, state.widgetValues);
+          if (changed & INPUTS_CHANGED) changedInputs.push(next.id);
+          if (changed & OVERRIDES_RETIRED) overridesRetired = true;
         }
         /**
          * A move, or a rebuild — see `planDerivedUpdate` for the exact list that decides.
@@ -1716,6 +1720,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       applyEntityChanges: (changes) => {
         const { entities, collapsedGroupIds: currentCollapsed } = get();
         const nextEntities = [...entities];
+        const changedInputs: string[] = [];
         let collapsedChanged = false;
         let topologyChanged = false;
         let widgetValuesDropped = false;
@@ -1772,6 +1777,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
               idToIndex.set(added.id, nextEntities.length);
               nextEntities.push(added);
               topologyChanged = true;
+              if (isEvaluated(added.type)) changedInputs.push(added.id);
               // A new entity arrives on top: it is the thing the person just made.
               get().stackOrder.set(added.id, ++stackCounter);
               // If adding a collapsed group, add to collapsed set
@@ -1826,6 +1832,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                   merged.resizable = resizableForSizingMode(mode);
                 }
                 nextEntities[index] = merged;
+                const changed = reconcileEvaluationInputs(entity, merged, get().widgetValues);
+                if (changed & INPUTS_CHANGED) changedInputs.push(change.id);
+                if (changed & OVERRIDES_RETIRED) widgetValuesDropped = true;
               }
               break;
             }
@@ -1864,6 +1873,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             ? { widgetValuesVersion: get().widgetValuesVersion + 1 }
             : {}),
         });
+        if (changedInputs.length) evaluator.markDirty(changedInputs);
       },
 
       applyEdgeChanges: (changes) => {
@@ -3119,6 +3129,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Set children's parentId to the group
         const childIdSet = new Set(entityIds);
         const removeEdgeIdSet = new Set(result.removeEdgeIds);
+        const changedInputs = new Set<string>([frameEntity.id]);
+        for (const edge of state.edges) {
+          if (removeEdgeIdSet.has(edge.id)) changedInputs.add(edge.target);
+        }
+        for (const edge of result.newEdges) changedInputs.add(edge.target);
         const nextEntities = state.entities
           .map((n) => (childIdSet.has(n.id) ? { ...n, parentId: groupId } : n))
           .concat(frameEntity);
@@ -3152,6 +3167,9 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
           ...derived,
         });
+        // The frame's computation remains the app's; scheduling follows its new inputs like
+        // every other added node. Retained children also lost their old internal/boundary wires.
+        evaluator.markDirty([...changedInputs]);
       },
 
       expandSubgraph: (groupId, childEntities, internalEdges, portMapping): void => {
@@ -3166,18 +3184,34 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         );
 
         const removeEdgeIdSet = new Set(result.removeEdgeIds);
+        const changedInputs = new Set<string>();
+        // Unmapped boundary edges disappear too, leaving their targets on local/default inputs.
+        for (const edge of state.edges) {
+          if (removeEdgeIdSet.has(edge.id) && edge.target !== result.removeEntityId) {
+            changedInputs.add(edge.target);
+          }
+        }
+        for (const edge of result.restoreEdges) changedInputs.add(edge.target);
+        for (const edge of result.reconnectEdges) changedInputs.add(edge.target);
+        const restored = resolve(result.restoreEntities);
+        for (const entity of restored) {
+          if (isEvaluated(entity.type)) changedInputs.add(entity.id);
+        }
         // Remove group entity, restore children (clear parentId), add reconnect edges
         const nextEntities = state.entities
           .filter((n) => n.id !== result.removeEntityId)
           .map((n) => (n.parentId === groupId ? { ...n, parentId: undefined } : n))
-          .concat(result.restoreEntities.map((n) => ({ ...n, parentId: undefined })));
+          .concat(restored.map((n) => ({ ...n, parentId: undefined })));
         const nextEdges = state.edges
           .filter((e) => !removeEdgeIdSet.has(e.id))
           .concat(result.restoreEdges)
           .concat(result.reconnectEdges);
 
-        const derived = rebuildDerivedState(nextEntities, state.collapsedGroupIds, state.socketLayout);
+        const derived = rebuildDerivedState(nextEntities, undefined, state.socketLayout);
         cachedAnalysis = null;
+        // Expansion deletes the group just as surely as deleteElements: release outputs,
+        // abort any in-flight computation, and drop mute state before its id can be reused.
+        forgetEntities([result.removeEntityId]);
 
         // An expand both removes the frame and brings entities back, and the restored ones may
         // never have had an index in this store at all — they arrive as arguments. Reconciling
@@ -3209,6 +3243,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
             : {}),
         });
+        if (changedInputs.size) evaluator.markDirty([...changedInputs]);
       },
     }))
   );

@@ -16,7 +16,7 @@
 
 import * as THREE from 'three';
 import { DEFAULT_MAX_IMAGE_TEXTURE_SIZE } from '../core/constants';
-import { ImageDecodeWorker } from './image-decode-worker';
+import { ImageDecodeWorker, WorkerUnavailableError, type DecodeResult } from './image-decode-worker';
 
 // LOD threshold: if the entity's screen-space width (px) is below this, use thumbnail
 export const LOD_THRESHOLD_PX = 256;
@@ -48,8 +48,11 @@ export interface TextureEntry {
   fullFailures?: number;
   /** Timer ID for blob eviction (cleared on loadFull or release) */
   blobTimerId: ReturnType<typeof setTimeout> | null;
-  /** Timestamp of last getTexture access (for LRU eviction of full-res) */
-  lastAccessTime: number;
+  /** Epochs are written by visible LOD queries; no per-frame source Set is needed. */
+  fullRequestedFrame?: number;
+  fullCandidateFrame?: number;
+  /** Invalidates a queued or non-abortable decode when its admission is withdrawn. */
+  fullRequestId?: number;
 }
 
 // ── Upload queue item ────────────────────────────────────────────────
@@ -63,6 +66,9 @@ interface PendingUpload {
   bitmap: ImageBitmap;
   tier: 'thumbnail' | 'full';
   generateMipmaps: boolean;
+  requestId?: number;
+  previous?: PendingUpload | null;
+  next?: PendingUpload | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -121,9 +127,7 @@ function disposeTexture(tex: THREE.Texture | null | undefined): void {
 
 // ── ImageTextureManager ──────────────────────────────────────────────
 
-/** Max number of full-res textures kept in GPU memory.
- *  LRU eviction disposes the least-recently-accessed full-res textures
- *  (thumbnails are kept since they're small). */
+/** One budget covers loaded, decoding and queued full-resolution tiers. */
 const MAX_FULL_RES_TEXTURES = 32;
 
 export class ImageTextureManager {
@@ -131,11 +135,21 @@ export class ImageTextureManager {
   /** Count of entries that currently have a full-res texture */
   private fullResCount = 0;
   private onLoad: (() => void) | undefined;
-  private uploadQueue: PendingUpload[] = [];
+  private uploadHead: PendingUpload | null = null;
+  private uploadTail: PendingUpload | null = null;
   private decodeWorker: ImageDecodeWorker | null = null;
   /** Set once a worker has failed to construct, so the main-thread path is used from then on. */
   private workerUnavailable = false;
   private maxTextureSize: number;
+  private fullOwners = new Set<TextureEntry>();
+  private pendingFullUploads = new Map<TextureEntry, PendingUpload>();
+  private frame = 0;
+  private frameActive = false;
+  /** Withdrawn native decodes keep their budget slot until the promise settles. */
+  private orphanedFullLoads = new Set<AbortController>();
+  private candidateEntries = new Array<TextureEntry | undefined>(MAX_FULL_RES_TEXTURES);
+  private candidateSources = new Array<string | undefined>(MAX_FULL_RES_TEXTURES);
+  private candidateCount = 0;
 
   constructor(onLoad?: () => void, maxTextureSize?: number) {
     this.onLoad = onLoad;
@@ -164,7 +178,21 @@ export class ImageTextureManager {
   // ── Upload queue ───────────────────────────────────────────────────
 
   private enqueueUpload(item: PendingUpload): void {
-    this.uploadQueue.push(item);
+    if (item.tier === 'full') this.pendingFullUploads.set(item.owner, item);
+    item.previous = this.uploadTail;
+    item.next = null;
+    if (this.uploadTail) this.uploadTail.next = item;
+    else this.uploadHead = item;
+    this.uploadTail = item;
+  }
+
+  private dequeueUpload(item: PendingUpload): void {
+    if (item.previous) item.previous.next = item.next;
+    else this.uploadHead = item.next ?? null;
+    if (item.next) item.next.previous = item.previous;
+    else this.uploadTail = item.previous ?? null;
+    item.previous = null;
+    item.next = null;
   }
 
   /**
@@ -175,13 +203,17 @@ export class ImageTextureManager {
    * Returns true if more uploads remain (caller should keep invalidating).
    */
   processUploadQueue(maxPerFrame: number = 2): boolean {
-    if (this.uploadQueue.length === 0) return false;
-
-    const count = Math.min(maxPerFrame, this.uploadQueue.length);
-    for (let i = 0; i < count; i++) {
-      const item = this.uploadQueue.shift()!;
+    let processed = 0;
+    while (processed < maxPerFrame && this.uploadHead) {
+      const item = this.uploadHead;
+      this.dequeueUpload(item);
+      processed++;
+      if (item.tier === 'full' && this.pendingFullUploads.get(item.owner) === item) {
+        this.pendingFullUploads.delete(item.owner);
+      }
       const entry = this.cache.get(item.src);
-      if (!entry || entry !== item.owner) {
+      if (!entry || entry !== item.owner ||
+        (item.tier === 'full' && item.requestId !== entry.fullRequestId)) {
         // Entry was disposed while queued — clean up bitmap
         item.bitmap.close();
         continue;
@@ -207,16 +239,87 @@ export class ImageTextureManager {
       }
     }
 
-    // Evict LRU full-res textures if over budget
-    if (this.fullResCount > MAX_FULL_RES_TEXTURES) {
-      this.evictFullRes();
-    }
-
-    return this.uploadQueue.length > 0;
+    return this.uploadHead !== null;
   }
 
   get hasQueuedUploads(): boolean {
-    return this.uploadQueue.length > 0;
+    return this.uploadHead !== null;
+  }
+
+  /** Start a visible-image pass. Calls to getTexture record full-tier demand without evicting. */
+  beginFrame(): void {
+    this.frame++;
+    this.frameActive = true;
+    this.candidateCount = 0;
+  }
+
+  /**
+   * Keep the visible working set stable, including tiers still decoding or queued. Excess visible
+   * sources stay at thumbnail quality until an owner leaves view or asks for thumbnail quality.
+   * Finished cold tiers remain cached while there is room, so zooming out and back needn't decode.
+   * Both loops are bounded by 32; the caller already visited the visible images to draw them.
+   */
+  endFrame(): void {
+    if (!this.frameActive) return;
+    this.frameActive = false;
+    let neededSlots = this.candidateCount -
+      (MAX_FULL_RES_TEXTURES - this.fullOwners.size - this.orphanedFullLoads.size);
+    for (const entry of this.fullOwners) {
+      if (entry.fullRequestedFrame === this.frame || (entry.full && neededSlots <= 0)) continue;
+      const before = this.fullOwners.size + this.orphanedFullLoads.size;
+      this.releaseFull(entry);
+      neededSlots -= before - (this.fullOwners.size + this.orphanedFullLoads.size);
+    }
+    for (let i = 0; i < this.candidateCount; i++) {
+      const entry = this.candidateEntries[i];
+      const src = this.candidateSources[i];
+      this.candidateEntries[i] = undefined;
+      this.candidateSources[i] = undefined;
+      if (entry && src && this.cache.get(src) === entry) this.admitFull(src, entry);
+    }
+    this.candidateCount = 0;
+  }
+
+  private admitFull(src: string, entry: TextureEntry): void {
+    if (entry.state !== 'loaded' || performance.now() < (entry.fullRetryAt ?? 0)) return;
+    if (!this.fullOwners.has(entry)) {
+      if (this.fullOwners.size + this.orphanedFullLoads.size >= MAX_FULL_RES_TEXTURES) return;
+      this.fullOwners.add(entry);
+    }
+    if (!entry.full && entry.fullLoadState === 'idle') this.loadFull(src, entry);
+  }
+
+  /** Return a slot immediately, including its queued bitmap and non-abortable decode ownership. */
+  private releaseFull(entry: TextureEntry): void {
+    if (this.fullOwners.delete(entry) && entry.fullLoadState === 'loading' && entry.abort) {
+      this.orphanedFullLoads.add(entry.abort);
+    }
+    entry.fullRequestId = (entry.fullRequestId ?? 0) + 1;
+    if (entry.fullLoadState === 'loading') {
+      entry.abort?.abort();
+      entry.abort = null;
+      entry.fullLoadState = 'idle';
+    }
+    const queued = this.pendingFullUploads.get(entry);
+    if (queued) {
+      queued.bitmap.close();
+      this.dequeueUpload(queued);
+      this.pendingFullUploads.delete(entry);
+    }
+    if (entry.full) {
+      disposeTexture(entry.full);
+      entry.full = null;
+      this.fullResCount--;
+    }
+    this.scheduleBlobEviction(entry);
+  }
+
+  private scheduleBlobEviction(entry: TextureEntry): void {
+    if (!entry.blob || entry.blobTimerId !== null) return;
+    entry.blobTimerId = setTimeout(() => {
+      entry.blobTimerId = null;
+      entry.blob = null;
+    }, BLOB_EVICTION_MS);
   }
 
   // ── Public API ─────────────────────────────────────────────────────
@@ -240,7 +343,6 @@ export class ImageTextureManager {
       blob: null,
       fullLoadState: 'idle',
       blobTimerId: null,
-      lastAccessTime: 0,
     };
     this.cache.set(src, entry);
     this.load(src, entry);
@@ -253,13 +355,10 @@ export class ImageTextureManager {
     if (!entry) return;
     entry.refCount--;
     if (entry.refCount <= 0) {
+      this.releaseFull(entry);
       entry.abort?.abort();
       if (entry.blobTimerId !== null) clearTimeout(entry.blobTimerId);
       disposeTexture(entry.thumbnail);
-      if (entry.full) {
-        disposeTexture(entry.full);
-        this.fullResCount--;
-      }
       entry.blob = null;
       this.cache.delete(src);
     }
@@ -273,15 +372,21 @@ export class ImageTextureManager {
     const entry = this.cache.get(src);
     if (!entry) return null;
 
-    entry.lastAccessTime = performance.now();
-
     if (screenWidth > LOD_THRESHOLD_PX) {
-      if (entry.full) return entry.full;
-      // Trigger deferred full-res decode (re-fetches if blob was evicted)
-      if (entry.state === 'loaded' && entry.fullLoadState === 'idle' &&
-        performance.now() >= (entry.fullRetryAt ?? 0)) {
-        this.loadFull(src, entry);
+      entry.fullRequestedFrame = this.frame;
+      if (this.frameActive) {
+        if (entry.fullCandidateFrame !== this.frame && !this.fullOwners.has(entry) &&
+          entry.state === 'loaded' && performance.now() >= (entry.fullRetryAt ?? 0) &&
+          this.candidateCount < MAX_FULL_RES_TEXTURES) {
+          entry.fullCandidateFrame = this.frame;
+          this.candidateEntries[this.candidateCount] = entry;
+          this.candidateSources[this.candidateCount++] = src;
+        }
+      } else {
+        // Single-source users may query without a render pass; admission is still bounded.
+        this.admitFull(src, entry);
       }
+      if (entry.full) return entry.full;
     }
 
     return entry.thumbnail ?? entry.full;
@@ -293,11 +398,13 @@ export class ImageTextureManager {
 
   /** Dispose all cached textures. Call on unmount. */
   disposeAll(): void {
+    for (const entry of this.fullOwners) this.releaseFull(entry);
     // Close any queued bitmaps that haven't been uploaded yet
-    for (const item of this.uploadQueue) {
+    while (this.uploadHead) {
+      const item = this.uploadHead;
+      this.dequeueUpload(item);
       item.bitmap.close();
     }
-    this.uploadQueue.length = 0;
 
     this.decodeWorker?.dispose();
     this.decodeWorker = null;
@@ -310,32 +417,47 @@ export class ImageTextureManager {
       entry.blob = null;
     }
     this.cache.clear();
+    this.fullOwners.clear();
+    this.pendingFullUploads.clear();
+    this.candidateEntries.fill(undefined);
+    this.candidateSources.fill(undefined);
+    this.candidateCount = 0;
+    this.frameActive = false;
     this.fullResCount = 0;
   }
 
-  // ── LRU eviction ─────────────────────────────────────────────────
-
-  /** Evict least-recently-accessed full-res textures down to budget.
-   *  Thumbnails are kept (small). Full-res can be re-decoded on demand. */
-  private evictFullRes(): void {
-    // Collect entries with full-res textures, sorted by lastAccessTime ascending
-    const candidates: [string, TextureEntry][] = [];
-    for (const [src, entry] of this.cache) {
-      if (entry.full) candidates.push([src, entry]);
+  /** Fall back only for worker infrastructure failures; corrupt-image errors stay image errors. */
+  private async decodeImage(blob: Blob, maxDim: number, current: () => boolean): Promise<DecodeResult | null> {
+    const worker = this.getDecodeWorker();
+    if (worker) {
+      try {
+        const result = await worker.decode(maxDim, blob);
+        if (!current()) { result.bitmap.close(); return null; }
+        return result;
+      } catch (error) {
+        if (!current()) return null;
+        if (!(error instanceof WorkerUnavailableError)) throw error;
+        this.workerUnavailable = true;
+        if (this.decodeWorker === worker) {
+          this.decodeWorker = null;
+          worker.dispose();
+        }
+      }
     }
-    candidates.sort((a, b) => a[1].lastAccessTime - b[1].lastAccessTime);
-
-    // Evict oldest until within budget
-    let toEvict = this.fullResCount - MAX_FULL_RES_TEXTURES;
-    for (let i = 0; i < candidates.length && toEvict > 0; i++) {
-      const entry = candidates[i][1];
-      if (!entry.full) continue;
-      disposeTexture(entry.full);
-      entry.full = null;
-      entry.fullLoadState = 'idle';
-      this.fullResCount--;
-      toEvict--;
+    const bitmap = await createImageBitmap(blob);
+    if (!current()) { bitmap.close(); return null; }
+    const naturalWidth = bitmap.width;
+    const naturalHeight = bitmap.height;
+    let resized: ImageBitmap;
+    try {
+      resized = await downscale(bitmap, maxDim);
+    } catch (error) {
+      bitmap.close();
+      throw error;
     }
+    if (resized !== bitmap) bitmap.close();
+    if (!current()) { resized.close(); return null; }
+    return { bitmap: resized, naturalWidth, naturalHeight };
   }
 
   // ── Private: load pipelines ────────────────────────────────────────
@@ -352,60 +474,30 @@ export class ImageTextureManager {
       const blob = await response.blob();
       if (signal?.aborted) return;
 
-      const worker = this.getDecodeWorker();
-      if (worker) {
-        // Off-thread decode + resize
-        const result = await worker.decode(THUMBNAIL_SIZE, blob);
-        if (signal?.aborted) { result.bitmap.close(); return; }
-
-        entry.naturalWidth = result.naturalWidth;
-        entry.naturalHeight = result.naturalHeight;
-        this.enqueueUpload({
-          src,
-          owner: entry,
-          bitmap: result.bitmap,
-          tier: 'thumbnail',
-          generateMipmaps: false,
-        });
-      } else {
-        // Main-thread fallback (SSR, old browsers)
-        const bitmap = await createImageBitmap(blob);
-        if (signal?.aborted) { bitmap.close(); return; }
-
-        entry.naturalWidth = bitmap.width;
-        entry.naturalHeight = bitmap.height;
-
-        const thumbBitmap = await downscale(bitmap, THUMBNAIL_SIZE);
-        if (signal?.aborted) {
-          thumbBitmap.close();
-          if (thumbBitmap !== bitmap) bitmap.close();
-          return;
-        }
-
-        if (thumbBitmap !== bitmap) bitmap.close();
-        this.enqueueUpload({
-          src,
-          owner: entry,
-          bitmap: thumbBitmap,
-          tier: 'thumbnail',
-          generateMipmaps: false,
-        });
-      }
-
-      // Store blob for deferred full-res decode, with eviction timer
+      const result = await this.decodeImage(blob, THUMBNAIL_SIZE, () =>
+        !signal?.aborted && this.cache.get(src) === entry);
+      if (!result) return;
+      entry.naturalWidth = result.naturalWidth;
+      entry.naturalHeight = result.naturalHeight;
+      this.enqueueUpload({
+        src,
+        owner: entry,
+        bitmap: result.bitmap,
+        tier: 'thumbnail',
+        generateMipmaps: false,
+      });
       entry.blob = blob;
-      entry.blobTimerId = setTimeout(() => {
-        entry.blobTimerId = null;
-        entry.blob = null;
-      }, BLOB_EVICTION_MS);
+      this.scheduleBlobEviction(entry);
       entry.state = 'loaded';
       entry.abort = null;
       this.onLoad?.();
     } catch (err: unknown) {
+      if (signal?.aborted || this.cache.get(src) !== entry) return;
       if (err instanceof DOMException && err.name === 'AbortError') return;
       console.warn(`[KookieFlow] Image load failed for "${src}":`, err);
       entry.state = 'error';
       entry.abort = null;
+      this.onLoad?.();
     }
   }
 
@@ -418,7 +510,10 @@ export class ImageTextureManager {
     entry.fullLoadState = 'loading';
     const controller = new AbortController();
     entry.abort = controller;
-    const current = () => !controller.signal.aborted && this.cache.get(src) === entry;
+    const requestId = (entry.fullRequestId ?? 0) + 1;
+    entry.fullRequestId = requestId;
+    const current = () => !controller.signal.aborted && this.cache.get(src) === entry &&
+      entry.fullRequestId === requestId;
 
     // Cancel blob eviction timer — we're using/fetching it now
     if (entry.blobTimerId !== null) {
@@ -438,40 +533,16 @@ export class ImageTextureManager {
         if (!current()) return;
       }
 
-      const worker = this.getDecodeWorker();
-
-      if (worker) {
-        const result = await worker.decode(this.maxTextureSize, blob);
-        if (!current()) { result.bitmap.close(); return; }
-
-        this.enqueueUpload({
-          src,
-          owner: entry,
-          bitmap: result.bitmap,
-          tier: 'full',
-          generateMipmaps: true,
-        });
-      } else {
-        // Main-thread fallback
-        const bitmap = await createImageBitmap(blob);
-        if (!current()) { bitmap.close(); return; }
-
-        const fullBitmap = await downscale(bitmap, this.maxTextureSize);
-        if (!current()) {
-          fullBitmap.close();
-          if (fullBitmap !== bitmap) bitmap.close();
-          return;
-        }
-
-        if (fullBitmap !== bitmap) bitmap.close();
-        this.enqueueUpload({
-          src,
-          owner: entry,
-          bitmap: fullBitmap,
-          tier: 'full',
-          generateMipmaps: true,
-        });
-      }
+      const result = await this.decodeImage(blob, this.maxTextureSize, current);
+      if (!result) return;
+      this.enqueueUpload({
+        src,
+        owner: entry,
+        bitmap: result.bitmap,
+        tier: 'full',
+        generateMipmaps: true,
+        requestId,
+      });
 
       // Free blob memory — no longer needed. `fullLoadState` is NOT cleared here: the bitmap is
       // still queued for upload at this point, and saying "idle" invites the next zoom to start
@@ -485,9 +556,13 @@ export class ImageTextureManager {
       console.warn(`[KookieFlow] Full-res image decode failed for "${src}":`, err);
       entry.fullFailures = (entry.fullFailures ?? 0) + 1;
       entry.fullRetryAt = performance.now() + Math.min(30_000, 1000 * 2 ** Math.min(entry.fullFailures - 1, 5));
-      entry.fullLoadState = 'idle';
+      this.releaseFull(entry);
     } finally {
+      const releasedSlot = this.orphanedFullLoads.delete(controller);
       if (entry.abort === controller) entry.abort = null;
+      // A cancelled native decode may have been the last occupied slot. Wake the visible pass
+      // after it settles so a waiting image can be admitted without another user interaction.
+      if (releasedSlot && this.cache.size > 0) this.onLoad?.();
     }
   }
 }

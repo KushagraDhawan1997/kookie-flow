@@ -37,7 +37,7 @@ function enqueue(mgr: InstanceType<typeof ImageTextureManager>, src: string, tie
   const owner = mgr.getEntry(src);
   if (!owner) throw new Error('Seed an entry before queuing an upload');
   // @ts-expect-error — private by design; this is the seam the drain reads.
-  mgr.uploadQueue.push({ src, owner, bitmap: bmp, tier, generateMipmaps: tier === 'full' });
+  mgr.enqueueUpload({ src, owner, bitmap: bmp, tier, generateMipmaps: tier === 'full' });
 }
 
 function seed(mgr: InstanceType<typeof ImageTextureManager>, src: string) {
@@ -51,7 +51,6 @@ function seed(mgr: InstanceType<typeof ImageTextureManager>, src: string) {
     abort: null,
     state: 'loaded',
     fullLoadState: 'loading',
-    lastAccessTime: 0,
   });
   // @ts-expect-error — private cache
   return mgr.cache.get(src);

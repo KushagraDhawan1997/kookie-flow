@@ -13,8 +13,9 @@ const WORKER_SOURCE = /* js */ `
 'use strict';
 
 async function decode(id, maxDim, blob) {
+  var bitmap = null;
   try {
-    var bitmap = createImageBitmap(blob);
+    bitmap = createImageBitmap(blob);
     bitmap = await bitmap;
     var naturalWidth = bitmap.width;
     var naturalHeight = bitmap.height;
@@ -36,7 +37,9 @@ async function decode(id, maxDim, blob) {
       { id: id, ok: true, bitmap: bitmap, naturalWidth: naturalWidth, naturalHeight: naturalHeight },
       [bitmap]
     );
+    bitmap = null; // Ownership moved to the main thread.
   } catch (err) {
+    if (bitmap && typeof bitmap.close === 'function') bitmap.close();
     self.postMessage({ id: id, ok: false, error: (err && err.message) || 'decode failed' });
   }
 }
@@ -58,6 +61,17 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
+/** Infrastructure failure: the caller may retry this image on the main thread. */
+export class WorkerUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WorkerUnavailableError';
+  }
+}
+
+type DecodeMessage =
+  ({ id: number; ok: true } & DecodeResult) | { id: number; ok: false; error: string };
+
 /**
  * Manages a single persistent Web Worker for off-thread image decoding.
  * Single worker (not pool) — createImageBitmap is internally parallelized by the browser.
@@ -66,15 +80,12 @@ export class ImageDecodeWorker {
   private worker: Worker | null = null;
   private nextId = 0;
   private pending = new Map<number, PendingRequest>();
+  /** A failed or disposed worker is never restarted by this facade. */
+  private terminalError: Error | null = null;
 
   /**
-   * Construct the worker NOW, and report whether it worked.
-   *
-   * A Content-Security-Policy or a sandboxed iframe that forbids workers makes `new Worker` throw a
-   * SecurityError. Lazily, that throw surfaced inside a decode's catch several layers up, where it
-   * is indistinguishable from "this image is broken" — so every image in the document failed, and
-   * kept failing, because nothing recorded that the worker was the problem and the perfectly good
-   * main-thread path beside it was never reached.
+   * Check synchronous construction failure. Startup can still fail asynchronously (for example
+   * when CSP blocks the script); the error handlers settle all pending decodes in that case.
    */
   tryStart(): boolean {
     try {
@@ -86,28 +97,71 @@ export class ImageDecodeWorker {
   }
 
   private getWorker(): Worker {
+    if (this.terminalError) throw this.terminalError;
     if (!this.worker) {
       const blob = new Blob([WORKER_SOURCE], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      this.worker = new Worker(url);
-      URL.revokeObjectURL(url); // Safe to revoke after Worker constructor
-      this.worker.onmessage = this.handleMessage;
+      let url: string | undefined;
+      try {
+        url = URL.createObjectURL(blob);
+        this.worker = new Worker(url);
+        this.worker.onmessage = this.handleMessage;
+        this.worker.onerror = this.handleError;
+        this.worker.onmessageerror = this.handleMessageError;
+      } catch (error) {
+        throw this.fail(`Image decode worker could not start: ${String(error)}`);
+      } finally {
+        // Also revoke when construction throws, otherwise blocked workers leak their source Blob.
+        if (url !== undefined) URL.revokeObjectURL(url);
+      }
     }
     return this.worker;
   }
 
-  private handleMessage = (e: MessageEvent): void => {
-    const { id, ok, bitmap, naturalWidth, naturalHeight, error } = e.data;
-    const entry = this.pending.get(id);
-    if (!entry) return;
-    this.pending.delete(id);
+  private handleMessage = (e: MessageEvent<DecodeMessage>): void => {
+    const data = e.data;
+    const entry = this.pending.get(data.id);
+    if (!entry) {
+      // A transferred reply may already be queued when disposal or an error rejects its request.
+      if (data.ok) data.bitmap.close();
+      return;
+    }
+    this.pending.delete(data.id);
 
-    if (ok) {
-      entry.resolve({ bitmap, naturalWidth, naturalHeight });
+    if (data.ok) {
+      entry.resolve({
+        bitmap: data.bitmap,
+        naturalWidth: data.naturalWidth,
+        naturalHeight: data.naturalHeight,
+      });
     } else {
-      entry.reject(new Error(error));
+      // A malformed image does not mean the worker itself is unusable.
+      entry.reject(new Error(data.error));
     }
   };
+
+  private handleError = (event: ErrorEvent): void => {
+    event.preventDefault();
+    this.fail(event.message || 'Image decode worker failed to start or run');
+  };
+
+  private handleMessageError = (): void => {
+    this.fail('Image decode worker returned an unreadable message');
+  };
+
+  private fail(message: string): Error {
+    const error = this.terminalError ?? new WorkerUnavailableError(message);
+    this.stop(error);
+    return error;
+  }
+
+  private stop(error: Error): void {
+    if (this.terminalError) return;
+    this.terminalError = error;
+    this.worker?.terminate();
+    this.worker = null;
+    for (const entry of this.pending.values()) entry.reject(error);
+    this.pending.clear();
+  }
 
   /**
    * Decode and optionally resize an image off-thread.
@@ -119,16 +173,19 @@ export class ImageDecodeWorker {
     return new Promise((resolve, reject) => {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
-      this.getWorker().postMessage({ id, maxDim, blob });
+      try {
+        this.getWorker().postMessage({ id, maxDim, blob });
+      } catch (error) {
+        // Unlike a failed-image reply, posting or constructing failed before a reply was possible.
+        this.fail(`Image decode worker could not accept a request: ${String(error)}`);
+        // A terminal facade already cleared its queue; a later decode must still reject itself.
+        this.pending.delete(id);
+        reject(this.terminalError ?? error);
+      }
     });
   }
 
   dispose(): void {
-    this.worker?.terminate();
-    this.worker = null;
-    for (const [, entry] of this.pending) {
-      entry.reject(new Error('Worker disposed'));
-    }
-    this.pending.clear();
+    this.stop(new Error('Image decode worker disposed'));
   }
 }

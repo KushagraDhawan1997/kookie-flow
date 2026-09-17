@@ -5,6 +5,21 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Package readiness fixes
+
+- Controlled socket/default/type edits and `applyEntityChanges` input edits invalidate evaluation
+  while preserving pending widget echoes. Folding and expanding subgraphs update affected
+  computations; removed groups release outputs, runs, mute state and collapse state.
+- Edge socket caches refresh after socket edits, type changes and incremental additions. Dragging
+  and controlled position updates retain partial geometry uploads.
+- Image loading keeps a stable budget of 32 full-resolution tiers per manager, including pending
+  and cancelled decodes. Excess visible images use thumbnails, avoiding repeated fetch/decode
+  churn. Upload queue insertion, removal and cancellation take constant time.
+- Changing `maxImageTextureSize` reacquires mounted images. Image-worker startup failures fall
+  back to main-thread decoding; late or cancelled bitmaps are released.
+- Video play completions respect source ownership and the decoder limit after release, pause
+  and reacquisition.
+
 ### Core audit and performance
 
 - Evaluation schedules newly ready nodes using dependency counts, removing repeated whole-queue

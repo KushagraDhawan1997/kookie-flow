@@ -508,9 +508,6 @@ export function Edges({
     points: new Float32Array(MAX_POINTS_PER_EDGE * 2),
   });
 
-  // Entity map for O(1) lookups (synced with store, avoids getState() overhead in useFrame)
-  const entityMapRef = useRef<Map<string, Entity>>(new Map());
-
   /**
    * Socket lookup for the geometry pass, NESTED rather than keyed by a joined string.
    *
@@ -521,8 +518,8 @@ export function Edges({
    * the pass that runs on every frame of a drag; the map lookup was never the cost, the
    * concatenation was.
    *
-   * Two map hops instead, no allocation. Rebuilt exactly where the flat one used to be, on
-   * add/remove, so nothing about invalidation changes.
+   * Two map hops instead, no allocation. Structural entity-map replacements refresh socket
+   * metadata; position-only writes retain that map and leave this cache untouched.
    */
   const socketIndexMapRef = useRef<
     Map<string, EntitySocketIndex>
@@ -716,7 +713,7 @@ export function Edges({
       ref.current!.geometry.setAttribute('aLayer', buffers.layerAttr);
     }
 
-    // Helper to rebuild socket index map (only called on add/remove, not position changes)
+    // Rebuild on structural/socket edits, never on position-only writes.
     const rebuildSocketIndexMap = (entities: Entity[]) => {
       socketIndexMapRef.current.clear();
       for (const n of entities) {
@@ -744,20 +741,22 @@ export function Edges({
       }
     };
 
-    // Subscribe to changes
-    // IMPORTANT: entities.length subscription for socket index map rebuild (only on add/remove)
-    // Also sync entityMapRef here - store creates new entityMap only on add/remove,
-    // during drag it mutates the same Map in place (updateEntityPositions)
-    const unsubEntitiesLength = store.subscribe(
-      (state) => state.entities.length,
-      () => {
-        const { entities, entityMap } = store.getState();
-        entityMapRef.current = entityMap;
-        rebuildSocketIndexMap(entities);
-        geometryDirtyRef.current = true;
-        colorDirtyRef.current = true;
-      }
-    );
+    // Socket edits replace entityMap without changing the count; incremental additions keep
+    // the map but change the count. Neither signal changes on a drag/controlled position echo.
+    // Both may fire for one edit, so reconcile once against the complete published state.
+    let indexedMap: Map<string, Entity> | undefined;
+    let indexedCount = -1;
+    const refreshSockets = () => {
+      const { entities, entityMap } = store.getState();
+      if (entityMap === indexedMap && entities.length === indexedCount) return;
+      indexedMap = entityMap;
+      indexedCount = entities.length;
+      rebuildSocketIndexMap(entities);
+      geometryDirtyRef.current = true;
+      colorDirtyRef.current = true;
+    };
+    const unsubEntities = store.subscribe((state) => state.entityMap, refreshSockets);
+    const unsubEntityCount = store.subscribe((state) => state.entities.length, refreshSockets);
     // Position version change = positions changed, prefer partial update
     const unsubPositions = store.subscribe(
       (state) => state.positionVersion,
@@ -809,17 +808,16 @@ export function Edges({
       () => { viewMovedRef.current = true; }
     );
 
-    // Initialize entityMap ref and socket index map
-    const { entities, entityMap } = store.getState();
-    entityMapRef.current = entityMap;
-    rebuildSocketIndexMap(entities);
+    // Initialize socket index map
+    refreshSockets();
 
     // Mark dirty to ensure edges render on first frame after initialization
     geometryDirtyRef.current = true;
     colorDirtyRef.current = true;
 
     return () => {
-      unsubEntitiesLength();
+      unsubEntities();
+      unsubEntityCount();
       unsubPositions();
       unsubViewport();
       unsubHidden();
@@ -848,11 +846,6 @@ export function Edges({
 
     const { edges, viewport, selectedEdgeIds, selectedEntityIds, entityMap, hiddenEntityIds } =
       store.getState();
-    // Always read entityMap from store (not cached ref) because setEntities
-    // creates a new Map without changing entities.length, which would leave
-    // entityMapRef stale. The store's getState() is synchronous and cheap.
-    entityMapRef.current = entityMap;
-
     // Always update zoom uniform on both materials (cheap operation). The glow fades with it.
     const halfWidth = edgeHalfWidthAtZoom(viewport.zoom);
     bgMaterial.uniforms.uZoom.value = viewport.zoom;

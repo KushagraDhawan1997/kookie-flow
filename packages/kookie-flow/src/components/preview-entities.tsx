@@ -422,6 +422,11 @@ export function PreviewEntities() {
       }
     }
 
+    // Drain before selecting textures, including the final queued upload on an otherwise idle board.
+    if (imageManager.hasQueuedUploads) {
+      imageManager.processUploadQueue();
+      fullDirtyRef.current = true;
+    }
     if (!fullDirtyRef.current && !animatingRef.current) {
       if (chromeActiveRef.current) chromePass(delta);
       return;
@@ -454,6 +459,8 @@ export function PreviewEntities() {
     let rendered = false;
     let prevAlpha = 0;
     let prevTarget: THREE.WebGLRenderTarget | null = null;
+
+    imageManager.beginFrame();
 
     for (let i = 0; i < ids.length; i++) {
       const entity = entityMap.get(ids[i]);
@@ -692,7 +699,7 @@ export function PreviewEntities() {
 
     videoManager.reconcilePlayback(wantPlaying);
     // Uploads are queued so a board of new pictures does not stall one frame decoding all of them.
-    if (imageManager.processUploadQueue()) animating = true;
+    if (imageManager.hasQueuedUploads) animating = true;
     animatingRef.current = animating;
     // A hovered band has to keep looking for the pointer; see the file docblock.
     chromeActiveRef.current =
@@ -712,6 +719,7 @@ export function PreviewEntities() {
       topologyDirtyRef.current = false;
     }
 
+    imageManager.endFrame();
     fullDirtyRef.current = false;
   }, PREVIEW_RENDER_PRIORITY);
 

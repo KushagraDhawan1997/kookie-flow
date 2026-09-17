@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { VideoTextureManager, MAX_PLAYING_VIDEOS } from './video-loader';
 
 /**
@@ -16,15 +16,21 @@ const played = new Set<HTMLVideoElement>();
 beforeEach(() => {
   played.clear();
   // jsdom's play() throws "not implemented"; pause() is a no-op that does not clear `paused`.
-  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLVideoElement) {
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (
+    this: HTMLVideoElement
+  ) {
     played.add(this);
     return Promise.resolve();
   });
-  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (this: HTMLVideoElement) {
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (
+    this: HTMLVideoElement
+  ) {
     played.delete(this);
   });
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('what is allowed to decode', () => {
   it('plays nothing until something asks', () => {
@@ -93,6 +99,100 @@ describe('what is allowed to decode', () => {
 });
 
 describe('teardown', () => {
+  it.each(['resolve', 'reject'] as const)(
+    'ignores an old play %s after the same URL is reacquired',
+    async (outcome) => {
+      let resolveOld!: () => void;
+      let rejectOld!: (error: Error) => void;
+      const pending = new Promise<void>((resolve, reject) => {
+        resolveOld = resolve;
+        rejectOld = reject;
+      });
+      vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(pending);
+      const m = new VideoTextureManager();
+      try {
+        const old = m.acquire('same.mp4', true);
+        m.setPlaying('same.mp4', true);
+        m.release('same.mp4');
+        expect(old.wantsPlay).toBe(false);
+        const current = m.acquire('same.mp4', true);
+        m.setPlaying('same.mp4', true);
+        for (let i = 1; i < MAX_PLAYING_VIDEOS; i++) {
+          m.acquire(`other-${i}.mp4`, true);
+          m.setPlaying(`other-${i}.mp4`, true);
+        }
+        await Promise.resolve();
+        if (outcome === 'resolve') {
+          // A browser may finish the pending start after the element was paused for release.
+          played.add(old.element);
+          resolveOld();
+        } else rejectOld(new Error('AbortError from the released source'));
+        await Promise.resolve();
+        expect(m.getEntry('same.mp4')).toBe(current);
+        expect(m.isPlaying('same.mp4')).toBe(true);
+        expect(current.wantsPlay).toBe(true);
+        expect(played.has(old.element)).toBe(false);
+        expect(played.has(current.element)).toBe(true);
+        expect(m.playingCount).toBe(MAX_PLAYING_VIDEOS);
+        m.acquire('overflow.mp4', true);
+        expect(m.setPlaying('overflow.mp4', true)).toBe(false);
+      } finally {
+        m.disposeAll();
+      }
+    }
+  );
+
+  it('honours a pause while the current play promise is pending', async () => {
+    let resolvePlay!: () => void;
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolvePlay = resolve;
+      })
+    );
+    const m = new VideoTextureManager();
+    try {
+      const entry = m.acquire('pause.mp4', true);
+      m.setPlaying('pause.mp4', true);
+      m.setPlaying('pause.mp4', false);
+      played.add(entry.element);
+      resolvePlay();
+      await Promise.resolve();
+      expect(m.isPlaying('pause.mp4')).toBe(false);
+      expect(played.has(entry.element)).toBe(false);
+    } finally {
+      m.disposeAll();
+    }
+  });
+
+  it('does not resume a pending play after renewed demand is denied by the decoder cap', async () => {
+    let resolvePlay!: () => void;
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolvePlay = resolve;
+      })
+    );
+    const m = new VideoTextureManager();
+    try {
+      const waiting = m.acquire('waiting.mp4', true);
+      m.setPlaying('waiting.mp4', true);
+      m.setPlaying('waiting.mp4', false);
+      for (let i = 0; i < MAX_PLAYING_VIDEOS; i++) {
+        m.acquire(`active-${i}.mp4`, true);
+        m.setPlaying(`active-${i}.mp4`, true);
+      }
+      expect(m.setPlaying('waiting.mp4', true)).toBe(false);
+      played.add(waiting.element);
+      resolvePlay();
+      await Promise.resolve();
+      expect(waiting.wantsPlay).toBe(true);
+      expect(m.isPlaying('waiting.mp4')).toBe(false);
+      expect(played.has(waiting.element)).toBe(false);
+      expect(played.size).toBe(MAX_PLAYING_VIDEOS);
+    } finally {
+      m.disposeAll();
+    }
+  });
+
   it('stops decoding when the last reference goes', () => {
     const m = new VideoTextureManager();
     const entry = m.acquire('a.mp4', true);

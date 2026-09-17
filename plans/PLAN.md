@@ -80,7 +80,7 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 | 14 | Draw Entity | Planned |
 | 15 | Preview System | Planned |
 | 16 | Entity Type Customization | Planned |
-| 17 | Polish & Production | Planned |
+| 17 | Polish & Production | In progress — package readiness defects fixed; distribution and broader browser validation remain |
 
 ---
 

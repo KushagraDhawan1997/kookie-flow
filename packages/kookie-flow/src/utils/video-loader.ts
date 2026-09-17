@@ -192,6 +192,7 @@ export class VideoTextureManager {
     entry.refCount--;
     if (entry.refCount > 0) return;
 
+    entry.wantsPlay = false;
     this.playing.delete(src);
     const el = entry.element;
     el.pause();
@@ -311,7 +312,15 @@ export class VideoTextureManager {
     p.then(
       () => {
         entry.playPending = false;
-        if (!entry.wantsPlay) {
+        // A released source can be reacquired while the old element's play promise settles.
+        // Stop only that old element; the replacement owns the shared source's playback slot.
+        if (this.cache.get(src) !== entry) {
+          entry.element.pause();
+          return;
+        }
+        // Demand may have returned after a pause while other sources claimed every slot.
+        // A pending play cannot resume merely because it is wanted; it must still own a slot.
+        if (!entry.wantsPlay || !this.playing.has(src)) {
           entry.element.pause();
           this.playing.delete(src);
         }
@@ -320,6 +329,7 @@ export class VideoTextureManager {
         // Refused (autoplay policy, or a source that cannot decode). Give the slot back so a
         // video that CAN play is not starved by one that never will.
         entry.playPending = false;
+        if (this.cache.get(src) !== entry) return;
         entry.wantsPlay = false;
         this.playing.delete(src);
       }

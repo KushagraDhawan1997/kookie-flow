@@ -220,6 +220,9 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
    * manager on its next pass.
    */
   useEffect(() => {
+    loadedSrcRefs.current.clear();
+    autoSizedRef.current.clear();
+    fullDirtyRef.current = true;
     return () => {
       texManager.disposeAll();
       for (const mat of materialRefs.current.values()) {
@@ -350,11 +353,12 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
     // A button mid-fade needs its next step, and only the full pass writes chrome.
     if (chromeFadingRef.current) fullDirtyRef.current = true;
 
-    const full = fullDirtyRef.current;
+    const full = fullDirtyRef.current || hiddenDirtyRef.current;
     const selDirty = selectionDirtyRef.current;
     const hidDirty = hiddenDirtyRef.current;
 
     if (!full && !selDirty && !hidDirty) return;
+    if (full) texManager.beginFrame();
 
     const {
       entityMap,
@@ -542,6 +546,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       }
       topologyDirtyRef.current = false;
     }
+
+    if (full) texManager.endFrame();
 
     if (full) chromeFadingRef.current = chromeFading;
     fullDirtyRef.current = false;
