@@ -37,9 +37,29 @@ import { formatUsd } from 'studio-core';
 
 import { setAppearance, useAppearance, type AppearanceChoice } from '../appearance';
 import { signOut, useBilling } from '../balance-menu';
-import { BillingIcon, GraphsIcon, PanelLeftIcon, SignOutIcon } from '../icons';
+import {
+  BackIcon,
+  BillingIcon,
+  CutoutIcon,
+  GraphsIcon,
+  HomeIcon,
+  ImageIcon,
+  ModelsIcon,
+  PanelLeftIcon,
+  SignOutIcon,
+  TemplatesIcon,
+  UpscaleIcon,
+  VideoIcon,
+} from '../icons';
 import { Wordmark } from '../wordmark';
 import './app-shell.css';
+
+const TOOLS = [
+  { label: 'Image', href: '/models/gpt-image-2-5', Icon: ImageIcon },
+  { label: 'Video', href: '/models/wan-image-to-video', Icon: VideoIcon },
+  { label: 'Upscale', href: '/models/clarity-upscaler', Icon: UpscaleIcon },
+  { label: 'Remove background', href: '/models/birefnet', Icon: CutoutIcon },
+] as const;
 
 const APPEARANCES: readonly AppearanceChoice[] = ['system', 'light', 'dark'];
 const APPEARANCE_LABEL: Record<AppearanceChoice, string> = { system: 'System', light: 'Light', dark: 'Dark' };
@@ -67,17 +87,54 @@ export function AppShell({ name, email, children }: AppShellProps) {
   return (
     <Shell>
       <ShellSidebar aria-label="Studio" width={248}>
+        {/* THE SAME ROW THE EDITOR'S MARK SITS IN: a Toolbar inside the pane header. The toolbar states
+            the band's height, one step above the pane's own, so a bare header put the mark at a
+            different spot and it jumped on every trip between here and a graph. */}
         <ShellPaneHeader>
-          <NextLink href="/" aria-label="Studio, all graphs" style={{ color: 'inherit', textDecoration: 'none' }}>
-            <Wordmark />
-          </NextLink>
+          <Toolbar>
+            <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
+              <Wordmark />
+            </NextLink>
+          </Toolbar>
         </ShellPaneHeader>
 
         <ShellScroll fade>
           <ShellNavGroup>
-            <ShellNavItem current={pathname === '/'} leading={<GraphsIcon />} render={<NextLink href="/" />}>
+            <ShellNavItem current={pathname === '/'} leading={<HomeIcon />} render={<NextLink href="/" />}>
+              Home
+            </ShellNavItem>
+            <ShellNavItem
+              current={pathname.startsWith('/templates')}
+              leading={<TemplatesIcon />}
+              render={<NextLink href="/templates" />}
+            >
+              Templates
+            </ShellNavItem>
+            <ShellNavItem current={pathname === '/models'} leading={<ModelsIcon />} render={<NextLink href="/models" />}>
+              Models
+            </ShellNavItem>
+            <ShellNavItem current={pathname.startsWith('/graphs')} leading={<GraphsIcon />} render={<NextLink href="/graphs" />}>
               Graphs
             </ShellNavItem>
+          </ShellNavGroup>
+          {/* Tools are models named by what they do, one press from anywhere: the way in for
+              someone who came to try a model rather than to build a graph. */}
+          <ShellNavGroup label="Tools">
+            {TOOLS.map((tool) => (
+              <ShellNavItem
+                key={tool.href}
+                current={pathname === tool.href}
+                leading={<tool.Icon />}
+                render={<NextLink href={tool.href} />}
+              >
+                {tool.label}
+              </ShellNavItem>
+            ))}
+          </ShellNavGroup>
+        </ShellScroll>
+
+        <ShellPaneFooter>
+          <Stack gap="1" style={{ inlineSize: '100%' }}>
             <ShellNavItem
               current={pathname.startsWith('/billing')}
               leading={<BillingIcon />}
@@ -92,51 +149,48 @@ export function AppShell({ name, email, children }: AppShellProps) {
             >
               Billing
             </ShellNavItem>
-          </ShellNavGroup>
-        </ShellScroll>
-
-        <ShellPaneFooter>
-          <Menu>
-            <MenuTrigger
-              render={
-                <ShellNavItem
-                  leading={<Avatar size="1" fallback={initials(name, email)} />}
-                  aria-label={`Account: ${name || email}`}
-                />
-              }
-            >
-              {name || email}
-            </MenuTrigger>
-            <MenuContent side="top" align="start">
-              <MenuGroup>
-                <MenuLabel>
-                  <Stack gap="0">
-                    <Text size="2" weight="medium">
-                      {name}
-                    </Text>
-                    <Text size="1" emphasis="medium">
-                      {email}
-                    </Text>
-                  </Stack>
-                </MenuLabel>
-              </MenuGroup>
-              <MenuSub>
-                <MenuSubTrigger>Appearance</MenuSubTrigger>
-                <MenuSubContent>
-                  <MenuRadioGroup value={choice} onValueChange={(value) => setAppearance(value as AppearanceChoice)}>
-                    {APPEARANCES.map((c) => (
-                      <MenuRadioItem key={c} value={c} closeOnClick>
-                        {APPEARANCE_LABEL[c]}
-                      </MenuRadioItem>
-                    ))}
-                  </MenuRadioGroup>
-                </MenuSubContent>
-              </MenuSub>
-              <MenuItem leading={<SignOutIcon />} onClick={() => void signOut()}>
-                Sign out
-              </MenuItem>
-            </MenuContent>
-          </Menu>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <ShellNavItem
+                    leading={<Avatar size="1" fallback={initials(name, email)} />}
+                    aria-label={`Account: ${name || email}`}
+                  />
+                }
+              >
+                {name || email}
+              </MenuTrigger>
+              <MenuContent side="top" align="start">
+                <MenuGroup>
+                  <MenuLabel>
+                    <Stack gap="0">
+                      <Text size="2" weight="medium">
+                        {name}
+                      </Text>
+                      <Text size="2" emphasis="medium">
+                        {email}
+                      </Text>
+                    </Stack>
+                  </MenuLabel>
+                </MenuGroup>
+                <MenuSub>
+                  <MenuSubTrigger>Appearance</MenuSubTrigger>
+                  <MenuSubContent>
+                    <MenuRadioGroup value={choice} onValueChange={(value) => setAppearance(value as AppearanceChoice)}>
+                      {APPEARANCES.map((c) => (
+                        <MenuRadioItem key={c} value={c} closeOnClick>
+                          {APPEARANCE_LABEL[c]}
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuSubContent>
+                </MenuSub>
+                <MenuItem leading={<SignOutIcon />} onClick={() => void signOut()}>
+                  Sign out
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+          </Stack>
         </ShellPaneFooter>
       </ShellSidebar>
       {children}
@@ -147,6 +201,8 @@ export function AppShell({ name, email, children }: AppShellProps) {
 interface AppPaneProps {
   /** The page's own controls, at the band's trailing edge. */
   actions?: React.ReactNode;
+  /** A page one level down names the way back to the page above it. */
+  back?: { href: string; label: string };
   children: React.ReactNode;
 }
 
@@ -155,7 +211,7 @@ interface AppPaneProps {
  * scroller the page's title and content live in. The title mirrors into the band once it has
  * scrolled away (ToolbarTitle reads the Page in the same pane).
  */
-export function AppPane({ actions, children }: AppPaneProps) {
+export function AppPane({ actions, back, children }: AppPaneProps) {
   return (
     <ShellContent>
       <ShellPaneHeader float>
@@ -169,6 +225,11 @@ export function AppPane({ actions, children }: AppPaneProps) {
                 </ToolbarButton>
               }
             />
+            {back && (
+              <ToolbarButton iconOnly aria-label={back.label} render={<NextLink href={back.href} />}>
+                <BackIcon />
+              </ToolbarButton>
+            )}
             <ToolbarTitle />
           </Flex>
           {actions}

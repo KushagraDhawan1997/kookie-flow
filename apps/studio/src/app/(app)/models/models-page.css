@@ -1,0 +1,42 @@
+/* The models list: rows in three columns, a hairline under each, as a catalogue reads. */
+
+.kd-models-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  column-gap: var(--layout-space-6);
+}
+
+.kd-models-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--layout-space-3);
+  padding-block: var(--layout-space-4);
+  border-block-end: 1px solid color-mix(in oklab, var(--color-text) 10%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+.kd-models-row[data-soon] {
+  opacity: 0.6;
+}
+
+.kd-models-words {
+  min-inline-size: 0;
+}
+
+.kd-models-arrow {
+  flex: none;
+  color: color-mix(in oklab, var(--color-text) 45%, transparent);
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+a.kd-models-row:hover .kd-models-arrow {
+  color: var(--color-text);
+  transform: translateX(2px);
+}
+
+a.kd-models-row:focus-visible {
+  outline: 2px solid var(--color-focus, currentColor);
+  outline-offset: 2px;
+}

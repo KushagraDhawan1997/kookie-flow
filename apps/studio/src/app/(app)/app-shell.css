@@ -9,3 +9,23 @@
 .kd-num {
   font-variant-numeric: tabular-nums;
 }
+
+/* A provider's mark, sized by the font-size of whatever holds it, so a card can draw it large and a
+   row small with one rule. The fallback initial is the same square with the letter in it. */
+.kd-logo {
+  flex: none;
+  display: inline-block;
+  inline-size: 1.25em;
+  block-size: 1.25em;
+}
+
+.kd-logo-initial {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 0.3em;
+  font-size: 0.8em;
+  inline-size: 1.5em;
+  block-size: 1.5em;
+  font-weight: 600;
+  background: color-mix(in oklab, var(--color-text) 9%, transparent);
+}

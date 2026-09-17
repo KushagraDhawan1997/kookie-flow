@@ -1,0 +1,94 @@
+/* A model's page. Facts in one labelled row, then sections; nothing boxed, as the rest of the app. */
+
+.kd-model-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--layout-space-5);
+  margin: 0;
+  padding-block: var(--layout-space-5);
+  border-block: 1px solid color-mix(in oklab, var(--color-text) 10%, transparent);
+}
+
+.kd-model-fact {
+  display: grid;
+  gap: var(--layout-space-1);
+  min-inline-size: 0;
+}
+
+.kd-model-fact dd {
+  margin: 0;
+}
+
+.kd-model-examples {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--layout-space-4);
+}
+
+.kd-model-example {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-surface-1, 12px);
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+}
+
+.kd-model-examples[data-kind='video'] .kd-model-example {
+  aspect-ratio: 16 / 9;
+}
+
+/* Wide tables scroll inside themselves on a phone rather than pushing the page sideways. The pane's
+   scroller sizes to its widest content, so the table must not report its own width upward. */
+.kd-model-table {
+  overflow-x: auto;
+  contain: inline-size;
+}
+
+@media (max-width: 720px) {
+  .kd-model-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kd-model-examples {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kd-model-examples .kd-model-example:nth-child(3) {
+    display: none;
+  }
+}
+
+/* A size or a price never breaks across lines; the table scrolls instead. */
+.kd-model-table .kd-num {
+  white-space: nowrap;
+}
+
+/* Served by. Every line is one line of text tall; the copy button hangs over its line rather
+   than growing it, so the name, the legal links and the endpoints keep the text's rhythm. */
+.kd-model-served td {
+  vertical-align: top;
+}
+
+.kd-model-line {
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-1);
+}
+
+.kd-model-line > button {
+  margin-block: calc((1lh - 2rem) / 2);
+}
+
+.kd-model-host-logo {
+  display: flex;
+  align-items: center;
+  block-size: 1lh;
+}
+
+.kd-model-external {
+  display: inline-flex;
+  font-size: 0.875rem;
+  color: color-mix(in oklab, var(--color-text) 55%, transparent);
+}
+
+.kd-mono {
+  font-family: var(--font-mono);
+}
