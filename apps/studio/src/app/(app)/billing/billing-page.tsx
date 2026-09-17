@@ -108,7 +108,7 @@ export function BillingPage({ topup, reason, openAdd }: BillingPageProps) {
     <AppPane actions={addCredits}>
       <Page
         title="Billing"
-        description={`Pay as you go. Each run costs the model's price plus a ${markupPercent}% fee, and the balance never expires.`}
+        description={`You pay what each model costs, plus ${markupPercent}%. No subscription, and your balance never expires.`}
       >
         <Stack gap="8">
           {(topup === 'done' || topup === 'cancelled' || problem) && (
@@ -199,13 +199,8 @@ function ActivityRow({ entry }: { entry: LedgerEntry }) {
   else if (entry.kind === 'adjust') title = entry.note ?? 'Adjustment';
   else {
     title = run?.label ?? 'Run';
-    // The label already names the model, so the detail is only what the money was.
-    detail =
-      entry.kind === 'hold'
-        ? 'Held until the run finishes'
-        : run?.modelMicros != null && run.feeMicros != null
-          ? `Model ${formatUsd(run.modelMicros)} + fee ${formatUsd(run.feeMicros)}`
-          : null;
+    // One amount per row, the one in the Amount column: no split, which reads as two charges.
+    if (entry.kind === 'hold') detail = 'Running';
   }
 
   return (
@@ -219,7 +214,7 @@ function ActivityRow({ entry }: { entry: LedgerEntry }) {
         <Stack gap="0">
           <Text size="2">{title}</Text>
           {/* On a phone the date column goes, so the date joins this line instead. */}
-          <Text size="1" emphasis="medium">
+          <Text size="2" emphasis="medium">
             <span className="kd-billing-when">
               <LocalTime iso={entry.createdAt} short />
               {detail ? ' · ' : ''}

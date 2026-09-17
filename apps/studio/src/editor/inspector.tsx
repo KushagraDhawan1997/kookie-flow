@@ -26,7 +26,6 @@ import {
   estimateModelMicros,
   formatUsd,
   isMediaRef,
-  MARKUP,
   registry,
   SOCKET_TYPES,
   TASK_BY_NODE_TYPE,
@@ -190,8 +189,7 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
       <ShellPaneFooter>
         {quote && (
           <Text size="1" emphasis="medium" style={{ display: 'block', marginBlockEnd: 'var(--space-2)' }}>
-            About {formatUsd(quote.total)} to run: model {formatUsd(quote.model)} + {Math.round(MARKUP * 100)}% fee{' '}
-            {formatUsd(quote.fee)}
+            About {formatUsd(quote.total)} to run
           </Text>
         )}
         <Flex justify="space-between" align="center" gap="2">
