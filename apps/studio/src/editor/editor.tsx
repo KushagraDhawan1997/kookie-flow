@@ -273,7 +273,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             <Toolbar backdrop>
               {/* The mark is the way home, as the docs site's is. The link carries the name: the
                   word inside it is a picture of the name and hidden from assistive tech. */}
-              <NextLink href="/" aria-label="Studio, all graphs" style={{ color: 'inherit', textDecoration: 'none' }}>
+              <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Wordmark />
               </NextLink>
               {/* NO SEPARATORS, as the docs band has none: each control is its own capsule and the

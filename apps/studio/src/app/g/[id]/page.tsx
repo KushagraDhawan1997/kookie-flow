@@ -29,7 +29,7 @@ export default async function GraphPage({ params }: { params: Promise<{ id: stri
                 What is stored under <Code size="1">{row.id}</Code> is not a graph document, so the editor will not
                 open it. Nothing has been changed — the stored copy is exactly as it was.
               </Text>
-              <Link render={<NextLink href="/" />}>All graphs</Link>
+              <Link render={<NextLink href="/graphs" />}>All graphs</Link>
             </Stack>
           </Card>
         </Box>

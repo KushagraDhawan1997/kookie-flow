@@ -29,10 +29,10 @@ import {
 } from '@kookie-ui/react';
 
 import type { GraphSummary } from '@/server/graphs';
-import { EmptyState } from '../empty-state';
-import { DuplicateIcon, GraphsIcon, MoreIcon, PlusIcon, RenameIcon, SearchIcon, TrashIcon } from '../icons';
-import { LocalTime } from '../local-time';
-import { AppPane } from './app-shell';
+import { EmptyState } from '../../empty-state';
+import { DuplicateIcon, GraphsIcon, MoreIcon, PlusIcon, RenameIcon, SearchIcon, TrashIcon } from '../../icons';
+import { LocalTime } from '../../local-time';
+import { AppPane } from '../app-shell';
 import './graphs-page.css';
 
 export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
@@ -234,7 +234,7 @@ function GraphCard({ graph, onRename, onDuplicate, onDelete }: GraphCardProps) {
               {graph.name}
             </Text>
           </NextLink>
-          <Text size="1" emphasis="medium" className="kd-graph-when">
+          <Text size="2" emphasis="medium" className="kd-graph-when">
             Edited <LocalTime iso={graph.updatedAt} relative />
             <span className="kd-graph-count">
               {' '}

@@ -1,0 +1,153 @@
+/* Home's own half. Home has no Page, so it clears the floating band itself, the way a Page does:
+   the band's reach less the pane inset the scroller has already given it. */
+.kd-home {
+  padding-block-start: calc(var(--kui-pane-inset-block-start, 0px) - var(--kui-sf-p, 0px));
+}
+
+/* The question and the box sit in the middle of the first screen, with room above them. */
+.kd-home-hero {
+  padding-block: var(--layout-space-9) 0;
+}
+
+.kd-home-title {
+  text-align: center;
+}
+
+.kd-home-ask {
+  inline-size: min(48rem, 100%);
+  text-align: start;
+}
+
+/* A row that scrolls sideways, cards snapping to its start. It bleeds to the pane's edge on the right
+   so the next card shows it is there. */
+.kd-home-row {
+  contain: inline-size;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(15rem, 18rem);
+  gap: var(--layout-space-5);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding-block-end: var(--layout-space-2);
+}
+
+.kd-home-row::-webkit-scrollbar {
+  display: none;
+}
+
+.kd-home-row > * {
+  scroll-snap-align: start;
+}
+
+.kd-home-row-wide {
+  grid-auto-columns: minmax(18rem, 24rem);
+}
+
+/* A model card: the box, with its words set on it at the bottom. */
+.kd-home-model {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 4 / 3;
+  padding: var(--layout-space-5);
+  border-radius: var(--radius-surface-1, 12px);
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 160ms ease;
+}
+
+.kd-home-model:hover {
+  background: color-mix(in oklab, var(--color-text) 8%, transparent);
+}
+
+.kd-home-model:focus-visible {
+  outline: 2px solid var(--color-focus, currentColor);
+  outline-offset: 2px;
+}
+
+.kd-home-model-logo {
+  position: absolute;
+  inset-block-start: var(--layout-space-5);
+  inset-inline-start: var(--layout-space-5);
+  font-size: 1.75rem;
+}
+
+@media (max-width: 520px) {
+  .kd-home-hero {
+    padding-block: var(--layout-space-7) var(--layout-space-4);
+  }
+}
+
+/* The agent's plan: steps left to right as a graph reads, joined by a short wire. It scrolls
+   sideways rather than wrapping, so the order never breaks across lines. */
+.kd-plan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(10.5rem, 1fr);
+  gap: var(--layout-space-5);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The pane's scroller sizes to its widest content; a sideways row must not report its width. */
+  contain: inline-size;
+}
+
+.kd-plan::-webkit-scrollbar {
+  display: none;
+}
+
+.kd-plan-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-space-3);
+  min-inline-size: 0;
+}
+
+/* The wire into each step after the first, across the gap, at the middle of the picture. */
+.kd-plan-step + .kd-plan-step > .kd-plan-picture::before {
+  content: '';
+  position: absolute;
+  inset-inline-end: 100%;
+  inset-block-start: 50%;
+  inline-size: var(--layout-space-5);
+  border-block-start: 1px solid color-mix(in oklab, var(--color-text) 25%, transparent);
+}
+
+.kd-plan-picture {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-surface-1, 12px);
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+}
+
+.kd-plan[data-video] .kd-plan-picture {
+  aspect-ratio: 16 / 9;
+}
+
+.kd-plan-picture img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.kd-plan-model {
+  min-inline-size: 0;
+}
+
+.kd-plan-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kd-plan-price {
+  flex: none;
+  white-space: nowrap;
+}
