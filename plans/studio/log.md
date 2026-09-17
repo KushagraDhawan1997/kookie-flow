@@ -947,3 +947,28 @@ actions in a "…" menu rather than a bare delete icon.
 - Verified: `tsc` clean; tours in light and dark at 1440 and at 390 wide, the title measured at the
   same position on Graphs, Billing and back. Not verified: the Stripe return notices, a graph whose
   cover is a video.
+
+## 2026-09-17 — Model pages from precedent
+
+- Owner rule: never invent UI; study how others do it first. Study in `model-page-study.md`.
+- Model page rebuilt: facts row (Made by, Served by, Price, Commercial use), Examples, Pricing table,
+  Served by (fal, endpoints, terms), Inputs, Outputs, Similar models.
+- Price tables and inputs are read from `estimateModelMicros` and the node registry, so the page
+  shows what the canvas offers and what a run is charged. Commercial use from fal's `licenseType`.
+- fal mark added (LobeHub). Models list rows say "Served by fal".
+- Served by redone after Vercel's provider row and OpenRouter's slug: name links to fal's page (↗),
+  "Legal: Terms · Privacy" quiet under it, endpoints as plain mono with Kookie's copy-done button,
+  no loose third column. Top-aligned so the name and first endpoint share a line.
+- Owner rule: no `size="1"` in Studio; captions quieten with emphasis. Swept Home, shell, templates,
+  graphs, billing and the model page (the nav Avatar keeps size 1).
+- Vision recorded in `vision.md` (owner asked; it had only been in chat). Home composer's picker was
+  image models, which is wrong for an LLM agent: now "Auto · Medium" (Claude model + effort), after
+  Krea Agent; the agent picks generation models, as in Krea Agent, FAUNA and Lovart.
+- Home reoriented to the vision (study in home-study.md, second pass): headline names the harness,
+  starter asks under the box, a mock plan for the chosen ask (asks → drafts → pick → final) with
+  each step's real model and price and the total, then "Try a model", then curated templates.
+  Action tiles removed; "New graph" moved to the toolbar. Plans are mock data in home/plans.ts.
+- Home cut to "tell less, show more": "One ask. A whole workflow.", short starters, the plan as one
+  picture per step with label, model and price, section heads without sentences, cards without
+  summaries. Plan pictures load from public/home/<starter>/<step>.webp (list in home-images.md)
+  and stay grey until the owner adds them.
