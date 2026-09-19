@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-09-17, the agent panel's conversation
+
+Asked with three screenshots: every tool call on its own grey line, one large picture per line
+under "Looked at draftN", validation errors as paragraphs, text reading through the glass tabs and
+the composer, and the attachment note shown in the person's bubble.
+
+- **A Kookie UI v2 block first**, `conversation` (`kookie-ui-v2/apps/docs/blocks/conversation.tsx`
+  and `.css`, registered with two demos and a usage file; the block laws pass). Copied to
+  `apps/studio/src/app/conversation.{tsx,css}`. Parts: `UserMessage` (tint, no edge, thumbnails
+  above), `Steps` + `Step` (a run folds to one row, live or counted, opening to a hairline list),
+  `Pictures` (one at its shape, several square).
+- **Precedent:** ChatGPT and Claude for the bubbles; ChatGPT "Thought for", Perplexity "Completed
+  N steps", Cursor's grouped tool calls and FAUNA's live line and "View steps" for the fold;
+  Midjourney and ChatGPT image sets for the pictures; Apple's scroll edge effect for the bands.
+- **Panel:** a reply is read as text blocks and runs of tool calls; each run's `inspect` pictures
+  are lifted out beside it. Self-corrected failures stay inside the run. "Thinking" is not shown
+  when the live run already says what is happening.
+- **Attachments:** a sent message carries `metadata.pictures` (their addresses); the model's
+  "(Attached … as n1.)" note is stripped for display. Older messages show the words only.
+- **Fade:** the transcript is hidden under the floating bands and ramps only over its last
+  stretch (`agent-panel.css`). Belongs in `scroll-area.css` once the uncommitted message-scroller
+  work there lands.
+- Verified: `tsc` clean in both repos; screenshots of a full mock turn (attach, drafts, approval,
+  pick, final, scrolled) on an isolated copy with the mock agent and provider, no key.
+- Open: "Start over" still floats alone at the top (it belongs in the pane's header, which another
+  session is editing); clarifying questions are plain text (Cursor's option card needs an ask tool).
+
 ## 2026-09-15, sign-in and a dollar balance
 
 Asked as "we can build with better auth", then "keep dollar amount, very transparent about our
@@ -972,3 +999,121 @@ actions in a "…" menu rather than a bare delete icon.
   picture per step with label, model and price, section heads without sentences, cards without
   summaries. Plan pictures load from public/home/<starter>/<step>.webp (list in home-images.md)
   and stay grey until the owner adds them.
+- Plan preview removed from Home: the owner rejected the concept. A canned plan contradicts an agent
+  that decides the workflow after asking. Starters now only fill the box (home/starters.ts).
+- Agent plan changed: across providers (Claude and GPT) on the Vercel AI SDK 7, direct provider keys,
+  AI Gateway optional. plan.md Agent section, research.md, vision.md and .env.example updated.
+  Home's model menu groups Anthropic and OpenAI models.
+- Owner chose Vercel AI Gateway for agent model access: `AI_GATEWAY_API_KEY`, zero markup, works
+  off Vercel. GPT-6 Astra added to the menu.
+- Agent build plan drafted in `agent-plan.md`: models and prices, step route with tools and turn
+  charging, the panel, the harness rules, pick and gate nodes, inspect, verification. Not started.
+
+## 2026-09-17 — The agent (phase 5)
+
+- Built per `agent-plan.md`: AI SDK 7 through Vercel AI Gateway, Claude and GPT models, browser and
+  server tools, turn holds and charges, conversation per graph, the panel beside the canvas, the
+  harness in the instructions, `logic/pick`, `logic/gate`, `source/image`.
+- Without a gateway key a scripted agent answers, so the loop runs for nothing in development.
+- Verified end to end in the preview with the mock agent and mock jobs; tests: studio-core 56,
+  studio 42.
+- Fixed on the way: local storage gave two same-millisecond saves of one picture the same temp name.
+- SDK pinned at `ai` 7.0.102 and `@ai-sdk/react` 4.0.105, the newest old enough for pnpm's minimum
+  release age; the exclusions `pnpm add` wrote into pnpm-workspace.yaml were removed.
+- Checked against current docs and a real gateway key. Haiku 4.5 now gets a thinking budget instead of
+  adaptive thinking and effort; the output cap scales with effort. Sonnet 5 and GPT-5.6 Sol each ran the
+  whole loop in the browser. The first real run found six faults, all fixed (see agent-plan.md, Status).
+  Tests: studio-core 58, studio 42.
+- Owner's first real run (Sonnet 5, real fal, billing on): three drafts ran and were charged right,
+  then the final's turn was refused for a $73 hold. The hold counted the three inspected pictures'
+  bytes as prompt text, and the pictures went whole because a 1024×768 PNG was under the shrink
+  threshold. Pictures now count as a fixed 1,600 tokens each, and every inspected picture is
+  re-encoded as a JPEG at most 1024px. A reload mid-look left the calls unanswered for good: the
+  session now re-answers open browser tool calls on load (an edit is refused with a note, a run asks
+  again). Panel: the message and the approval are Surfaces, the composer is Home's size, the pane is
+  480px, resizable and remembered, stated on the Shell's token so the toolbar and minimap clear it.
+- The agent's transcript is a Kookie v2 `MessageScroller` (new in kookie-ui-v2, on `@shadcn/react`'s
+  headless message-scroller primitive, MIT): follows the live edge, anchors each ask near the top,
+  jump-to-latest button. The pane's `ShellScroll` is the viewport, so the Shell's floating bands and
+  fade are untouched: the tabs and the composer float, the transcript passes under both and fades
+  (the composer publishes its measured height as the band's row). Vendored as a new tarball.
+- Agent panel, per the owner: the chat goes behind the floating tabs and composer at full strength and
+  fades only at the panel's edges (the Shell's band-deep fade ran too far into the chat; an override
+  that hid content under the bands was a cut). Live labels shimmer, as AI Elements' Reasoning does.
+  The Conversation block's Studio copy gained `liveClassName` on `Steps`; owed upstream to the docs
+  block. AI Elements studied as a collection: research.md, "Agent and chat UI: the standard".
+- Arrange, 2026-09-17. The agent's nodes landed haphazardly: `layoutCluster` placed each batch as its
+  own block under the last, blind to wires into existing nodes. New op `{ op: 'arrange', ids? }` in
+  `GraphOp`, compiled by `compileOps` into positions from the library's `layoutGraph` (layered, left
+  to right, deterministic; the block's top left stays put; nodes the batch added land in place). Real
+  node boxes come from the canvas (`getEntityBounds`, new on the instance), estimates on the server.
+  The agent is told to end every build with it and never to `move`; the person gets the same op as
+  "Tidy up" in the canvas's right-click menu. `studio-core` imports the layout from a new library
+  entry, `kookie-flow/layout`, so the server still loads no React or three; the published dist gains
+  that entry when the library watcher next restarts (tsup reads entries at start). Not yet seen in
+  the browser: every page needs the owner's session. Tests: studio-core 61, studio 42.
+- Harness research, 2026-09-18. Six web sweeps (tool design, harness-vs-model, deterministic pairing,
+  eval benches, the market, cost mechanics) read against the agent code; written up in
+  `research-harness.md` with measured/claimed marked and dated sources. The load-bearing numbers:
+  template-grounded graph generation 78.5% vs 66.2% free-form vs 29.2% prose (Prompt2DAG, 260 runs);
+  prune-plus-summarise context 91.6% vs 71% task completion on 63% fewer tokens (Microsoft);
+  14-point and 17x spread for one model across nine harnesses (AgentConn); constraining the whole
+  generation costs 10-30% accuracy, constraining only the final emission does not (CRANE, Format Tax);
+  LLM-emitted coordinates are a tokenizer-level dead end. Studio already sits right on tool count,
+  cache-stable prefix, output caps, all-or-nothing batches, search-before-naming and 1024px looks.
+  Gaps, in order: the transcript never prunes (old pictures re-billed every turn); no bench, so
+  nothing is measurable; no named pattern library for the agent to instantiate; draft sets are not a
+  structure in the document; no pre-flight graph walk; model choice unmeasured. Also: nobody in the
+  market publishes a named versioned pattern library, treats drafts-pick-final as a first-class
+  primitive, or states graph-correctness numbers — three open lanes.
+- Harness plan, 2026-09-18: `harness-plan.md`, nothing built. Before planning, the research was
+  checked against the owner's own sessions (a copy of `.data/pg`; 34 agent steps). It overruled the
+  research twice. The agent is 37% of all spend, not a rounding error beside renders; and the money is
+  in output tokens (one 28-op build step = 23% of a session), cache writes (pictures from `inspect`)
+  and round trips (about one model call per tool call; 16 of 24 calls were inspect, estimate and
+  read_graph), not in re-reading old transcript (9-19%, cached at a tenth). Also found: 28 failed jobs
+  that a pre-flight would have caught ("prompt is empty" x24, "too small" x4), holds 28x the charge,
+  looks costing ~3,300 tokens where ~1,200 is expected, one unexplained cache miss = 18% of a session.
+  Order: a report script, fewer round trips (graph attached to the ask, run prices itself, contact-
+  sheet looks), the bench (one harness, a DocumentHost, mock renders, pass^5), patterns as an
+  `add_pattern` op that also makes templates real, pre-flight, a deterministic model view of the
+  transcript, then the model x effort sweep. Prompt2DAG and "Less Context, Better Agents" were fetched
+  and confirmed; both are other domains.
+- Agent panel, finesse passes 1–3 against captured frames of every state (empty, working, approval,
+  running, drafts, steps open, done, scrolled): the pane is solid and floats, and the tabs, Start
+  over, the composer and the jump button state `backdrop` for themselves, so the chat passes behind
+  them and dissolves only at the panel's edges. Start over moved into the header row; the approval is
+  one row (AI Elements' Confirmation); a run waiting for approval no longer prints a step saying so;
+  32px between turns, 16px within; the empty state sits in the middle; the scrollbar runs between the
+  bands; the jump button is placed by layout, so hovering no longer throws it down the transcript
+  (Kookie: the dock aligns to its end instead of lifting the button with `translate`).
+- A step's words are one line, cut with an ellipsis; inside Kookie's `fit-content` scroll content that
+  scrolled the whole panel sideways, so the transcript's content box refuses to widen.
+- The steps list is a timeline: a two-hairline thread with a ringed dot per step, the dot centred by
+  auto margins and drawn only inside the list, so a lone step keeps the text column instead of hanging
+  its dot into the pane's padding. Sent back to KookieUI v2's docs block, where the block lives.
+- MessageScroller and the Conversation block shipped in KookieUI v2 (§56 in DECISIONS, an entry in
+  LOG): the component with its three parts and three hooks, five laws (one scroll box, the pane's
+  anatomy kept, the live region, the button placed by layout), a playground section, a reference
+  entry with its composition and topics, a usage example, the builder exclusion, regenerated agent
+  rules and API tables, and the CSS budget re-recorded (+5 bytes). The block's parts default to size
+  3 and carry their own `data-kb-size`, never the system's axis.
+- Studio's own agent UI is now arrangement only: no bespoke paint. The shimmer moved into the block
+  as `Thinking` and a live Steps row; what is left in agent-panel.css is this pane's geometry and
+  three answers to Kookie defaults, each marked owed upstream (the scroll content box's width and
+  height, the floating band's veil, the dock's offset inside a padded viewport).
+- The bench, built and run 2026-09-18. `apps/studio/bench/`: 20 scenes, the app's own instructions,
+  tools, provider options and caps, answered from a document; pictures come from the store so a look
+  costs real image tokens and no render is paid for. 274 trials, $3.65 of gateway tokens, no credits.
+  Result: the harness is the ceiling, not the model. The same two failures lead everywhere — no pick
+  node (25), never ran it (24) — and the vision's own drafts-pick-final was built correctly in 0 of 12
+  attempts by any model. Luna at $0.0013 a scene ties Sol at 15x the price and beats both mid Claudes
+  (41% / 41% / 29% Haiku / 24% Sonnet pass^3). Haiku cost more than Sonnet and had 31 ops refused for
+  inventing sockets. Both models scored worse at medium effort than at low (Sonnet 12% vs 24%, Luna 35% vs 41%). Output tokens are 22-46% of each
+  bill, re-read history 17-33%, so patterns beat pruning. The plan's order was revised on this:
+  patterns first, then make the approved run actually happen, then pre-flight. The bench also caught a
+  wrong check of mine (tidy-up compared node tops; the layout centres columns) — `arrange` was correct.
+  Mistakes on the way: four parallel sweeps took the owner's own session down with a gateway rate
+  limit (now serial, paced, retrying); results were only written at the end, so the killed runs lost
+  what they had paid for (now appended per trial); one hung stream ate 2.6 hours (now a per-call
+  timeout). Opus 5 returned nothing 14 times through the gateway, for no charge.

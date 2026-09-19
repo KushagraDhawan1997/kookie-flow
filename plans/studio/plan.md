@@ -130,16 +130,33 @@ cancels the provider job.
 
 ### Agent
 
-Anthropic SDK, `claude-opus-5`, adaptive thinking, server-side `fallbacks: "default"`, prompt
-caching on the system prompt and tool list. No wrapper framework.
+**Across model providers** (changed 2026-09-17: the owner wants GPT models beside Claude). The loop
+is the Vercel AI SDK 7 (`streamText` with tools, or `ToolLoopAgent`), with a model registry in
+`studio-core` that lists each agent model, its provider and its token price. No other framework.
+
+- **Models at launch**: Claude Opus 5, Sonnet 5, Haiku 4.5; GPT-6 Astra, GPT-5.6 Sol, Terra, Luna.
+  "Auto" picks per task. Adding a model is a registry row.
+- **Access**: Vercel AI Gateway (chosen 2026-09-17). One `AI_GATEWAY_API_KEY`, zero markup on
+  tokens, model slugs like `anthropic/claude-opus-5` and `openai/gpt-5.6-sol` passed straight to the
+  AI SDK. The key works outside Vercel, so self-hosting still works; on Vercel, OIDC replaces the
+  key. The gateway's model list (`GET /v1/models`) gives token prices for the ledger, and its
+  fallbacks cover a provider outage. Provider keys can be attached in the gateway (BYOK) later.
+- **Provider features** go through `providerOptions`: Anthropic prompt caching, adaptive thinking,
+  effort and fallbacks; OpenAI reasoning effort. The effort menu maps one Studio scale
+  (low, medium, high, max) onto each.
+- **Pricing**: agent tokens are charged like any model run: the provider's token price plus the fee,
+  held and settled in the ledger per turn.
+- **Portable tools**: tool schemas are plain JSON Schema from the node registry, with no
+  provider-specific tool types, so every model sees the same tools. Tool results that carry an
+  image (`inspect`) use the SDK's multimodal tool output; a model without image input gets text.
 
 The loop is client-driven and the client owns the message history:
 
-1. `POST /api/agent/step` with messages. The route streams the model's turn as SSE.
+1. `POST /api/agent/step` with messages and the chosen model. The route streams the turn.
 2. Server tools (`search_nodes`, `estimate`, `inspect`) execute inside the route and the loop
    continues there.
-3. Browser tools (`read_graph`, `apply_ops`, `run`) end the step. The client executes them against
-   the live graph, appends the `tool_result`s, and calls step again.
+3. Browser tools (`read_graph`, `apply_ops`, `run`) have no server `execute`, so they end the step.
+   The client executes them against the live graph, appends the results, and calls step again.
 
 | Tool | Where | Returns |
 |---|---|---|
@@ -150,8 +167,8 @@ The loop is client-driven and the client owns the message history:
 | `estimate(nodeIds)` | server | credits and time per node |
 | `inspect(nodeId)` | server | the output downscaled to 768px as an image block; a few frames for video |
 
-`inspect` is what closes the loop: the agent looks at what it made and fixes it. Opus 5 reads
-images inside `tool_result`.
+`inspect` is what closes the loop: the agent looks at what it made and fixes it. Claude and GPT
+both read images in tool results.
 
 ### Library changes (packages/kookie-flow)
 
@@ -182,7 +199,7 @@ Each phase ends green: `tsc`, unit tests, and the app boots and does the thing i
 | 2 | Logic | `defineNode`, registry, `GraphOp` compiler, `onEvaluate` dispatch, cache; nodes: number, seed, text, template, concat, math expr, remap, clamp, color; library change 2 | — |
 | 3 | GPU | `gpu.worker.ts` (WebGL2, OffscreenCanvas, texture cache, readback); `GpuClient`; nodes: upload, resize, crop, blur, levels, noise, chromatic aberration, blend, mask, grain, vignette, dither, stats; previews via library change 1; golden-image tests | — |
 | 4 | AI | jobs table + routes, fal adapter, schema import, mock mode, asset copy; nodes: text-to-image, edit-image, upscale, remove-background, image-to-video, describe (Claude vision), judge | `FAL_KEY`, `ANTHROPIC_API_KEY` to test for real; mock otherwise |
-| 5 | Agent | `/api/agent/step`, tools, chat panel, streaming, one undo step per turn, inspect | `ANTHROPIC_API_KEY` |
+| 5 | Agent | AI SDK loop, agent model registry (Claude, GPT), `/api/agent/step`, tools, chat panel, streaming, one undo step per turn, inspect, token charges | `AI_GATEWAY_API_KEY` |
 | 6 | Control | library changes 3–5; nodes: if, switch, gate, list, range, zip, cartesian, pick, filter, for-each, loop-until, rank | — |
 | 7 | Video | `media.worker.ts`, Mediabunny; nodes: trim, concat, speed, frame, per-frame effect, export; time nodes | — |
 | 8 | Templates | subgraph as a node, template gallery, app mode (form from exposed inputs) | — |
@@ -214,7 +231,8 @@ switched to real providers once keys exist.
 | Key | Where to get it | Needed for | When |
 |---|---|---|---|
 | `FAL_KEY` | fal.ai → dashboard → Keys | real AI nodes | phase 4; mock mode until then |
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API keys | the agent, describe and judge nodes | phase 4–5 |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API keys | describe and judge nodes (or route them through the gateway) | phase 4 |
+| `AI_GATEWAY_API_KEY` | vercel.com → AI Gateway → API keys | the agent (Claude and GPT) | phase 5 |
 | `DATABASE_URL` | neon.com → new project → connection string | hosted database | phase 9; PGlite until then |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare → R2 → bucket + API token | hosted storage | phase 9; local files until then |
 | Vercel project | vercel.com | hosted app | phase 9 |

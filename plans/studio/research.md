@@ -28,7 +28,7 @@ and credits.
 | Redis | None | Upstash | Postgres covers job state and caching. Add only for high-rate limiting or cross-instance pub/sub |
 | Graph sync (later) | Yjs document per graph, driven by the same op reducer | Convex, Zero, Liveblocks | A graph is a live document, not relational rows. Convex is FSL, InstantDB is shutting down, Liveblocks self-host is Enterprise |
 | Billing (before launch) | Credit ledger in Postgres: reserve, commit, refund. Stripe Checkout top-ups | Stripe credit grants | Stripe grants only apply at invoice time, so they cannot gate a generation. Autumn (Apache) or Lago (AGPL) if we want it bought |
-| Agent loop | Anthropic SDK directly on a Next route, Claude Opus 5, graph-edit tools execute in the browser | Vercel AI SDK 7, client-only loop, Claude Agent SDK | The agent runs on one model provider, so AI SDK's provider layer buys nothing. New Claude API features (fallbacks, task budgets, compaction, caching controls) are usable the day they ship. The browser tool round trip is about the same amount of code either way. Keys stay on the server, and the same tools serve MCP later |
+| Agent loop | Vercel AI SDK 7 on a Next route, Claude and GPT through Vercel AI Gateway, graph-edit tools execute in the browser (revised 2026-09-17) | Anthropic SDK directly (the first choice), OpenRouter, own adapter, Claude Agent SDK | The owner wants the agent across providers. The first choice rested on one provider; with two, AI SDK's provider layer is the point. It exposes Anthropic caching, thinking, effort and fallbacks and OpenAI reasoning effort through `providerOptions`, so little is lost. AI Gateway chosen for access: one key, zero token markup, works outside Vercel, model list with prices, fallbacks. Direct provider packages remain the escape hatch. OpenRouter charges 5.5% on credits. Sources: ai-sdk.dev/docs/agents/overview, ai-sdk.dev/providers/ai-sdk-providers/anthropic, vercel.com/docs/ai-gateway/pricing, developers.openai.com/api/docs/models |
 | Image ops | One shader per op, run in a worker. WebGL2 first; WebGPU when the server executor makes WGSL the shared source | WebGPU-first with WebGL2 fallback, main-thread WebGL, CPU | Never blocks the canvas. WebGL2 is 96% support, one path, and matches the three.js canvas; WebGPU-first means two shader paths from day one. Spike: three.js TSL (emits both) vs TypeGPU (WGSL only) |
 | Video ops | Mediabunny + WebCodecs in a worker; native ffmpeg on the server | ffmpeg.wasm, Remotion | ffmpeg.wasm is ~10x slower and stalled. Remotion's license conflicts with AGPL |
 
@@ -239,3 +239,24 @@ Agent and competitors: [WebMCP draft](https://webmachinelearning.github.io/webmc
 [Flora Batch](https://docs.flora.ai/nodes/batch-node.md) · [FAUNA](https://docs.flora.ai/editor/fauna.md) ·
 [Weavy iterators](https://help.weavy.ai/en/articles/12343281-iterators) · [Comfy App Mode](https://blog.comfy.org/p/from-workflow-to-app-introducing) ·
 [Runway changelog](https://runway.com/changelog)
+
+## Agent and chat UI: the standard (studied 2026-09-17)
+
+Sources: Vercel AI Elements (elements.ai-sdk.dev, registry.ai-sdk.dev/all.json), shadcn's chat
+components and `skills/shadcn/rules/chat.md`, Apple's scroll edge effect. UX here is solved; Studio
+restates it in Kookie rather than inventing.
+
+| Need | The standard | Studio |
+| --- | --- | --- |
+| Transcript | Conversation / shadcn Message Scroller: follows the live edge only while the reader is there, a new turn anchors near the top, a round jump button bottom-centre shown only when scrolled away. Never hand-roll scroll logic. | Kookie `MessageScroller` on `@shadcn/react`. |
+| Messages | Message: the person's on a secondary fill, right; the reply flat and full width, no bubble, no avatar needed. | Conversation block `UserMessage`; replies are `Text`. |
+| Model working, nothing to show | Reasoning: the label "Thinking…" shimmers while streaming, then "Thought for N seconds"; opens while streaming, closes when done. Shimmer is a text sweep (gradient, background-clip), 2s. | "Thinking" with `.kd-shimmer`. No reasoning text is shown: the providers return none. |
+| A run of tool calls | Chain of Thought: one collapsible header, steps beneath with status complete, active, pending, on a line; results (images, search hits) shown with the steps. Tool: per-call card with a state badge (Pending, Running, Completed, Error), errors open by default. Task: a titled list of items. | Conversation block `Steps`/`Step`: folds to "N steps", live row shimmers with the current step, opens to a hairline list. Plain words, not JSON. |
+| Pictures a turn made | Image, and ChainOfThoughtImage with a caption. | `Pictures`, out of the fold. |
+| Spending approval | Confirmation: a request with Approve and Reject; after the answer the buttons go and an accepted or rejected line stays. | `RunApproval` Surface with price; the outcome stays as the run's step ("Ran 2 nodes", "Not run"). |
+| Composer | Prompt Input: attachments, model selector with provider logos, submit that becomes stop. | Kookie `Composer`, `AgentChoice`, `AttachButton`. |
+| Cost of the conversation | Context: tokens and cost by input, output, reasoning. | Not built. Billing lists each turn. |
+| Scroll edges | Content passes behind floating controls at full strength, blurred by their glass, and dissolves only at the container's edge (Apple's scroll edge effect; shadcn's `scroll-fade`). | Short fade (`--scrollbar-fade`) at the panel's edges; tabs and composer float. |
+
+Not used yet and worth a look later: Plan (a streamed plan with shimmer), Suggestion chips, Actions
+under a reply (copy, retry), Checkpoint, Branch.

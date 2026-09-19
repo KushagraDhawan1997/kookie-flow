@@ -43,14 +43,33 @@ Flora, Weavy, Krea Nodes and others exist. Studio's edge is three things:
   one graph can hold many.
 - **Where it lives.** The right-hand panel (today's inspector) is where the LLM sits.
 - **Later:** the whole of Studio is controllable by the agent.
-- **The agent is an LLM.** Its picker chooses the language model and effort (Krea's "Auto · Medium").
+- **The agent is an LLM, from any provider.** Claude and GPT at launch. Its picker chooses the
+  language model and effort (Krea's "Auto · Medium").
   Image and video models are the agent's to choose, as in Krea Agent, FAUNA and Lovart.
+
+## Efficiency: the V6 (recorded 2026-09-17)
+
+The owner's example is the last Ford GT: the V8 swapped for a V6, and the car built around getting
+the most out of it. The model is the engine; the harness is the car. The aim is a harness so well
+made that a mid model (Sonnet, Opus, smaller) does the job for next to nothing, and a frontier model
+is never needed.
+
+- **Deterministic tools beside the model, always.** The model decides intent. Anything with one right
+  answer is a tool: layout (`arrange`), validation, pricing, model choice by table, settings for a
+  draft, the shape of a known workflow.
+- **Every token and every call is weighed.** Fewer, bigger, safer tool calls; small context; cached
+  prefix; cheap model first, a dearer one only when a check fails.
+- **Proof, not feel.** A fixed set of asks, scored by deterministic checks (graph shape, cost, tokens,
+  refusals), run across models. The harness is tuned until the small model passes.
 
 ## Home
 
 - The Krea vibe, not Flora's: **this is where you come to try the models.** Models are the pull.
 - Two ideas lead: **run the agent**, and **the models**.
 - Genuine, never salesy. No filler copy ("Nothing runs until you approve the price" was called out).
+- No fixed plan or process diagram on Home. The agent decides the workflow after it asks, so a
+  canned plan misstates the harness (tried and rejected 2026-09-17). Home is the box, starters,
+  models and templates; the workflow shows up where the agent builds it.
 
 ## Craft
 
