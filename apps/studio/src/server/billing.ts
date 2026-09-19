@@ -19,7 +19,8 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   actualModelMicros,
-  findAgentModel,
+  findBilledModel,
+  TRIAGE_MODEL,
   formatUsd,
   registry,
   TASK_BY_NODE_TYPE,
@@ -199,7 +200,7 @@ export async function closeTurn(
 ): Promise<AgentTurnRow | null> {
   const [row] = await db.select().from(agentTurns).where(eq(agentTurns.id, id)).limit(1);
   if (!row) return null;
-  const model = findAgentModel(row.model);
+  const model = findBilledModel(row.model);
   const used = usage && model ? withFee(tokenMicros(model, usage)) : null;
   const counts = usage
     ? {
@@ -334,7 +335,7 @@ export async function listEntries(db: Db, workspaceId: string, limit = 100): Pro
         }
       : turn
         ? {
-            label: `Agent · ${findAgentModel(turn.model)?.name ?? turn.model}`,
+            label: `${turn.model === TRIAGE_MODEL.id ? 'Triage' : 'Agent'} · ${findBilledModel(turn.model)?.name ?? turn.model}`,
             model: turn.model,
             modelMicros: turn.modelMicros,
             feeMicros: turn.feeMicros,

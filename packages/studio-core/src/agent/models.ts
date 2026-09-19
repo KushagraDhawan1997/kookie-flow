@@ -20,7 +20,7 @@ export const AGENT_EFFORTS: ReadonlyArray<{ id: AgentEffort; name: string }> = [
   { id: 'max', name: 'Max' },
 ];
 
-export type AgentProvider = 'anthropic' | 'openai';
+export type AgentProvider = 'anthropic' | 'openai' | 'typesafe';
 
 /** Micros per million tokens. */
 export interface TokenPrice {
@@ -66,12 +66,33 @@ export const AGENT_MODELS: readonly AgentModel[] = [
   { id: 'openai/gpt-5.6-luna', name: 'GPT-5.6 Luna', maker: 'OpenAI', provider: 'openai', price: price(0.2, 1.2, 0.02, 0.25), images: true },
 ];
 
+/**
+ * The decision model triage asks before the language model runs (`triage.ts`). Not on the menu: it
+ * writes nothing, so nobody thinks with it; it is here so a triage call is priced and recorded like a
+ * turn. TypeSafe's published price, checked 2026-09-19 ($0.042 a million input tokens, output free);
+ * the gateway's own list price could not be read from here and should be confirmed against
+ * `https://ai-gateway.vercel.sh/v1/models`.
+ */
+export const TRIAGE_MODEL: AgentModel = {
+  id: 'typesafe-ai/jev',
+  name: 'Jev',
+  maker: 'TypeSafe AI',
+  provider: 'typesafe',
+  price: price(0.042, 0, 0, 0),
+  images: false,
+};
+
 export const AUTO_AGENT_MODEL = 'auto';
 
 const BY_ID = new Map(AGENT_MODELS.map((m) => [m.id, m]));
 
 export function findAgentModel(id: string): AgentModel | undefined {
   return BY_ID.get(id);
+}
+
+/** A model a turn can be billed as: one from the menu, or the triage model. */
+export function findBilledModel(id: string): AgentModel | undefined {
+  return BY_ID.get(id) ?? (id === TRIAGE_MODEL.id ? TRIAGE_MODEL : undefined);
 }
 
 /**

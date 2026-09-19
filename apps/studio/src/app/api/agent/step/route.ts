@@ -16,6 +16,7 @@ import {
 import { saveConversation } from '@/server/agent/conversation';
 import { agentLanguageModel, agentMode } from '@/server/agent/model';
 import { agentTools } from '@/server/agent/tools';
+import { withTriageNotes } from '@/server/agent/triage';
 import { closeTurn, InsufficientBalance, openTurn } from '@/server/billing';
 import { getDb } from '@/server/db';
 import { getGraph } from '@/server/graphs';
@@ -98,7 +99,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Those messages are not valid.' }, { status: 400 });
   }
   const instructions = agentInstructions(registry);
-  const modelMessages = await convertToModelMessages(messages, { tools, ignoreIncompleteToolCalls: true });
+  // The model's copy carries each message's triage line; the stored one and the panel's do not.
+  const modelMessages = await convertToModelMessages(withTriageNotes(messages), { tools, ignoreIncompleteToolCalls: true });
 
   const db = await getDb();
   let turnId: string;
