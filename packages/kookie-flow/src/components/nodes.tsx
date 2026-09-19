@@ -12,7 +12,7 @@ import { DEFAULT_ENTITY_WIDTH } from '../core/constants';
 import type { AccentColor, EntityStatus } from '../types';
 import type { RGBColor } from '../utils/color';
 import { isSelfDrawn } from '../utils/entity-kind';
-import { THEME_COLORS } from '../core/theme-colors';
+import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import { SUCCESS_HOLD_MS } from '../core/evaluation';
 import { entityDepth } from '../utils/entity-depth';
 import { easeProgress, progressEaseAlpha } from '../utils/progress-ease';
@@ -257,6 +257,8 @@ export function Entities() {
         // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
         // the graph's own invalid red. Warning is the consumer's and keeps amber.
         uAccentColor: { value: new THREE.Color(...tokens[THEME_COLORS.node.borderSelected]) },
+        // What a stale card fades TOWARD. The body writes depth, so it cannot fade by alpha.
+        uCanvasColor: { value: new THREE.Color(...resolveColor(THEME_COLORS.canvas.background, tokens)) },
         uStatusErrorColor: { value: new THREE.Color(...tokens[THEME_COLORS.edge.invalid]) },
         uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },
         uStatusSuccessColor: { value: new THREE.Color(0.19, 0.64, 0.33) },
@@ -314,6 +316,7 @@ export function Entities() {
         uniform float uRimLight;
         // Status uniforms
         uniform vec3 uAccentColor;
+        uniform vec3 uCanvasColor;
         uniform vec3 uStatusErrorColor;
         uniform vec3 uStatusWarningColor;
         uniform vec3 uStatusSuccessColor;
@@ -429,7 +432,7 @@ export function Entities() {
           // reports nothing sends a short arc round instead; done completes the ring for a moment
           // and lets it go; stale fades the card a step and tints the hairline. One hue.
           float statusBorderWidth = uBorderWidth;
-          float bgAlphaScale = 1.0;
+          float staleFade = 0.0;
           if (vStatus > 0.5) {
             if (vStatus < 1.5) {
               // Error: the graph's invalid red, a step thicker.
@@ -475,7 +478,7 @@ export function Entities() {
               // Stale: the card fades a step and the hairline takes a quiet accent tint. Subtle
               // by design — on a board mid-edit most cards are stale, and stale is not an alarm.
               borderColor = mix(uBorderColor, uAccentColor, 0.35);
-              bgAlphaScale = 0.7;
+              staleFade = 0.3;
             }
           }
 
@@ -490,6 +493,11 @@ export function Entities() {
             bgColor = mix(bgColor, aura.rgb, aura.a * uAuraAlpha);
           }
 
+          // Stale fades the fill toward the canvas, never by alpha: the body writes depth, and a
+          // see-through body that has written depth shows the floor THROUGH the node behind it (or
+          // the node behind, depending on draw order) — the card stopped being a surface.
+          bgColor = mix(bgColor, uCanvasColor, staleFade);
+
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
 
@@ -499,7 +507,7 @@ export function Entities() {
 
           // Background fill (respects backgroundAlpha for ghost/outline variants)
           float fillMask = 1.0 - smoothstep(-aa, aa, d);
-          float bgAlpha = fillMask * uBackgroundAlpha * bgAlphaScale;
+          float bgAlpha = fillMask * uBackgroundAlpha;
 
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
