@@ -14,31 +14,42 @@
 }
 
 .kd-home-ask {
-  inline-size: min(48rem, 100%);
+  inline-size: min(60rem, 100%);
   text-align: start;
 }
 
-/* A row that scrolls sideways, cards snapping to its start. It bleeds to the pane's edge on the right
-   so the next card shows it is there. */
+/* The input sizes to its content, which ignores `rows`; this floor is what shows three lines. */
+.kd-home-ask-input {
+  min-block-size: 3lh;
+}
+
+/* THE ROW LEAVES THE COLUMN. The cards line up with the heading above them at rest, then run out
+   to both edges of the pane as they scroll — a row cut off at the column's own edge read as a
+   mistake. `--bleed` is how far the column sits inside the pane (`kd-app-measure` is the container
+   it is measured against), and is zero once the pane is narrower than the column; the viewport's
+   padding puts back what this margin took, so the first card still starts on the column's line. */
+.kd-home-scroll {
+  --bleed: min(0px, calc((64rem - 100cqi) / 2));
+  margin-inline: var(--bleed);
+}
+
+.kd-home-scroll > .kui-scroll-viewport {
+  padding-inline: calc(-1 * var(--bleed));
+  scroll-padding-inline: calc(-1 * var(--bleed));
+}
+
+/* The cards themselves: one line of them. The snapping is Carousel's — the rail states the axis
+   and each CarouselItem is a place it can settle. */
 .kd-home-row {
-  contain: inline-size;
+  /* max-content, so the grid is as wide as its cards and the viewport's end padding is reachable. */
+  inline-size: max-content;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(15rem, 18rem);
   gap: var(--layout-space-5);
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
   padding-block-end: var(--layout-space-2);
 }
 
-.kd-home-row::-webkit-scrollbar {
-  display: none;
-}
-
-.kd-home-row > * {
-  scroll-snap-align: start;
-}
 
 .kd-home-row-wide {
   grid-auto-columns: minmax(18rem, 24rem);
@@ -78,76 +89,4 @@
   .kd-home-hero {
     padding-block: var(--layout-space-7) var(--layout-space-4);
   }
-}
-
-/* The agent's plan: steps left to right as a graph reads, joined by a short wire. It scrolls
-   sideways rather than wrapping, so the order never breaks across lines. */
-.kd-plan {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(10.5rem, 1fr);
-  gap: var(--layout-space-5);
-  overflow-x: auto;
-  scrollbar-width: none;
-  /* The pane's scroller sizes to its widest content; a sideways row must not report its width. */
-  contain: inline-size;
-}
-
-.kd-plan::-webkit-scrollbar {
-  display: none;
-}
-
-.kd-plan-step {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--layout-space-3);
-  min-inline-size: 0;
-}
-
-/* The wire into each step after the first, across the gap, at the middle of the picture. */
-.kd-plan-step + .kd-plan-step > .kd-plan-picture::before {
-  content: '';
-  position: absolute;
-  inset-inline-end: 100%;
-  inset-block-start: 50%;
-  inline-size: var(--layout-space-5);
-  border-block-start: 1px solid color-mix(in oklab, var(--color-text) 25%, transparent);
-}
-
-.kd-plan-picture {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius-surface-1, 12px);
-  background: color-mix(in oklab, var(--color-text) 5%, transparent);
-}
-
-.kd-plan[data-video] .kd-plan-picture {
-  aspect-ratio: 16 / 9;
-}
-
-.kd-plan-picture img {
-  display: block;
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-
-.kd-plan-model {
-  min-inline-size: 0;
-}
-
-.kd-plan-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kd-plan-price {
-  flex: none;
-  white-space: nowrap;
 }

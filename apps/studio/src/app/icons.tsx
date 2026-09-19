@@ -39,6 +39,8 @@ import {
   RefreshIcon,
   ArrowUpRight01Icon,
   ArrowDown01Icon,
+  ArrowDown02Icon,
+  Tick02Icon,
 } from '@hugeicons/core-free-icons';
 
 const glyph = (icon: IconSvgElement) =>
@@ -80,3 +82,6 @@ export const RetryIcon = glyph(RefreshIcon);
 export const CopyIcon = glyph(Copy01Icon);
 export const ExternalIcon = glyph(ArrowUpRight01Icon);
 export const ChevronDownIcon = glyph(ArrowDown01Icon);
+export const ArrowDownIcon = glyph(ArrowDown02Icon);
+export const CheckIcon = glyph(Tick02Icon);
+export const AutoIcon = glyph(AiMagicIcon);

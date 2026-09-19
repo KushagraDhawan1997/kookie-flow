@@ -1,5 +1,11 @@
 /* Only what the Shell does not own: the pages' shared measure, and figures that line up. */
 
+/* What the column is measured against, so a row inside it can reach the pane's edges (see
+   `kd-home-row`). Nothing but a measure: it paints nothing and moves nothing. */
+.kd-app-measure {
+  container-type: inline-size;
+}
+
 .kd-app-column {
   max-inline-size: 64rem;
   margin-inline: auto;

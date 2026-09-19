@@ -30,9 +30,14 @@ export interface EmptyStateProps {
   action?: React.ReactNode;
   /** A quieter second way out. */
   secondary?: React.ReactNode;
+  /**
+   * The sentence's index. 2 by default, as a page's empty region reads; 3 where it stands inside
+   * something already at 3, such as a conversation, so it is not a step under everything round it.
+   */
+  size?: '2' | '3';
 }
 
-export function EmptyState({ mark, title, description, action, secondary }: EmptyStateProps) {
+export function EmptyState({ mark, title, description, action, secondary, size = '2' }: EmptyStateProps) {
   // Generous around the words and tight inside them, 5 against 2. The title steps down to 5 only
   // with the sentence at 2: 20 over 14 keeps the jump between them a hierarchy.
   return (
@@ -43,7 +48,7 @@ export function EmptyState({ mark, title, description, action, secondary }: Empt
           {title}
         </Heading>
         {description ? (
-          <Text size="2" emphasis="medium">
+          <Text size={size} emphasis="medium">
             {description}
           </Text>
         ) : null}

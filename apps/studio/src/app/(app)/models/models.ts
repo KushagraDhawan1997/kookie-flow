@@ -157,6 +157,13 @@ export function findModel(slug: string): Model | undefined {
   return MODELS.find((m) => m.slug === slug);
 }
 
+const BY_NODE = new Map(MODELS.filter((m) => m.node).map((m) => [m.node as string, m]));
+
+/** The model a canvas node runs, so a menu of nodes can draw its maker's mark. */
+export function modelForNode(type: string): Model | undefined {
+  return BY_NODE.get(type);
+}
+
 /** Dollars as a person reads a small price: two places, or three where the third matters ($0.045). */
 export function dollars(amount: number): string {
   const three = amount.toFixed(3);
@@ -201,12 +208,12 @@ export interface PriceSheet {
 type Ask = Record<string, unknown>;
 
 /** What a run with these inputs costs you, in dollars: the charging code's estimate, with the fee. */
-export function paidFor(task: string, input: Ask): number {
+function paidFor(task: string, input: Ask): number {
   return withFee(estimateModelMicros(task, input) ?? 0).total / MICROS_PER_DOLLAR;
 }
 
 /** A picture of this size, for pricing only: nothing is looked up by its hash. */
-export function picture(width: number, height: number): MediaRef {
+function picture(width: number, height: number): MediaRef {
   return { kind: 'image', hash: 'price-sheet', width, height };
 }
 

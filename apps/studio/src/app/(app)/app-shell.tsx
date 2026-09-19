@@ -86,12 +86,12 @@ export function AppShell({ name, email, children }: AppShellProps) {
 
   return (
     <Shell>
-      <ShellSidebar aria-label="Studio" width={248}>
+      <ShellSidebar aria-label="Studio" width={296}>
         {/* THE SAME ROW THE EDITOR'S MARK SITS IN: a Toolbar inside the pane header. The toolbar states
             the band's height, one step above the pane's own, so a bare header put the mark at a
             different spot and it jumped on every trip between here and a graph. */}
         <ShellPaneHeader>
-          <Toolbar>
+          <Toolbar size="3">
             <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
               <Wordmark />
             </NextLink>
@@ -215,7 +215,7 @@ export function AppPane({ actions, back, children }: AppPaneProps) {
   return (
     <ShellContent>
       <ShellPaneHeader float>
-        <Toolbar backdrop>
+        <Toolbar size="3" backdrop>
           <Flex gap="2" align="center">
             <ShellTrigger
               target="sidebar"
@@ -239,7 +239,9 @@ export function AppPane({ actions, back, children }: AppPaneProps) {
         {/* ONE MEASURE FOR EVERY PAGE. The sidebar stays put across navigation, so a page with its
             own width moves the title sideways on every switch. A page that wants shorter lines
             caps its own prose inside this column instead. */}
-        <Box className="kd-app-column">{children}</Box>
+        <div className="kd-app-measure">
+          <Box className="kd-app-column">{children}</Box>
+        </div>
       </ShellScroll>
     </ShellContent>
   );

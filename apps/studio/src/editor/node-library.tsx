@@ -17,7 +17,9 @@ import {
 } from '@kookie-ui/react';
 import { registry, CATEGORY_LABELS, type AnyNodeDefinition, type Category } from 'studio-core';
 
+import { modelForNode } from '@/app/(app)/models/models';
 import { PlusIcon, SearchIcon } from '@/app/icons';
+import { ProviderLogo } from '@/app/provider-logos';
 
 type OnAdd = (type: string) => void;
 
@@ -43,7 +45,7 @@ export function NodeLibrary({ onAdd }: { onAdd: OnAdd }) {
 
   return (
     <>
-      <Toolbar orientation="vertical" backdrop aria-label="Add nodes">
+      <Toolbar size="3" orientation="vertical" backdrop aria-label="Add nodes">
         <ToolbarButton iconOnly emphasis="loud" aria-label="Add node" onClick={() => setOpen(true)}>
           <PlusIcon />
         </ToolbarButton>
@@ -104,7 +106,7 @@ function NodePalette({ open, onOpenChange, onAdd }: NodePaletteProps) {
               <CommandGroupLabel>{CATEGORY_LABELS[section.key]}</CommandGroupLabel>
               <CommandCollection>
                 {(def: AnyNodeDefinition) => (
-                  <CommandItem key={def.type} value={def} onClick={() => onAdd(def.type)}>
+                  <CommandItem key={def.type} value={def} leading={<NodeMark type={def.type} />} onClick={() => onAdd(def.type)}>
                     {def.label}
                   </CommandItem>
                 )}
@@ -118,4 +120,11 @@ function NodePalette({ open, onOpenChange, onAdd }: NodePaletteProps) {
       </CommandContent>
     </Command>
   );
+}
+
+/** The maker's mark on a row that adds a model; nothing on a row that runs none. */
+function NodeMark({ type }: { type: string }) {
+  const model = modelForNode(type);
+  if (!model) return null;
+  return <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />;
 }

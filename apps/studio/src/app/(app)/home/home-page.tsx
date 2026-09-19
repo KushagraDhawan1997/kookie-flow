@@ -5,82 +5,107 @@ import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Button,
+  Carousel,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  CarouselRail,
   Composer,
   ComposerInput,
   ComposerRow,
   ComposerSend,
   Flex,
   Heading,
-  Menu,
-  MenuContent,
-  MenuGroup,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuTrigger,
   Notice,
   Stack,
   Text,
   ToolbarButton,
 } from '@kookie-ui/react';
 
-import { AGENT_EFFORTS, AGENT_MODELS, type AgentEffort } from '../../agent-models';
-import { CanvasIcon, ChevronDownIcon, PlusIcon, RetryIcon, SendIcon, StopIcon } from '../../icons';
+import { AgentChoice, readAgentSettings } from '../../agent-choice';
+import { AttachButton } from '../../attach-button';
+import { DEFAULT_AGENT_SETTINGS, type AgentSettings } from '../../agent-models';
+import { ArrowRightIcon, BackIcon, CanvasIcon, RetryIcon, SendIcon, StopIcon } from '../../icons';
 import { ProviderLogo } from '../../provider-logos';
+import { ports } from '@/runtime/ports';
+import { pendingAskKey, type PendingAsk } from '@/shared/agent';
 import { AppPane } from '../app-shell';
-import { dollars, findModel, fromPrice, MODELS, type Model } from '../models/models';
+import { fromPrice, MODELS, type Model } from '../models/models';
 import { TemplateTile } from '../templates/templates-page';
 import { TEMPLATES } from '../templates/templates';
-import { planTotal, STARTERS, type PlanStep, type Starter } from './plans';
+import { STARTERS } from './starters';
 import '../templates/templates.css';
 import './home.css';
 
-/** Make a graph under a name and open it. The mock behind every "start" on Home until the agent exists. */
-function useStartGraph() {
+async function createGraph(name: string): Promise<string> {
+  const res = await fetch('/api/graphs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.length > 60 ? `${name.slice(0, 57)}…` : name }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const body: unknown = await res.json();
+  if (!body || typeof body !== 'object' || !('id' in body) || typeof body.id !== 'string') {
+    throw new Error('The graph could not be created.');
+  }
+  return body.id;
+}
+
+const SEND_ICONS = { ready: <SendIcon />, submitted: <SendIcon />, streaming: <StopIcon />, error: <RetryIcon /> };
+
+/**
+ * Home says what Studio is in as few words as it can (plans/studio/vision.md, home-study.md): ask
+ * the agent, with starters under the box as Manus has them, then the models and curated templates.
+ * No fixed plan is shown: the agent decides the workflow after it has asked its questions.
+ *
+ * An ask opens a new graph named after it, with the agent's panel open and the ask already sent:
+ * the conversation happens beside the canvas the agent builds on.
+ */
+export function HomePage() {
   const router = useRouter();
+  const [ask, setAsk] = React.useState('');
+  const [files, setFiles] = React.useState<File[]>([]);
+  const [settings, setSettings] = React.useState<AgentSettings>(DEFAULT_AGENT_SETTINGS);
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
-  const start = async (name: string) => {
+
+  React.useEffect(() => setSettings(readAgentSettings(DEFAULT_AGENT_SETTINGS)), []);
+
+  const open = async (name: string, pending: Omit<PendingAsk, 'pictures'> | null) => {
     setBusy(true);
     setProblem(null);
     try {
-      const res = await fetch('/api/graphs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.length > 60 ? `${name.slice(0, 57)}…` : name }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const { id } = (await res.json()) as { id: string };
+      // Pictures first: an upload that fails should stop here, before a graph exists for nothing.
+      const pictures = pending
+        ? await Promise.all(
+            files
+              .filter((f) => f.type.startsWith('image/'))
+              .map(async (f) => {
+                const ref = await ports.assets.put(f, 'image');
+                return { hash: ref.hash, url: ref.url ?? '', mime: ref.mime ?? f.type, width: ref.width, height: ref.height };
+              })
+          )
+        : [];
+      const id = await createGraph(name);
+      if (pending) {
+        const value: PendingAsk = { ...pending, pictures };
+        window.sessionStorage.setItem(pendingAskKey(id), JSON.stringify(value));
+      }
       router.push(`/g/${id}`);
     } catch (error) {
       setBusy(false);
       setProblem(error instanceof Error ? error.message : 'That could not start.');
     }
   };
-  return { busy, problem, start };
-}
 
-const SEND_ICONS = { ready: <SendIcon />, submitted: <SendIcon />, streaming: <StopIcon />, error: <RetryIcon /> };
-
-/**
- * Home says what Studio is, in as few words as it can (plans/studio/vision.md, home-study.md):
- * one ask becomes a workflow, on every model, at each model's price. It shows rather than tells:
- * the plan for the chosen starter is drawn, not described. Models and curated templates follow.
- *
- * MOCK: asking or building makes a graph under the ask's name, since the agent does not exist yet.
- */
-export function HomePage() {
-  const { busy, problem, start } = useStartGraph();
-  const [starter, setStarter] = React.useState<Starter>(STARTERS[0]);
-  const [ask, setAsk] = React.useState('');
-
-  const choose = (next: Starter) => {
-    setStarter(next);
-    setAsk(next.ask);
+  const send = () => {
+    const text = ask.trim();
+    if (!text) return;
+    void open(text, { text, model: settings.model, effort: settings.effort });
   };
 
   const newGraph = (
-    <ToolbarButton leading={<CanvasIcon />} onClick={() => void start('Untitled')}>
+    <ToolbarButton leading={<CanvasIcon />} onClick={() => void open('Untitled', null)}>
       New graph
     </ToolbarButton>
   );
@@ -89,29 +114,50 @@ export function HomePage() {
     <AppPane actions={newGraph}>
       <Stack gap="9" className="kd-home">
         <Stack gap="7" className="kd-home-hero">
-          <Heading size="8" render={<h1 />} className="kd-home-title">
+          <Heading size="9" render={<h1 />} className="kd-home-title">
             One ask. A whole workflow.
           </Heading>
           <Stack gap="4" align="center">
             <div className="kd-home-ask">
-              <Ask ask={ask} onAsk={setAsk} busy={busy} onSubmit={() => void start(ask.trim())} />
+              <Composer
+                size="3"
+                onFiles={(dropped) => setFiles((current) => [...current, ...dropped])}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  send();
+                }}
+              >
+                <ComposerInput
+                  aria-label="Ask the agent"
+                  placeholder="I need to generate a gaming controller"
+                  className="kd-home-ask-input"
+                  rows={4}
+                  value={ask}
+                  onChange={(e) => setAsk(e.target.value)}
+                />
+                <ComposerRow>
+                  <Flex gap="2" align="center">
+                    <AttachButton onFiles={(picked) => setFiles((current) => [...current, ...picked])} />
+                    <AgentChoice value={settings} onChange={setSettings} />
+                    {files.length > 0 && (
+                      <Text size="2" emphasis="medium">
+                        {files.length} {files.length === 1 ? 'picture' : 'pictures'}
+                      </Text>
+                    )}
+                  </Flex>
+                  <ComposerSend status={busy ? 'submitted' : 'ready'} disabled={!ask.trim()} icons={SEND_ICONS} />
+                </ComposerRow>
+              </Composer>
             </div>
             <Flex gap="2" wrap="wrap" justify="center" role="group" aria-label="Starters">
               {STARTERS.map((s) => (
-                <Button
-                  key={s.id}
-                  emphasis={s.id === starter.id ? 'medium' : 'quiet'}
-                  bordered={s.id !== starter.id}
-                  aria-pressed={s.id === starter.id}
-                  onClick={() => choose(s)}
-                >
+                <Button key={s.id} emphasis="quiet" bordered onClick={() => setAsk(s.ask)}>
                   {s.label}
                 </Button>
               ))}
             </Flex>
             {problem && <Notice tone="destructive">{problem}</Notice>}
           </Stack>
-          <Plan starter={starter} busy={busy} onBuild={() => void start(starter.ask)} />
         </Stack>
 
         <ModelsRow />
@@ -121,232 +167,65 @@ export function HomePage() {
   );
 }
 
-interface AskProps {
-  ask: string;
-  onAsk: (ask: string) => void;
-  busy: boolean;
-  onSubmit: () => void;
-}
-
-function Ask({ ask, onAsk, busy, onSubmit }: AskProps) {
-  const [files, setFiles] = React.useState<File[]>([]);
-  const fileInput = React.useRef<HTMLInputElement>(null);
-  return (
-    <Composer
-      size="3"
-      onFiles={(dropped) => setFiles((current) => [...current, ...dropped])}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (ask.trim()) onSubmit();
-      }}
-    >
-      <ComposerInput
-        aria-label="Describe what you need"
-        placeholder="Describe what you need"
-        rows={2}
-        value={ask}
-        onChange={(e) => onAsk(e.target.value)}
-      />
-      <ComposerRow>
-        <Flex gap="2" align="center">
-          <Button iconOnly emphasis="quiet" aria-label="Attach pictures" onClick={() => fileInput.current?.click()}>
-            <PlusIcon />
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            hidden
-            onChange={(e) => setFiles((current) => [...current, ...Array.from(e.target.files ?? [])])}
-          />
-          <AgentChoice />
-          {files.length > 0 && (
-            <Text size="2" emphasis="medium">
-              {files.length} {files.length === 1 ? 'file' : 'files'}
-            </Text>
-          )}
-        </Flex>
-        <ComposerSend
-          status={busy ? 'submitted' : 'ready'}
-          disabled={!ask.trim()}
-          // Kookie ships no icon set, so the glyph for each state is the app's to give.
-          icons={SEND_ICONS}
-        />
-      </ComposerRow>
-    </Composer>
-  );
-}
-
 /**
- * The agent's brain and effort in one chip, as Krea Agent does it ("Auto · Medium"): a language
- * model and how hard it thinks. Image and video models are the agent's to pick, so they are not here.
+ * A row's head: its name, the two ways to move it, and the way to the whole list. The buttons sit
+ * here rather than over the cards because the row bleeds to the pane's edges, where an overlaid
+ * button would cover a cover.
  */
-function AgentChoice() {
-  const [model, setModel] = React.useState('auto');
-  const [effort, setEffort] = React.useState<AgentEffort>('medium');
-  const modelName = AGENT_MODELS.find((m) => m.id === model)?.name ?? 'Auto';
-  const effortName = AGENT_EFFORTS.find((e) => e.id === effort)?.name ?? 'Medium';
-  return (
-    <Menu>
-      <MenuTrigger render={<Button emphasis="quiet" trailing={<ChevronDownIcon />} />}>
-        {modelName} · {effortName}
-      </MenuTrigger>
-      <MenuContent align="start">
-        <MenuGroup>
-          <MenuLabel>Model</MenuLabel>
-          <MenuRadioGroup value={model} onValueChange={(value) => setModel(String(value))}>
-            {AGENT_MODELS.map((m) => (
-              <MenuRadioItem key={m.id} value={m.id}>
-                {m.name}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuGroup>
-        <MenuGroup>
-          <MenuLabel>Effort</MenuLabel>
-          <MenuRadioGroup value={effort} onValueChange={(value) => setEffort(AGENT_EFFORTS.find((e) => e.id === value)?.id ?? 'medium')}>
-            {AGENT_EFFORTS.map((e) => (
-              <MenuRadioItem key={e.id} value={e.id}>
-                {e.name}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuGroup>
-      </MenuContent>
-    </Menu>
-  );
-}
-
-/**
- * The workflow the agent would build for the chosen starter, drawn as a graph reads: left to right,
- * each step a picture of what it makes, with its model and what it costs.
- */
-function Plan({ starter, busy, onBuild }: { starter: Starter; busy: boolean; onBuild: () => void }) {
-  const video = starter.steps.some((step) => findModel(step.model ?? '')?.kind === 'video');
-  return (
-    <Stack gap="4" render={<section />} aria-label="The agent's plan">
-      <ol className="kd-plan" data-video={video || undefined}>
-        {starter.steps.map((step, i) => (
-          <PlanNode key={`${starter.id}-${i}`} starter={starter.id} step={step} />
-        ))}
-      </ol>
-      <Flex justify="space-between" align="center" gap="4">
-        <Text size="3" weight="medium" className="kd-num">
-          About {roughly(planTotal(starter.steps))}
-        </Text>
-        <Button loading={busy} onClick={onBuild}>
-          Build this
-        </Button>
-      </Flex>
-    </Stack>
-  );
-}
-
-/** A total said with "about": cents are enough once it passes a dime. */
-function roughly(amount: number): string {
-  return amount >= 0.1 ? `$${amount.toFixed(2)}` : dollars(amount);
-}
-
-function PlanNode({ starter, step }: { starter: string; step: PlanStep }) {
-  const model = step.model && step.model !== 'agent' ? findModel(step.model) : undefined;
-  const price = step.each !== undefined ? (step.runs ?? 1) * step.each : undefined;
-  return (
-    <li className="kd-plan-step" data-kind={step.kind}>
-      <PlanPicture starter={starter} step={step} />
-      <Stack gap="1">
-        <Text size="2" weight="medium">
-          {step.title}
-        </Text>
-        <Flex justify="space-between" align="center" gap="2">
-          <Flex gap="2" align="center" className="kd-plan-model">
-            {step.model === 'agent' && (
-              <>
-                <ProviderLogo provider="claude" maker="Anthropic" name="Claude" />
-                <Text size="2" emphasis="medium">
-                  Claude
-                </Text>
-              </>
-            )}
-            {model && (
-              <>
-                <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} />
-                <Text size="2" emphasis="medium" className="kd-plan-name">
-                  {model.name}
-                </Text>
-              </>
-            )}
-          </Flex>
-          {price !== undefined && (
-            <Text size="2" className="kd-num kd-plan-price">
-              {dollars(price)}
-            </Text>
-          )}
-        </Flex>
-      </Stack>
-    </li>
-  );
-}
-
-/**
- * The picture of what the step makes. It loads `public/home/<starter>/<step>.webp` and stays a plain
- * grey slot until that file exists (plans/studio/home-images.md lists them).
- */
-function PlanPicture({ starter, step }: { starter: string; step: PlanStep }) {
-  const [missing, setMissing] = React.useState(false);
-  return (
-    <div className="kd-plan-picture">
-      {!missing && (
-        // A plain img: a missing file must fall back to the slot, which next/image cannot do quietly.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/home/${starter}/${step.kind}.webp`}
-          alt=""
-          // A 404 can land before hydration, when onError is not yet listening.
-          ref={(el) => {
-            if (el?.complete && el.naturalWidth === 0) setMissing(true);
-          }}
-          onError={() => setMissing(true)}
-        />
-      )}
-    </div>
-  );
-}
-
 function SectionHead({ title, href }: { title: string; href: string }) {
   return (
     <Flex justify="space-between" align="center" gap="4">
       <Heading size="6" render={<h2 />}>
         {title}
       </Heading>
-      <Button render={<NextLink href={href} />}>See all</Button>
+      <Flex gap="2" align="center">
+        <CarouselPrevious aria-label={`Previous ${title.toLowerCase()}`}>
+          <BackIcon />
+        </CarouselPrevious>
+        <CarouselNext aria-label={`Next ${title.toLowerCase()}`}>
+          <ArrowRightIcon />
+        </CarouselNext>
+        <Button render={<NextLink href={href} />}>See all</Button>
+      </Flex>
     </Flex>
   );
 }
 
 function ModelsRow() {
   return (
-    <Stack gap="4">
-      <SectionHead title="Models" href="/models" />
-      <div className="kd-home-row kd-home-row-wide">
-        {MODELS.filter((m) => m.price).map((model) => (
-          <ModelCard key={model.slug} model={model} />
-        ))}
-      </div>
-    </Stack>
+    <Carousel aria-label="Models">
+      <Stack gap="4">
+        <SectionHead title="Models" href="/models" />
+        <CarouselRail fade className="kd-home-scroll">
+          <div className="kd-home-row kd-home-row-wide">
+            {MODELS.filter((m) => m.price).map((model) => (
+              <CarouselItem key={model.slug}>
+                <ModelCard model={model} />
+              </CarouselItem>
+            ))}
+          </div>
+        </CarouselRail>
+      </Stack>
+    </Carousel>
   );
 }
 
 function TemplatesRow() {
   return (
-    <Stack gap="4">
-      <SectionHead title="Templates" href="/templates" />
-      <div className="kd-home-row">
-        {TEMPLATES.map((template) => (
-          <TemplateTile key={template.slug} template={template} summary={false} />
-        ))}
-      </div>
-    </Stack>
+    <Carousel aria-label="Templates">
+      <Stack gap="4">
+        <SectionHead title="Templates" href="/templates" />
+        <CarouselRail fade className="kd-home-scroll">
+          <div className="kd-home-row">
+            {TEMPLATES.map((template) => (
+              <CarouselItem key={template.slug}>
+                <TemplateTile template={template} summary={false} />
+              </CarouselItem>
+            ))}
+          </div>
+        </CarouselRail>
+      </Stack>
+    </Carousel>
   );
 }
 

@@ -51,6 +51,8 @@ interface CanvasProps {
   onRedo: () => void;
   /** Add a node: at a world position, or without one wherever the editor places new nodes. */
   onAdd: (type: string, position?: XYPosition) => void;
+  /** Lay the whole graph out by its wiring. */
+  onArrange: () => void;
 }
 
 /** A right-click, with Base UI's escape for standing its own handler down. */
@@ -78,7 +80,7 @@ const MINIMAP_CLEAR: React.CSSProperties = { right: 'calc(10px + var(--kui-shell
  * so the boundary actually holds.
  */
 function CanvasImpl(props: CanvasProps) {
-  const { flowRef, bus, onAdd } = props;
+  const { flowRef, bus, onAdd, onArrange } = props;
   const entityTypes = React.useMemo(() => withRunToolbar(registry.entityTypes(), flowRef, bus), [flowRef, bus]);
   const storeRef = React.useRef<FlowStoreApi | null>(null);
   // Where the last right-click landed, in world space. A ref, so opening the menu renders nothing
@@ -165,7 +167,7 @@ function CanvasImpl(props: CanvasProps) {
           <StoreBridge storeRef={storeRef} />
         </KookieFlow>
       </ContextMenuTrigger>
-      <AddNodeMenu onAdd={addAtPoint} />
+      <AddNodeMenu onAdd={addAtPoint} onArrange={onArrange} />
     </ContextMenu>
   );
 }
