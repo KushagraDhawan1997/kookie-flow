@@ -81,9 +81,13 @@ Pass the result to `useGraph({ initialEntities: withLayout(imported, edges), ini
 Your `Edge` objects already have the `source` and `target` that `layoutGraph()` reads, so you can
 pass them as they are.
 
+On a server, import it from `@kushagradhawan/kookie-flow/layout` instead. That entry holds only the
+layout, so it loads without React or three.
+
 Without a canvas, nothing knows how tall a node is drawn. `DEFAULT_ENTITY_HEIGHT` is 100, and a
 node with several sockets is taller than that. Give nodes a real `height`, or call `autoLayout()`
-once the graph is on screen, where the height is measured.
+once the graph is on screen, where the height is measured. `getEntityBounds(id)` on the instance
+gives you that measured box, if you want to run `layoutGraph()` yourself with real sizes.
 
 | Name | Type | What it is |
 | --- | --- | --- |

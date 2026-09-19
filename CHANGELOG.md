@@ -5,6 +5,13 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Layout without the canvas
+
+- `@kushagradhawan/kookie-flow/layout` is a new entry holding `layoutGraph` and `rankNodes` alone, so
+  a server can arrange a graph without loading React or three.
+- `getEntityBounds(entityId)` on the instance returns the box an entity occupies, with its computed
+  height, for callers that run `layoutGraph` themselves with real sizes.
+
 ### Package readiness fixes
 
 - Controlled socket/default/type edits and `applyEntityChanges` input edits invalidate evaluation

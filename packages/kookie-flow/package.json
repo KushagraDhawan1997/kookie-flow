@@ -42,6 +42,16 @@
         "types": "./dist/plugins/index.d.cts",
         "default": "./dist/plugins/index.cjs"
       }
+    },
+    "./layout": {
+      "import": {
+        "types": "./dist/core/layout.d.ts",
+        "default": "./dist/core/layout.js"
+      },
+      "require": {
+        "types": "./dist/core/layout.d.cts",
+        "default": "./dist/core/layout.cjs"
+      }
     }
   },
   "files": [

@@ -103,6 +103,7 @@ the graph's `(0, 0)` sits on screen rather than around the middle of the canvas.
 | `collapseGroup(groupId: string): void` | No | Collapses an open frame. | [Frames](/entities/frames) |
 | `isGroupCollapsed(groupId: string): boolean` | Reads | Returns whether the frame is collapsed. | [Frames](/entities/frames) |
 | `getGroupBounds(groupId: string): { x: number; y: number; width: number; height: number } \| null` | Reads | Returns the box around the frame's children, with padding, or `null` when it has none. | [Frames](/entities/frames) |
+| `getEntityBounds(entityId: string): { x: number; y: number; width: number; height: number } \| null` | Reads | Returns the box the entity occupies in world units: its stated size, or the one its sockets, widgets and preview add up to. `null` for an unknown id. | [Layout](/data/arrange) |
 | `collapseToSubgraph(entityIds: string[], groupId: string): void` | Yes | Adds a frame with the id `groupId` around the entities and makes them its children. Edges between them are removed, and each edge that crossed the boundary is rerouted through a socket on the frame. | [Frames](/entities/frames) |
 | `expandSubgraph(groupId: string, childEntities: Entity[], internalEdges: Edge[], portMapping: PortMapping): void` | Yes | Removes the frame, puts back the entities and edges you pass, and moves each edge on a frame socket to the inside socket that `portMapping` names. | [Frames](/entities/frames) |
 

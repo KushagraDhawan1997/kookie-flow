@@ -1337,4 +1337,9 @@ export interface KookieFlowInstance {
   isGroupCollapsed: (groupId: string) => boolean;
   /** Get the bounds of a group (calculated from children) */
   getGroupBounds: (groupId: string) => { x: number; y: number; width: number; height: number } | null;
+  /**
+   * The box an entity occupies on the board, in world units: its stated size, or the one its
+   * sockets, widgets and preview add up to. Null for an id the board does not hold.
+   */
+  getEntityBounds: (entityId: string) => { x: number; y: number; width: number; height: number } | null;
 }

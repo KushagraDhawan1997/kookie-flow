@@ -140,7 +140,7 @@ import { inputWidgetType } from '../utils/widgets';
 import { WidgetPopoverGL } from './widget-popover';
 import { WidgetA11yMirror } from './widget-a11y-mirror';
 import { validateConnection, isSocketCompatible } from '../utils/connections';
-import { boundsFromCorners } from '../core/spatial';
+import { boundsFromCorners, getEntityBounds } from '../core/spatial';
 import { CanvasErrorBoundary } from './error-boundary';
 import { setInteractionMode } from './interaction-state';
 import type {
@@ -783,6 +783,12 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
 
         getGroupBounds: (groupId) => {
           return store.getState().getGroupBounds(groupId);
+        },
+
+        getEntityBounds: (entityId) => {
+          const state = store.getState();
+          const entity = state.entityMap.get(entityId);
+          return entity ? getEntityBounds(entity, state.socketLayout ?? undefined) : null;
         },
       }),
       [store, containerRef, minZoom, maxZoom]

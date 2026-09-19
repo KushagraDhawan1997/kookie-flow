@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/plugins/index.ts'],
+  // `core/layout` is its own entry so a server can arrange a graph without loading the canvas:
+  // it is pure, and the root entry brings three and React with it.
+  entry: ['src/index.ts', 'src/plugins/index.ts', 'src/core/layout.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,
