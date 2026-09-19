@@ -9,6 +9,7 @@
 import type { LanguageModel } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import type { AgentModel } from 'studio-core';
+import { isTriageNote } from 'studio-core';
 import { nextMockTurn, type MockHistory } from './mock-script';
 
 export function agentMode(): 'gateway' | 'mock' {
@@ -24,6 +25,7 @@ export function agentLanguageModel(model: AgentModel): LanguageModel {
 
 type Prompt = Parameters<MockLanguageModelV4['doStream']>[0]['prompt'];
 
+/** The words the person wrote. The triage line appended for the model is not the script's to read. */
 function textOf(content: unknown): string {
   if (!Array.isArray(content)) return '';
   return content
@@ -32,6 +34,7 @@ function textOf(content: unknown): string {
         ? String(part.text)
         : ''
     )
+    .filter((text) => !isTriageNote(text))
     .join('');
 }
 

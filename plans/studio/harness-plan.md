@@ -255,6 +255,13 @@ Summaries written by a model; self-consistency or best-of-N on graph building (n
 models); a model grading its own plan before spending; routers and classifiers; fine-tuning; code-
 execution mode (six tools and batched ops already have its benefit); new top-level tools.
 
+One exception, as an experiment rather than a decision (2026-09-19): triage. A decision model (Jev,
+through the gateway) reads each message and appends a one-line hint — clear or not, extend or new
+graph, drafts or one result — that the language model weighs beside the rules. It routes nothing
+itself. `BENCH_TRIAGE=0` runs the bench without it, so the hint earns its place on the numbers or
+goes; with patterns (Step 3) the same call can name the pattern, which is where it would stop being
+a hint.
+
 ## Needs from the owner
 
 - A yes each time the bench spends real tokens, with the printed estimate in front of you.

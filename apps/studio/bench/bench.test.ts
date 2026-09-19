@@ -29,11 +29,14 @@ import {
   findAgentModel,
   registry,
   tokenMicros,
+  TRIAGE_MODEL,
+  triageNote,
   type AgentEffort,
   type AgentModel,
   type TokenUsage,
 } from 'studio-core';
 import { agentLanguageModel, agentMode } from '@/server/agent/model';
+import { triage } from '@/server/agent/triage';
 import { BenchHost, type BenchPicture } from './host';
 import { benchTools } from './tools';
 import { TASKS, type Task, type TaskState } from './tasks';
@@ -58,6 +61,27 @@ const BACKOFF_MS = 20_000;
 const CALL_TIMEOUT_MS = Number(process.env.BENCH_CALL_TIMEOUT ?? '240000');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Each message is read by the triage model first, as in the app. `BENCH_TRIAGE=0` measures without. */
+const TRIAGE = process.env.BENCH_TRIAGE !== '0';
+
+/**
+ * A message from the person, with its triage line where triage is on. Read from the canvas as it
+ * stands, as the browser does. A triage that fails is a message without one, and the trial says so.
+ */
+async function personSays(text: string, host: BenchHost, trial: { triageCalls: number; triageTokens: number; triageFailed: number }): Promise<ModelMessage> {
+  if (!TRIAGE) return { role: 'user', content: text };
+  try {
+    const result = await triage(text, host.readGraph(), AbortSignal.timeout(10_000));
+    trial.triageCalls++;
+    trial.triageTokens += result.inputTokens;
+    return { role: 'user', content: [{ type: 'text', text }, { type: 'text', text: triageNote(result.answers) }] };
+  } catch (error) {
+    trial.triageFailed++;
+    console.log(`[bench] triage failed: ${error instanceof Error ? error.message : String(error)}`);
+    return { role: 'user', content: text };
+  }
+}
 
 /** A gateway saying "slow down" or "no access at this time" is a wait, not a result. */
 function isBusy(error: unknown): boolean {
@@ -123,6 +147,11 @@ interface Trial {
   runsApproved: number;
   approvedMicros: number;
   usage: TokenUsage;
+  /** Triage calls made, what they read, and how many did not answer. */
+  triageCalls: number;
+  triageTokens: number;
+  triageFailed: number;
+  /** The language model's tokens and the triage calls together, at list price. */
   micros: number;
   seconds: number;
   said: string[];
@@ -138,7 +167,8 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
     approve: task.approve,
   });
   const { tools, trace, created } = benchTools(host, { images: model.images });
-  const messages: ModelMessage[] = [{ role: 'user', content: task.ask }];
+  const triaged = { triageCalls: 0, triageTokens: 0, triageFailed: 0 };
+  const messages: ModelMessage[] = [await personSays(task.ask, host, triaged)];
   const said: string[] = [];
   let usage: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   let steps = 0;
@@ -182,7 +212,7 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
     }
     if (error) break;
     const reply = replies[turn];
-    if (reply) messages.push({ role: 'user', content: reply });
+    if (reply) messages.push(await personSays(reply, host, triaged));
   }
 
   const taskState: TaskState = { state: host.state, trace, created, said };
@@ -207,7 +237,10 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
     runsApproved: host.state.runs.filter((r) => r.approved).length,
     approvedMicros: host.state.runs.filter((r) => r.approved).reduce((sum, r) => sum + r.micros, 0),
     usage,
-    micros: tokenMicros(model, usage),
+    ...triaged,
+    micros:
+      tokenMicros(model, usage) +
+      tokenMicros(TRIAGE_MODEL, { input: triaged.triageTokens, output: 0, cacheRead: 0, cacheWrite: 0 }),
     seconds: Math.round((Date.now() - started) / 100) / 10,
     said,
     graph: describeGraph(host.state.doc, registry),
