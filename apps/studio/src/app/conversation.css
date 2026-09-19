@@ -1,0 +1,306 @@
+/* ── The conversation's own half ────────────────────────────────────────────────────────────
+   Every length resolves through a `--` token or is relative to the type, and every colour is a
+   role the package already solved, so a copy of this file changes arrangement and nothing else. */
+
+/* THE PART'S INDEX, AS LENGTHS. Every part states `data-kb-size` — the block's own attribute, not
+   the system's `size` axis written onto the DOM — and the two lengths that have to
+   follow the text — the row it occupies and the corner that wraps it — resolve here, so the same
+   arrangement holds at any index. Default 3: a conversation is the thing being read. */
+.kb-user-message,
+.kb-steps,
+.kb-step,
+.kb-pictures {
+  --kb-line: var(--line-height-3);
+  --kb-radius: var(--radius-row-3);
+}
+
+[data-kb-size="1"].kb-user-message,
+[data-kb-size="1"].kb-steps,
+[data-kb-size="1"].kb-step,
+[data-kb-size="1"].kb-pictures {
+  --kb-line: var(--line-height-1);
+  --kb-radius: var(--radius-row-1);
+}
+
+[data-kb-size="2"].kb-user-message,
+[data-kb-size="2"].kb-steps,
+[data-kb-size="2"].kb-step,
+[data-kb-size="2"].kb-pictures {
+  --kb-line: var(--line-height-2);
+  --kb-radius: var(--radius-row-2);
+}
+
+[data-kb-size="4"].kb-user-message,
+[data-kb-size="4"].kb-steps,
+[data-kb-size="4"].kb-step,
+[data-kb-size="4"].kb-pictures {
+  --kb-line: var(--line-height-4);
+  --kb-radius: var(--radius-row-4);
+}
+
+/* THE TRANSCRIPT. Turns stand apart and the blocks inside a turn sit closer (AI Elements: 32
+   between messages, 16 within). In a Shell pane the content spends the reach the floating bands
+   publish; anywhere else those names are unset and the pane's own padding is the edge. The end
+   also clears the jump button, so at rest no line sits under it. */
+.kb-transcript {
+  flex: 1;
+  gap: var(--layout-space-7);
+  padding-block: var(--kui-pane-inset-block-start, 0px)
+    calc(var(--kui-pane-inset-block-end, 0px) + var(--control-height-3));
+}
+
+/* The scroller's content box is as tall as the viewport, so an empty state can sit in its middle
+   (the transcript's own `min-block-size: 100%` resolves against an automatic height and does
+   nothing), and it never widens past it: ScrollArea's content box is `fit-content` so a wide
+   thing can be scrolled to sideways, which in a conversation nothing should be — one unbroken
+   word or a step's nowrap line would otherwise scroll the whole transcript. */
+.kb-conversation > .kui-scroll-viewport > .kui-scroll-content {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100%;
+  min-inline-size: 0;
+}
+
+/* In a card or a box you sized, the transcript takes the room the composer leaves. */
+.kb-conversation:not([data-kb-pane]) {
+  flex: 1;
+  min-block-size: 0;
+}
+
+/* Nothing yet: the one thing to read sits in the middle of the room it has. Auto margins rather
+   than `justify-content`, because the rows are the transcript's and not the content box's. */
+.kb-transcript[data-empty] > * {
+  margin-block: auto;
+}
+
+/* In a pane the jump button rests one step above the floating footer. A sticky offset is measured
+   inside the viewport's padding, which is the pane's padding moved inward, so it comes off twice. */
+.kb-conversation[data-kb-pane] .kui-message-scroller-dock {
+  inset-block-end: calc(var(--kui-pane-inset-block-end) - 2 * var(--kui-sf-p) + var(--layout-space-3));
+}
+
+/* THE AGENT'S WORDS keep the breaks it wrote, and a long unbroken word wraps rather than widening
+   the transcript. */
+.kb-reply {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* THE PERSON'S MESSAGE. A tint rather than a pane: an alpha fill reads the same on paper and on
+   glass, where an opaque surface would punch a hole. The corner is a row's, so a one-line
+   message is a capsule and a long one a soft box. The measure leaves the reply's side visibly
+   open, which is how the two voices are told apart before a word is read. */
+.kb-user-message-bubble {
+  max-inline-size: 85%;
+  padding-block: var(--layout-space-3);
+  padding-inline: var(--layout-space-4);
+  border-radius: var(--kb-radius);
+  background-color: var(--neutral-a3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.kb-user-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--layout-space-2);
+  max-inline-size: 85%;
+}
+
+/* Four lines of the message tall: a thumbnail is recognised, not read. */
+.kb-user-message-attachments > * {
+  display: block;
+  block-size: calc(var(--kb-line) * 4);
+  inline-size: auto;
+  max-inline-size: 100%;
+  object-fit: cover;
+  border-radius: var(--kb-radius);
+}
+
+/* THE RUN. The row is words with a chevron, not a button's pill: it sits in the reply's column and
+   its first letter lines up with the reply's. It carries no fill in any state; the words come up
+   to the full ink under the pointer, which is how a disclosure says it can be pressed without
+   claiming to be a control. */
+.kb-steps-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-2);
+  align-self: flex-start;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.kb-steps-toggle:hover .kb-steps-line {
+  color: var(--color-text);
+}
+
+/* Open, the row is the list's heading rather than a line of its own. */
+.kb-steps-toggle[aria-expanded="true"] .kb-steps-line {
+  color: var(--color-text);
+}
+
+.kb-steps-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-control-1);
+}
+
+.kb-steps-chevron {
+  flex: none;
+  inline-size: 1em;
+  block-size: 1em;
+  color: var(--color-text-muted);
+  transition: rotate var(--motion-hover-out) var(--motion-easing);
+}
+
+.kb-steps-chevron[data-open] {
+  rotate: 90deg;
+}
+
+.kb-steps-chevron:dir(rtl) {
+  scale: -1 1;
+}
+
+/* THE LIST IS A TIMELINE (AI Elements' Chain of Thought): a line down the column with a mark on it
+   per step, read top to bottom. The line is drawn behind the marks rather than as a border, so the
+   first and last marks cap it instead of hanging off it. */
+.kb-steps-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-space-3);
+  padding-inline-start: var(--layout-space-5);
+}
+
+/* The thread, from the first mark to the last: the row's own line-height is the panel's, so the
+   half-row the line starts and ends inside is stated in the step's, which the marks are centred in
+   too. Two hairlines wide, because one at the border colour disappears beside the marks. */
+.kb-steps-list::before {
+  content: "";
+  position: absolute;
+  inset-block: calc(var(--kb-line) / 2 - var(--border-width));
+  inset-inline-start: calc((var(--layout-space-3) - 2 * var(--border-width)) / 2);
+  inline-size: calc(2 * var(--border-width));
+  /* The marks' own ink, thinned: at the border's colour the thread disappears beside them. It runs
+     behind the marks rather than between them — a halo around each would break the line into
+     dashes, which is what a thread is not. */
+  background-color: color-mix(in oklab, var(--color-text-muted) 70%, transparent);
+}
+
+.kb-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-2);
+  min-inline-size: 0;
+}
+
+/* The mark: a dot on the line, in the ink of the words beside it, ringed in the panel's own colour
+   so the line passes behind it rather than through it.
+   ONLY ON THE LINE. A step standing on its own — a turn that took one — has no timeline to be a
+   mark on, and a dot then hangs outside the text column, into the pane's padding (Kushagra,
+   2026-09-18). Centred by `inset-block: 0` plus auto margins rather than against a line-height,
+   because the row's own line-height is the panel's and the words' is the step's. */
+.kb-steps-list > .kb-step::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: calc(-1 * var(--layout-space-5));
+  inset-block: 0;
+  margin-block: auto;
+  inline-size: var(--layout-space-3);
+  block-size: var(--layout-space-3);
+  border-radius: 50%;
+  background-color: var(--color-text-muted);
+}
+
+/* The step being taken: a full dot in the reading ink, so the eye lands on it. */
+.kb-steps-list > .kb-step[data-pending]::before {
+  background-color: var(--color-text);
+}
+
+/* A LIVE LINE SWEEPS (AI Elements' Reasoning and Shimmer): one light band travels across the words
+   while something is still happening and stops when it ends, which says "still happening" without a spinner in
+   the reading column. The band is the words' own ink lifted, so it reads on paper and on glass. */
+.kb-steps-toggle[data-live] .kb-steps-line,
+.kb-thinking {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-text-muted) 40%,
+    var(--color-text) 50%,
+    var(--color-text-muted) 60%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  animation: kb-shimmer 2s linear infinite;
+}
+
+@keyframes kb-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Slowed rather than stopped: the sweep IS the news that something is happening. */
+@media (prefers-reduced-motion: reduce) {
+  .kb-steps-toggle[data-live] .kb-steps-line,
+  .kb-thinking {
+    animation-duration: 6s;
+  }
+}
+
+/* A step is one line. What does not fit is cut, and the whole of it is the step's title.
+   `min-inline-size: 0` is not enough on its own inside a scroller whose content box is
+   `fit-content` (Kookie's ScrollArea): the line's longest word still widens the box and the whole
+   panel scrolls sideways. The row is the wall. */
+.kb-steps-line {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* THE PICTURES. Several share one square so a set reads as a set; one keeps the shape it was made
+   at, because a portrait cropped square is no longer the picture. Its height is bounded by the
+   type, so a tall picture in a narrow column stays a glance and not a scroll. */
+.kb-pictures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--layout-space-2);
+}
+
+.kb-pictures > * {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--kb-radius);
+  background-color: var(--neutral-a3);
+}
+
+.kb-pictures[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+}
+
+.kb-pictures[data-single] > * {
+  inline-size: auto;
+  max-inline-size: 100%;
+  max-block-size: 45ch;
+  aspect-ratio: auto;
+}

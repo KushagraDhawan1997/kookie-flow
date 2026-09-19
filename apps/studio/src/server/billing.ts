@@ -17,9 +17,19 @@
  */
 
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { actualModelMicros, formatUsd, registry, TASK_BY_NODE_TYPE, withFee, type Charge } from 'studio-core';
+import {
+  actualModelMicros,
+  findAgentModel,
+  formatUsd,
+  registry,
+  TASK_BY_NODE_TYPE,
+  tokenMicros,
+  withFee,
+  type Charge,
+  type TokenUsage,
+} from 'studio-core';
 import type { Db } from './db';
-import { jobs, ledger, type JobRow, type LedgerKind } from './db/schema';
+import { agentTurns, jobs, ledger, type AgentTurnRow, type JobRow, type LedgerKind } from './db/schema';
 
 export function billingEnabled(): boolean {
   const stated = process.env.STUDIO_BILLING;
@@ -56,14 +66,19 @@ export async function balanceMicros(db: Db | Tx, workspaceId: string): Promise<n
 }
 
 /**
- * Hold `charge.total` for a job, inside the caller's transaction, or throw. The advisory lock
+ * Refuse unless the balance covers `total`, inside the caller's transaction. The advisory lock
  * serialises holds per workspace until the transaction ends, so the balance read and the hold
- * written are one decision.
+ * written after it are one decision.
  */
-export async function hold(tx: Tx, workspaceId: string, jobId: string, charge: Charge): Promise<void> {
+async function lockAndCheck(tx: Tx, workspaceId: string, total: number): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${workspaceId}))`);
   const balance = await balanceMicros(tx, workspaceId);
-  if (balance < charge.total) throw new InsufficientBalance(charge.total, balance);
+  if (balance < total) throw new InsufficientBalance(total, balance);
+}
+
+/** Hold `charge.total` for a job, inside the caller's transaction, or throw. */
+export async function hold(tx: Tx, workspaceId: string, jobId: string, charge: Charge): Promise<void> {
+  await lockAndCheck(tx, workspaceId, charge.total);
   await tx.insert(ledger).values({
     id: entryId(),
     workspaceId,
@@ -126,6 +141,131 @@ export async function settle(db: Db, row: JobRow): Promise<JobRow> {
   });
 }
 
+// Agent turns ------------------------------------------------------------------------------------
+
+function turnId(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
+/**
+ * Open a turn: write its row and, with billing on, hold the estimate plus the fee in the same
+ * transaction, or refuse with `InsufficientBalance` and write nothing.
+ */
+export async function openTurn(
+  db: Db,
+  turn: { workspaceId: string; graphId: string | null; model: string; estimateMicros: number }
+): Promise<AgentTurnRow> {
+  const id = turnId();
+  const billed = billingEnabled();
+  const charge = withFee(turn.estimateMicros);
+  return db.transaction(async (tx) => {
+    if (billed) await lockAndCheck(tx, turn.workspaceId, charge.total);
+    const [row] = await tx
+      .insert(agentTurns)
+      .values({
+        id,
+        workspaceId: turn.workspaceId,
+        graphId: turn.graphId,
+        model: turn.model,
+        billing: billed ? 'held' : null,
+        holdMicros: billed ? charge.total : null,
+      })
+      .returning();
+    if (!row) throw new Error('insert returned nothing');
+    if (billed) {
+      await tx.insert(ledger).values({
+        id: entryId(),
+        workspaceId: turn.workspaceId,
+        kind: 'hold',
+        amountMicros: -charge.total,
+        turnId: id,
+        note: 'Held for the agent',
+      });
+    }
+    return row;
+  });
+}
+
+/**
+ * Close a turn once: release its hold and charge the tokens it used, if any. `usage` null is a turn
+ * that failed before the model answered, which costs nothing. Settling twice settles once, as a job
+ * does: the move out of `held` is a conditional update.
+ */
+export async function closeTurn(
+  db: Db,
+  id: string,
+  usage: TokenUsage | null,
+  error?: string
+): Promise<AgentTurnRow | null> {
+  const [row] = await db.select().from(agentTurns).where(eq(agentTurns.id, id)).limit(1);
+  if (!row) return null;
+  const model = findAgentModel(row.model);
+  const used = usage && model ? withFee(tokenMicros(model, usage)) : null;
+  const counts = usage
+    ? {
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cacheReadTokens: usage.cacheRead,
+        cacheWriteTokens: usage.cacheWrite,
+      }
+    : {};
+
+  if (row.billing !== 'held') {
+    // Billing off, or already settled: keep the counts for the record and nothing else.
+    if (row.billing === null) {
+      const [updated] = await db
+        .update(agentTurns)
+        .set({ ...counts, modelMicros: used?.model ?? null, feeMicros: used?.fee ?? null, error: error ?? null, updatedAt: new Date() })
+        .where(eq(agentTurns.id, id))
+        .returning();
+      return updated ?? row;
+    }
+    return row;
+  }
+
+  const charged = used !== null && used.total > 0;
+  return db.transaction(async (tx) => {
+    const [moved] = await tx
+      .update(agentTurns)
+      .set({
+        ...counts,
+        billing: charged ? 'charged' : 'released',
+        modelMicros: used?.model ?? null,
+        feeMicros: used?.fee ?? null,
+        error: error ?? null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(agentTurns.id, id), eq(agentTurns.billing, 'held')))
+      .returning();
+    if (!moved) {
+      const [current] = await tx.select().from(agentTurns).where(eq(agentTurns.id, id)).limit(1);
+      return current ?? row;
+    }
+    const entries: Array<typeof ledger.$inferInsert> = [
+      {
+        id: entryId(),
+        workspaceId: row.workspaceId,
+        kind: 'release',
+        amountMicros: moved.holdMicros ?? 0,
+        turnId: id,
+        note: 'Hold released',
+      },
+    ];
+    if (charged && used) {
+      entries.push({
+        id: entryId(),
+        workspaceId: row.workspaceId,
+        kind: 'charge',
+        amountMicros: -used.total,
+        turnId: id,
+        note: `Agent (${model?.name ?? row.model}): model ${formatUsd(used.model)} + fee ${formatUsd(used.fee)}`,
+      });
+    }
+    await tx.insert(ledger).values(entries);
+    return moved;
+  });
+}
+
 /**
  * Add a paid top-up. Keyed by the Stripe Checkout session, so the webhook arriving twice credits
  * once. True when this call credited it.
@@ -162,6 +302,7 @@ export interface LedgerEntryView {
   kind: LedgerKind;
   amountMicros: number;
   note: string | null;
+  /** The job or the agent turn the row belongs to, so Billing can tell a running hold from a settled one. */
   jobId: string | null;
   createdAt: string;
   run: { label: string; model: string; modelMicros: number | null; feeMicros: number | null } | null;
@@ -169,18 +310,20 @@ export interface LedgerEntryView {
 
 export async function listEntries(db: Db, workspaceId: string, limit = 100): Promise<LedgerEntryView[]> {
   const rows = await db
-    .select({ entry: ledger, job: jobs })
+    .select({ entry: ledger, job: jobs, turn: agentTurns })
     .from(ledger)
     .leftJoin(jobs, eq(jobs.id, ledger.jobId))
+    .leftJoin(agentTurns, eq(agentTurns.id, ledger.turnId))
     .where(eq(ledger.workspaceId, workspaceId))
     .orderBy(desc(ledger.createdAt))
     .limit(limit);
-  return rows.map(({ entry: r, job }) => ({
+  return rows.map(({ entry: r, job, turn }) => ({
     id: r.id,
     kind: r.kind,
     amountMicros: r.amountMicros,
     note: r.note,
-    jobId: r.jobId,
+    // A turn's rows answer to the turn's id, so a settled turn's hold hides as a settled job's does.
+    jobId: r.jobId ?? r.turnId,
     createdAt: r.createdAt.toISOString(),
     run: job
       ? {
@@ -189,6 +332,13 @@ export async function listEntries(db: Db, workspaceId: string, limit = 100): Pro
           modelMicros: job.modelMicros,
           feeMicros: job.feeMicros,
         }
-      : null,
+      : turn
+        ? {
+            label: `Agent · ${findAgentModel(turn.model)?.name ?? turn.model}`,
+            model: turn.model,
+            modelMicros: turn.modelMicros,
+            feeMicros: turn.feeMicros,
+          }
+        : null,
   }));
 }

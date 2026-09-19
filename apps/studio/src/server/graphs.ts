@@ -139,12 +139,13 @@ export async function getGraph(id: string, workspaceId = LOCAL_WORKSPACE) {
   return row ?? null;
 }
 
-export async function createGraph(name = 'Untitled', workspaceId = LOCAL_WORKSPACE) {
+/** A new graph, empty unless a document is given (the agent builds one before it is ever opened). */
+export async function createGraph(name = 'Untitled', workspaceId = LOCAL_WORKSPACE, doc: GraphDocument = emptyDocument()) {
   const db = await getDb();
   const id = crypto.randomUUID().slice(0, 8);
   const [row] = await db
     .insert(graphs)
-    .values({ id, workspaceId, name, doc: emptyDocument() })
+    .values({ id, workspaceId, name, doc })
     .returning();
   if (!row) throw new Error('insert returned nothing');
   return row;

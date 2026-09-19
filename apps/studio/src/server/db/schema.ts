@@ -119,6 +119,8 @@ export const ledger = pgTable(
     kind: text('kind').$type<LedgerKind>().notNull(),
     amountMicros: bigint('amount_micros', { mode: 'number' }).notNull(),
     jobId: text('job_id'),
+    /** The agent turn a hold, release or charge belongs to; a row names a job or a turn, never both. */
+    turnId: text('turn_id'),
     /** The Checkout session a top-up came from; unique, so a repeated webhook credits once. */
     stripeSessionId: text('stripe_session_id').unique(),
     note: text('note'),
@@ -126,6 +128,52 @@ export const ledger = pgTable(
   },
   (t) => [index('ledger_workspace_created_idx').on(t.workspaceId, t.createdAt)]
 );
+
+// The agent ----------------------------------------------------------------------------------------
+
+export type TurnBilling = 'held' | 'charged' | 'released';
+
+/**
+ * One step request to the agent: a call, or a few while server tools answer inside it. Held before
+ * the model is asked, charged on the tokens the model reports, like a job. The token counts are kept
+ * so a charge can be explained line by line.
+ */
+export const agentTurns = pgTable(
+  'agent_turns',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    graphId: text('graph_id'),
+    /** The gateway slug the turn thought with. */
+    model: text('model').notNull(),
+    /** Null for a turn run with billing off. */
+    billing: text('billing').$type<TurnBilling>(),
+    holdMicros: bigint('hold_micros', { mode: 'number' }),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    cacheReadTokens: integer('cache_read_tokens'),
+    cacheWriteTokens: integer('cache_write_tokens'),
+    modelMicros: bigint('model_micros', { mode: 'number' }),
+    feeMicros: bigint('fee_micros', { mode: 'number' }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('agent_turns_workspace_created_idx').on(t.workspaceId, t.createdAt)]
+);
+
+export type AgentTurnRow = typeof agentTurns.$inferSelect;
+
+/**
+ * A graph's conversation with the agent, as the chat's own message list. One per graph: the agent
+ * works above graphs, but a conversation is about the canvas it was started on.
+ */
+export const conversations = pgTable('conversations', {
+  graphId: text('graph_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  messages: jsonb('messages').$type<unknown[]>().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // Sign-in (Better Auth) ---------------------------------------------------------------------------
 // The adapter maps by these property names, which are Better Auth's field names; the tables carry

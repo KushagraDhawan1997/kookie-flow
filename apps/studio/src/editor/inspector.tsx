@@ -22,21 +22,12 @@ import {
   TextField,
 } from '@kookie-ui/react';
 import type { Edge, Entity, EvaluationStatus, KookieFlowInstance, WidgetType } from '@kushagradhawan/kookie-flow';
-import {
-  estimateModelMicros,
-  formatUsd,
-  isMediaRef,
-  registry,
-  SOCKET_TYPES,
-  TASK_BY_NODE_TYPE,
-  valueBag,
-  withFee,
-  type SocketSpec,
-} from 'studio-core';
+import { formatUsd, isMediaRef, registry, SOCKET_TYPES, valueBag, type SocketSpec } from 'studio-core';
 
 import { EmptyState } from '@/app/empty-state';
 import { RunIcon, TrashIcon } from '@/app/icons';
 import type { EditorBus } from './editor-bus';
+import { quoteNode } from './quote';
 
 interface InspectorProps {
   entities: Entity[];
@@ -103,20 +94,8 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
   const message = bus.message(entity.id);
   const values = valueBag(entity);
 
-  // The price of pressing Run, quoted with the same table the server charges from. Inputs resolve as
-  // the engine resolves them: a wired one reads what its source holds, the rest their own value.
-  const task = TASK_BY_NODE_TYPE[entity.type];
-  let quote: ReturnType<typeof withFee> | null = null;
-  if (def && task) {
-    const resolved: Record<string, unknown> = {};
-    for (const [id, spec] of Object.entries(def.inputs)) {
-      const edge = wired.get(id);
-      resolved[id] =
-        edge && edge.sourceSocket ? flow?.getSocketValue(edge.source, edge.sourceSocket) : (values[id] ?? spec.default);
-    }
-    const model = estimateModelMicros(task, resolved);
-    if (model !== undefined) quote = withFee(model);
-  }
+  // The price of pressing Run, quoted with the same table the server charges from.
+  const quote = quoteNode(entity, edges, flow);
 
   return (
     <>

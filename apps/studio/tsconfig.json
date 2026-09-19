@@ -31,6 +31,9 @@
       ],
       "@kushagradhawan/kookie-flow/plugins": [
         "../../packages/kookie-flow/src/plugins/index.ts"
+      ],
+      "@kushagradhawan/kookie-flow/layout": [
+        "../../packages/kookie-flow/src/core/layout.ts"
       ]
     }
   },

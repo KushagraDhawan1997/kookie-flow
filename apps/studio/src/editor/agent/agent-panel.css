@@ -1,0 +1,58 @@
+/* The agent's panel: the arrangement the conversation sits in. Everything that PAINTS is the
+   package's or the conversation block's; what is left here is this pane's own geometry — the
+   distances between turns, the scroller's edges against the floating bands, and the two places
+   Kookie's defaults have to be answered for a chat (noted, each one, as owed upstream). */
+
+.kd-agent-loading {
+  flex: 1;
+  min-block-size: 12rem;
+}
+
+/* THE SCROLL EDGE, UNDER THE TABS. The chat passes behind them, which is the point, but between two
+   pills it passed at full strength and read as sliced words in the chrome. A veil over the band the
+   tabs float in — solid past their own bottom edge, then thinning to nothing by the band's end —
+   dims what is behind them without hiding it (iOS's scroll edge effect). It is the whole of the top
+   edge's treatment: a scroller's own fade would ramp out mid-line and cut the words it faded.
+   Behind the pills, never over them: the header is a stacking context of its own, so the veil sits
+   at its floor. Owed upstream: this is what a floating band should do to the scroller under it. */
+.kui-shell-inspector > .kui-pane-header[data-float]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    var(--color-surface) 0%,
+    var(--color-surface) 66%,
+    color-mix(in oklab, var(--color-surface) 45%, transparent) 82%,
+    color-mix(in oklab, var(--color-surface) 18%, transparent) 92%,
+    transparent 100%
+  );
+}
+
+/* AND GONE AT THE PANEL'S EDGE. At the top the veil above does the dimming, so the mask only keeps
+   the rounded corner clean. At the bottom there is no veil — the composer is its own card and the
+   strip under it belongs to the panel — so the mask ramps there, deep enough that nothing is still
+   legible against the edge. */
+.kb-conversation.kui-scroll-area[data-fade] > .kui-scroll-viewport {
+  --kd-top-clear: 0px;
+  --kd-top-solid: calc(var(--kui-sf-p) / 2);
+  --kd-bottom-clear: calc(var(--kui-sf-p) * 0.75);
+  --kd-bottom-solid: calc(var(--kui-sf-p) * 2.25);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent min(var(--scroll-area-overflow-y-start, 0px), var(--kd-top-clear)),
+    black min(var(--scroll-area-overflow-y-start, 0px), var(--kd-top-solid)),
+    black calc(100% - min(var(--scroll-area-overflow-y-end, 0px), var(--kd-bottom-solid))),
+    transparent calc(100% - min(var(--scroll-area-overflow-y-end, 0px), var(--kd-bottom-clear)))
+  );
+}
+
+/* The scrollbar runs between the bands, not behind the tabs and into the pane's corners. */
+.kb-conversation > .kui-scrollbar[data-orientation='vertical'] {
+  margin-block: var(--kui-pane-inset-block-start) var(--kui-pane-inset-block-end);
+}
+
+.kd-agent-tools {
+  min-inline-size: 0;
+}

@@ -4,8 +4,11 @@ import * as React from 'react';
 import NextLink from 'next/link';
 import {
   Box,
+  Button,
   Flex,
   MenuItem,
+  SegmentedControl,
+  SegmentedItem,
   Shell,
   ShellContent,
   ShellInspector,
@@ -40,12 +43,22 @@ import { BalanceMenu } from '@/app/balance-menu';
 import { PanelRightIcon, RedoIcon, RunIcon, UndoIcon } from '@/app/icons';
 import { Wordmark } from '@/app/wordmark';
 import { ports } from '@/runtime/ports';
+import { pendingAskKey } from '@/shared/agent';
+import { AgentPanel } from './agent/agent-panel';
+import { createAgentHost } from './agent/host';
+import { AgentSession } from './agent/session';
 import { Canvas } from './canvas';
 import { Inspector } from './inspector';
 import { NodeLibrary } from './node-library';
 import { EditorBus } from './editor-bus';
 import { SaveStatus } from './save-status';
 import { useAutosave } from './use-autosave';
+
+/** The side panel: a conversation needs more room than an inspector, and the person can drag it. */
+const PANE_WIDTH = 480;
+const PANE_MIN = 360;
+const PANE_MAX = 760;
+const PANE_WIDTH_KEY = 'studio:pane-width';
 
 /** A node's box for placement, where the graph states no size of its own. */
 const NODE_W = 240;
@@ -152,6 +165,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           placed.push(position);
           return position;
         },
+        sizeOf: (entity) => flowRef.current?.getEntityBounds(entity.id) ?? null,
       });
       // Both batches in one tick, so history records one step for the lot.
       if (result.entityChanges.length) onEntitiesChange(result.entityChanges);
@@ -232,6 +246,59 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     []
   );
 
+  /**
+   * The agent's hands on this graph. Built once: it reads the graph and the engine through refs, so
+   * nothing the agent does re-renders the editor.
+   */
+  // Through a ref, so the host and the conversation it serves are made once per graph, whatever
+  // identity `applyOps` has this render.
+  const applyOpsRef = React.useRef(applyOps);
+  applyOpsRef.current = applyOps;
+  const agentHost = React.useMemo(
+    () =>
+      createAgentHost({
+        graph: () => graphRef.current,
+        flow: () => flowRef.current,
+        bus,
+        applyOps: (ops) => applyOpsRef.current(ops),
+      }),
+    [bus]
+  );
+  const agentSession = React.useMemo(() => new AgentSession(id, agentHost), [id, agentHost]);
+  React.useEffect(() => {
+    agentSession.open();
+    return () => agentSession.close();
+  }, [agentSession]);
+
+  // The right pane holds the agent and the inspector. It opens on the agent when an ask is waiting
+  // from Home, and otherwise rests closed, as the inspector always has.
+  const [paneWidth, setPaneWidthState] = React.useState(PANE_WIDTH);
+  React.useEffect(() => {
+    // After mount, not at first render: the server rendered the default width.
+    try {
+      const stored = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
+      if (Number.isFinite(stored) && stored >= PANE_MIN && stored <= PANE_MAX) setPaneWidthState(stored);
+    } catch {
+      // Storage refused: the default width is fine.
+    }
+  }, []);
+  const setPaneWidth = React.useCallback((width: number) => {
+    setPaneWidthState(width);
+    try {
+      window.localStorage.setItem(PANE_WIDTH_KEY, String(width));
+    } catch {
+      // Storage refused: the width lasts the session.
+    }
+  }, []);
+  const [paneOpen, setPaneOpen] = React.useState(false);
+  const [paneView, setPaneView] = React.useState<'agent' | 'inspect'>('agent');
+  React.useEffect(() => {
+    if (window.sessionStorage.getItem(pendingAskKey(id))) {
+      setPaneView('agent');
+      setPaneOpen(true);
+    }
+  }, [id]);
+
   /** Step history with the canvas's pending values folded in first, or the fold lands after. */
   const stepBack = React.useCallback(() => {
     flushWidgetValues();
@@ -250,6 +317,10 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     (nodeId: string, label: string) => applyOps([{ op: 'set_label', id: nodeId, label }]),
     [applyOps]
   );
+  const onArrange = React.useCallback(() => {
+    applyOps([{ op: 'arrange' }]);
+    requestAnimationFrame(() => flowRef.current?.fitView({ padding: 160, duration: 300, maxZoom: 1 }));
+  }, [applyOps]);
   const onRemove = React.useCallback((nodeId: string) => applyOps([{ op: 'remove_node', id: nodeId }]), [applyOps]);
   /** Without a position, a node lands where `placeAt` puts it; the canvas's menu passes the click's. */
   const onAdd = React.useCallback(
@@ -263,14 +334,17 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           own chrome or a control for the graph on the canvas, and neither belongs in a band
           across the whole window: the mark leads the graph's own row and is the way home, and
           the graph's controls float over the graph. */}
-      <Shell>
+      {/* The pane's width is the frame's token, not the pane's own `width`: the frame publishes the
+          safe area the toolbar and the minimap keep clear of from its token, and a pane overriding
+          its width would leave that stale (Kookie warns of it). */}
+      <Shell style={{ '--shell-inspector-w': `${paneWidth}px` } as React.CSSProperties}>
         {/* NO SIDEBAR. A catalog of a few dozen nodes is reached for, not read, so it is a menu
             and a search on a strip at the canvas's edge, and the canvas has the column's width. */}
         {/* A canvas takes the whole box, and the pane's controls float over it: the graph passes
             behind them, as a docs page passes behind its band. */}
         <ShellContent flush style={{ position: 'relative', overflow: 'hidden' }}>
           <ShellPaneHeader float>
-            <Toolbar backdrop>
+            <Toolbar size="3" backdrop>
               {/* The mark is the way home, as the docs site's is. The link carries the name: the
                   word inside it is a picture of the name and hidden from assistive tech. */}
               <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -303,7 +377,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
                 <ShellTrigger
                   target="inspector"
                   render={
-                    <ToolbarButton iconOnly aria-label="Toggle inspector">
+                    <ToolbarButton iconOnly aria-label="Toggle the agent and inspector">
                       <PanelRightIcon />
                     </ToolbarButton>
                   }
@@ -328,6 +402,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             onUndo={stepBack}
             onRedo={stepForward}
             onAdd={onAdd}
+            onArrange={onArrange}
           />
           {/* Halfway down the left edge, in line with the header's own inset. */}
           <Box
@@ -344,7 +419,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           {/* The bottom row: appearance, undo and redo each as its own button, then the save line,
               muted, out of the way of the graph's own controls. */}
           <ShellPaneFooter float>
-            <Toolbar backdrop>
+            <Toolbar size="3" backdrop>
               <Flex gap="3" align="center">
                 <AppearanceToggle inToolbar />
                 <ToolbarButton iconOnly aria-label="Undo" disabled={!canUndo} onClick={stepBack}>
@@ -359,21 +434,57 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
           </ShellPaneFooter>
         </ShellContent>
 
-        {/* Not flush: it floats with the frame's gap around it, and the graph runs on under it, so
-            it states `backdrop` and is glass over the graph. No `width`: the pane takes the frame's
-            own token, so the reach the minimap and the bands clear by is this pane's real extent.
-            Closed by default: the node already carries every control, so the pane is opened only
-            for what the card cannot show — the description, the label, a long prompt at full width. */}
-        <ShellInspector aria-label="Inspector" flush={false} backdrop>
-          <Inspector
-            entities={entities}
-            edges={edges}
-            flowRef={flowRef}
-            bus={bus}
-            onValues={onValues}
-            onLabel={onLabel}
-            onRemove={onRemove}
-          />
+        {/* Not flush: it floats with the frame's gap around it, over the graph. SOLID all the same
+            (Kushagra, 2026-09-17): a glass pane let the canvas read through the conversation. The
+            glass is on what floats over the chat inside it instead, the tabs here and the composer
+            and the jump button in the panel, each stating `backdrop` for itself; a `Box backdrop`
+            region would have to wrap the pane's children, and the pane lays out its direct
+            children. Wide enough for a conversation and resizable; the width is remembered on the
+            Shell's token. */}
+        <ShellInspector
+          aria-label="Agent and inspector"
+          flush={false}
+          open={paneOpen}
+          onOpenChange={setPaneOpen}
+          resizable
+          minWidth={PANE_MIN}
+          maxWidth={PANE_MAX}
+          onResize={setPaneWidth}
+          resizeLabel="Resize the panel"
+        >
+          {/* Floating over the agent's transcript, which fades under it; pinned above the inspector,
+              whose fields it must not cover. */}
+          <ShellPaneHeader float={paneView === 'agent'}>
+            <SegmentedControl
+              backdrop
+              value={paneView}
+              onValueChange={(value) => setPaneView(value === 'inspect' ? 'inspect' : 'agent')}
+              aria-label="Pane"
+            >
+              <SegmentedItem value="agent">Agent</SegmentedItem>
+              <SegmentedItem value="inspect">Inspect</SegmentedItem>
+            </SegmentedControl>
+            {/* Beside the tabs, as a chat panel's "new chat" sits in its header (Cursor, Claude,
+                ChatGPT), not as a row of the conversation it clears. */}
+            {paneView === 'agent' && (
+              <Button emphasis="quiet" backdrop onClick={() => void agentSession.startOver()}>
+                Start over
+              </Button>
+            )}
+          </ShellPaneHeader>
+          {paneView === 'agent' ? (
+            <AgentPanel session={agentSession} />
+          ) : (
+            <Inspector
+              entities={entities}
+              edges={edges}
+              flowRef={flowRef}
+              bus={bus}
+              onValues={onValues}
+              onLabel={onLabel}
+              onRemove={onRemove}
+            />
+          )}
         </ShellInspector>
       </Shell>
     </Box>

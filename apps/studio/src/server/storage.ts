@@ -101,7 +101,9 @@ class LocalStorage implements Storage {
       // Not there yet: write it.
     }
 
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    // Random, not only pid and time: two runs saving the same picture in the same millisecond (the
+    // agent runs drafts side by side) shared one temporary name and one of them lost its file.
+    const tmp = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
       const handle = await fsp.open(tmp, 'w');
       try {
@@ -119,6 +121,9 @@ class LocalStorage implements Storage {
       }
     } catch (error) {
       await fsp.rm(tmp, { force: true }).catch(() => {});
+      // Another writer of the same bytes got there first: the file is in place, which is the goal.
+      const landed = await fsp.stat(target).catch(() => null);
+      if (landed?.size === bytes.byteLength) return;
       throw error;
     }
   }

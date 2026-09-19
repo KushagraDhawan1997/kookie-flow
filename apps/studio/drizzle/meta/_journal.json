@@ -29,6 +29,13 @@
       "when": 1789419705952,
       "tag": "0003_auth_ledger_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789652194686,
+      "tag": "0004_agent_turns_conversations",
+      "breakpoints": true
     }
   ]
 }
