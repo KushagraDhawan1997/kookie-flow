@@ -24,7 +24,8 @@
     // React Three Fiber — into a program that has no reason to compile them. If something here
     // ever needs a runtime value from the library, this mapping is what has to change first.
     "paths": {
-      "@kushagradhawan/kookie-flow": ["../kookie-flow/src/types/index.ts"]
+      "@kushagradhawan/kookie-flow": ["../kookie-flow/src/types/index.ts"],
+      "@kushagradhawan/kookie-flow/layout": ["../kookie-flow/src/core/layout.ts"]
     }
   },
   "include": ["src"]

@@ -72,3 +72,25 @@ export const color = defineNode({
   where: 'inline',
   run: ({ color }) => ({ out: color }),
 });
+
+/**
+ * A picture brought into the graph: attached in the agent's box, dropped in by a person later. The
+ * picture is a stored asset's reference held in the node's values, never its bytes, so a graph that
+ * carries one stays small and saves like any other.
+ */
+export const image = defineNode({
+  type: 'source/image',
+  label: 'Picture',
+  category: 'source',
+  summary: 'A picture you added.',
+  description:
+    'A picture the person added. Its output feeds any picture input. The agent cannot make one: it appears when the person attaches a picture.',
+  inputs: { image: socket('image', { widget: false, description: 'The stored picture.' }) },
+  outputs: { image: socket('image') },
+  where: 'inline',
+  width: 260,
+  run: ({ image }) => {
+    if (!image) throw new Error('Add a picture to continue.');
+    return { image };
+  },
+});

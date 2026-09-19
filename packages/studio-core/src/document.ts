@@ -224,6 +224,12 @@ export function describeGraph(
 ): string {
   const focused = new Set(focus);
   const lines: string[] = [];
+  // A wired input's own value is unused, so a focused node names the wire instead of printing a
+  // stored value that reads as though the input were empty.
+  const wired = new Map<string, string>();
+  for (const edge of doc.edges) {
+    wired.set(`${edge.target}.${edge.targetSocket ?? 'in'}`, `${edge.source}.${edge.sourceSocket ?? 'out'}`);
+  }
   for (const entity of doc.entities) {
     const def = registry.get(entity.type);
     const values = valueBag(entity);
@@ -234,7 +240,8 @@ export function describeGraph(
       for (const [id, spec] of Object.entries(def.inputs)) {
         const value = values[id];
         const isDefault = value === undefined || value === spec.default;
-        if (focused.has(entity.id)) parts.push(`${id}=${short(value ?? spec.default)}`);
+        const from = wired.get(`${entity.id}.${id}`);
+        if (focused.has(entity.id)) parts.push(from ? `${id}<-${from}` : `${id}=${short(value ?? spec.default)}`);
         else if (!isDefault) parts.push(`${id}=${short(value)}`);
       }
     } else {

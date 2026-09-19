@@ -9,6 +9,9 @@
  */
 
 import type { Edge, EdgeChange, Entity, EntityChange, XYPosition } from '@kushagradhawan/kookie-flow';
+// The layout alone, not the library: this package runs on the server, with no React and no canvas.
+import { layoutGraph } from '@kushagradhawan/kookie-flow/layout';
+import { estimateNodeSize } from './node-size';
 import type { NodeRegistry } from './registry';
 import { typesCompatible } from './sockets';
 import { isUsableId, nextNodeId, valueBag } from './document';
@@ -29,7 +32,13 @@ export type GraphOp =
   | { op: 'disconnect'; to: string }
   | { op: 'set_values'; id: string; values: Record<string, unknown> }
   | { op: 'set_label'; id: string; label: string }
-  | { op: 'move'; id: string; position: XYPosition };
+  | { op: 'move'; id: string; position: XYPosition }
+  /**
+   * Lay nodes out by their wiring: left to right, a node one column right of whatever feeds it.
+   * The whole graph, or only `ids`. The same graph always gets the same picture, and the block
+   * stays where it was: its top left corner does not move.
+   */
+  | { op: 'arrange'; ids?: string[] };
 
 export interface OpError {
   index: number;
@@ -48,7 +57,16 @@ export interface CompiledOps {
 export interface CompileOptions {
   /** Where a node without a position lands. Default: (0, 0) stepped down per node. */
   placeAt?: (index: number) => XYPosition;
+  /**
+   * A node's real box, for `arrange`. The canvas knows it; without one (a stored document, a node
+   * added earlier in the same batch) the size is estimated from the node's type.
+   */
+  sizeOf?: (entity: Entity) => { width: number; height: number } | null;
 }
+
+/** `arrange`'s spacing: room for a wire's curve between columns, a clear gap between rows. */
+const ARRANGE_RANK_GAP = 120;
+const ARRANGE_NODE_GAP = 60;
 
 export function edgeId(source: string, sourceSocket: string, target: string, targetSocket: string): string {
   return `${source}-${sourceSocket}-${target}-${targetSocket}`;
@@ -130,6 +148,12 @@ export function compileOps(
     return Object.keys(values ?? {}).filter((k) => !Object.hasOwn(def.inputs, k));
   };
 
+  /** The sockets a node has, for an error that names the right ones instead of only the wrong one. */
+  const socketNames = (entity: Entity, direction: 'inputs' | 'outputs'): string => {
+    const ids = (entity[direction] ?? types[entity.type]?.[direction] ?? []).map((s) => `"${s.id}"`);
+    return ids.length ? ids.join(', ') : 'none';
+  };
+
   const removeEdge = (edge: Edge) => {
     edges = edges.filter((e) => e.id !== edge.id);
     edgeChanges.push({ type: 'remove', id: edge.id });
@@ -145,7 +169,10 @@ export function compileOps(
         if (!isUsableId(id)) return fail(index, op, `"${id}" cannot be used as a node id`);
         if (entities.has(id)) return fail(index, op, `node "${id}" already exists`);
         const unknownKeys = unknownInputs(op.type, op.values);
-        if (unknownKeys.length) return fail(index, op, `"${op.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}`);
+        if (unknownKeys.length) {
+          const inputs = Object.keys(registry.get(op.type)?.inputs ?? {}).map((k) => `"${k}"`).join(', ') || 'none';
+          return fail(index, op, `"${op.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${inputs}`);
+        }
         const entity = registry.create(op.type, id, op.position ?? placeAt(created.length), op.values);
         if (op.label && op.label.trim()) entity.data.label = op.label;
         entities.set(id, entity);
@@ -170,8 +197,8 @@ export function compileOps(
         if (!target) return fail(index, op, `no node "${to.id}"`);
         const sourceType = socketType(source, from.socket, 'outputs');
         const targetType = socketType(target, to.socket, 'inputs');
-        if (!sourceType) return fail(index, op, `"${from.id}" has no output "${from.socket}"`);
-        if (!targetType) return fail(index, op, `"${to.id}" has no input "${to.socket}"`);
+        if (!sourceType) return fail(index, op, `"${from.id}" has no output "${from.socket}"; its outputs are ${socketNames(source, 'outputs')}`);
+        if (!targetType) return fail(index, op, `"${to.id}" has no input "${to.socket}"; its inputs are ${socketNames(target, 'inputs')}`);
         if (!typesCompatible(sourceType, targetType)) {
           return fail(index, op, `cannot connect ${sourceType} to ${targetType}`);
         }
@@ -197,7 +224,9 @@ export function compileOps(
         const entity = entities.get(op.id);
         if (!entity) return fail(index, op, `no node "${op.id}"`);
         const unknownKeys = unknownInputs(entity.type, op.values);
-        if (unknownKeys.length) return fail(index, op, `"${entity.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}`);
+        if (unknownKeys.length) {
+          return fail(index, op, `"${entity.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${socketNames(entity, 'inputs')}`);
+        }
         // The store merges `data` one level deep, so the whole bag goes back or the rest is lost.
         const values = { ...valueBag(entity), ...op.values };
         const next: Entity = { ...entity, data: { ...entity.data, values } };
@@ -220,6 +249,48 @@ export function compileOps(
         if (!entity) return fail(index, op, `no node "${op.id}"`);
         entities.set(op.id, { ...entity, position: op.position });
         entityChanges.push({ type: 'position', id: op.id, position: op.position });
+        return;
+      }
+      case 'arrange': {
+        const missing = (op.ids ?? []).filter((id) => !entities.has(id));
+        if (missing.length) return fail(index, op, `no node ${missing.map((id) => `"${id}"`).join(', ')}`);
+        const wanted = op.ids ? new Set(op.ids) : null;
+        // A frame places its own children, so only what sits on the board itself is laid out.
+        const targets = [...entities.values()].filter((e) => e.parentId === undefined && (!wanted || wanted.has(e.id)));
+        if (targets.length === 0) return;
+
+        const nodes = targets.map((e) => {
+          const real = options.sizeOf?.(e);
+          const guess = estimateNodeSize(registry, e.type);
+          return { id: e.id, width: real?.width ?? e.width ?? guess.w, height: real?.height ?? e.height ?? guess.h };
+        });
+        const { positions } = layoutGraph(nodes, edges, { rankGap: ARRANGE_RANK_GAP, nodeGap: ARRANGE_NODE_GAP });
+
+        // THE BLOCK STAYS PUT. The layout is worked out around the origin, then slid so its top left
+        // is where the top left of these nodes was. Nodes this batch just added were placed by a
+        // guess, so they do not get a say unless nothing else does.
+        const settled = targets.filter((e) => !created.includes(e.id));
+        const anchors = settled.length ? settled : targets;
+        const wasX = Math.min(...anchors.map((e) => e.position.x));
+        const wasY = Math.min(...anchors.map((e) => e.position.y));
+        let nowX = Infinity;
+        let nowY = Infinity;
+        for (const at of positions.values()) {
+          nowX = Math.min(nowX, at.x);
+          nowY = Math.min(nowY, at.y);
+        }
+        for (const entity of targets) {
+          const at = positions.get(entity.id);
+          if (!at) continue;
+          const position = { x: Math.round(at.x - nowX + wasX), y: Math.round(at.y - nowY + wasY) };
+          if (position.x === entity.position.x && position.y === entity.position.y) continue;
+          const moved = { ...entity, position };
+          entities.set(entity.id, moved);
+          // A node this batch added lands where it belongs, rather than landing and then moving.
+          const added = entityChanges.findIndex((c) => c.type === 'add' && c.entity.id === entity.id);
+          if (added >= 0) entityChanges[added] = { type: 'add', entity: moved };
+          else entityChanges.push({ type: 'position', id: entity.id, position });
+        }
         return;
       }
       default: {

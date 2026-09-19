@@ -33,7 +33,7 @@ describe('compileOps', () => {
     expect(r.errors.map((e) => e.message)).toEqual([
       'unknown node type "nope/nothing"',
       'cannot connect text to float',
-      '"n1" has no output "nope"',
+      '"n1" has no output "nope"; its outputs are "out"',
     ]);
   });
 
@@ -65,6 +65,63 @@ describe('compileOps', () => {
     expect(data && data.type === 'data' ? data.data : null).toEqual({ values: { inMax: 10, outMax: 5 } });
     expect(r.edgeChanges.map((c) => c.type)).toEqual(['add', 'remove']);
     expect(r.entityChanges.at(-1)).toEqual({ type: 'remove', id: 'n2' });
+  });
+});
+
+describe('arrange', () => {
+  const chain: Parameters<typeof compileOps>[1] = [
+    { op: 'add_node', type: 'math/add', position: { x: 900, y: 40 } },
+    { op: 'add_node', type: 'source/number', position: { x: 300, y: 700 } },
+    { op: 'add_node', type: 'source/number', position: { x: 520, y: -80 } },
+    { op: 'connect', from: 'n2.out', to: 'n1.a' },
+    { op: 'connect', from: 'n3.out', to: 'n1.b' },
+  ];
+  const placedAt = (r: ReturnType<typeof compileOps>) =>
+    new Map(r.entityChanges.flatMap((c) => (c.type === 'add' ? [[c.entity.id, c.entity.position] as const] : [])));
+
+  it('puts a node one column right of what feeds it, with nothing overlapping', () => {
+    const r = apply([...chain, { op: 'arrange' }]);
+    expect(r.errors).toEqual([]);
+    const at = placedAt(r);
+    const [sum, a, b] = [at.get('n1'), at.get('n2'), at.get('n3')];
+    if (!sum || !a || !b) throw new Error('a node was not placed');
+    expect(a.x).toBe(b.x);
+    expect(sum.x).toBeGreaterThan(a.x);
+    expect(Math.abs(a.y - b.y)).toBeGreaterThan(60);
+    // Nodes the batch added land in place: no second move for the canvas to animate or undo.
+    expect(r.entityChanges.some((c) => c.type === 'position')).toBe(false);
+  });
+
+  it('gives the same graph the same picture wherever its nodes started', () => {
+    const scattered = chain.map((op) => (op.op === 'add_node' ? { ...op, position: { x: 0, y: 0 } } : op));
+    const one = placedAt(apply([...chain, { op: 'arrange' }]));
+    const two = placedAt(apply([...scattered, { op: 'arrange' }]));
+    const shape = (at: ReturnType<typeof placedAt>) => {
+      const origin = at.get('n2');
+      if (!origin) throw new Error('n2 was not placed');
+      return [...at].map(([id, p]) => [id, p.x - origin.x, p.y - origin.y]);
+    };
+    expect(shape(one)).toEqual(shape(two));
+  });
+
+  it('keeps the block where it was, moves only the ids asked for, and uses real sizes when given', () => {
+    const built = apply(chain);
+    const doc = { ...emptyDocument(), entities: built.entityChanges.flatMap((c) => (c.type === 'add' ? [c.entity] : [])), edges: built.edgeChanges.flatMap((c) => (c.type === 'add' ? [c.edge] : [])) };
+
+    const whole = compileOps(doc, [{ op: 'arrange' }], registry);
+    const moved = new Map(doc.entities.map((e) => [e.id, e.position]));
+    for (const c of whole.entityChanges) if (c.type === 'position') moved.set(c.id, c.position);
+    expect(Math.min(...[...moved.values()].map((p) => p.x))).toBe(300);
+    expect(Math.min(...[...moved.values()].map((p) => p.y))).toBe(-80);
+
+    const some = compileOps(doc, [{ op: 'arrange', ids: ['n2', 'n3'] }], registry);
+    expect(some.entityChanges.every((c) => c.type === 'position' && c.id !== 'n1')).toBe(true);
+
+    const tall = compileOps(doc, [{ op: 'arrange' }], registry, { sizeOf: () => ({ width: 300, height: 1000 }) });
+    const ys = tall.entityChanges.flatMap((c) => (c.type === 'position' && c.id !== 'n1' ? [c.position.y] : []));
+    expect(Math.abs((ys[0] ?? 0) - (ys[1] ?? 0))).toBeGreaterThanOrEqual(1000);
+
+    expect(compileOps(doc, [{ op: 'arrange', ids: ['nope'] }], registry).errors).toHaveLength(1);
   });
 });
 
@@ -106,6 +163,7 @@ describe('document', () => {
     expect(describeGraph({ entities, edges }, registry)).toBe(
       'n1 source/number "Width" value=2\nn2 math/add\nn1.out -> n2.a'
     );
-    expect(describeGraph({ entities, edges }, registry, ['n2'])).toContain('n2 math/add a=0 b=0');
+    // A wired input names its wire rather than a stored value it does not use.
+    expect(describeGraph({ entities, edges }, registry, ['n2'])).toContain('n2 math/add a<-n1.out b=0');
   });
 });
