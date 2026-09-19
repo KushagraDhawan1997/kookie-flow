@@ -6,6 +6,15 @@ allowBuilds:
   esbuild: true
   sharp: true
 
+# AI SDK releases younger than the minimum release age, taken on purpose: the agent's triage needs the
+# evaluate API that arrived in ai 7.0.105 (2026-09-19).
+minimumReleaseAgeExclude:
+  - '@ai-sdk/gateway@4.0.87'
+  - '@ai-sdk/mcp@2.0.54'
+  - '@ai-sdk/provider-utils@5.0.45'
+  - '@ai-sdk/react@4.0.110'
+  - ai@7.0.107
+
 # Security patches for the legacy loader and media dependencies used by the workspace apps.
 overrides:
   '@esbuild-kit/core-utils>esbuild': '^0.25.0'
