@@ -69,8 +69,12 @@ export interface TriageAnswers {
   shapeP: number;
 }
 
-/** The canvas text is bounded: the model reads 64k tokens, and a triage should never wait on a big graph. */
-const CANVAS_CHARS = 6_000;
+/**
+ * The canvas text is bounded: the model reads 64k tokens, and a triage should never wait on a big
+ * graph. Exported because the browser slices to it before sending, so a graph larger than the
+ * route's own body limit still gets a triage rather than a refused request.
+ */
+export const CANVAS_CHARS = 6_000;
 
 /** The state the questions are asked of: the message and what is on the canvas. */
 export function triageState(message: string, canvas: string): { message: string; canvas: string } {
@@ -169,6 +173,15 @@ export function triageNote(a: TriageAnswers): string {
   return `${TRIAGE_PREFIX} A quick read of this message by a small model, not a decision: clear enough to build ${two(a.clear)}; ${scope}; ${shape}.`;
 }
 
+/**
+ * A line this module wrote, not a message that happens to start the same way. Matched on the whole
+ * shape: the mock agent drops these from what it reads, and a person who writes "[triage] why is
+ * this here?" had their message read as empty and answered with the generic opening questions.
+ */
+const NOTE = new RegExp(
+  `^${TRIAGE_PREFIX.replace(/[[\]]/g, '\\$&')} A quick read of this message by a small model, not a decision: clear enough to build \\d\\.\\d\\d; .+ \\d\\.\\d\\d \\(.+ \\d\\.\\d\\d\\); .+ \\d\\.\\d\\d \\(.+ \\d\\.\\d\\d\\)\\.$`
+);
+
 export function isTriageNote(text: string): boolean {
-  return text.startsWith(TRIAGE_PREFIX);
+  return NOTE.test(text);
 }

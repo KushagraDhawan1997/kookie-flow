@@ -1151,3 +1151,43 @@ gateway's list price for Jev could not be read from this session; `TRIAGE_MODEL`
 published price and should be checked against the gateway's model list. The `evaluate` API is
 experimental and `ai` is pinned exactly.
 
+## 2026-09-20 — The ultracode audit of triage, and what it found
+
+151 agents: ten dimension finders over the diff (the pure core, billing, the browser session's races,
+prompt injection, the prompt cache, the mock and the mode switches, the bench, the SDK bump, the
+failure paths, and the docs against the code), then three refuters per finding on separate lenses —
+read-the-code, reproduce-it, does-it-matter — then three completeness critics and the same bar again.
+46 findings raised, 29 refuted, 17 confirmed, which were six real defects reported many times over.
+
+**The critical one, and it was the design.** Making `send()` wait for the triage before handing the
+message to the chat opened a window the composer did not block: `blocked` in agent-panel.tsx is
+derived from `chat.status`, which stays 'ready' until `sendMessage` is called, so for up to three
+seconds Enter still worked. A second message inside that window gave two live `/api/agent/step`
+streams, two open billed turns, two `saveConversation` writes racing to overwrite each other, and —
+because `Chat` keeps only the last request as the one `stop()` aborts, and `addToolOutput` always
+rewrites the last message — one unstoppable stream and browser-tool answers landing on the wrong
+message, which is the "Looking" forever state `resumeUnanswered` was written to fix. The verifier
+reproduced it against the real `ai` 7.0.107: order inverted, two concurrent streams, stop killing the
+wrong one. Fixed by serialising deliveries on a promise chain, and by a `delivering` flag the panel
+blocks on, so the composer is shut for the wait it now has.
+
+The other five: Start over did not cancel a message still in triage, so it reappeared in the
+conversation it had just cleared (a generation token, captured at enqueue — captured inside `deliver`
+it reads the already-bumped value, which the test caught); a message was dropped with nothing logged
+when the pane closed mid-triage, though the session is meant to outlive the panel, so it is now sent;
+the browser posted the whole canvas into a route that refuses a body over 20,000 characters, which
+turned triage off for good somewhere past a hundred nodes, silently on both sides (sliced to
+`CANVAS_CHARS` before sending, and the status is logged now); `STUDIO_TRIAGE=off` stopped new hints
+but kept feeding stored ones to the model, so the off side of its own experiment was measured against
+an agent still being hinted; and `isTriageNote` matched on the opening word, so a person writing
+"[triage] why is this here?" had their message read as empty by the scripted agent.
+
+`session.dom.test.ts` and `pnpm test:dom` are new: a jsdom config beside the unit one, as the bench
+has its own, holding three tests that drive the real `Chat` against a fake server — two messages
+inside the wait, Start over mid-triage, the pane closing mid-triage. The unit config excludes
+`*.dom.test.ts` by name.
+
+Found and not fixed, because it is not this change's: the three PGlite integration tests fail on a
+5-8 second timeout when vitest runs the files in parallel on a loaded machine, and pass with
+`--no-file-parallelism`. It will read as a flaky CI.
+

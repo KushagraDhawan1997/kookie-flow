@@ -11,5 +11,7 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
+    // `*.dom.test.ts` needs a window and runs under `vitest.dom.config.ts` (pnpm test:dom).
+    exclude: ['**/node_modules/**', 'src/**/*.dom.test.ts'],
   },
 });
