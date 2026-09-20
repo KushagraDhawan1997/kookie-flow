@@ -10,7 +10,7 @@
 
 import { Chat } from '@ai-sdk/react';
 import { DefaultChatTransport, getToolName, isToolUIPart, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
-import { isBrowserTool, type GraphOp } from 'studio-core';
+import { isBrowserTool, isTriageAnswers, type GraphOp, type TriageAnswers } from 'studio-core';
 
 import { readAgentSettings } from '@/app/agent-choice';
 import { AGENT_EFFORTS, DEFAULT_AGENT_SETTINGS, type AgentSettings } from '@/app/agent-models';
@@ -98,6 +98,12 @@ async function smallCopy(answer: InspectAnswer): Promise<InspectAnswer> {
   // The size stays the original's: it is what the node made, and what the model is told.
   return { ...answer, hash: small.hash, mime: small.mime ?? 'image/jpeg' };
 }
+
+/**
+ * How long a message waits for its triage before going without it. A triage answers in well under a
+ * second; the message must not sit behind a slow one.
+ */
+const TRIAGE_TIMEOUT_MS = 3_000;
 
 /** A message's words, with the pictures it attached named by node so the agent can wire them. */
 export function withPictures(text: string, ids: readonly string[]): string {
@@ -276,10 +282,35 @@ export class AgentSession {
     const effort = AGENT_EFFORTS.find((e) => e.id === pending.effort)?.id ?? this.state.settings.effort;
     this.set({ settings: { model: pending.model || this.state.settings.model, effort } });
     const ids = this.host.addPictures(pending.pictures);
-    void chat.sendMessage({
-      text: withPictures(pending.text, ids),
-      metadata: { pictures: pending.pictures.map((p) => p.url).filter(Boolean) },
-    });
+    void this.deliver(chat, withPictures(pending.text, ids), pending.pictures.map((p) => p.url).filter(Boolean));
+  }
+
+  /**
+   * Ask the server to read the message before it goes (`/api/agent/triage`), and send it with the
+   * answers on its metadata, where the step route turns them into a line for the model and the panel
+   * ignores them. A triage that fails, or takes too long, is a message sent without one.
+   */
+  private async deliver(chat: Chat<UIMessage>, text: string, pictures: string[]): Promise<void> {
+    const triage = await this.triage(text);
+    if (this.disposed || this.state.chat !== chat) return;
+    void chat.sendMessage({ text, metadata: { pictures, ...(triage ? { triage } : {}) } });
+  }
+
+  private async triage(text: string): Promise<TriageAnswers | null> {
+    try {
+      const res = await fetch('/api/agent/triage', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: this.graphId, text, canvas: this.host.readGraph([]) }),
+        signal: AbortSignal.timeout(TRIAGE_TIMEOUT_MS),
+      });
+      if (!res.ok) return null;
+      const body: unknown = await res.json();
+      return isRecord(body) && isTriageAnswers(body.triage) ? body.triage : null;
+    } catch (error) {
+      console.warn('[studio] the message went without triage', error);
+      return null;
+    }
   }
 
   setSettings(settings: AgentSettings): void {
@@ -290,9 +321,11 @@ export class AgentSession {
     const chat = this.state.chat;
     const words = text.trim();
     if (!chat || !words) return;
-    void chat.sendMessage({ text: withPictures(words, this.state.attached), metadata: { pictures: this.attachedUrls } });
+    const message = withPictures(words, this.state.attached);
+    const pictures = this.attachedUrls;
     this.attachedUrls = [];
     this.set({ attached: [] });
+    void this.deliver(chat, message, pictures);
   }
 
   async decide(approve: boolean): Promise<void> {

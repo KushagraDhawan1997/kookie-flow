@@ -1117,3 +1117,37 @@ actions in a "…" menu rather than a bare delete icon.
   limit (now serial, paced, retrying); results were only written at the end, so the killed runs lost
   what they had paid for (now appended per trial); one hung stream ate 2.6 hours (now a per-call
   timeout). Opus 5 returned nothing 14 times through the gateway, for no charge.
+
+## 2026-09-19 — Triage: a decision model reads each message first
+
+Jev is TypeSafe AI's "System One" model: it writes nothing, and answers typed questions about a text
+with calibrated probabilities in well under a second, for $0.042 a million input tokens. It came out
+on 2026-09-15 and is served by Vercel AI Gateway as `typesafe-ai/jev`, through the AI SDK's
+experimental `evaluate` call (from `ai` 7.0.105), under the same key the agent thinks with. So the
+whole of adding it was a version bump (`ai` 7.0.102 → 7.0.107, `@ai-sdk/react` 4.0.110) and a
+release-age exception in `pnpm-workspace.yaml`.
+
+Where it went: not the canvas. The bill data says the agent is 37% of spend, so the loop is where a
+cheap decision pays. `studio-core/agent/triage.ts` asks three questions the harness already decides
+by rule — clear enough to build (boolean), extend or new graph, drafts or one exact result — and
+writes one byte-stable `[triage]` line from the answers. The browser session asks
+`POST /api/agent/triage` before sending (three-second limit, the message goes without it on any
+failure) and keeps the answers on the message's metadata; the step route appends the line to the
+copy the model reads (`withTriageNotes`), never to the stored conversation or the panel; the
+instructions say what the line is and that the rules win. In gateway mode a triage is a turn of its
+own, held and charged like a step and listed as "Triage · Jev"; the mock is a scripted
+`Experimental_EvaluationMockModelV4` that reads a short ask as unclear and a named edit as one result,
+so the path runs for nothing in dev and tests. `STUDIO_TRIAGE=off` sends messages without it.
+
+The bench reads each message the same way and prices the triage tokens into the trial; `BENCH_TRIAGE=0`
+is the control. Nothing has been measured yet: the harness plan's "Not doing" rules out routers, and
+this is the cheapest test of that rule — a hint, not a route. If the with-and-without numbers do not
+move, it goes. If patterns land, the same call can name the pattern, and that is the point at which it
+would stop being a hint.
+
+Costs and caveats: a message now waits for the triage before it appears in the panel (a few hundred
+milliseconds; three seconds at worst). Jev reads words only, so it says nothing about pictures. The
+gateway's list price for Jev could not be read from this session; `TRIAGE_MODEL` carries TypeSafe's
+published price and should be checked against the gateway's model list. The `evaluate` API is
+experimental and `ai` is pinned exactly.
+
