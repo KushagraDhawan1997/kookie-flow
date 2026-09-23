@@ -19,6 +19,7 @@ import { dirname, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launch } from './browser.mjs';
+import { hardeningChecks } from './hardening.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
@@ -2343,26 +2344,10 @@ await withPage('count=12&seed=1', async (page) => {
     `${dMat} materials disposed over ${FLIPS} flips (8 with the effects deleted, 88 with them)`
   );
 
-  /**
-   * PRE-EXISTING AND NOT FIXED HERE. Recorded with its number so the next person starts from a
-   * measurement rather than from scratch.
-   *
-   * Eight theme flips leak about 128 GL buffers, roughly 16 per flip, and that number is
-   * IDENTICAL with all 23 dispose effects present and with all of them deleted — so it is not a
-   * material or geometry leak and C25's fix does not touch it. The likely cause is R3F
-   * reconstructing every instanced mesh when `args` changes (a rebuilt material is a new `args`
-   * entry), which mints a fresh `instanceMatrix` and a fresh set of `InstancedBufferAttribute`s
-   * while nothing frees the old mesh's. Not fixed here because the repair — keeping the material
-   * out of `args` — changes when the buffer-init callback ref re-runs, and that callback ref IS
-   * the C24 fix that makes a theme change reach WebGL at all. It needs its own item.
-   *
-   * Asserted as a CEILING that today's behaviour passes, so it cannot get worse unnoticed, and
-   * NOT as zero, which would be a red law nobody can act on.
-   */
   check(
-    'the known per-flip buffer leak does not get worse',
-    dBuf <= FLIPS * 20,
-    `${dBuf} buffers over ${FLIPS} flips (about ${Math.round(dBuf / FLIPS)} per flip; ~16 is the recorded pre-existing rate)`
+    'theme round trips do not leak WebGL buffers',
+    dBuf === 0,
+    `${dBuf} net live buffers over ${FLIPS} flips after warm-up`
   );
 });
 
@@ -5622,6 +5607,8 @@ await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) =
     check('and goes out when it is let go', released === null, String(released));
   }
 });
+
+await hardeningChecks({ head, withPage, check, context, port, skipping });
 
 // ---------------------------------------------------------------- summary
 

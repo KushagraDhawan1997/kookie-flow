@@ -334,8 +334,11 @@ export interface FlowState {
   socketLayout: ResolvedSocketLayout | null;
 
   /** Internal actions */
-  /** Entity ids moved by the last updateEntityPositions call. Per store, not global. */
+  /** Pending movement IDs since the last renderer acknowledgement. Per store. */
   getMovedEntityIds: () => ReadonlySet<string>;
+  /** Each renderer owns its pending set; consuming one never clears another renderer's work. */
+  trackEntityMovements: (pending: Set<string>) => () => void;
+  clearMovedEntityIds: () => void;
   setEntities: (entities: Entity[]) => void;
   /**
    * Swap the type table. Every entity is resolved again against it, because a table that arrives
@@ -757,6 +760,52 @@ function planDerivedUpdate(
   return { moved, changed, reordered };
 }
 
+/** Preserve set identity unless a controlled replacement actually removes an owner. */
+function retainIds(ids: Set<string>, live: ReadonlyMap<string, unknown>): Set<string> {
+  let next: Set<string> | undefined;
+  for (const id of ids) if (!live.has(id)) (next ??= new Set(ids)).delete(id);
+  return next ?? ids;
+}
+
+function reconcileEntityReferences(state: FlowState, live: Map<string, Entity>): Partial<FlowState> {
+  const kept = (id: string | null) => id !== null && live.has(id) ? id : null;
+  const socketLive = (handle: SocketHandle | null) => {
+    if (!handle) return null;
+    const entity = live.get(handle.entityId);
+    const sockets = handle.isInput ? entity?.inputs : entity?.outputs;
+    return sockets?.some((s) => s.id === handle.socketId) ? handle : null;
+  };
+  const draft = state.connectionDraft;
+  const widgetLive = (key: string | null) => {
+    if (key === null) return false;
+    for (const entity of live.values()) for (const socket of [...(entity.inputs ?? []), ...(entity.outputs ?? [])]) {
+      if (widgetKey(entity.id, socket.id) === key) return true;
+    }
+    return false;
+  };
+  const editingWidgetKey = widgetLive(state.editingWidgetKey) ? state.editingWidgetKey : null;
+  const popover = state.widgetPopover;
+  const widgetPopover = popover && widgetLive(popover.key) ? popover : null;
+  return {
+    selectedEntityIds: retainIds(state.selectedEntityIds, live),
+    mutedEntityIds: retainIds(state.mutedEntityIds, live),
+    focusedEntityId: kept(state.focusedEntityId),
+    hoveredEntityId: kept(state.hoveredEntityId),
+    editingEntityId: kept(state.editingEntityId),
+    hoveredSocketId: socketLive(state.hoveredSocketId),
+    hoveredWidget: state.hoveredWidget && widgetLive(widgetKey(state.hoveredWidget.entityId, state.hoveredWidget.socketId)) ? state.hoveredWidget : null,
+    connectionStart: state.connectionStart && live.has(state.connectionStart.entityId) ? state.connectionStart : null,
+    connectionDraft: draft && socketLive(draft.source) ? draft : null,
+    editingWidgetKey,
+    editingWidgetPart: editingWidgetKey ? state.editingWidgetPart : -1,
+    pressedWidgetKey: widgetLive(state.pressedWidgetKey) ? state.pressedWidgetKey : null,
+    focusVisibleWidgetKey: widgetLive(state.focusVisibleWidgetKey) ? state.focusVisibleWidgetKey : null,
+    widgetPopover,
+    popoverIndex: widgetPopover ? state.popoverIndex : -1,
+    popoverScroll: widgetPopover ? state.popoverScroll : 0,
+  };
+}
+
 // Helper to rebuild derived state from entities
 // collapsedGroupIds is used to filter children of collapsed groups from quadtrees
 // socketLayout is used for correct entity height in quadtree bounds
@@ -1081,6 +1130,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
    * entity did not move at all.
    */
   const movedEntityIds = new Set<string>();
+  const movementTrackers = new Set<Set<string>>();
+  const markMovement = (id: string) => {
+    movedEntityIds.add(id);
+    for (const pending of movementTrackers) pending.add(id);
+  };
 
   /**
    * Persistent id-to-index map — avoids an O(n) rebuild on every drag frame.
@@ -1152,6 +1206,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
   };
   const evaluator = new Evaluator(evaluationHost);
   const forgetEntities = (ids: readonly string[] | ReadonlySet<string>): void => {
+    for (const id of ids) {
+      movedEntityIds.delete(id);
+      for (const pending of movementTrackers) pending.delete(id);
+    }
     evaluator.forget(ids);
     const muted = getState?.().mutedEntityIds;
     if (!muted?.size) return;
@@ -1244,6 +1302,12 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
 
       // Setters - rebuild derived state when entities change
       getMovedEntityIds: () => movedEntityIds,
+      trackEntityMovements: (pending) => {
+        for (const id of movedEntityIds) pending.add(id);
+        movementTrackers.add(pending);
+        return () => { movementTrackers.delete(pending); pending.clear(); };
+      },
+      clearMovedEntityIds: () => movedEntityIds.clear(),
 
       setEntities: (rawEntities) => {
         const state = get();
@@ -1302,7 +1366,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
            * gesture's ids are untouched. Over-reporting costs a redundant re-tessellation of edges
            * that were already right; under-reporting leaves wires behind.
            */
-          for (const id of plan.moved) movedEntityIds.add(id);
+          for (const id of plan.moved) markMovement(id);
           for (const id of plan.moved) {
             // A hidden entity is in neither index — `rebuildDerivedState` only ever inserted the
             // visible ones — and `quadtree.update` would INSERT one that is absent rather than
@@ -1369,6 +1433,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         set({
           entities: entities.slice(),
           ...derived,
+          ...(!plan ? reconcileEntityReferences(state, derived.entityMap) : {}),
           topologyVersion: state.topologyVersion + 1,
           positionVersion: state.positionVersion + 1,
           stackVersion: state.stackVersion + 1,
@@ -1437,6 +1502,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         for (const e of prevEdges) if (!nextIds.has(e.id)) touched.push(e.target);
         set({
           edges,
+          selectedEdgeIds: retainIds(get().selectedEdgeIds, new Map(edges.map((edge) => [edge.id, edge]))),
           connectedSockets: rebuildConnectedSockets(edges, get().widgetValues),
           adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
           topologyVersion: get().topologyVersion + 1,
@@ -2135,9 +2201,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         const nextEntities = entities;
 
         // Populate moved entity IDs side-channel for renderers
-        movedEntityIds.clear();
         for (const { id } of updates) {
-          movedEntityIds.add(id);
+          markMovement(id);
         }
 
         // Update each entity: O(k) using persistent idToIndex map
@@ -2224,8 +2289,8 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // Accumulate (don't clear) moved entity IDs so that multiple
         // updateEntityDimensions calls in the same frame (e.g. TextEntities
         // auto-sizing two text nodes) all appear in the fast-path set.
-        // The set is cleared by updateEntityPositions on the next drag.
-        movedEntityIds.add(id);
+        // Each renderer clears only its own pending set after consuming the batch.
+        markMovement(id);
 
         // Always update socket quadtree — width changes move output sockets,
         // position changes move all sockets
@@ -3088,9 +3153,27 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         if (nodes.length === 0) return [];
         const { positions } = layoutGraph(nodes, state.edges, options);
         const updates: Array<{ id: string; position: XYPosition }> = [];
+        // Children use absolute world coordinates. Rank only roots, then translate each
+        // descendant by its root's delta in one pass, including collapsed descendants.
+        const deltas = new Map<string, XYPosition>();
         for (const node of nodes) {
           const position = positions.get(node.id);
-          if (position) updates.push({ id: node.id, position });
+          const entity = state.entityMap.get(node.id);
+          if (position && entity) {
+            deltas.set(node.id, { x: position.x - entity.position.x, y: position.y - entity.position.y });
+          }
+        }
+        for (const entity of state.entities) {
+          let delta = deltas.get(entity.id);
+          if (!delta && entity.parentId) {
+            for (const parent of getParentChain(entity, state.entityMap)) {
+              delta = deltas.get(parent.id);
+              if (delta) break;
+            }
+          }
+          if (delta) updates.push({ id: entity.id, position: {
+            x: entity.position.x + delta.x, y: entity.position.y + delta.y,
+          } });
         }
         // The same door a drag commits through, so every index and quadtree follows.
         get().updateEntityPositions(updates);

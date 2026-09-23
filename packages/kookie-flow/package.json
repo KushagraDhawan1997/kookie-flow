@@ -56,7 +56,8 @@
   },
   "files": [
     "dist",
-    "fonts"
+    "fonts",
+    "PRODUCTION.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -82,18 +83,21 @@
     "harness:tokens": "node harness/spikes/token-census.mjs",
     "test:browser": "node harness/build.mjs && node harness/behaviors.mjs",
     "harness:store": "node harness/spikes/core-store-bench.mjs",
-    "harness:evaluation": "node harness/spikes/evaluation-bench.mjs"
+    "harness:evaluation": "node harness/spikes/evaluation-bench.mjs",
+    "test:spatial-stress": "node harness/spikes/spatial-overlap.mjs",
+    "test:package": "node scripts/test-package.mjs",
+    "check:release": "pnpm run lint && pnpm run test && pnpm run test:spatial-stress && pnpm run build && pnpm run test:package && pnpm run test:browser"
   },
   "dependencies": {
     "zustand": "^5.0.15"
   },
   "peerDependencies": {
-    "@react-three/drei": ">=10.0.0",
-    "@react-three/fiber": ">=9.0.0",
-    "react": ">=19.0.0",
-    "react-dom": ">=19.0.0",
-    "three": ">=0.170.0",
-    "@kookie-ui/react": "*"
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "~0.186.0",
+    "@kookie-ui/react": "0.0.0"
   },
   "devDependencies": {
     "@react-three/drei": "^10.7.8",
@@ -114,5 +118,8 @@
     "vitest": "^5.0.0",
     "@kookie-ui/react": "file:../../vendor/kookie-ui-react-0.0.0.tgz",
     "vite": "^8.3.0"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -79,7 +79,7 @@ export function EntitySelection() {
   // Outline material (SDF outline-only, no fill)
   // ============================================================================
 
-  const outlineGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const outlineGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [outlineCapacity]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { outlineGeometry.dispose(); }, [outlineGeometry]);
@@ -209,19 +209,8 @@ export function EntitySelection() {
     paddingAttr: null as THREE.InstancedBufferAttribute | null,
   }), [outlineCapacity]);
 
-  /**
-   * Initialise on ATTACH — the third instance of this bug, and the one a person would notice.
-   *
-   * `outlineMaterial` is memoised on the theme (selectedColor, hoverColor, borderRadius), and
-   * `args={[geometry, material, capacity]}` makes R3F reconstruct the mesh when it changes, while
-   * this effect was keyed on [outlineBuffers]. So a theme change left the selection outline's
-   * instance attributes unset — measured through a light -> dark -> light round trip, the outline
-   * came back as a partial rectangle and never recovered.
-   *
-   * The round trip is what caught it: comparing ink across a single flip cannot separate "the
-   * geometry is gone" from "the colours legitimately changed", and a null control proved the
-   * measurement itself was stable.
-   */
+  // Initialise every capacity replacement on attach. Materials update as props, so a
+  // theme change cannot orphan the old instance buffers.
   const attachOutline = useCallback((mesh: THREE.InstancedMesh | null) => {
     outlineMeshRef.current = mesh;
     if (!mesh) {
@@ -252,7 +241,7 @@ export function EntitySelection() {
   // Handle material (filled rounded square)
   // ============================================================================
 
-  const handleGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const handleGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [handleCapacity]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { handleGeometry.dispose(); }, [handleGeometry]);
@@ -664,14 +653,16 @@ export function EntitySelection() {
       <instancedMesh
         key={`outline-${outlineCapacity}`}
         ref={attachOutline}
-        args={[outlineGeometry, outlineMaterial, outlineCapacity]}
+        args={[outlineGeometry, undefined, outlineCapacity]}
+        material={outlineMaterial}
         frustumCulled={false}
         renderOrder={7}
       />
       <instancedMesh
         key={`handle-${handleCapacity}`}
         ref={attachHandle}
-        args={[handleGeometry, handleMaterial, handleCapacity]}
+        args={[handleGeometry, undefined, handleCapacity]}
+        material={handleMaterial}
         frustumCulled={false}
         renderOrder={8}
       />

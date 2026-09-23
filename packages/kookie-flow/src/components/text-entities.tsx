@@ -85,7 +85,7 @@ function TextEntityWeightMesh({ fontData, entriesRef, renderOrder }: TextEntityW
   const initializedRef = useRef(false);
   const lastEntriesRef = useRef<MultiLineTextEntry[]>(SENTINEL_ENTRIES);
 
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
 
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -248,7 +248,8 @@ function TextEntityWeightMesh({ fontData, entriesRef, renderOrder }: TextEntityW
     <instancedMesh
       key={capacity}
       ref={meshRef}
-      args={[geometry, material, capacity]}
+      args={[geometry, undefined, capacity]}
+      material={material}
       frustumCulled={false}
       renderOrder={renderOrder}
     />

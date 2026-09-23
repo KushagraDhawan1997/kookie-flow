@@ -840,6 +840,9 @@ export function Edges({
   useEffect(() => () => { bgMaterial.dispose(); fgMaterial.dispose(); }, [bgMaterial, fgMaterial]);
 
   // RAF-synchronized updates
+  const pendingMovesRef = useRef(new Set<string>());
+  useEffect(() => store.getState().trackEntityMovements(pendingMovesRef.current), [store]);
+
   useFrame(({ size, clock }) => {
     if (!bgMeshRef.current || !fgMeshRef.current) return;
     const camera = cameraRef.current as CameraGate;
@@ -1127,7 +1130,7 @@ export function Edges({
     // Pre-compute affected edge indices for O(K) partial update
     let affectedEdgeIndices: Set<number> | null = null;
     if (isPartialUpdate) {
-      const movedIds = store.getState().getMovedEntityIds();
+      const movedIds = pendingMovesRef.current;
       const entityEdgeMap = entityToEdgeIndicesRef.current;
       if (movedIds.size > 0 && entityEdgeMap.size > 0) {
         affectedEdgeIndices = affectedEdgeIndicesRef.current;
@@ -1955,7 +1958,11 @@ export function Edges({
     // geometry request the cull branch above may have raised.
     const clear = flagsToClearAfterEdgePass(plan.geometry);
     if (clear.geometry) geometryDirtyRef.current = false;
-    if (clear.position) positionDirtyRef.current = false;
+    if (clear.position) {
+      positionDirtyRef.current = false;
+      pendingMovesRef.current.clear();
+      store.getState().clearMovedEntityIds();
+    }
     if (clear.color) colorDirtyRef.current = false;
     if (clear.layer) layerDirtyRef.current = false;
   });

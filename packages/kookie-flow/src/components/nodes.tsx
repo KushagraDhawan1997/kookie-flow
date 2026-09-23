@@ -181,8 +181,8 @@ export function Entities() {
   const lastSizeRef = useRef({ width: 0, height: 0 });
 
   // Each mesh needs its own geometry (attributes are per-geometry)
-  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
+  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
 
   /**
    * THE SHADOW IS A SECOND PASS, and the depth buffer is why.
@@ -572,20 +572,8 @@ export function Entities() {
   const bgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
   const fgBuffers = useMemo(() => createBuffers(capacity), [capacity]);
 
-  /**
-   * Initialise on ATTACH, not in an effect keyed on the buffers.
-   *
-   * The effect this replaces depended on [bgBuffers, fgBuffers], which change only with capacity.
-   * But `args={[geometry, material, capacity]}` makes R3F reconstruct the InstancedMesh whenever
-   * `material` changes — and `material` is memoised on `resolvedStyle`, so every THEME CHANGE
-   * built a fresh mesh that nobody ever initialised. Its instance attributes were missing and the
-   * nodes went with them: measured, a light→dark flip took node-body ink from 170/170 sampled
-   * pixels to 41/170.
-   *
-   * A callback ref fixes the mechanism rather than the cause: whatever the reason a new mesh
-   * arrives, it gets its buffers. `initMeshBuffers` wraps the same typed arrays in fresh
-   * InstancedBufferAttributes, which is exactly what the new mesh needs.
-   */
+  // Materials are props so theme changes retain the mesh. Capacity changes own a new
+  // geometry, whose old attributes can be disposed intact. Initialise each replacement on attach.
   const attach = useCallback(
     (which: 'bg' | 'fg') => (mesh: THREE.InstancedMesh | null) => {
       const ref = which === 'bg' ? bgMeshRef : fgMeshRef;
@@ -892,14 +880,16 @@ export function Entities() {
       <instancedMesh
         key={`bg-${capacity}`}
         ref={attachBg}
-        args={[bgGeometry, material, capacity]}
+        args={[bgGeometry, undefined, capacity]}
+        material={material}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
       />
       <instancedMesh
         key={`fg-${capacity}`}
         ref={attachFg}
-        args={[fgGeometry, material, capacity]}
+        args={[fgGeometry, undefined, capacity]}
+        material={material}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}
       />
@@ -910,7 +900,8 @@ export function Entities() {
         key={`bg-shadow-${capacity}`}
         ref={bgShadowRef}
         name="node-shadows"
-        args={[bgGeometry, shadowMaterial, capacity]}
+        args={[bgGeometry, undefined, capacity]}
+        material={shadowMaterial}
         renderOrder={6.5}
         frustumCulled={false}
       />
@@ -918,7 +909,8 @@ export function Entities() {
         key={`fg-shadow-${capacity}`}
         ref={fgShadowRef}
         name="node-shadows-selected"
-        args={[fgGeometry, shadowMaterial, capacity]}
+        args={[fgGeometry, undefined, capacity]}
+        material={shadowMaterial}
         renderOrder={6.5}
         frustumCulled={false}
       />

@@ -173,7 +173,7 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
   const initializedRef = useRef(false);
 
   // Create plane geometry (unit quad)
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
 
   // Create MSDF shader material
   const material = useMemo(() => {
@@ -367,7 +367,8 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
     <instancedMesh
       key={capacity}
       ref={meshRef}
-      args={[geometry, material, capacity]}
+      args={[geometry, undefined, capacity]}
+      material={material}
       frustumCulled={false}
       renderOrder={6}
     />

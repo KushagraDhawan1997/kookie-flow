@@ -343,7 +343,8 @@ export function TextEditCursor() {
       {/* Selection rectangles */}
       <instancedMesh
         ref={selectionMeshRef}
-        args={[geometry, selectionMaterial, MAX_SELECTION_INSTANCES]}
+        args={[geometry, undefined, MAX_SELECTION_INSTANCES]}
+        material={selectionMaterial}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_SELECTION}
       />

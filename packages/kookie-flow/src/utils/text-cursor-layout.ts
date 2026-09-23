@@ -10,7 +10,7 @@
  */
 
 import type { GlyphMap, KerningMap, FontMetrics } from './text-layout';
-import { measureText, wrapTextMSDF } from './text-layout';
+import { kerningKey, measureText, wrapTextMSDF } from './text-layout';
 
 // ============================================================================
 // Types
@@ -30,6 +30,8 @@ export interface CharPosition {
   line: number;
   /** Character index within wrapped line (0-based) */
   charInLine: number;
+  /** UTF-16 length; content offsets use textarea selection indices. */
+  codeUnitLength: number;
 }
 
 /** Pre-computed position table for a text block. */
@@ -140,8 +142,8 @@ export function buildCharPositions(
     // Measure line width for alignment
     let lineWidthFontUnits = measureText(line, glyphMap, kerningMap);
     let charCount = 0;
-    for (let i = 0; i < line.length; i++) {
-      if (glyphMap.has(line.charCodeAt(i))) charCount++;
+    for (let i = 0; i < line.length; i += line.codePointAt(i)! > 0xffff ? 2 : 1) {
+      if (glyphMap.has(line.codePointAt(i)!)) charCount++;
     }
     if (charCount > 1) {
       lineWidthFontUnits += (charCount - 1) * letterSpacingFontUnits;
@@ -164,8 +166,8 @@ export function buildCharPositions(
     let cursorX = startX;
     let prevCharCode: number | null = null;
 
-    for (let i = 0; i < line.length; i++) {
-      const charCode = line.charCodeAt(i);
+    for (let i = 0; i < line.length; i += line.codePointAt(i)! > 0xffff ? 2 : 1) {
+      const charCode = line.codePointAt(i)!;
       const glyph = glyphMap.get(charCode);
 
       let charWidth: number;
@@ -173,7 +175,7 @@ export function buildCharPositions(
         charWidth = charCode === 32 ? baseFontSize * scale * 0.25 : 0;
       } else {
         if (prevCharCode !== null) {
-          const kern = kerningMap.get((prevCharCode << 16) | charCode);
+          const kern = kerningMap.get(kerningKey(prevCharCode, charCode));
           if (kern) cursorX += kern * scale;
           cursorX += letterSpacing;
         }
@@ -187,13 +189,14 @@ export function buildCharPositions(
         height: lineHeightPx,
         line: lineIdx,
         charInLine: i,
+        codeUnitLength: charCode > 0xffff ? 2 : 1,
       });
 
       cursorX += charWidth;
       prevCharCode = charCode;
     }
 
-    lineLengths.push(line.length);
+    lineLengths.push(positions.length - lineOffsets[lineIdx]);
   }
 
   // --- Phase 2: Build content ↔ position mapping ---
@@ -218,10 +221,11 @@ export function buildCharPositions(
 
       // Match this line's characters to paragraph characters
       for (let ci = 0; ci < lineLen && paraOffset < para.length; ci++) {
-        contentToPos[contentIdx] = posIdx;
+        const units = positions[posIdx].codeUnitLength;
         posToContent[posIdx] = contentIdx;
-        contentIdx++;
-        paraOffset++;
+        for (let unit = 0; unit < units; unit++) contentToPos[contentIdx + unit] = posIdx;
+        contentIdx += units;
+        paraOffset += units;
         posIdx++;
       }
 
@@ -494,7 +498,7 @@ export function hitTestCharOffset(
 
   // Convert to content offset
   const contentIdx = posToContent[bestPosIdx] ?? 0;
-  return afterLast ? contentIdx + 1 : contentIdx;
+  return afterLast ? contentIdx + positions[bestPosIdx].codeUnitLength : contentIdx;
 }
 
 // ============================================================================
@@ -571,7 +575,7 @@ export function lineColumnToContentOffset(
 
   if (posIdx >= positions.length) {
     const last = posToContent[positions.length - 1];
-    return last !== undefined ? last + 1 : table.contentLength;
+    return last !== undefined ? last + positions[positions.length - 1].codeUnitLength : table.contentLength;
   }
 
   return posToContent[posIdx] ?? 0;

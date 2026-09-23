@@ -222,6 +222,7 @@ export class Evaluator {
     if (this.disposed) return;
     const index = this.refreshReadiness();
     let changed = false;
+    let retired: Set<string> | undefined;
 
     // A manual stack rather than the generator in graph.ts, because this runs on every
     // pointermove of a slider drag and a generator allocates per step.
@@ -233,7 +234,17 @@ export class Evaluator {
     while (stack.length > base) {
       const id = stack.pop() as string;
       const entity = this.host.getEntity(id);
-      if (!entity || !isEvaluated(entity.type)) continue;
+      if (!entity || !isEvaluated(entity.type)) {
+        // Eligibility changed while an old computation still owns this ID. Retire it
+        // before skipping scheduling, and invalidate consumers of its former outputs.
+        if (retired?.has(id)) continue;
+        (retired ??= new Set()).add(id);
+        this.forget([id]);
+        const ports = index.outgoing.get(id);
+        if (ports) for (const edges of ports.values()) for (const edge of edges) stack.push(edge.target);
+        changed = true;
+        continue;
+      }
       const rec = this.records.get(id);
       const status = rec?.status ?? 'idle';
 

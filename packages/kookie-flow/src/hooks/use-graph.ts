@@ -70,8 +70,8 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
   const { initialEntities = [], initialEdges = [], history = false } = options;
 
   // Use React state for external management
-  const [entities, setEntities] = useState<Entity[]>(initialEntities);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  const [entities, publishEntities] = useState<Entity[]>(initialEntities);
+  const [edges, publishEdges] = useState<Edge[]>(initialEdges);
 
   // ---- history ----
 
@@ -91,7 +91,20 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
    */
   const historyRef = useRef<HistoryState>(emptyHistory());
   const graphRef = useRef<{ entities: Entity[]; edges: Edge[] }>({ entities, edges });
-  graphRef.current = { entities, edges };
+  const setEntities = useCallback<React.Dispatch<React.SetStateAction<Entity[]>>>((value) => {
+    const next = typeof value === 'function' ? value(graphRef.current.entities) : value;
+    graphRef.current = { ...graphRef.current, entities: next };
+    publishEntities(next);
+  }, []);
+  const setEdges = useCallback<React.Dispatch<React.SetStateAction<Edge[]>>>((value) => {
+    const next = typeof value === 'function' ? value(graphRef.current.edges) : value;
+    graphRef.current = { ...graphRef.current, edges: next };
+    publishEdges(next);
+  }, []);
+  // Edges and entities emitted by one canvas gesture form one undo transaction, even when
+  // they arrive as separate callbacks before React commits the resulting document.
+  const transactionBefore = useRef<typeof graphRef.current | null>(null);
+  useEffect(() => { transactionBefore.current = null; });
   const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
 
   const syncHistoryFlags = useCallback(() => {
@@ -110,8 +123,8 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
       // One gesture can arrive as two batches in one tick — a delete reports the wires, then the
       // node — with no render between them, so both would record the same `before`. The second
       // was an undo step that restored exactly what the first had.
-      const { past } = historyRef.current;
-      if (past.length > 0 && past[past.length - 1] === graphRef.current) return;
+      if (transactionBefore.current) return;
+      transactionBefore.current = graphRef.current;
       historyRef.current = record(
         historyRef.current,
         graphRef.current,
@@ -128,21 +141,23 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     if (!historyOn) return;
     const step = stepBack(historyRef.current, graphRef.current);
     if (!step) return;
+    transactionBefore.current = null;
     historyRef.current = step.state;
     setEntities(step.restored.entities);
     setEdges(step.restored.edges);
     syncHistoryFlags();
-  }, [historyOn, syncHistoryFlags]);
+  }, [historyOn, syncHistoryFlags, setEntities, setEdges]);
 
   const redo = useCallback(() => {
     if (!historyOn) return;
     const step = stepForward(historyRef.current, graphRef.current);
     if (!step) return;
+    transactionBefore.current = null;
     historyRef.current = step.state;
     setEntities(step.restored.entities);
     setEdges(step.restored.edges);
     syncHistoryFlags();
-  }, [historyOn, syncHistoryFlags]);
+  }, [historyOn, syncHistoryFlags, setEntities, setEdges]);
 
 
   const onEntitiesChange = useCallback((changes: EntityChange[]) => {
@@ -189,6 +204,11 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
             nextEntities.push(change.entity);
             break;
           }
+          case 'collapse': {
+            const index = idToIndex.get(change.id);
+            if (index !== undefined) nextEntities[index] = { ...nextEntities[index], collapsed: change.collapsed };
+            break;
+          }
           case 'parent': {
             const index = idToIndex.get(change.id);
             if (index !== undefined) {
@@ -226,7 +246,7 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
 
       return nextEntities;
     });
-  }, [remember]);
+  }, [remember, setEntities, setEdges]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     remember(changes);
@@ -270,24 +290,27 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
 
       return nextEdges;
     });
-  }, [remember]);
+  }, [remember, setEntities, setEdges]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    // A new wire is an edit like any other, and arrives by its own door rather than as a change.
-    remember([{ type: 'add', edge: { id: 'pending', source: connection.source, target: connection.target } }]);
-
+    const sourceSocket = connection.sourceSocket ?? undefined;
+    const targetSocket = connection.targetSocket ?? undefined;
+    if (graphRef.current.edges.some((edge) => edge.source === connection.source &&
+      edge.target === connection.target && edge.sourceSocket === sourceSocket &&
+      edge.targetSocket === targetSocket)) return;
+    const baseId = `connection:${JSON.stringify([connection.source, sourceSocket, connection.target, targetSocket])}`;
+    let id = baseId;
+    let suffix = 1;
+    const ids = new Set(graphRef.current.edges.map((edge) => edge.id));
+    while (ids.has(id)) id = `${baseId}:${suffix++}`;
     const newEdge: Edge = {
-      id: `${connection.source}-${connection.sourceSocket ?? 'out'}-${connection.target}-${connection.targetSocket ?? 'in'}`,
-      source: connection.source,
-      target: connection.target,
-      sourceSocket: connection.sourceSocket ?? undefined,
-      targetSocket: connection.targetSocket ?? undefined,
-      invalid: connection.invalid,
+      id, source: connection.source, target: connection.target,
+      sourceSocket, targetSocket, invalid: connection.invalid,
     };
-
+    remember([{ type: 'add', edge: newEdge }]);
     setEdges((eds) => [...eds, newEdge]);
-  }, [remember]);
+  }, [remember, setEntities, setEdges]);
 
   const historyContainerRef = typeof history === 'object' ? history.containerRef : undefined;
 

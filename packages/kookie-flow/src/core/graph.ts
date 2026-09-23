@@ -1,3 +1,4 @@
+import { validateGraphStructure, type GraphStructureIssue } from './graph-validation';
 import { entitySocketKey } from '../utils/socket-key';
 /**
  * Graph Engine (Phase 8)
@@ -49,6 +50,7 @@ export interface CachedAnalysis {
 
 /** Validation issue found in the graph */
 export type GraphValidationIssue =
+  | GraphStructureIssue
   | { type: 'cycle'; entityIds: string[] }
   | { type: 'unconnected-required'; entityId: string; portId: string; portName: string }
   | { type: 'type-mismatch'; edgeId: string; sourceType: string; targetType: string };
@@ -270,12 +272,62 @@ export function* walkDownstream(
 /**
  * Compute topological sort and execution levels in a single pass.
  * Uses Kahn's algorithm (BFS-based). If not all entities are processed,
- * the remaining entities are in cycles.
+ * remaining entities are cyclic or downstream of cycles; SCCs distinguish the two.
  *
  * @param entityIds - All entity IDs that participate in the graph
  * @param index - Pre-built adjacency index
  * @param mutedEntityIds - Entities to skip in execution order (treated as pass-through)
  */
+/** Iterative Kosaraju: exact cycle membership without call-stack limits. */
+function cyclicEntities(entityIds: string[], index: AdjacencyIndex): Set<string> {
+  const live = new Set(entityIds);
+  const seen = new Set<string>();
+  const finish: string[] = [];
+  const stack: Array<{ id: string; exit: boolean }> = [];
+  for (const root of entityIds) {
+    if (seen.has(root)) continue;
+    stack.push({ id: root, exit: false });
+    while (stack.length) {
+      const frame = stack.pop();
+      if (!frame) break;
+      if (frame.exit) { finish.push(frame.id); continue; }
+      if (seen.has(frame.id)) continue;
+      seen.add(frame.id);
+      stack.push({ id: frame.id, exit: true });
+      const ports = index.outgoing.get(frame.id);
+      if (ports) for (const edges of ports.values()) for (const edge of edges) {
+        if (live.has(edge.target) && !seen.has(edge.target)) stack.push({ id: edge.target, exit: false });
+      }
+    }
+  }
+  seen.clear();
+  const cyclic = new Set<string>();
+  const reverse: string[] = [];
+  for (let i = finish.length - 1; i >= 0; i--) {
+    const root = finish[i];
+    if (seen.has(root)) continue;
+    const component: string[] = [];
+    reverse.push(root);
+    seen.add(root);
+    let selfLoop = false;
+    while (reverse.length) {
+      const id = reverse.pop();
+      if (id === undefined) break;
+      component.push(id);
+      const ports = index.incoming.get(id);
+      if (ports) for (const edges of ports.values()) for (const edge of edges) {
+        if (edge.source === id) selfLoop = true;
+        if (live.has(edge.source) && !seen.has(edge.source)) {
+          seen.add(edge.source);
+          reverse.push(edge.source);
+        }
+      }
+    }
+    if (component.length > 1 || selfLoop) for (const id of component) cyclic.add(id);
+  }
+  return cyclic;
+}
+
 export function computeAnalysis(
   entityIds: string[],
   index: AdjacencyIndex,
@@ -311,7 +363,6 @@ export function computeAnalysis(
   const order: string[] = [];
   const levels: string[][] = [];
   const roots: string[] = [];
-  const leafCandidates = new Set(entityIds);
 
   while (queue.length > 0) {
     const level: string[] = [];
@@ -346,7 +397,6 @@ export function computeAnalysis(
         for (const edges of outPorts.values()) {
           for (const edge of edges) {
             if (entityIdSet.has(edge.target)) {
-              leafCandidates.delete(id); // has outgoing, not a leaf
               const newDegree = (inDegree.get(edge.target) ?? 1) - 1;
               inDegree.set(edge.target, newDegree);
               if (newDegree === 0) {
@@ -365,13 +415,17 @@ export function computeAnalysis(
   }
 
   const hasCycles = order.length < entityIds.length;
-  const processedSet = new Set(order);
-  const cycleEntityIds = hasCycles
-    ? entityIds.filter((id) => !processedSet.has(id))
-    : [];
+  const cyclic = hasCycles ? cyclicEntities(entityIds, index) : null;
+  const cycleEntityIds = cyclic ? entityIds.filter((id) => cyclic.has(id)) : [];
 
-  // Leaves: entities with no outgoing edges within the graph
-  const leaves = Array.from(leafCandidates).filter((id) => processedSet.has(id));
+  // A terminal descendant of a cycle is still a leaf, even though Kahn cannot process it.
+  const leaves = entityIds.filter((id) => {
+    const ports = index.outgoing.get(id);
+    if (ports) for (const edges of ports.values()) for (const edge of edges) {
+      if (entityIdSet.has(edge.target)) return false;
+    }
+    return true;
+  });
 
   return {
     topologicalOrder: hasCycles ? null : order,
@@ -756,7 +810,7 @@ export function validate(
   socketTypes?: Record<string, { compatibleWith?: string[] | '*' }>,
   isTypeCompatible?: (typeA: string, typeB: string) => boolean
 ): GraphValidationIssue[] {
-  const issues: GraphValidationIssue[] = [];
+  const issues: GraphValidationIssue[] = validateGraphStructure(entities, edges);
   const entityIds = entities.map((n) => n.id);
 
   // Check for cycles
@@ -765,8 +819,12 @@ export function validate(
     issues.push({ type: 'cycle', entityIds: analysis.cycleEntityIds });
   }
 
-  // Check for unconnected required inputs
+  // Only existing source entities/ports can satisfy required inputs.
   const entityMap = new Map(entities.map((n) => [n.id, n]));
+  const validSource = (edge: Edge) => {
+    const source = entityMap.get(edge.source);
+    return !!source && (edge.sourceSocket === undefined || !!source.outputs?.some((socket) => socket.id === edge.sourceSocket));
+  };
   for (const entity of entities) {
     if (!entity.inputs) continue;
     for (const input of entity.inputs) {
@@ -775,13 +833,13 @@ export function validate(
       let hasConnection = false;
       if (ports) {
         const socketEdges = ports.get(input.id);
-        if (socketEdges && socketEdges.length > 0) {
+        if (socketEdges?.some(validSource)) {
           hasConnection = true;
         }
         // Also check default socket
         if (!hasConnection) {
           const defaultEdges = ports.get(DEFAULT_SOCKET);
-          if (defaultEdges && defaultEdges.length > 0) {
+          if (defaultEdges?.some(validSource)) {
             hasConnection = true;
           }
         }

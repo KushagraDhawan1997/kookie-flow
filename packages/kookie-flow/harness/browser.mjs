@@ -8,7 +8,7 @@
  *
  * See plans/migration/environment-facts.md for the probe this encodes.
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -34,7 +34,7 @@ function defaultRoots() {
  * .app bundle. Sorted by build number descending by the caller, so the newest install wins.
  */
 function binaryIn(dir) {
-  for (const parts of [['chrome-linux', 'chrome'], ['chrome-win', 'chrome.exe']]) {
+  for (const parts of [['chrome-linux', 'chrome'], ['chrome-linux64', 'chrome'], ['chrome-win', 'chrome.exe'], ['chrome-win64', 'chrome.exe']]) {
     const p = join(dir, ...parts);
     if (existsSync(p)) return p;
   }
@@ -67,7 +67,11 @@ export function findChromium() {
 
     // A bare `chromium` entry is sometimes the binary itself, sometimes a directory.
     const direct = join(root, 'chromium');
-    if (existsSync(direct) && !binaryIn(direct)) return direct;
+    if (existsSync(direct)) {
+      if (statSync(direct).isFile()) return direct;
+      const binary = binaryIn(direct);
+      if (binary) return binary;
+    }
 
     // Build numbers are not zero-padded, so a lexical sort puts 999 above 1234. Compare the
     // numeric suffix instead — the alternative silently launches an older browser than the one

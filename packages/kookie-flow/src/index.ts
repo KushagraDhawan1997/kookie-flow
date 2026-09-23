@@ -295,3 +295,9 @@ export {
 
 // Semantic theme colors
 export { THEME_COLORS, resolveColor, type ColorTokenKey } from './core/theme-colors';
+
+// Persisted document boundary (custom payload validation remains application-owned).
+export { parseFlowObject, validateFlowObject, FlowDocumentError } from './core/document';
+export type { FlowDocumentIssue, FlowDocumentLimits } from './core/document';
+export { validateGraphStructure } from './core/graph-validation';
+export type { GraphStructureIssue } from './core/graph-validation';

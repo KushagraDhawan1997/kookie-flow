@@ -1,0 +1,38 @@
+name: Core quality
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: core-quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 12.4.1
+      - run: pnpm install --frozen-lockfile
+      - name: Types and unit/DOM regressions
+        run: pnpm --filter @kushagradhawan/kookie-flow run lint && pnpm --filter @kushagradhawan/kookie-flow run test
+      - name: Bounded spatial stress
+        run: pnpm --filter @kushagradhawan/kookie-flow run test:spatial-stress
+      - name: Build and isolated packed consumer
+        run: pnpm --filter @kushagradhawan/kookie-flow run build && pnpm --filter @kushagradhawan/kookie-flow run test:package
+      - name: Install real browser
+        run: pnpm --dir packages/kookie-flow exec playwright-core install --with-deps chromium
+      - name: Full browser behavior suite
+        run: pnpm --filter @kushagradhawan/kookie-flow run test:browser
+      - name: Production dependency advisories
+        run: pnpm audit --prod --audit-level high

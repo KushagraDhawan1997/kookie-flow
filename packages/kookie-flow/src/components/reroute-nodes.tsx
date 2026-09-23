@@ -70,7 +70,7 @@ export function RerouteNodes() {
   }, [rerouteColor, selectedColor, canvasColor]);
 
   // Circle geometry
-  const geometry = useMemo(() => new THREE.CircleGeometry(REROUTE_RADIUS, REROUTE_SEGMENTS), []);
+  const geometry = useMemo(() => new THREE.CircleGeometry(REROUTE_RADIUS, REROUTE_SEGMENTS), [capacity]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { geometry.dispose(); }, [geometry]);
@@ -300,7 +300,8 @@ export function RerouteNodes() {
     <instancedMesh
       key={capacity}
       ref={meshRef}
-      args={[geometry, material, capacity]}
+      args={[geometry, undefined, capacity]}
+      material={material}
       frustumCulled={false}
     />
   );

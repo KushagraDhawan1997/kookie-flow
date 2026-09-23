@@ -795,8 +795,8 @@ export function WidgetsGL({
 
   // Each mesh needs its OWN geometry: instanced attributes live on the geometry, and two meshes
   // sharing one would fight over which buffer set it carries.
-  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
+  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
   useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
 
   useEffect(() => {
@@ -1278,7 +1278,8 @@ export function WidgetsGL({
         // render order — `PlaneGeometry:r3` is shared with the edges' foreground pass, and a
         // probe that matched on it would be reporting whichever mesh it happened to find.
         name="widgets"
-        args={[bgGeometry, material, capacity]}
+        args={[bgGeometry, undefined, capacity]}
+        material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_BG}
       />
@@ -1286,7 +1287,8 @@ export function WidgetsGL({
         key={`fg-${capacity}`}
         ref={fgMeshRef}
         name="widgets-selected"
-        args={[fgGeometry, material, capacity]}
+        args={[fgGeometry, undefined, capacity]}
+        material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_FG}
       />

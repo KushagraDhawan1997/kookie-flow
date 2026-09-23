@@ -97,7 +97,8 @@ export function HelperLines() {
   return (
     <instancedMesh
       ref={meshRef}
-      args={[geometry, material, CAPACITY]}
+      args={[geometry, undefined, CAPACITY]}
+      material={material}
       frustumCulled={false}
       renderOrder={RENDER_ORDER}
     />

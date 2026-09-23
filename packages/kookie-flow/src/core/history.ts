@@ -85,7 +85,7 @@ export function coalesceKey(changes: readonly (EntityChange | EdgeChange)[]): st
   }
   if (kind === null) return null;
   ids.sort();
-  return `${kind}:${ids.join(',')}`;
+  return `${kind}:${JSON.stringify(ids)}`;
 }
 
 /**
