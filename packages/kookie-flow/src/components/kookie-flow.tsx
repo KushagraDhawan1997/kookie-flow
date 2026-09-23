@@ -1,3 +1,4 @@
+import { createEdgeValidityResolver } from '../utils/edge-validity';
 import { entitySocketKey } from '../utils/socket-key';
 import { bindHistoryOwner } from '../hooks/history-owner';
 import {
@@ -664,10 +665,11 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
           const height = container?.clientHeight ?? window.innerHeight;
 
           // Merge user options with component-level zoom constraints
+          const fitMinZoom = Math.max(minZoom, Math.min(maxZoom, options?.minZoom ?? minZoom));
           const mergedOptions: FitViewOptions = {
             ...options,
-            minZoom: Math.max(minZoom, options?.minZoom ?? minZoom),
-            maxZoom: Math.min(maxZoom, options?.maxZoom ?? Math.max(minZoom, Math.min(1, maxZoom))),
+            minZoom: fitMinZoom,
+            maxZoom: Math.max(fitMinZoom, Math.min(maxZoom, options?.maxZoom ?? 1)),
           };
 
           store.getState().fitView(mergedOptions, width, height);
@@ -4949,50 +4951,17 @@ function FlowSync({ entities, edges, socketTypes }: FlowSyncProps) {
     store.getState().setEntities(entities);
   }, [entities, store]);
 
-  // Compute invalid flag for edges that don't have it (e.g., loaded from external source)
-  // Recompute on edge or socket-schema changes, never on movement alone.
-  // Only creates new edge objects when actually needed to avoid triggering subscriptions
+  const [resolveEdgeValidity] = useState(() => createEdgeValidityResolver());
   useEffect(() => {
-    const syncEdges = () => {
-      const { entityMap } = store.getState();
-
-      // First pass: check if any edge needs invalid flag computed
-      let needsComputation = false;
-      for (const edge of edges) {
-        if (edge.invalid === undefined && edge.sourceSocket && edge.targetSocket) {
-          needsComputation = true;
-          break;
-        }
-      }
-
-      if (needsComputation) {
-        // Second pass: only create new objects for edges that need computation
-        const processedEdges: typeof edges = [];
-        for (const edge of edges) {
-          if (edge.invalid !== undefined || !edge.sourceSocket || !edge.targetSocket) {
-            // Keep original object reference
-            processedEdges.push(edge);
-          } else {
-            // Compute type compatibility and create new object
-            const isValid = isSocketCompatible(
-              { entityId: edge.source, socketId: edge.sourceSocket, isInput: false },
-              { entityId: edge.target, socketId: edge.targetSocket, isInput: true },
-              entityMap,
-              socketTypes
-            );
-            processedEdges.push({ ...edge, invalid: !isValid });
-          }
-        }
-        store.getState().setEdges(processedEdges);
-      } else {
-        store.getState().setEdges(edges);
-      }
+    const syncEdges = (incoming: Edge[]) => {
+      store.getState().setEdges(resolveEdgeValidity(incoming, store.getState().entityMap, socketTypes));
     };
-    syncEdges();
-    // The map is replaced for schema/structural edits, but retained on the movement/data
-    // fast path. This catches explicit and type-table sockets without an edge scan on drag.
-    return store.subscribe((state) => state.entityMap, syncEdges);
-  }, [edges, socketTypes, store]);
+    syncEdges(edges);
+    // Schema changes revalidate the live graph; replaying old props here would erase
+    // imperative edge edits whenever an entity/frame changes structurally.
+    // Position/data fast paths retain map identity and do not scan edges.
+    return store.subscribe((state) => state.entityMap, () => syncEdges(store.getState().edges));
+  }, [edges, socketTypes, store, resolveEdgeValidity]);
 
   return null;
 }

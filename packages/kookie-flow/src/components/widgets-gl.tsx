@@ -987,6 +987,7 @@ export function WidgetsGL({
     };
   }, [store, colourTrack, pressTrack, ringTrack, checkTrack, switchTrack, segmentMotion]);
 
+  const wasMovingRef = useRef(false);
   useFrame(({ size }) => {
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
@@ -1011,7 +1012,10 @@ export function WidgetsGL({
       }
     }
     const moving = colourMoving || pressMoving || ringMoving || checkMoving || switchMoving || travelMoving;
-    if (moving || dirtyRef.current) material.uniforms.uTime.value = now;
+    // Send the terminal frame too. A slow frame can cross the whole remaining
+    // duration; stopping on that frame freezes the shader at its previous value.
+    if (moving || wasMovingRef.current || dirtyRef.current) material.uniforms.uTime.value = now;
+    wasMovingRef.current = moving;
 
     const sizeChanged =
       size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height;

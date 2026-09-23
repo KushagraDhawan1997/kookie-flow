@@ -72,10 +72,21 @@ export async function hardeningChecks({ head, withPage, check, context, port, sk
           Array.from({ length: n }, (_, i) => ({
             ...template,
             id: `capacity-${i}`,
-            position: { x: 150 + (i % 8) * 20, y: 250 + (Math.floor(i / 8) % 8) * 20 },
+            // All visible, without 1,024 full-size cards overdrawn in the same 140px square.
+            // Capacity is an instance-count test; massive fragment overdraw tests something else.
+            width: 24,
+            height: 16,
+            data: { label: 'A' },
+            inputs: [{ id: 'in', name: '', type: 'number', position: 0.5 }],
+            outputs: [{ id: 'out', name: '', type: 'number', position: 0.5 }],
+            position: { x: 60 + (i % 32) * 34, y: 80 + Math.floor(i / 32) * 20 },
           }))
         );
       }, count);
+      // R3F disposes superseded objects at idle priority. Allow frames and an idle turn
+      // to run before observing lifetimes, with a bounded wait even on software GL.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestIdleCallback(resolve, { timeout: 2000 })))));
       await page.waitForTimeout(900);
       samples.push(
         await page.evaluate(() => {
@@ -115,6 +126,18 @@ export async function hardeningChecks({ head, withPage, check, context, port, sk
       check('imperative zoom honors maximum', (await read()).viewport.zoom === 1);
       await page.getByRole('button', { name: 'Zoom out past minimum', exact: true }).click();
       check('imperative zoom honors minimum', (await read()).viewport.zoom === 0.5);
+      await page
+        .getByRole('button', { name: 'Fit with conflicting zoom bounds', exact: true })
+        .click();
+      check(
+        'fitView reconciles conflicting options inside component limits',
+        (await read()).viewport.zoom === 1
+      );
+      await page.getByRole('button', { name: 'Preserve imperative edges', exact: true }).click();
+      check(
+        'schema sync preserves the live edge document',
+        (await read()).edges.map((edge) => edge.id).join() === 'imperative'
+      );
       check(
         'controlled contracts produce no browser errors',
         errors.length === 0,

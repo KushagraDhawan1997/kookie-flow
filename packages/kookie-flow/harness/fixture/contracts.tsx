@@ -97,6 +97,27 @@ function App() {
         >
           Zoom out past minimum
         </button>
+        <button
+          onClick={() => {
+            const state = currentStore.getState();
+            state.setEdges([{ ...edges[0], id: 'imperative' }]);
+            state.setEntities([
+              ...state.entities,
+              { id: 'new-frame', type: 'frame', position: { x: 900, y: 900 }, data: {} },
+            ]);
+            report();
+          }}
+        >
+          Preserve imperative edges
+        </button>
+        <button
+          onClick={() => {
+            ref.current?.fitView({ minZoom: 10, maxZoom: 0.1 });
+            report();
+          }}
+        >
+          Fit with conflicting zoom bounds
+        </button>
         <pre id="props-result">{result}</pre>
       </section>
     </Theme>
