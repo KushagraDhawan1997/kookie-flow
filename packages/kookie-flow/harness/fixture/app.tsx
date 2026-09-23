@@ -140,6 +140,7 @@ export interface HarnessApi {
    * some other attribute happened to change — would be untested.
    */
   hoveredWidgetInstances(): { x: number; y: number }[];
+  widgetMotion(): { clock: number; start: number; duration: number }[];
   /** How many bulk Float32Array copies have happened since the last `mark`. */
   bulkCopies(): number;
   /** Cumulative GPU-object create/delete counts. Never reset — these are lifetimes, not work. */
@@ -764,6 +765,23 @@ function hoveredWidgetInstances(): { x: number; y: number }[] {
   return out;
 }
 
+/** Clock and transition attributes submitted to the shader for hovered widgets. */
+function widgetMotion(): { clock: number; start: number; duration: number }[] {
+  const out: { clock: number; start: number; duration: number }[] = [];
+  for (const scene of scenes) scene.traverse((obj) => {
+    const mesh = obj as THREE.InstancedMesh;
+    const hover = mesh.geometry?.attributes?.aHover;
+    const anim = mesh.geometry?.attributes?.aAnim;
+    const uniforms = (mesh.material as THREE.ShaderMaterial)?.uniforms;
+    if (!mesh.isInstancedMesh || !mesh.visible || !hover || !anim || !uniforms?.uTime) return;
+    for (let i = 0; i < mesh.count; i++) if (hover.getX(i) === 1) {
+      out.push({ clock: uniforms.uTime.value, start: anim.getY(i),
+        duration: uniforms.uColourDur.value.x * uniforms.uMotion.value });
+    }
+  });
+  return out;
+}
+
 /**
  * Every MSDF glyph mesh in the scene.
  *
@@ -1066,6 +1084,7 @@ function Probe() {
       glyphs,
       drawnInstances,
       hoveredWidgetInstances,
+      widgetMotion,
       bulkCopies: () => bulk.copies,
       glLifetimes: () => ({ ...live }),
       disposals: () => ({ ...disposals }),

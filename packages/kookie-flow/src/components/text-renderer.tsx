@@ -42,7 +42,7 @@ import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { TITLE_LINE_BOX } from '../utils/style-resolver';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { ownSocketValue, readWidgetValue, widgetKey } from '../utils/widget-values';
 import {
   widgetValueText,
   widgetPartTexts,
@@ -847,7 +847,7 @@ export function MultiWeightTextRenderer({
             const value = readWidgetValue(
               widgetValues,
               key,
-              values?.[socket.id] ?? config.defaultValue
+              ownSocketValue(values, socket.id) ?? config.defaultValue
             );
             // A widget made of parts prints one reading per part; every other kind prints one.
             const parts = widgetPartTexts(config, value, box, editingHere ? editingWidgetPart : -1);

@@ -344,7 +344,7 @@ export class Evaluator {
    * once is a graph the consumer's validation should have refused.
    */
   resolveInputs(entity: Entity): Record<string, unknown> {
-    const inputs: Record<string, unknown> = {};
+    const inputs: Record<string, unknown> = Object.create(null);
     const sockets = entity.inputs;
     if (!sockets) return inputs;
     const incoming = this.host.index().incoming.get(entity.id);

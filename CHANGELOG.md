@@ -18,6 +18,8 @@ still moving, and a `!` on a heading means something that was there changed shap
   Remove the browser suite's old permitted-leak threshold.
 - Support supplementary Unicode glyphs, collision-free kerning pairs and UTF-16 cursor mapping;
   isolate text caches by font and kerning metrics.
+- Finish widget transitions on slow frames; keep custom widgets synchronized with external edits,
+  corrected responses and configuration updates. Preserve prototype-named socket IDs in evaluation and saves.
 - Repair TypeScript 6 declaration builds, add the core MIT license, a packed-consumer smoke test,
   bounded stress/oracle regressions and a full CI gate. Peer ranges now describe the tested stack;
   KookieUI's unpublished snapshot must still be supplied explicitly. See `packages/kookie-flow/PRODUCTION.md`.

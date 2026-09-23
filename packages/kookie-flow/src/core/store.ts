@@ -34,7 +34,7 @@ import {
   type OnEvaluate,
   type OnStatusChange,
 } from './evaluation';
-import { readWidgetValue } from '../utils/widget-values';
+import { ownSocketValue, readWidgetValue } from '../utils/widget-values';
 import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
 import { Quadtree, SocketQuadtree, getEntityBounds } from './spatial';
 import {
@@ -1046,8 +1046,8 @@ function reconcileEvaluationInputs(
     ...(nextValues ? Object.keys(nextValues) : []),
   ]);
   for (const socketId of socketIds) {
-    const before = prevValues?.[socketId];
-    const after = nextValues?.[socketId];
+    const before = ownSocketValue(prevValues, socketId);
+    const after = ownSocketValue(nextValues, socketId);
     if (Object.is(before, after)) continue;
     const key = widgetKey(next.id, socketId);
     const pending = widgetValues.get(key);
@@ -1196,7 +1196,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
       return readWidgetValue(
         state.widgetValues,
         widgetKey(entity.id, socket.id),
-        values?.[socket.id] ?? socket.defaultValue
+        ownSocketValue(values, socket.id) ?? socket.defaultValue
       );
     },
     onChange: () => {
@@ -1665,7 +1665,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
         // rejected value forever.
         const entity = entityMap.get(entityId);
         const values = entity?.data.values;
-        const held = isValueBag(values) ? values[socketId] : undefined;
+        const held = isValueBag(values) ? ownSocketValue(values, socketId) : undefined;
         // A socket nobody has set holds nothing, and what the widget DRAWS there — and what the
         // engine reads — is the socket's default. That is what "unchanged" means for it. Recorded
         // as `undefined` instead, the very first write on such a socket counted as answered the
@@ -2775,7 +2775,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             for (const socket of sockets) {
               const key = widgetKey(entity.id, socket.id);
               if (!widgetValues.has(key)) continue;
-              if (pending === null) pending = {};
+              if (pending === null) pending = Object.create(null) as Record<string, unknown>;
               pending[socket.id] = widgetValues.get(key)?.value;
             }
           }

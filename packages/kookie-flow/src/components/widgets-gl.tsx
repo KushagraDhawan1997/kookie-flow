@@ -43,7 +43,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { sliderTrackWidth, wellRadius, getWidgetBox, COLOR_SWATCH_INSET, SWITCH_HEIGHT_STEP, SWITCH_TRACK_RATIO } from '../utils/widget-geometry';
 import { segmentIndex, vectorDimensions } from '../utils/widget-parts';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { ownSocketValue, readWidgetValue, widgetKey } from '../utils/widget-values';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
@@ -1131,7 +1131,7 @@ export function WidgetsGL({
         // it, by the DOM widgets' own rule (utils/widget-values.ts).
         const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
         const key = widgetKey(entity.id, socket.id);
-        const value = readWidgetValue(widgetValues, key, values?.[socket.id] ?? config.defaultValue);
+        const value = readWidgetValue(widgetValues, key, ownSocketValue(values, socket.id) ?? config.defaultValue);
         // A slider's instance is its TRACK, which stops short of the readout (widget-geometry.ts).
         const drawWidth = config.type === 'slider' ? sliderTrackWidth(box) : box.width;
         buffers.size[n * 2] = drawWidth;

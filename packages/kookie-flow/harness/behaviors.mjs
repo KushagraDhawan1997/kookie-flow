@@ -2222,26 +2222,19 @@ await withPage('count=12&seed=1', async (page) => {
   const moved = after.positions.n0.x - before.positions.n0.x;
   check('precondition: the drag actually moved the node', Math.abs(moved - 100) <= 2, String(moved));
 
-  // At least one glyph must have travelled by the node's measured delta. Which mesh holds n0's label
-  // depends on weight and collection order, so the law asks whether any of them followed rather
-  // than naming one — and the tolerance is against the node's own measured delta, not a constant.
-  // Compared BY INDEX, so the mesh list has to be the same list. It is — which weight meshes
-  // exist depends on whether bold text is on screen, and a drag does not change that — but an
-  // unasserted premise is how a law comes to compare two different meshes and call it movement.
-  check(
-    'INSTRUMENT: the same glyph meshes are present before and during the drag',
-    gMid.length === g0.length && gMid.length > 0,
-    `${g0.length} -> ${gMid.length}`
-  );
-
-  const followed = gMid.some((m, i) => {
-    const was = g0[i];
-    return was && Number.isFinite(was.x) && Math.abs((m.x - was.x) - moved) < 2 && Math.abs(m.y - was.y) < 2;
-  });
+  // Selection can reorder instances within a weight mesh. Match world positions, not
+  // slot indices: every glyph that left its old position must arrive at that position
+  // plus the measured node translation. A completely frozen batch has no departed glyphs.
+  const samePosition = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 0.01;
+  const departed = g0.filter((was) => !gMid.some((now) => samePosition(was, now)));
+  check('INSTRUMENT: the same number of glyphs is present before and during the drag',
+    gMid.length === g0.length && gMid.length > 0, `${g0.length} -> ${gMid.length}`);
+  const followed = departed.length >= 5 && departed.every((was) =>
+    gMid.some((now) => Math.abs(now.x - was.x - moved) < 0.01 && Math.abs(now.y - was.y) < 0.01));
   check(
     'GL text follows a drag rather than freezing',
     followed,
-    `${g0.length} glyphs before, ${gMid.length} during, expected delta ${moved}`
+    `${g0.length} glyphs before, ${gMid.length} during, expected delta ${moved}, ${departed.length} departed`
   );
   check(
     'GL text is still drawn during the drag',
@@ -3677,6 +3670,10 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   await page.mouse.move(field.x, field.y);
   await page.waitForTimeout(200);
   const hoverMean = await wellMean();
+  const motion = await page.evaluate(() => window.__harness.widgetMotion());
+  check('the widget clock reaches the terminal transition frame',
+    motion.length === 1 && motion.every((m) => m.clock >= m.start + m.duration),
+    JSON.stringify(motion));
   check(
     'hovering a widget changes what is on the screen',
     restMean !== null && hoverMean !== null && Math.abs(restMean - hoverMean) > 2,

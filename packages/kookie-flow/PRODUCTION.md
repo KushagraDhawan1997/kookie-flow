@@ -98,6 +98,9 @@ IDs must exist in the appropriate direction. Parent and edge identifiers are opa
 - Theme changes update materials without replacing instanced meshes. Capacity changes own fresh
   geometries so superseded attributes can be disposed. Browser tests require zero buffer growth
   after warm-up; the old allowance for a known per-theme leak has been removed.
+- Custom DOM widgets follow direct data edits, corrected consumer responses and configuration changes.
+  Widget animation clocks submit their terminal frame even after a slow frame.
+- Socket value dictionaries treat IDs such as `__proto__` as own keys through evaluation and saving.
 - Text measurement, wrapping, glyph buffers, runtime atlases and cursor offsets handle
   supplementary Unicode code points. Kerning keys cannot collide with BMP pairs. Text caches
   include font/kerning identity and size parameters.

@@ -28,6 +28,7 @@ import {
 import { useFlowStoreApi } from './context';
 import { useSocketLayout } from '../contexts/StyleContext';
 import { resolveWidgetConfig } from '../utils/widgets';
+import { ownSocketValue, sameWidgetValue, type WidgetOverride } from '../utils/widget-values';
 import { DEFAULT_ENTITY_WIDTH, SOCKET_LABEL_WIDTH } from '../core/constants';
 import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { getWidgetBox } from '../utils/widget-geometry';
@@ -126,51 +127,23 @@ const SocketWidget = memo(
     entityColor,
     ThemeComponent,
   }: SocketWidgetProps) {
-    /**
-     * The widget's value: local, but it follows an external write unless you are mid-edit.
-     *
-     * `useState(initialValue)` seeds ONCE, so a value changed anywhere but in this widget — a
-     * consumer setting it, an undo, a preset being applied — never reached the control. It showed
-     * whatever it was given at mount.
-     *
-     * BOTH OBVIOUS REPAIRS ARE BROKEN, which is why this is worth a paragraph rather than a line:
-     *
-     *  - fully controlled (read `initialValue` every render) freezes the widget while you type, in
-     *    every consumer that does not immediately echo the change back — including the demo shipped
-     *    with this package.
-     *  - unconditionally syncing on `initialValue` resets the field on every keystroke for every
-     *    consumer that DOES echo it back, because the echo arrives one render later.
-     *
-     * So the value follows an external write only while this widget is not being edited. The
-     * assumption that carries — stated because it is a behaviour choice, not a derivation — is that
-     * a write arriving mid-edit loses to what the person is typing, and is picked up once the value
-     * they typed has round-tripped. That is what every text input on the platform does, and it is
-     * the only one of the three that is not broken for somebody.
-     */
-    const [value, setValue] = useState(initialValue ?? config.defaultValue);
-    /** Set while this widget's own change is still in flight to the consumer and back. */
-    const editingRef = useRef(false);
-
+    // Keep a local edit until the consumer changes the baseline. A clamped or
+    // normalized response is still a response; requiring an exact echo traps the
+    // widget on its rejected value forever. This matches the GL widget contract.
+    const incoming = initialValue ?? config.defaultValue;
+    const [pending, setPending] = useState<WidgetOverride | null>(null);
+    const awaitingResponse = pending !== null && sameWidgetValue(pending.baseline, incoming);
+    const value = awaitingResponse ? pending.value : incoming;
     useEffect(() => {
-      const incoming = initialValue ?? config.defaultValue;
-      if (editingRef.current) {
-        // Our own value came back: the round trip is complete and external writes win again.
-        if (Object.is(incoming, value)) editingRef.current = false;
-        return;
-      }
-      setValue(incoming);
-      // `value` is deliberately absent: this effect reacts to what arrives from outside, and
-      // listing our own state here would make it fight the line above.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialValue, config.defaultValue]);
+      if (pending && !sameWidgetValue(pending.baseline, incoming)) setPending(null);
+    }, [incoming, pending]);
 
     const handleChange = useCallback(
       (newValue: unknown) => {
-        editingRef.current = true;
-        setValue(newValue);
+        setPending({ value: newValue, baseline: incoming });
         onWidgetChange?.(entityId, socketId, newValue);
       },
-      [entityId, socketId, onWidgetChange]
+      [entityId, socketId, onWidgetChange, incoming]
     );
 
     const widget = (
@@ -215,7 +188,11 @@ const SocketWidget = memo(
     prev.config.min === next.config.min &&
     prev.config.max === next.config.max &&
     prev.config.step === next.config.step &&
-    prev.config.rows === next.config.rows
+    prev.config.rows === next.config.rows &&
+    prev.config.defaultValue === next.config.defaultValue &&
+    prev.config.placeholder === next.config.placeholder &&
+    prev.config.options === next.config.options &&
+    prev.config.optionLabels === next.config.optionLabels
 );
 
 // Helper to get entity height from cache (supports variable socket heights)
@@ -318,8 +295,6 @@ export function WidgetsLayer({
          * `socket.widget` component still mounts here, and a built-in does not.
          */
         const WidgetComponent = config.customComponent ?? currentWidgetTypes[config.type];
-        if (!WidgetComponent) continue;
-
         if (!WidgetComponent) continue;
 
         configs.set(key, { entity, socket, config, inputIndex, WidgetComponent });
@@ -474,29 +449,10 @@ export function WidgetsLayer({
       { equalityFn: shallow }
     );
 
-    /**
-     * Re-snapshot on the store's own structure signals rather than on lengths.
-     *
-     * Both gates compared a COUNT, so anything that changed a graph without changing how many
-     * things were in it was invisible: giving an entity a `color` left its widgets on the default
-     * theme forever, adding a socket to an entity that already had one added no widget, and
-     * connecting a socket did not disable the widget sitting on it — the connected-set is rebuilt
-     * as a fresh Set on every edge change, and its SIZE stays put when one connection replaces
-     * another.
-     *
-     * `topologyVersion` is bumped unconditionally by `setEntities` and is the established
-     * "structure changed, re-snapshot" signal here — `image-entities` and `reroute-nodes` both
-     * already subscribe to exactly it, so this is a promotion rather than an invention.
-     *
-     * KNOWN GAP, stated rather than smuggled: `applyEntityChanges` bumps `topologyVersion` only
-     * when the topology actually changed, so a `data`-only change made by calling that store action
-     * DIRECTLY is still invisible here. Inside KookieFlow every such change round-trips through the
-     * consumer's `entities` prop and `FlowSync`'s `setEntities`, which does bump — so the gap needs
-     * someone driving the store through the exported `useFlowStoreApi`. Closing it means bumping on
-     * `data` in the store, which also re-renders two other components; it is a separate change.
-     */
+    // The entity array is the document signal, including data-only changes made
+    // through the public store API. Topology alone misses those writes.
     const unsubscribeState = store.subscribe(
-      (state) => ({ topology: state.topologyVersion, connected: state.connectedSockets }),
+      (state) => ({ entities: state.entities, connected: state.connectedSockets }),
       () => {
         const state = store.getState();
         setEntities(state.entities);
@@ -540,7 +496,7 @@ export function WidgetsLayer({
       {widgetEntries.map(([key, { entity, socket, config, inputIndex, WidgetComponent }]) => {
         const entityData = entity.data as Record<string, unknown> | undefined;
         const values = entityData?.values as Record<string, unknown> | undefined;
-        const initialValue = values?.[socket.id];
+        const initialValue = ownSocketValue(values, socket.id);
 
         return (
           <div

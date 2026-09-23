@@ -21,7 +21,7 @@ import { connectedSocketKey } from './socket-key';
 
 import { getWidgetBox, readWidgetBoxInto, isPointInWidget, sliderTrackWidth, type WidgetBox } from './widget-geometry';
 import { resolveWidgetConfig } from './widgets';
-import { readWidgetValue, widgetKey, type WidgetOverride } from './widget-values';
+import { ownSocketValue, readWidgetValue, widgetKey, type WidgetOverride } from './widget-values';
 import type { ResolvedSocketLayout } from './style-resolver';
 import type { Entity, ResolvedWidgetConfig, SocketType } from '../types';
 
@@ -108,7 +108,7 @@ export function getWidgetAt(
       value: readWidgetValue(
         widgetValues,
         widgetKey(entity.id, socket.id),
-        values?.[socket.id] ?? config.defaultValue
+        ownSocketValue(values, socket.id) ?? config.defaultValue
       ),
     };
   }

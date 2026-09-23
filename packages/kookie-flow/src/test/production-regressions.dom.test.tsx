@@ -248,3 +248,24 @@ it('auto-layout translates nested and collapsed descendants exactly once', () =>
     y: 80,
   });
 });
+
+it('opaque socket IDs survive evaluation, defaults and pending-value serialization', async () => {
+  const s = store([node('opaque', {
+    inputs: ['__proto__', 'constructor', 'toString'].map((id) => ({
+      id, name: id, type: 'number', defaultValue: 7,
+    })), data: { values: {} },
+  })]);
+  let inputs: Record<string, unknown> = {};
+  s.getState().setEvaluationHandlers((_id, _type, resolved) => { inputs = resolved; return {}; });
+  await s.getState().evaluate('opaque');
+  for (const id of ['__proto__', 'constructor', 'toString']) {
+    expect(Object.prototype.hasOwnProperty.call(inputs, id)).toBe(true);
+    expect(inputs[id]).toBe(7);
+    s.getState().setWidgetValue('opaque', id, 9);
+  }
+  const roundTrip = JSON.parse(JSON.stringify(s.getState().toObject()));
+  for (const id of ['__proto__', 'constructor', 'toString']) {
+    expect(Object.prototype.hasOwnProperty.call(roundTrip.entities[0].data.values, id)).toBe(true);
+    expect(roundTrip.entities[0].data.values[id]).toBe(9);
+  }
+});
