@@ -42,7 +42,7 @@ import { getEntitySocketLayout } from '../utils/socket-layout-cache';
 import { TITLE_LINE_BOX } from '../utils/style-resolver';
 import { getWidgetBox } from '../utils/widget-geometry';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { ownSocketValue, readWidgetValue, widgetKey } from '../utils/widget-values';
 import {
   widgetValueText,
   widgetPartTexts,
@@ -173,7 +173,7 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
   const initializedRef = useRef(false);
 
   // Create plane geometry (unit quad)
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
 
   // Create MSDF shader material
   const material = useMemo(() => {
@@ -367,7 +367,8 @@ function TextWeightRenderer({ fontData, entriesRef }: TextWeightRendererProps) {
     <instancedMesh
       key={capacity}
       ref={meshRef}
-      args={[geometry, material, capacity]}
+      args={[geometry, undefined, capacity]}
+      material={material}
       frustumCulled={false}
       renderOrder={6}
     />
@@ -846,7 +847,7 @@ export function MultiWeightTextRenderer({
             const value = readWidgetValue(
               widgetValues,
               key,
-              values?.[socket.id] ?? config.defaultValue
+              ownSocketValue(values, socket.id) ?? config.defaultValue
             );
             // A widget made of parts prints one reading per part; every other kind prints one.
             const parts = widgetPartTexts(config, value, box, editingHere ? editingWidgetPart : -1);

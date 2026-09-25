@@ -571,7 +571,8 @@ export function WidgetPopoverGL() {
         <instancedMesh
           ref={textRef}
           name="widget-popover-text"
-          args={[textGeometry, textMaterial, TEXT_CAPACITY]}
+          args={[textGeometry, undefined, TEXT_CAPACITY]}
+          material={textMaterial}
           frustumCulled={false}
           renderOrder={RENDER_ORDER_TEXT}
         />

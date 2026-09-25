@@ -166,7 +166,8 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
   const family = options.family ??
     'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
   const weight = options.weight ?? 400;
-  const charset = options.charset ?? DEFAULT_CHARSET;
+  const charset = Array.from(new Set(options.charset ?? DEFAULT_CHARSET));
+  if (charset.length === 0) return null;
 
   const measureCanvas = document.createElement('canvas');
   const measure = measureCanvas.getContext('2d');
@@ -239,7 +240,7 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
     atlasCtx.putImageData(out, x, y);
 
     chars.push({
-      id: char.charCodeAt(0),
+      id: char.codePointAt(0)!,
       char,
       x,
       y,
@@ -264,7 +265,7 @@ export function buildRuntimeAtlas(options: RuntimeAtlasOptions = {}): RuntimeAtl
       size: ATLAS_FONT_SIZE,
       bold: weight >= 600 ? 1 : 0,
       italic: 0,
-      charset: charset.split(''),
+      charset,
       padding: [pad, pad, pad, pad],
       spacing: [0, 0],
     },

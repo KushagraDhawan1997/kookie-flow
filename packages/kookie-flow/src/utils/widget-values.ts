@@ -2,7 +2,7 @@ import { entitySocketKey } from './socket-key';
 /**
  * The value a widget SHOWS, when what the person set and what the entity holds disagree.
  *
- * This is the DOM widgets' rule (widgets-layer.tsx, `editingRef`) restated as data, because
+ * This is the DOM widgets' baseline-response rule (widgets-layer.tsx) restated as data, because
  * the GL layer has no component per widget to hold a `useState` in. The rule, verbatim from
  * there: a widget's value is local, but it follows an external write unless you are mid-edit.
  *
@@ -81,4 +81,9 @@ export function readWidgetValue(
     return incoming;
   }
   return mine.value;
+}
+
+/** Socket IDs name own values; Object.prototype members are never widget defaults. */
+export function ownSocketValue(values: Record<string, unknown> | undefined, socketId: string): unknown {
+  return values && Object.prototype.hasOwnProperty.call(values, socketId) ? values[socketId] : undefined;
 }

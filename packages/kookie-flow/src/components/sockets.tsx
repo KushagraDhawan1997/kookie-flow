@@ -344,8 +344,8 @@ export function Sockets({
   }, [invalidColor, validTargetColor, fallbackSocketColor]);
 
   // Circle geometry — separate per mesh (attributes are per-geometry)
-  const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), []);
-  const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), []);
+  const bgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), [capacity]);
+  const fgGeometry = useMemo(() => new THREE.CircleGeometry(SOCKET_GL_RADIUS, 16), [capacity]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
@@ -594,17 +594,8 @@ export function Sockets({
     };
   }, []);
 
-  /**
-   * Initialise on ATTACH, for the same reason nodes.tsx does.
-   *
-   * `args={[geometry, material, capacity]}` makes R3F reconstruct the InstancedMesh whenever the
-   * material changes, and the materials are memoised on the theme — so a theme change built fresh
-   * meshes that the [sharedBuffers] effect never touched. Here that also destroys the
-   * `fgMesh.instanceMatrix = bgMesh.instanceMatrix` aliasing that the two-layer split depends on,
-   * so selected sockets stop being drawn and never come back.
-   *
-   * Both meshes must be present before initialising, because the aliasing needs the pair.
-   */
+  // Theme changes retain both meshes; capacity changes replace their geometry and buffers.
+  // Attach both before initialising the shared instance matrix and socket attributes.
   const attach = useCallback(
     (which: 'bg' | 'fg') => (mesh: THREE.InstancedMesh | null) => {
       const ref = which === 'bg' ? bgMeshRef : fgMeshRef;
@@ -1242,7 +1233,8 @@ export function Sockets({
         // order, the same reason widgets-gl.tsx names its two. Without a name it reports as
         // `CircleGeometry:r2`, which is a description of a shape and not an identity.
         name="sockets"
-        args={[bgGeometry, bgMaterial, capacity]}
+        args={[bgGeometry, undefined, capacity]}
+        material={bgMaterial}
         renderOrder={RENDER_ORDER_BG}
         frustumCulled={false}
       />
@@ -1250,7 +1242,8 @@ export function Sockets({
         key={`fg-${capacity}`}
         ref={attachFg}
         name="sockets-selected"
-        args={[fgGeometry, fgMaterial, capacity]}
+        args={[fgGeometry, undefined, capacity]}
+        material={fgMaterial}
         renderOrder={RENDER_ORDER_FG}
         frustumCulled={false}
       />

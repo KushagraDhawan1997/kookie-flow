@@ -43,7 +43,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { sliderTrackWidth, wellRadius, getWidgetBox, COLOR_SWATCH_INSET, SWITCH_HEIGHT_STEP, SWITCH_TRACK_RATIO } from '../utils/widget-geometry';
 import { segmentIndex, vectorDimensions } from '../utils/widget-parts';
 import { resolveWidgetConfig } from '../utils/widgets';
-import { readWidgetValue, widgetKey } from '../utils/widget-values';
+import { ownSocketValue, readWidgetValue, widgetKey } from '../utils/widget-values';
 import { MIN_WIDGET_ZOOM as HIT_MIN_WIDGET_ZOOM } from '../utils/widget-hit';
 import { entityDepth, DEPTH_LAYER } from '../utils/entity-depth';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
@@ -795,8 +795,8 @@ export function WidgetsGL({
 
   // Each mesh needs its OWN geometry: instanced attributes live on the geometry, and two meshes
   // sharing one would fight over which buffer set it carries.
-  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  const bgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
+  const fgGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), [capacity]);
   useEffect(() => () => { bgGeometry.dispose(); fgGeometry.dispose(); }, [bgGeometry, fgGeometry]);
 
   useEffect(() => {
@@ -987,6 +987,7 @@ export function WidgetsGL({
     };
   }, [store, colourTrack, pressTrack, ringTrack, checkTrack, switchTrack, segmentMotion]);
 
+  const wasMovingRef = useRef(false);
   useFrame(({ size }) => {
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
@@ -1011,7 +1012,10 @@ export function WidgetsGL({
       }
     }
     const moving = colourMoving || pressMoving || ringMoving || checkMoving || switchMoving || travelMoving;
-    if (moving || dirtyRef.current) material.uniforms.uTime.value = now;
+    // Send the terminal frame too. A slow frame can cross the whole remaining
+    // duration; stopping on that frame freezes the shader at its previous value.
+    if (moving || wasMovingRef.current || dirtyRef.current) material.uniforms.uTime.value = now;
+    wasMovingRef.current = moving;
 
     const sizeChanged =
       size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height;
@@ -1127,7 +1131,7 @@ export function WidgetsGL({
         // it, by the DOM widgets' own rule (utils/widget-values.ts).
         const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
         const key = widgetKey(entity.id, socket.id);
-        const value = readWidgetValue(widgetValues, key, values?.[socket.id] ?? config.defaultValue);
+        const value = readWidgetValue(widgetValues, key, ownSocketValue(values, socket.id) ?? config.defaultValue);
         // A slider's instance is its TRACK, which stops short of the readout (widget-geometry.ts).
         const drawWidth = config.type === 'slider' ? sliderTrackWidth(box) : box.width;
         buffers.size[n * 2] = drawWidth;
@@ -1278,7 +1282,8 @@ export function WidgetsGL({
         // render order — `PlaneGeometry:r3` is shared with the edges' foreground pass, and a
         // probe that matched on it would be reporting whichever mesh it happened to find.
         name="widgets"
-        args={[bgGeometry, material, capacity]}
+        args={[bgGeometry, undefined, capacity]}
+        material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_BG}
       />
@@ -1286,7 +1291,8 @@ export function WidgetsGL({
         key={`fg-${capacity}`}
         ref={fgMeshRef}
         name="widgets-selected"
-        args={[fgGeometry, material, capacity]}
+        args={[fgGeometry, undefined, capacity]}
+        material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_FG}
       />

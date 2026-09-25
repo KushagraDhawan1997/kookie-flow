@@ -5,6 +5,25 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Core hardening after the isolated audit
+
+- Bound rectangle-quadtree storage under overlap; preserve all movements in a render batch;
+  translate nested frame descendants during automatic layout.
+- Abort retired computations, clear deleted interaction owners, reject imported malformed graph
+  structures, and report exact cycle members with an iterative SCC analysis.
+- Fix pointer cancellation, controlled socket-schema invalidation, imperative zoom bounds,
+  collapse changes, duplicate/colliding connection IDs and batched undo/redo. Generated connection
+  IDs have a new opaque format; existing persisted IDs remain unchanged.
+- Eliminate theme-triggered instance-buffer leaks and dispose superseded capacity attributes.
+  Remove the browser suite's old permitted-leak threshold.
+- Support supplementary Unicode glyphs, collision-free kerning pairs and UTF-16 cursor mapping;
+  isolate text caches by font and kerning metrics.
+- Finish widget transitions on slow frames; keep custom widgets synchronized with external edits,
+  corrected responses and configuration updates. Preserve prototype-named socket IDs in evaluation and saves.
+- Repair TypeScript 6 declaration builds, add the core MIT license, a packed-consumer smoke test,
+  bounded stress/oracle regressions and a full CI gate. Peer ranges now describe the tested stack;
+  KookieUI's unpublished snapshot must still be supplied explicitly. See `packages/kookie-flow/PRODUCTION.md`.
+
 ### Layout without the canvas
 
 - `@kushagradhawan/kookie-flow/layout` is a new entry holding `layoutGraph` and `rankNodes` alone, so

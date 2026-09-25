@@ -18,18 +18,19 @@ const require = createRequire(import.meta.url);
 mkdirSync(out, { recursive: true });
 
 await build({
-  entryPoints: [join(here, 'fixture', 'app.tsx')],
+  entryPoints: [join(here, 'fixture', 'app.tsx'), join(here, 'fixture', 'contracts.tsx')],
   bundle: true,
   format: 'esm',
   target: 'chrome120',
   jsx: 'automatic',
-  outfile: join(out, 'app.js'),
+  outdir: out,
   define: { 'process.env.NODE_ENV': '"production"' },
   loader: { '.png': 'dataurl' },
   logLevel: 'info',
 });
 
 copyFileSync(join(here, 'fixture', 'index.html'), join(out, 'index.html'));
+copyFileSync(join(here, 'fixture', 'contracts.html'), join(out, 'contracts.html'));
 copyFileSync(
   require.resolve('@kookie-ui/react/styles.css'),
   join(out, 'kookie-ui.css')

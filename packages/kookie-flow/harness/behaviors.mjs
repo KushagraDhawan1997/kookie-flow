@@ -19,6 +19,7 @@ import { dirname, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launch } from './browser.mjs';
+import { hardeningChecks } from './hardening.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
@@ -101,6 +102,11 @@ async function withPage(query, fn) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (message) => {
+    if (message.type() === 'warning' && /Image load failed|decode failed/i.test(message.text())) {
+      console.log(`  browser warning: ${message.text()}`);
+    }
+  });
   await page.goto(`http://127.0.0.1:${port}/index.html?${query}`);
   await page.waitForFunction(() => window.__harness !== undefined, { timeout: 60_000 });
   await page.evaluate(() => window.__harness.ready);
@@ -643,25 +649,23 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
               // and the only source after it. Its agreement with CSS is asserted separately,
               // while CSS still has an opinion.
               const appearance = window.__harness.themeTokens().appearance;
-              const want = new Set(
-                ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10']
-                  .map((t) => window.__harness.lib.frozenHue(t, appearance))
-                  .filter(Boolean)
-                  .map((hex) => window.__harness.lib.parseColorToRGB(hex))
-                  .map(([r, g, b]) =>
-                    `${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`
-                  )
-              );
-
-              const at = (x, y) => {
+              const want = ['--blue-10', '--amber-10', '--purple-10', '--orange-10', '--cyan-10']
+                .map((t) => window.__harness.lib.frozenHue(t, appearance))
+                .filter(Boolean)
+                .map((hex) => window.__harness.lib.parseColorToRGB(hex).map((v) => Math.round(v * 255)));
+              // A 1.5px antialiased ring has no obligation to contain an EXACT palette pixel.
+              // Measured blue interiors are (5,135,238), versus (5,136,240) in the palette.
+              // Keep a small 8/255 channel tolerance; geometry/index coordinates never seed this scan.
+              const matches = (x, y) => {
                 const i = (y * w + x) * 4;
-                return `${buf[i]},${buf[i + 1]},${buf[i + 2]}`;
+                return buf[i + 3] > 200 && want.some((rgb) =>
+                  rgb.every((v, c) => Math.abs(v - buf[i + c]) <= 8));
               };
               const seen = new Uint8Array(w * h);
               const blobs = [];
               for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
-                  if (seen[y * w + x] || !want.has(at(x, y))) continue;
+                  if (seen[y * w + x] || !matches(x, y)) continue;
                   const stack = [[x, y]];
                   seen[y * w + x] = 1;
                   let sx = 0;
@@ -676,7 +680,7 @@ await withPage('scene=shapes&preserveBuffer=1', async (page) => {
                       const nx = cx + dx;
                       const ny = cy + dy;
                       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-                      if (seen[ny * w + nx] || !want.has(at(nx, ny))) continue;
+                      if (seen[ny * w + nx] || !matches(nx, ny)) continue;
                       seen[ny * w + nx] = 1;
                       stack.push([nx, ny]);
                     }
@@ -1643,7 +1647,7 @@ await withPage('scene=comments', async (page) => {
   if (!before) return;
   check(
     'a note is drawn with a squircle corner where the browser can draw one',
-    !before.supported || before.shape === 'squircle',
+    !before.supported || ['squircle', 'superellipse(2)'].includes(before.shape),
     `supported=${before.supported} corner-shape=${before.shape}`
   );
 
@@ -1924,6 +1928,10 @@ await withPage('count=4&seed=1&widgets=1&customWidget=1', async (page) => {
   });
   await page.waitForTimeout(300);
 
+  if (wrote) await page.waitForFunction(() =>
+    [...document.querySelectorAll('input[aria-label="Added"]')].some((el) => el.value === 'from outside'),
+    undefined, { timeout: 10_000 });
+
   // The law below used to sit inside `if (wrote)` with no `else`. When the socket named 'added'
   // is not on any entity — a fixture edit, a setEntities that drops unknown sockets — the whole
   // law EVAPORATED: one fewer `ok` line, `failures` still empty, and the summary still `0 failed`.
@@ -2180,12 +2188,12 @@ await withPage('count=12&seed=1', async (page) => {
       () =>
         new Promise((resolve) =>
           requestAnimationFrame(() =>
-            requestAnimationFrame(() => resolve(window.__harness.glyphs()))
+            requestAnimationFrame(() => resolve(window.__harness.drawnInstances().filter((d) => d.kind.startsWith('glyphs'))))
           )
         )
     );
 
-  const drawn = (g) => g.filter((m) => m.count > 0);
+  const drawn = (g) => g;
 
   const g0 = await glyphs();
   check(
@@ -2214,26 +2222,19 @@ await withPage('count=12&seed=1', async (page) => {
   const moved = after.positions.n0.x - before.positions.n0.x;
   check('precondition: the drag actually moved the node', Math.abs(moved - 100) <= 2, String(moved));
 
-  // The first glyph of SOME mesh must have travelled with the node. Which mesh holds n0's label
-  // depends on weight and collection order, so the law asks whether any of them followed rather
-  // than naming one — and the tolerance is against the node's own measured delta, not a constant.
-  // Compared BY INDEX, so the mesh list has to be the same list. It is — which weight meshes
-  // exist depends on whether bold text is on screen, and a drag does not change that — but an
-  // unasserted premise is how a law comes to compare two different meshes and call it movement.
-  check(
-    'INSTRUMENT: the same glyph meshes are present before and during the drag',
-    gMid.length === g0.length && gMid.length > 0,
-    `${g0.length} -> ${gMid.length}`
-  );
-
-  const followed = gMid.some((m, i) => {
-    const was = g0[i];
-    return was && m.count > 0 && Number.isFinite(was.x) && Math.abs(m.x - was.x) > 20;
-  });
+  // Selection can reorder instances within a weight mesh. Match world positions, not
+  // slot indices: every glyph that left its old position must arrive at that position
+  // plus the measured node translation. A completely frozen batch has no departed glyphs.
+  const samePosition = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 0.01;
+  const departed = g0.filter((was) => !gMid.some((now) => samePosition(was, now)));
+  check('INSTRUMENT: the same number of glyphs is present before and during the drag',
+    gMid.length === g0.length && gMid.length > 0, `${g0.length} -> ${gMid.length}`);
+  const followed = departed.length >= 5 && departed.every((was) =>
+    gMid.some((now) => Math.abs(now.x - was.x - moved) < 0.01 && Math.abs(now.y - was.y) < 0.01));
   check(
     'GL text follows a drag rather than freezing',
     followed,
-    `before=${JSON.stringify(g0)} during=${JSON.stringify(gMid)}`
+    `${g0.length} glyphs before, ${gMid.length} during, expected delta ${moved}, ${departed.length} departed`
   );
   check(
     'GL text is still drawn during the drag',
@@ -2343,26 +2344,10 @@ await withPage('count=12&seed=1', async (page) => {
     `${dMat} materials disposed over ${FLIPS} flips (8 with the effects deleted, 88 with them)`
   );
 
-  /**
-   * PRE-EXISTING AND NOT FIXED HERE. Recorded with its number so the next person starts from a
-   * measurement rather than from scratch.
-   *
-   * Eight theme flips leak about 128 GL buffers, roughly 16 per flip, and that number is
-   * IDENTICAL with all 23 dispose effects present and with all of them deleted — so it is not a
-   * material or geometry leak and C25's fix does not touch it. The likely cause is R3F
-   * reconstructing every instanced mesh when `args` changes (a rebuilt material is a new `args`
-   * entry), which mints a fresh `instanceMatrix` and a fresh set of `InstancedBufferAttribute`s
-   * while nothing frees the old mesh's. Not fixed here because the repair — keeping the material
-   * out of `args` — changes when the buffer-init callback ref re-runs, and that callback ref IS
-   * the C24 fix that makes a theme change reach WebGL at all. It needs its own item.
-   *
-   * Asserted as a CEILING that today's behaviour passes, so it cannot get worse unnoticed, and
-   * NOT as zero, which would be a red law nobody can act on.
-   */
   check(
-    'the known per-flip buffer leak does not get worse',
-    dBuf <= FLIPS * 20,
-    `${dBuf} buffers over ${FLIPS} flips (about ${Math.round(dBuf / FLIPS)} per flip; ~16 is the recorded pre-existing rate)`
+    'theme round trips do not leak WebGL buffers',
+    dBuf === 0,
+    `${dBuf} net live buffers over ${FLIPS} flips after warm-up`
   );
 });
 
@@ -3685,6 +3670,10 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   await page.mouse.move(field.x, field.y);
   await page.waitForTimeout(200);
   const hoverMean = await wellMean();
+  const motion = await page.evaluate(() => window.__harness.widgetMotion());
+  check('the widget clock reaches the terminal transition frame',
+    motion.length === 1 && motion.every((m) => m.clock >= m.start + m.duration),
+    JSON.stringify(motion));
   check(
     'hovering a widget changes what is on the screen',
     restMean !== null && hoverMean !== null && Math.abs(restMean - hoverMean) > 2,
@@ -4080,7 +4069,12 @@ await withPage('scene=media&grid=0', async (page) => {
  * which is the bug one level up from the one being fixed.
  */
 await withPage('scene=media&grid=0&entityRadius=full&preserveBuffer=1', async (page) => {
-  await page.waitForTimeout(1200);
+  await page.waitForFunction(() => {
+    const h = window.__harness, s = h.store.getState(), e = s.entityMap.get('media-image');
+    const pixel = h.readPixel((e.position.x + e.width / 2) * s.viewport.zoom + s.viewport.x,
+      (e.position.y + e.height / 2) * s.viewport.zoom + s.viewport.y);
+    return pixel && pixel[3] > 240 && Math.max(...pixel.slice(0, 3)) - Math.min(...pixel.slice(0, 3)) > 20;
+  }, undefined, { timeout: 15_000 });
   const corner = await page.evaluate(() => {
     const s = window.__harness.store.getState();
     const e = s.entityMap.get('media-image');
@@ -4100,7 +4094,12 @@ await withPage('scene=media&grid=0&entityRadius=full&preserveBuffer=1', async (p
 });
 
 await withPage('scene=media&grid=0&entityRadius=none&preserveBuffer=1', async (page) => {
-  await page.waitForTimeout(1200);
+  await page.waitForFunction(() => {
+    const h = window.__harness, s = h.store.getState(), e = s.entityMap.get('media-image');
+    const pixel = h.readPixel((e.position.x + e.width / 2) * s.viewport.zoom + s.viewport.x,
+      (e.position.y + e.height / 2) * s.viewport.zoom + s.viewport.y);
+    return pixel && pixel[3] > 240 && Math.max(...pixel.slice(0, 3)) - Math.min(...pixel.slice(0, 3)) > 20;
+  }, undefined, { timeout: 15_000 });
   const corner = await page.evaluate(() => {
     const s = window.__harness.store.getState();
     const e = s.entityMap.get('media-image');
@@ -4397,9 +4396,20 @@ await withPage('scene=evaluation&widgets=1&grid=0&preserveBuffer=1', async (page
   await page.evaluate(() => window.__harness.setEvaluationHook('quietGen', true));
   const quietSample = async () => {
     const run = page.evaluate(() => window.__harness.evaluate('gen'));
-    await page.waitForTimeout(80);
-    const behindTop = await edgePixel(0.25, true);
-    const bottom = await edgePixel(0.5, false);
+    await page.waitForFunction(() => window.__harness.evaluationRecord('gen')?.status === 'running');
+    const { behindTop, bottom } = await page.evaluate(async () => {
+      const h = window.__harness, record = h.evaluationRecord('gen');
+      const originalNow = performance.now;
+      // Only this visual sample owns the clock. Timers are real and every path restores it.
+      performance.now = () => record.since + 80;
+      try {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const s = h.store.getState(), e = s.entityMap.get('gen'), vp = s.viewport;
+        const pixel = (fx, y) => h.readPixel(Math.round((e.position.x + e.width * fx) * vp.zoom + vp.x),
+          Math.round((e.position.y + y) * vp.zoom + vp.y));
+        return { behindTop: pixel(0.25, 1), bottom: pixel(0.5, e.height - 1) };
+      } finally { performance.now = originalNow; }
+    });
     await run;
     await page.waitForTimeout(1800); // the hold, and then idle again
     return { behindTop, bottom };
@@ -4635,7 +4645,12 @@ await withPage('scene=preview&grid=0&preserveBuffer=1', async (page) => {
   const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
   await page.evaluate((src) => window.__harness.setSocketValue('preview-image', 'out', src),
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg==');
-  await page.waitForTimeout(400);
+  await page.waitForFunction(({ rect, before }) => {
+    const h = window.__harness, vp = h.store.getState().viewport;
+    const p = h.readPixel((rect.x + rect.w / 2) * vp.zoom + vp.x,
+      (rect.y + rect.h / 2) * vp.zoom + vp.y);
+    return p && before && p.some((v, i) => Math.abs(v - before[i]) > 20);
+  }, { rect: imageRect, before: emptyBefore }, { timeout: 15_000 });
   const afterImage = await pixelIn(imageRect, 0.5, 0.5);
   const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
 
@@ -5622,6 +5637,8 @@ await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) =
     check('and goes out when it is let go', released === null, String(released));
   }
 });
+
+await hardeningChecks({ head, withPage, check, context, port, skipping });
 
 // ---------------------------------------------------------------- summary
 

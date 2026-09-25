@@ -8,9 +8,11 @@ nodes pans and zooms without React re-rendering.
 [changelog](https://github.com/KushagraDhawan1997/kookie-flow/blob/main/CHANGELOG.md) marks every
 breaking change.
 
-Peer dependencies are React and React DOM 19 or later, three.js 0.170 or later, React Three Fiber
-9 or later and drei 10 or later. It also needs KookieUI v2 (`@kookie-ui/react`) and a browser with
-WebGL 2.
+Peer dependencies are React/React DOM ^19.2.8, three.js ~0.186.0, React Three Fiber ^9.7.0 and
+drei ^10.7.8. It also needs the tested KookieUI snapshot (`@kookie-ui/react` 0.0.0), its stylesheet,
+and a browser with WebGL 2. KookieUI is not published: install the tarball in `vendor/` explicitly.
+Node tooling and CJS consumers require Node 24 or newer. See [production qualification](./PRODUCTION.md)
+for the release gate, document validation, distribution instructions and supported scope.
 
 ## Setup
 

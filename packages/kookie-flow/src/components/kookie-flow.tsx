@@ -1,3 +1,4 @@
+import { createEdgeValidityResolver } from '../utils/edge-validity';
 import { entitySocketKey } from '../utils/socket-key';
 import { bindHistoryOwner } from '../hooks/history-owner';
 import {
@@ -664,10 +665,11 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
           const height = container?.clientHeight ?? window.innerHeight;
 
           // Merge user options with component-level zoom constraints
+          const fitMinZoom = Math.max(minZoom, Math.min(maxZoom, options?.minZoom ?? minZoom));
           const mergedOptions: FitViewOptions = {
             ...options,
-            minZoom: options?.minZoom ?? minZoom,
-            maxZoom: options?.maxZoom ?? 1, // Default to not zooming in past 100%
+            minZoom: fitMinZoom,
+            maxZoom: Math.max(fitMinZoom, Math.min(maxZoom, options?.maxZoom ?? 1)),
           };
 
           store.getState().fitView(mergedOptions, width, height);
@@ -683,12 +685,12 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
 
         zoomIn: (step = 0.25) => {
           const state = store.getState();
-          state.zoom(step);
+          state.setViewport({ ...state.viewport, zoom: Math.max(minZoom, Math.min(maxZoom, state.viewport.zoom + step)) });
         },
 
         zoomOut: (step = 0.25) => {
           const state = store.getState();
-          state.zoom(-step);
+          state.setViewport({ ...state.viewport, zoom: Math.max(minZoom, Math.min(maxZoom, state.viewport.zoom - step)) });
         },
 
         getEntities: () => {
@@ -3376,7 +3378,9 @@ function InputHandler({
       const colorDrag = colorDragRef.current;
       if (colorDrag && colorDrag.pointerId === e.pointerId) {
         colorDragRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         return;
       }
       // A slider drag ends here and nowhere else. Released first so a gesture that started on a
@@ -3393,7 +3397,9 @@ function InputHandler({
       if (strokeRef.current) {
         const finished = strokeRef.current;
         strokeRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         const simplified = simplifyStroke(finished.points);
         const strokeWidth = penStyleRef.current?.strokeWidth ?? DEFAULT_STROKE_WIDTH;
         const box = strokeBounds(simplified, strokeWidth);
@@ -3428,13 +3434,17 @@ function InputHandler({
       // reason: a scrub or a turn is not a click on the entity.
       if (videoScrubRef.current) {
         videoScrubRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         return;
       }
       if (orbitDragRef.current) {
         const turned = orbitDragRef.current.entityId;
         orbitDragRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         // Put back what the pointer is over NOW, for the reason a slider release asks: a person who
         // lets go and keeps still would otherwise be looking at a closed hand on a finished turn.
         const rect = cachedRectRef.current;
@@ -3464,7 +3474,9 @@ function InputHandler({
       if (checkboxPressRef.current) {
         checkboxPressRef.current = false;
         store.getState().setPressedWidgetKey(null);
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         return;
       }
 
@@ -3472,7 +3484,9 @@ function InputHandler({
       if (releasedVector && releasedVector.pointerId === e.pointerId) {
         vectorDragRef.current = null;
         store.getState().setPressedWidgetKey(null);
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         setWidgetCursor(false);
         store.getState().setHoveredWidget(null);
         // A press that never travelled was a click: type the component that was pressed. Only on a
@@ -3489,7 +3503,9 @@ function InputHandler({
         const releasedDrag = widgetDragRef.current;
         widgetDragRef.current = null;
         store.getState().setPressedWidgetKey(null);
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         // A slider drag travels well past its own box — the value clamps, the pointer does not —
         // so the release decides whether the grip stays lit. Asked here rather than left to the
         // next pointermove, because a person who releases and does not move the mouse again would
@@ -3538,7 +3554,7 @@ function InputHandler({
         // A release inside the pull lands on the socket that was holding the wire, even though the
         // pointer never reached its dot. That is what the magnet is for; hover still wins where
         // both answer, because the pointer is the more explicit of the two.
-        const dropTarget = hoveredSocketId ?? magnetTargetRef.current;
+        const dropTarget = e.type === 'pointerup' ? hoveredSocketId ?? magnetTargetRef.current : null;
         magnet.end();
         magnetTargetRef.current = null;
 
@@ -3628,7 +3644,9 @@ function InputHandler({
         store.getState().cancelConnectionDraft();
         setIsConnecting(false);
         setInteractionMode('idle');
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         pointerDownPos.current = null;
         pendingDragRef.current = null;
         return;
@@ -3638,7 +3656,9 @@ function InputHandler({
       if (lastPointerPos.current) {
         setIsPanning(false);
         lastPointerPos.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         pointerDownPos.current = null;
         pendingDragRef.current = null;
         return;
@@ -3665,7 +3685,9 @@ function InputHandler({
         setIsResizing(false);
         setInteractionMode('idle');
         resizeState.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         return;
       }
 
@@ -3700,7 +3722,9 @@ function InputHandler({
         setInteractionMode('idle');
         dragState.current = null;
         pendingDragRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         pointerDownPos.current = null;
         return;
       }
@@ -3729,7 +3753,9 @@ function InputHandler({
         store.getState().setSelectionBox(null);
         setIsBoxSelecting(false);
         setInteractionMode('idle');
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         pointerDownPos.current = null;
         pendingDragRef.current = null;
         return;
@@ -3740,7 +3766,9 @@ function InputHandler({
         textSelectAnchorRef.current = null;
         textSelectTableRef.current = null;
         textSelectEntityRef.current = null;
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
         pointerDownPos.current = null;
         return;
       }
@@ -3839,7 +3867,9 @@ function InputHandler({
                 ta.focus();
               }
 
-              containerRef.current?.releasePointerCapture(e.pointerId);
+              if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
               return;
             }
           }
@@ -3892,7 +3922,9 @@ function InputHandler({
           onPaneClick?.();
         }
 
-        containerRef.current?.releasePointerCapture(e.pointerId);
+        if (containerRef.current?.hasPointerCapture(e.pointerId)) {
+          containerRef.current.releasePointerCapture(e.pointerId);
+        }
       }
 
       pointerDownPos.current = null;
@@ -4919,44 +4951,17 @@ function FlowSync({ entities, edges, socketTypes }: FlowSyncProps) {
     store.getState().setEntities(entities);
   }, [entities, store]);
 
-  // Compute invalid flag for edges that don't have it (e.g., loaded from external source)
-  // This runs once when edges change, not every frame
-  // Only creates new edge objects when actually needed to avoid triggering subscriptions
+  const [resolveEdgeValidity] = useState(() => createEdgeValidityResolver());
   useEffect(() => {
-    const { entityMap } = store.getState();
-
-    // First pass: check if any edge needs invalid flag computed
-    let needsComputation = false;
-    for (const edge of edges) {
-      if (edge.invalid === undefined && edge.sourceSocket && edge.targetSocket) {
-        needsComputation = true;
-        break;
-      }
-    }
-
-    if (needsComputation) {
-      // Second pass: only create new objects for edges that need computation
-      const processedEdges: typeof edges = [];
-      for (const edge of edges) {
-        if (edge.invalid !== undefined || !edge.sourceSocket || !edge.targetSocket) {
-          // Keep original object reference
-          processedEdges.push(edge);
-        } else {
-          // Compute type compatibility and create new object
-          const isValid = isSocketCompatible(
-            { entityId: edge.source, socketId: edge.sourceSocket, isInput: false },
-            { entityId: edge.target, socketId: edge.targetSocket, isInput: true },
-            entityMap,
-            socketTypes
-          );
-          processedEdges.push({ ...edge, invalid: !isValid });
-        }
-      }
-      store.getState().setEdges(processedEdges);
-    } else {
-      store.getState().setEdges(edges);
-    }
-  }, [edges, socketTypes, store]);
+    const syncEdges = (incoming: Edge[]) => {
+      store.getState().setEdges(resolveEdgeValidity(incoming, store.getState().entityMap, socketTypes));
+    };
+    syncEdges(edges);
+    // Schema changes revalidate the live graph; replaying old props here would erase
+    // imperative edge edits whenever an entity/frame changes structurally.
+    // Position/data fast paths retain map identity and do not scan edges.
+    return store.subscribe((state) => state.entityMap, () => syncEdges(store.getState().edges));
+  }, [edges, socketTypes, store, resolveEdgeValidity]);
 
   return null;
 }

@@ -16,16 +16,7 @@ export interface Bounds {
 interface QuadtreeEntry {
   id: string;
   bounds: Bounds;
-  /**
-   * The last query that already collected this entry, for `queryRangeInto`'s dedup.
-   *
-   * A large entity is inserted into every quadrant it overlaps, so a range query meets it more
-   * than once and has to drop the repeats. `queryRange` does that with a `Set<string>` built per
-   * call — an allocation plus a hash per candidate, in a function the render layers now call
-   * every time the camera escapes their margin. A monotonically increasing stamp answers the same
-   * question with one integer compare and no allocation at all. Entries are shared between the
-   * quadrants an entity spans (the same object is pushed into each), so stamping one stamps all.
-   */
+  /** Last range-query visit (shared by range traversals). */
   stamp: number;
 }
 
@@ -58,7 +49,7 @@ const SOCKET_CAPACITY = 16;
 const BOUNDS_PADDING = 1000;
 
 /**
- * Quadtree for O(log n) spatial queries on entity bounding boxes.
+ * Rectangle quadtree with single ownership of entries. Queries cost the visited cells plus candidates; overlapping data can require O(n).
  * Supports point queries (hover/click) and range queries (box selection).
  */
 export class Quadtree {
@@ -90,54 +81,35 @@ export class Quadtree {
     return this.insertEntry({ id, bounds, stamp: 0 });
   }
 
-  /**
-   * Insert an entry object, which every quadrant it lands in SHARES.
-   *
-   * The recursion used to pass `(id, bounds)` down and mint a fresh `{ id, bounds }` in each
-   * quadrant it reached, so one entity spanning a boundary left four unrelated objects behind at
-   * every level it descended. Two things follow from sharing one instead: inserting is a single
-   * allocation whatever the fan-out, and `stamp` becomes a property of the ENTITY rather than of
-   * one quadrant's copy of it — which is what lets `queryRangeInto` dedup a multi-quadrant entity
-   * with an integer compare instead of a Set.
-   */
+  /** Keep a spanning rectangle at its containing ancestor, never in several children. */
   private insertEntry(entry: QuadtreeEntry): boolean {
-    // Check if bounds intersect with this quadrant
-    if (!this.intersects(entry.bounds)) {
-      return false;
-    }
-
-    // If we have capacity and haven't subdivided, store here
-    if (this.entries.length < this.capacity && !this.divided) {
-      this.entries.push(entry);
-      this.idToEntry.set(entry.id, entry);
-      return true;
-    }
-
-    // Subdivide if we haven't already and aren't at max depth
-    if (!this.divided && this.depth < MAX_DEPTH) {
+    if (!this.intersects(entry.bounds)) return false;
+    if (!this.divided && this.entries.length >= this.capacity && this.depth < MAX_DEPTH) {
       this.subdivide();
     }
+    const child = this.containingChild(entry.bounds);
+    if (child) child.insertEntry(entry);
+    else this.entries.push(entry);
+    this.idToEntry.set(entry.id, entry);
+    return true;
+  }
 
-    // If at max depth, just store here regardless of capacity
-    if (this.depth >= MAX_DEPTH) {
-      this.entries.push(entry);
-      this.idToEntry.set(entry.id, entry);
-      return true;
-    }
-
-    // Try to insert into children
-    // Note: Large entities may be inserted into multiple quadrants
-    let inserted = false;
-    if (this.nw!.insertEntry(entry)) inserted = true;
-    if (this.ne!.insertEntry(entry)) inserted = true;
-    if (this.sw!.insertEntry(entry)) inserted = true;
-    if (this.se!.insertEntry(entry)) inserted = true;
-
-    if (inserted) {
-      this.idToEntry.set(entry.id, entry);
-    }
-
-    return inserted;
+  private containingChild(bounds: Bounds): Quadtree | null {
+    if (!this.divided) return null;
+    const { x, y, width, height } = this.bounds;
+    if (bounds.x < x || bounds.y < y || bounds.x + bounds.width > x + width ||
+        bounds.y + bounds.height > y + height) return null;
+    const midX = x + width / 2;
+    const midY = y + height / 2;
+    const left = bounds.x + bounds.width <= midX;
+    const right = bounds.x >= midX;
+    const top = bounds.y + bounds.height <= midY;
+    const bottom = bounds.y >= midY;
+    if (left && top) return this.nw;
+    if (right && top) return this.ne;
+    if (left && bottom) return this.sw;
+    if (right && bottom) return this.se;
+    return null;
   }
 
   /**
@@ -170,7 +142,7 @@ export class Quadtree {
 
   /**
    * Query all entity IDs that contain the given point.
-   * Returns IDs in reverse insertion order (topmost first for z-ordering).
+   * Returns candidates; callers resolve visual stacking independently of tree depth.
    *
    * @param x - X coordinate to query
    * @param y - Y coordinate to query
@@ -227,8 +199,8 @@ export class Quadtree {
    *
    * What it replaces, layer by layer, is `for (const entity of entities)` plus a per-entity box
    * test: O(graph) on every frame the layer was dirty, to find the few hundred entities on screen.
-   * Here the tree skips whole quadrants at once, so the cost is proportional to what is visible
-   * plus the depth walked to reach it.
+   * The tree skips disjoint quadrants. Cost is visited cells plus candidate rectangles;
+   * heavily overlapping rectangles can require a linear scan, with bounded storage.
    */
   queryRangeInto(range: Bounds, out: string[]): number {
     const stamp = ++queryStamp;
@@ -499,12 +471,10 @@ export class Quadtree {
     const oldEntries = this.entries;
     this.entries = [];
 
-    // The SAME entry object into each quadrant it belongs in — see insertEntry.
     for (const entry of oldEntries) {
-      this.nw.insertEntry(entry);
-      this.ne.insertEntry(entry);
-      this.sw.insertEntry(entry);
-      this.se.insertEntry(entry);
+      const child = this.containingChild(entry.bounds);
+      if (child) child.insertEntry(entry);
+      else this.entries.push(entry);
     }
   }
 

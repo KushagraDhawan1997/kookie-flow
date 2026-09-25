@@ -256,10 +256,17 @@ export function buildGlyphMap(metrics: FontMetrics): GlyphMap {
 
 /**
  * Pre-built kerning lookup for O(1) pair lookup.
- * Key packs two 16-bit char codes into one number: (first << 16) | second.
+ * Keys support all Unicode scalar values while preserving the legacy BMP encoding.
  * Avoids string allocation in hot paths.
  */
 export type KerningMap = Map<number, number>;
+
+/** Allocation-free, collision-free for every pair of Unicode code points. */
+export function kerningKey(first: number, second: number): number {
+  return first <= 0xffff && second <= 0xffff
+    ? (first << 16) | second
+    : 0x100000000 + first * 0x110000 + second;
+}
 
 /**
  * Build kerning lookup map.
@@ -268,7 +275,7 @@ export function buildKerningMap(metrics: FontMetrics): KerningMap {
   const map = new Map<number, number>();
   if (metrics.kernings) {
     for (const kern of metrics.kernings) {
-      map.set((kern.first << 16) | kern.second, kern.amount);
+      map.set(kerningKey(kern.first, kern.second), kern.amount);
     }
   }
   return map;
@@ -285,15 +292,15 @@ export function measureText(
   let width = 0;
   let prevCharCode: number | null = null;
 
-  for (let i = 0; i < text.length; i++) {
-    const charCode = text.charCodeAt(i);
+  for (let i = 0; i < text.length; i += text.codePointAt(i)! > 0xffff ? 2 : 1) {
+    const charCode = text.codePointAt(i)!;
     const glyph = glyphMap.get(charCode);
 
     if (!glyph) continue; // Skip unknown characters
 
     // Apply kerning if available
     if (prevCharCode !== null) {
-      const kerning = kerningMap.get((prevCharCode << 16) | charCode);
+      const kerning = kerningMap.get(kerningKey(prevCharCode, charCode));
       if (kerning) width += kerning;
     }
 
@@ -306,14 +313,14 @@ export function measureText(
 
 // Truncation cache: text:maxWidth:fontSize -> truncated result
 // Using Map for O(1) lookup, with size limit to prevent unbounded growth
-const truncationCache = new Map<string, string>();
+let truncationCaches = new WeakMap<GlyphMap, WeakMap<KerningMap, Map<string, string>>>();
 const TRUNCATION_CACHE_MAX_SIZE = 1000;
 
 /**
  * Clear the truncation cache. Call when font changes.
  */
 export function clearTruncationCache(): void {
-  truncationCache.clear();
+  truncationCaches = new WeakMap();
 }
 
 /**
@@ -337,7 +344,11 @@ export function truncateText(
   kerningMap: KerningMap
 ): string {
   // Cache key combines text and sizing params
-  const cacheKey = `${text}:${maxWidth}:${fontSize}`;
+  let byKerning = truncationCaches.get(glyphMap);
+  if (!byKerning) truncationCaches.set(glyphMap, byKerning = new WeakMap());
+  let truncationCache = byKerning.get(kerningMap);
+  if (!truncationCache) byKerning.set(kerningMap, truncationCache = new Map());
+  const cacheKey = JSON.stringify([text, maxWidth, fontSize, baseFontSize]);
   const cached = truncationCache.get(cacheKey);
   if (cached !== undefined) {
     return cached;
@@ -366,11 +377,16 @@ export function truncateText(
 
   // Binary search for the right length
   let low = 0;
-  let high = text.length;
+  const boundaries = [0];
+  for (let i = 0; i < text.length;) {
+    i += text.codePointAt(i)! > 0xffff ? 2 : 1;
+    boundaries.push(i);
+  }
+  let high = boundaries.length - 1;
 
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
-    const truncated = text.slice(0, mid);
+    const truncated = text.slice(0, boundaries[mid]);
     const width = measureText(truncated, glyphMap, kerningMap) * scale;
 
     if (width <= availableWidth) {
@@ -380,7 +396,7 @@ export function truncateText(
     }
   }
 
-  const result = low > 0 ? text.slice(0, low) + ellipsis : ellipsis;
+  const result = low > 0 ? text.slice(0, boundaries[low]) + ellipsis : ellipsis;
 
   // Cache the result
   if (truncationCache.size >= TRUNCATION_CACHE_MAX_SIZE) {
@@ -440,8 +456,8 @@ export function layoutText(
     // Baseline is at py, glyphs render below it
     const baselineY = py;
 
-    for (let i = 0; i < entry.text.length; i++) {
-      const charCode = entry.text.charCodeAt(i);
+    for (let i = 0; i < entry.text.length; i += entry.text.codePointAt(i)! > 0xffff ? 2 : 1) {
+      const charCode = entry.text.codePointAt(i)!;
       const glyph = glyphMap.get(charCode);
 
       if (!glyph) {
@@ -452,7 +468,7 @@ export function layoutText(
 
       // Apply kerning
       if (prevCharCode !== null) {
-        const kerning = kerningMap.get((prevCharCode << 16) | charCode);
+        const kerning = kerningMap.get(kerningKey(prevCharCode, charCode));
         if (kerning) cursorX += kerning * scale;
       }
 
@@ -508,8 +524,8 @@ export function layoutText(
 export function countGlyphs(entries: TextEntry[], glyphMap: GlyphMap): number {
   let count = 0;
   for (const entry of entries) {
-    for (let i = 0; i < entry.text.length; i++) {
-      const charCode = entry.text.charCodeAt(i);
+    for (let i = 0; i < entry.text.length; i += entry.text.codePointAt(i)! > 0xffff ? 2 : 1) {
+      const charCode = entry.text.codePointAt(i)!;
       const glyph = glyphMap.get(charCode);
       if (glyph && glyph.width > 0 && glyph.height > 0) {
         count++;
@@ -552,15 +568,14 @@ export function countGlyphs(entries: TextEntry[], glyphMap: GlyphMap): number {
  * barrel, and called by nothing — and its existence was the excuse for leaving the font out of
  * the key in the first place. Four lines to write again if something ever needs it.
  */
-const wrapCaches = new WeakMap<GlyphMap, Map<string, string[]>>();
+const wrapCaches = new WeakMap<GlyphMap, WeakMap<KerningMap, Map<string, string[]>>>();
 const WRAP_CACHE_MAX_SIZE = 500;
 
-function cacheFor(glyphMap: GlyphMap): Map<string, string[]> {
-  let cache = wrapCaches.get(glyphMap);
-  if (!cache) {
-    cache = new Map();
-    wrapCaches.set(glyphMap, cache);
-  }
+function cacheFor(glyphMap: GlyphMap, kerningMap: KerningMap): Map<string, string[]> {
+  let byKerning = wrapCaches.get(glyphMap);
+  if (!byKerning) wrapCaches.set(glyphMap, byKerning = new WeakMap());
+  let cache = byKerning.get(kerningMap);
+  if (!cache) byKerning.set(kerningMap, cache = new Map());
   return cache;
 }
 
@@ -585,15 +600,15 @@ function breakWordByChars(
   lines: string[],
   state: WrapState
 ): void {
-  for (let i = 0; i < word.length; i++) {
-    const charCode = word.charCodeAt(i);
+  for (let i = 0; i < word.length; i += word.codePointAt(i)! > 0xffff ? 2 : 1) {
+    const charCode = word.codePointAt(i)!;
     const glyph = glyphMap.get(charCode);
 
     let charWidth = 0;
     if (glyph) {
       charWidth = glyph.xadvance;
       if (state.prevChar !== null) {
-        const kern = kerningMap.get((state.prevChar << 16) | charCode);
+        const kern = kerningMap.get(kerningKey(state.prevChar, charCode));
         if (kern) charWidth += kern;
         charWidth += letterSpacing;
       }
@@ -601,11 +616,11 @@ function breakWordByChars(
 
     if (state.width + charWidth > maxWidth && state.line !== '') {
       lines.push(state.line);
-      state.line = word[i];
+      state.line = String.fromCodePoint(charCode);
       state.width = glyph ? glyph.xadvance : 0;
       state.prevChar = charCode;
     } else {
-      state.line += word[i];
+      state.line += String.fromCodePoint(charCode);
       state.width += charWidth;
       if (glyph) state.prevChar = charCode;
     }
@@ -621,8 +636,8 @@ export function wrapTextMSDF(
 ): string[] {
   if (!content) return [''];
 
-  const wrapCache = cacheFor(glyphMap);
-  const cacheKey = `${content}|${maxWidthFontUnits}|${letterSpacing}`;
+  const wrapCache = cacheFor(glyphMap, kerningMap);
+  const cacheKey = JSON.stringify([content, maxWidthFontUnits, letterSpacing]);
   const cached = wrapCache.get(cacheKey);
   if (cached) return cached;
 
@@ -645,13 +660,13 @@ export function wrapTextMSDF(
       // Measure word width
       let wordWidth = 0;
       let wordPrevChar: number | null = prevCharCode;
-      for (let i = 0; i < word.length; i++) {
-        const charCode = word.charCodeAt(i);
+      for (let i = 0; i < word.length; i += word.codePointAt(i)! > 0xffff ? 2 : 1) {
+        const charCode = word.codePointAt(i)!;
         const glyph = glyphMap.get(charCode);
         if (!glyph) continue;
 
         if (wordPrevChar !== null) {
-          const kern = kerningMap.get((wordPrevChar << 16) | charCode);
+          const kern = kerningMap.get(kerningKey(wordPrevChar, charCode));
           if (kern) wordWidth += kern;
           wordWidth += letterSpacing;
         }
@@ -804,8 +819,8 @@ export function countMultiLineGlyphs(
   let count = 0;
   for (const entry of entries) {
     for (const line of entry.lines) {
-      for (let i = 0; i < line.length; i++) {
-        const charCode = line.charCodeAt(i);
+      for (let i = 0; i < line.length; i += line.codePointAt(i)! > 0xffff ? 2 : 1) {
+        const charCode = line.codePointAt(i)!;
         const glyph = glyphMap.get(charCode);
         if (glyph && glyph.width > 0 && glyph.height > 0) {
           count++;
@@ -864,8 +879,8 @@ export function populateMultiLineGlyphBuffers(
       let lineWidthFontUnits = measureText(line, glyphMap, kerningMap);
       // Add letter spacing
       let charCount = 0;
-      for (let i = 0; i < line.length; i++) {
-        if (glyphMap.has(line.charCodeAt(i))) charCount++;
+      for (let i = 0; i < line.length; i += line.codePointAt(i)! > 0xffff ? 2 : 1) {
+        if (glyphMap.has(line.codePointAt(i)!)) charCount++;
       }
       if (charCount > 1) {
         lineWidthFontUnits += (charCount - 1) * letterSpacingFontUnits;
@@ -889,10 +904,10 @@ export function populateMultiLineGlyphBuffers(
       let cursorX = startX;
       let prevCharCode: number | null = null;
 
-      for (let i = 0; i < line.length; i++) {
+      for (let i = 0; i < line.length; i += line.codePointAt(i)! > 0xffff ? 2 : 1) {
         if (glyphIndex >= capacity) break;
 
-        const charCode = line.charCodeAt(i);
+        const charCode = line.codePointAt(i)!;
         const glyph = glyphMap.get(charCode);
 
         if (!glyph) {
@@ -902,7 +917,7 @@ export function populateMultiLineGlyphBuffers(
 
         // Apply kerning + letter spacing
         if (prevCharCode !== null) {
-          const kern = kerningMap.get((prevCharCode << 16) | charCode);
+          const kern = kerningMap.get(kerningKey(prevCharCode, charCode));
           if (kern) cursorX += kern * scale;
           cursorX += (entry.letterSpacing ?? 0);
         }
@@ -1014,10 +1029,10 @@ export function populateGlyphBuffers(
     let prevCharCode: number | null = null;
     const baselineY = py;
 
-    for (let i = 0; i < entry.text.length; i++) {
+    for (let i = 0; i < entry.text.length; i += entry.text.codePointAt(i)! > 0xffff ? 2 : 1) {
       if (glyphIndex >= capacity) break;
 
-      const charCode = entry.text.charCodeAt(i);
+      const charCode = entry.text.codePointAt(i)!;
       const glyph = glyphMap.get(charCode);
 
       if (!glyph) {
@@ -1027,7 +1042,7 @@ export function populateGlyphBuffers(
 
       // Apply kerning
       if (prevCharCode !== null) {
-        const kerning = kerningMap.get((prevCharCode << 16) | charCode);
+        const kerning = kerningMap.get(kerningKey(prevCharCode, charCode));
         if (kerning) cursorX += kerning * scale;
       }
 
