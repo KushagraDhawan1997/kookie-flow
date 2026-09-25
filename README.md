@@ -6,19 +6,22 @@ nodes pans and zooms without React re-rendering.
 
 **Pre-1.0.** The API still moves. [`CHANGELOG.md`](CHANGELOG.md) marks every breaking change.
 
-## Install
+## Packages
 
-```bash
-pnpm add @kushagradhawan/kookie-flow react react-dom three @react-three/fiber @react-three/drei
-```
+| Package | Owns |
+| --- | --- |
+| `@kushagradhawan/kookie-flow-core` | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
+| `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction, text editing and Kookie Flow's glass appearance. Uses React/R3F. |
+| `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
+| `@kushagradhawan/kookie-flow` | Compatibility entry forwarding to those packages. |
 
-It needs React and React DOM 19 or later, three.js 0.170 or later, React Three Fiber 9 or later,
-drei 10 or later, and a browser with WebGL 2.
+These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
+The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
+Fiber 9.7+, drei 10.7+, and WebGL 2. The core only depends on Zustand's vanilla store.
 
-It also needs KookieUI v2 (`@kookie-ui/react`), which supplies the theme and the toolbar's
-controls. KookieUI v2 isn't on npm yet, so you build it from its repository and depend on the
-packed tarball. The [Installation](https://kookie-flow.vercel.app/start/installation) chapter
-shows each step.
+See [package migration and two-way sync](docs/PACKAGES.md) for installation, API changes and the
+planned Womp copy. [Production qualification](packages/kookie-flow/PRODUCTION.md) describes the
+release gate and remaining product acceptance checks.
 
 ## An example
 
@@ -28,7 +31,7 @@ a box with a height.
 ```tsx
 "use client";
 
-import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow";
+import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
 
 const initialEntities: Entity[] = [
   { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
@@ -75,8 +78,8 @@ Drag from the Constant node's output to the Viewer node's input to connect them.
 Nodes don't host React components. The canvas draws nodes in depth order, so a node in front
 covers the one behind it, and a DOM element can only sit above the whole canvas or below it. The
 built-in widgets and text editing use DOM only for the length of one edit, and the accessibility
-mirror only for the node the keyboard cursor is on. A custom widget component from `widgetTypes`
-stays in the DOM above the canvas.
+mirror only for the node the keyboard cursor is on. Nodes, comments and persistent socket widgets
+all draw in WebGL. There is no custom DOM widget escape hatch.
 [Entity types](https://kookie-flow.vercel.app/entities/types) shows what a node can declare
 instead.
 
@@ -120,7 +123,7 @@ packages/kookie-flow   the library, its vitest tests, and the Playwright harness
 apps/docs              the documentation site and the demos
 plans/                 design notes; they can lag behind the source
 docs/handovers         handover notes from past working sessions
-vendor/                the packed @kookie-ui/react tarball that both workspaces install
+vendor/                the pinned personal KookieUI archive used by the renderer and apps
 ```
 
 ## Commands

@@ -9,7 +9,7 @@
  */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Box, Page } from "@kookie-ui/react";
+import { Box, Page } from "@kushagradhawan/kookie-ui-react";
 
 import { ProseFlow } from "../../../mdx-components";
 import { BY_SLUG, CHAPTERS } from "../chapters";

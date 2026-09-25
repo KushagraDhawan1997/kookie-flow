@@ -14,7 +14,7 @@ import {
   Text,
   Toolbar,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import { registry, CATEGORY_LABELS, type AnyNodeDefinition, type Category } from 'studio-core';
 
 import { modelForNode } from '@/app/(app)/models/models';

@@ -67,7 +67,7 @@
  * answer this file gives about steps and colours.
  */
 import * as React from "react";
-import { Flex, Stack, Text } from "@kookie-ui/react";
+import { Flex, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import "./footer.css";
 

@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Code, Switch, Text } from '@kookie-ui/react';
+import { Code, Switch, Text } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   useGraph,

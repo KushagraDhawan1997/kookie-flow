@@ -10,7 +10,7 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShellRailAction, ShellRailItem, ShellRailList, ShellTabBar } from "@kookie-ui/react";
+import { ShellRailAction, ShellRailItem, ShellRailList, ShellTabBar } from "@kushagradhawan/kookie-ui-react";
 
 import { BoxIcon, CodeIcon, HomeIcon, SearchIcon, StructureIcon } from "../icons";
 

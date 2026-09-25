@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Button, Card } from '@kookie-ui/react';
+import { Button, Card } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow, getEntityAtPosition, screenToWorld, useGraph, useSocketLayout,
   type Entity, type KookieFlowInstance, type ResolvedSocketLayout, type XYPosition,

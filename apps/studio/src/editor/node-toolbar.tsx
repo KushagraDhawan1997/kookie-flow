@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ToolbarButton } from '@kookie-ui/react';
+import { ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 import type { EntityTypeDefinition, KookieFlowInstance, ToolbarRenderFn } from '@kushagradhawan/kookie-flow';
 
 import { RunIcon } from '@/app/icons';

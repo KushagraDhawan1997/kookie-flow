@@ -11,7 +11,7 @@ import {
   type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
-import { Code, Flex, Switch, Text, Theme, ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
+import { Code, Flex, Switch, Text, ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
 
 import { DemoFrame } from '../demo-frame';
 import { MinusIcon, PlusIcon } from '../icons';
@@ -1018,7 +1018,6 @@ export default function DemoPage() {
         accentHeader
         onWidgetChange={handleWidgetChange}
         // Per-node accent color support for widgets
-        ThemeComponent={Theme}
       >
         <ClipboardBridge apiRef={clipboardRef} preserveExternal={preserveExternal} onSize={setClipboardSize} />
       </KookieFlow>

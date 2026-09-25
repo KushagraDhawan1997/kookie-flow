@@ -32,7 +32,7 @@ import {
   Toolbar,
   ToolbarButton,
   ToolbarTitle,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import { formatUsd } from 'studio-core';
 
 import { setAppearance, useAppearance, type AppearanceChoice } from '../appearance';

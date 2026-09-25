@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import NextLink from 'next/link';
-import { Flex, Page, SegmentedControl, SegmentedItem, Stack, Text } from '@kookie-ui/react';
+import { Flex, Page, SegmentedControl, SegmentedItem, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
 import { AppPane } from '../app-shell';
 import { KIND_LABEL, TEMPLATES, type Template, type TemplateKind } from './templates';

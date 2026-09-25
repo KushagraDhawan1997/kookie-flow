@@ -10,7 +10,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   useToolbarOverflow,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import { CopyIcon, LinkIcon } from "../icons";
 import { ClaudeMark, MarkdownMark, OpenAIMark } from "../marks";

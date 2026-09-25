@@ -24,12 +24,14 @@ jobs:
         with:
           version: 12.4.1
       - run: pnpm install --frozen-lockfile
+      - name: Package boundaries
+        run: pnpm check:boundaries
       - name: Types and unit/DOM regressions
         run: pnpm --filter @kushagradhawan/kookie-flow run lint && pnpm --filter @kushagradhawan/kookie-flow run test
       - name: Bounded spatial stress
         run: pnpm --filter @kushagradhawan/kookie-flow run test:spatial-stress
       - name: Build and isolated packed consumer
-        run: pnpm --filter @kushagradhawan/kookie-flow run build && pnpm --filter @kushagradhawan/kookie-flow run test:package
+        run: pnpm --filter @kushagradhawan/kookie-flow... run build && pnpm --filter @kushagradhawan/kookie-flow run test:package
       - name: Install real browser
         run: pnpm --dir packages/kookie-flow exec playwright-core install --with-deps chromium
       - name: Full browser behavior suite

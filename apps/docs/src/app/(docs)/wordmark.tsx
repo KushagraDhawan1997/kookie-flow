@@ -1,4 +1,4 @@
-import { Heading } from "@kookie-ui/react";
+import { Heading } from "@kushagradhawan/kookie-ui-react";
 
 /**
  * The mark. `globals.css` is the one file that knows which face is loaded (`--kd-font-wordmark`,

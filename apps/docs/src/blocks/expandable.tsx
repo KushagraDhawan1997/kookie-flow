@@ -20,7 +20,7 @@
  * this is not a disclosure pattern and takes none of its wiring.
  */
 import * as React from "react";
-import { Button, CodeBlock, Flex, type Size } from "@kookie-ui/react";
+import { Button, CodeBlock, Flex, type Size } from "@kushagradhawan/kookie-ui-react";
 
 export function Expandable({
   size,

@@ -1,0 +1,3521 @@
+import { connectedSocketKey } from '../utils/socket-key';
+import { createStore } from 'zustand/vanilla';
+import { subscribeWithSelector } from 'zustand/middleware';
+import type {
+  EntityTypeDefinition,
+  Entity,
+  Edge,
+  Viewport,
+  EntityChange,
+  EdgeChange,
+  XYPosition,
+  SocketHandle,
+  WidgetHandle,
+  WidgetPopover,
+  CloneElementsOptions,
+  CloneElementsResult,
+  ElementsBatch,
+  DeleteElementsBatch,
+  FlowObject,
+  InternalClipboard,
+  PasteFromInternalOptions,
+  EntityData,
+  TextEntityData,
+  FitViewOptions,
+} from '../types/index';
+import { resizableForSizingMode } from '../utils/text-texture';
+import {
+  DEFAULT_VIEWPORT,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  DEFAULT_ENTITY_WIDTH,
+  SOCKET_RADIUS,
+} from './constants';
+import { Magnet } from '../gl/magnet';
+import {
+  Evaluator,
+  type EvaluationHost,
+  type EvaluationRecord,
+  type EvaluationStatus,
+  type OnEvaluate,
+  type OnStatusChange,
+} from './evaluation';
+import { ownSocketValue, readWidgetValue } from '../utils/widget-values';
+import { getSocketWorldX, getSocketYOffset } from '../utils/geometry';
+import { Quadtree, SocketQuadtree, getEntityBounds } from './spatial';
+import {
+  getGroupChildren as utilGetGroupChildren,
+  getGroupDescendants as utilGetGroupDescendants,
+  isEntityHidden,
+  calculateGroupBounds as utilCalculateGroupBounds,
+  calculateDescendantPositions,
+  type Bounds,
+} from '../utils/grouping';
+import * as graphEngine from './graph';
+import { toFlowObject } from './serialize';
+import { sameGuides } from '../utils/alignment';
+import { layoutGraph, type LayoutOptions } from './layout';
+import {
+  createEntityTypeCache,
+  resolveEntities,
+  resolveEntity,
+  sameTypeTable,
+  sourceEntity,
+} from './entity-types';
+import type { AdjacencyIndex, CachedAnalysis } from './graph';
+import type { ResolvedSocketLayout } from '../utils/socket-layout';
+import { widgetKey, type WidgetOverride } from '../utils/widget-values';
+import { hexToHsv } from '../utils/hsv';
+import { scrollToShow, POPOVER_MAX_ROWS } from '../utils/popover-layout';
+import { getParentChain, sortByDepth, getGroupDescendants } from '../utils/grouping';
+import { stackCapacity } from '../utils/entity-depth';
+import { isEvaluated } from '../utils/entity-kind';
+import { alignRects, distributeRects, type ArrangeMove, type ArrangeRect } from '../utils/arrange';
+import type { AlignEdge, DistributeAxis } from '../types/index';
+
+// Pre-allocated ID pool for efficient cloning
+let idCounter = 0;
+const defaultGenerateId = () => `kf-${Date.now()}-${++idCounter}`;
+
+export interface FlowState {
+  /**
+   * Entities in the graph, RESOLVED against `entityTypes`.
+   *
+   * What the consumer handed over is theirs and untouched; this is that array with anything a
+   * node left unsaid filled in from its type. Everything downstream — hit testing, layout, the
+   * engine, the renderers — reads these, so none of them needs to know a type table exists.
+   *
+   * This is a live, store-owned array: drag/resize replaces its changed elements in place.
+   * Subscribe to positionVersion for movement, entities for structural/data changes.
+   * Use toObject() when retaining a snapshot; caller-owned input arrays remain untouched.
+   */
+  entities: Entity[];
+  /** Edges in the graph */
+  edges: Edge[];
+  /**
+   * The app's table of node types. Fills in sockets, size and label for nodes that state none,
+   * and says which types wait to be asked rather than running on every change.
+   */
+  entityTypes: Record<string, EntityTypeDefinition>;
+  /** Current viewport */
+  viewport: Viewport;
+  /** Currently connecting from (legacy) */
+  connectionStart: { entityId: string; socketId: string } | null;
+  /**
+   * The alignment guides to draw, in world coordinates: vertical lines by x, horizontal by y.
+   *
+   * Written during a drag, so the arrays are OWNED BY THE CALLER and reused — a fresh pair every
+   * frame would allocate in the hottest path there is. `helperLinesVersion` is what a renderer
+   * watches; the store bumps it only when the contents actually changed.
+   */
+  helperLinesX: number[];
+  helperLinesY: number[];
+  helperLinesVersion: number;
+
+  /** Currently hovered entity */
+  hoveredEntityId: string | null;
+  /** Currently hovered socket */
+  hoveredSocketId: SocketHandle | null;
+  /**
+   * Which on-node widget the pointer is over, or null.
+   *
+   * A handle rather than a `widgetKey` string for the reason `WidgetHandle` states: the GL widget
+   * layer compares this against every visible widget inside `useFrame`, and a joined key would
+   * mean one concatenation per widget per frame.
+   */
+  hoveredWidget: WidgetHandle | null;
+  /** Connection draft while dragging from a socket */
+  connectionDraft: {
+    source: SocketHandle;
+    mouseWorld: XYPosition;
+    /** Whether the currently hovered target is valid */
+    isValid: boolean;
+  } | null;
+  /**
+   * The magnet: which socket is pulling the wire being dragged, how hard, and where the wire's
+   * tip actually is (gl/magnet.ts).
+   *
+   * ONE OBJECT FOR THE LIFE OF THE STORE, mutated in place — the same shape `widgetValues` and
+   * `popoverHsv` have, for the same reason: it is written on every pointer move AND every frame of
+   * a drag, and a fresh record per write is the allocation this package's first rule forbids.
+   * Nothing subscribes to it; the three layers that draw from it already run a frame loop while a
+   * drag is live, and they read it there.
+   */
+  magnet: Magnet;
+  /**
+   * Where the pointer is, in world px — `[x, y]`, and NaN when it is outside the canvas.
+   *
+   * A socket leans toward the pointer whenever one comes near it, with no drag in progress, so the
+   * socket layer needs the pointer every frame. A store field rather than a prop because three
+   * layers may want it, and MUTATED IN PLACE with no version counter because it changes on every
+   * pointermove: a `set()` per move would notify every subscriber sixty times a second, which is
+   * the cost this package's first rule exists to refuse. The layers that care read it in their own
+   * frame loop and hand it to a uniform.
+   */
+  pointerWorld: Float32Array;
+  /** Box selection in progress */
+  selectionBox: { start: XYPosition; end: XYPosition } | null;
+
+  /**
+   * What each widget's person has set that the consumer has not echoed back yet, keyed by
+   * `widgetKey(entityId, socketId)`. See utils/widget-values.ts for the rule it serves.
+   *
+   * MUTATED IN PLACE, never replaced: it is written on every pointermove of a slider drag and a
+   * fresh Map per move is exactly the allocation that rule forbids. Subscribers watch
+   * `widgetValuesVersion` instead, which is the dirty flag beside it.
+   */
+  widgetValues: Map<string, WidgetOverride>;
+  widgetValuesVersion: number;
+
+  /**
+   * Bumped by the evaluation engine on every status or output-value change. The engine's own
+   * maps are mutated in place (core/evaluation.ts), so this is the dirty flag beside them — the
+   * same arrangement as `widgetValues` / `widgetValuesVersion`, for the same reason.
+   */
+  evaluationVersion: number;
+
+  /**
+   * The widget whose value is currently being edited through a borrowed DOM input, as
+   * `widgetKey(entityId, socketId)`, or null.
+   *
+   * It is here rather than in the canvas component's state because the GL TEXT layer is what needs
+   * it: it prints every widget's value, and the one widget under an open input must not be printed
+   * twice — once as glyphs, once as the input's own text — if the overlay ever gains a translucent
+   * or inset style, or drifts by a frame from the glyphs during a pan (the overlay places on its
+   * own RAF, the text on useFrame). A string rather than the hit itself, so a subscriber compares
+   * a scalar. Same shape and same reason as `editingEntityId` above.
+   */
+  editingWidgetKey: string | null;
+  /**
+   * Which part of the widget under `editingWidgetKey` has the input — a vector's component — or -1
+   * for the whole widget. The text layer suppresses only that part's value, so the other
+   * components of a vector stay on screen while one is typed. Set with the key, never alone.
+   */
+  editingWidgetPart: number;
+
+  /**
+   * The slider being dragged, for the length of the gesture — the one widget press with any
+   * duration. Its own field rather than `editingWidgetKey`, which the text layer reads as "the
+   * readout is being replaced by a DOM input" and suppresses; a dragged slider must keep its value
+   * on screen.
+   */
+  pressedWidgetKey: string | null;
+
+  /**
+   * The widget the KEYBOARD is on, through the accessibility mirror — v2's `:focus-visible`.
+   *
+   * The mirror's controls are clipped to a pixel and draw nothing, so without this a sighted
+   * keyboard user moving between a node's controls saw no sign of where they were. The widget
+   * layer wears the focus ring for this key, the way a v2 control wears one for keyboard focus.
+   * Only the mirror writes it, and the mirror is reachable only by keyboard, so a pointer press
+   * never lights a ring on a checkbox, a slider or a trigger.
+   */
+  focusVisibleWidgetKey: string | null;
+
+  /**
+   * The widget panel that is open — a select's list or a colour picker — or null.
+   *
+   * Here rather than in the canvas component's state because three GL layers read it: the panel
+   * draws itself from it, the widget layer lights the trigger it hangs off, and the text layer
+   * keeps printing the trigger's value under it (unlike `editingWidgetKey`, which suppresses).
+   * The panel's LIVE state — which row is lit, how far it is scrolled, where the colour cursors
+   * are — is the three fields below it, so a hover over a row changes a number and not this record.
+   */
+  widgetPopover: WidgetPopover | null;
+  /** The list row under the pointer or the keyboard, or -1. */
+  popoverIndex: number;
+  /** The first row on screen. */
+  popoverScroll: number;
+  /**
+   * The colour picker's hue, saturation and value, in 0..1. MUTATED IN PLACE on every pointermove
+   * of a drag, with `popoverVersion` as the dirty flag beside it — a fresh tuple per move is the
+   * allocation the widget layer's rule forbids. Kept separately from the hex value the widget
+   * emits because a hex cannot hold the hue of a grey, and dragging value to zero and back must
+   * not lose where the hue cursor was.
+   */
+  popoverHsv: Float32Array;
+  popoverVersion: number;
+  /**
+   * The key `setWidgetValue` last wrote, so a layer that animates a change knows WHICH widget
+   * changed without diffing the whole map. Read beside `widgetValuesVersion`.
+   */
+  lastChangedWidgetKey: string | null;
+
+  /**
+   * Stacking order: entity id -> a monotonically increasing index; higher is nearer the camera.
+   * See utils/entity-depth.ts for how the renderers turn it into depth. Mutated in place, with
+   * `stackVersion` as the dirty flag beside it — the same shape as `widgetValues`.
+   */
+  stackOrder: Map<string, number>;
+  stackVersion: number;
+
+  /**
+   * THE KEYBOARD CURSOR: which entity a keyboard user is standing on, or null.
+   *
+   * Deliberately NOT selection, and the difference is the whole reason this field exists. The
+   * accessibility mirror (components/widget-a11y-mirror.tsx) mounts one real DOM control per
+   * widget on this entity, and its entire claim to being affordable is that the number of those
+   * controls does not scale with the graph. `selectAll` puts every entity in
+   * `selectedEntityIds` — so a mirror keyed on selection would mount a thousand nodes' worth of
+   * inputs in the single commit that answers Ctrl+A. One entity, one cursor, one bound.
+   *
+   * A plain `set()` with no version counter beside it, unlike `widgetValues` and `stackOrder`:
+   * this moves on a click or a keypress, never on a frame, so there is nothing here for a
+   * dirty flag to save.
+   *
+   * A cursor left pointing at a removed entity is not cleaned up here. The mirror renders
+   * nothing for an id `entityMap` does not hold, and the arrow keys fall back to the first
+   * entity when the id they were given has gone, so the stale value heals on the next keypress
+   * rather than costing every removal a lookup.
+   */
+  focusedEntityId: string | null;
+
+  /** Selection state - O(1) lookup */
+  selectedEntityIds: Set<string>;
+  selectedEdgeIds: Set<string>;
+
+  /** Entity map for O(1) lookup by ID */
+  entityMap: Map<string, Entity>;
+
+  /** Quadtree for O(log n) spatial queries */
+  quadtree: Quadtree;
+
+  /** Socket quadtree for O(log n) socket hit testing during connection draft */
+  socketQuadtree: SocketQuadtree;
+
+  /**
+   * Connected sockets cache - O(1) lookup for widget visibility.
+   * Format: "entityId:socketId" for each input socket that has an incoming edge.
+   * Rebuilt when edges change.
+   */
+  connectedSockets: Set<string>;
+
+  /**
+   * Position version counter - increments on any position update.
+   * Used by components that need to track position changes without
+   * relying on entityMap reference changes (which may be mutated in place).
+   */
+  positionVersion: number;
+
+  /** Internal clipboard (holds references, no serialization) */
+  internalClipboard: InternalClipboard | null;
+
+  /** ID of the text entity currently being edited, or null if not editing */
+  editingEntityId: string | null;
+
+  /** Live text content while editing (null = not editing) */
+  editingContent: string | null;
+
+  /** Cursor/selection character offsets while editing (null = not editing) */
+  editingCursor: { start: number; end: number } | null;
+
+  // ============================================================================
+  // Grouping State (Phase 7C)
+  // ============================================================================
+
+  /** Set of collapsed group entity IDs (O(1) lookup for visibility checks) */
+  collapsedGroupIds: Set<string>;
+
+  /**
+   * Pre-computed set of hidden entity IDs (entities inside collapsed groups).
+   * Rebuilt when collapsedGroupIds changes. Used for O(1) visibility checks in hot paths.
+   */
+  hiddenEntityIds: Set<string>;
+
+  // ============================================================================
+  // Graph Engine State (Phase 8)
+  // ============================================================================
+
+  /** Pre-computed adjacency index for O(1) neighbor lookups. Rebuilt on edge changes. */
+  adjacencyIndex: AdjacencyIndex;
+
+  /** Topology version counter. Increments on entity/edge add/remove only. */
+  topologyVersion: number;
+
+  /** Entity IDs excluded from execution (treated as pass-through). */
+  mutedEntityIds: Set<string>;
+
+  /** Resolved socket layout from style context — used for correct entity height in quadtree bounds */
+  socketLayout: ResolvedSocketLayout | null;
+
+  /** Internal actions */
+  /** Pending movement IDs since the last renderer acknowledgement. Per store. */
+  getMovedEntityIds: () => ReadonlySet<string>;
+  /** Each renderer owns its pending set; consuming one never clears another renderer's work. */
+  trackEntityMovements: (pending: Set<string>) => () => void;
+  clearMovedEntityIds: () => void;
+  setEntities: (entities: Entity[]) => void;
+  /**
+   * Swap the type table. Every entity is resolved again against it, because a table that arrives
+   * after the first sync — or changes — must reach the nodes already on the board.
+   */
+  setEntityTypes: (entityTypes: Record<string, EntityTypeDefinition>) => void;
+  setEdges: (edges: Edge[]) => void;
+  setViewport: (viewport: Viewport) => void;
+  /** Publish the guides for this frame. Deduped by value; the arrays are not copied. */
+  setHelperLines: (x: number[], y: number[]) => void;
+  /** Bumped while a pen stroke grows, which is the only thing the ink layer needs to hear. */
+  strokeVersion: number;
+  /** Grow the stroke being drawn, without the whole-graph rebuild an entity change costs. */
+  setStrokePoints: (id: string, points: number[]) => void;
+  setSocketLayout: (layout: ResolvedSocketLayout) => void;
+  setHoveredEntityId: (id: string | null) => void;
+  setHoveredSocketId: (socket: SocketHandle | null) => void;
+  setHoveredWidget: (widget: WidgetHandle | null) => void;
+  startConnection: (entityId: string, socketId: string) => void;
+  endConnection: () => void;
+  setSelectionBox: (box: { start: XYPosition; end: XYPosition } | null) => void;
+  setEditingEntityId: (id: string | null) => void;
+  setEditingContent: (content: string) => void;
+  setEditingCursor: (start: number, end: number) => void;
+  startEditing: (entityId: string) => void;
+  stopEditing: () => void;
+
+  /** Connection draft actions */
+  startConnectionDraft: (source: SocketHandle, mouseWorld: XYPosition) => void;
+  updateConnectionDraft: (mouseWorld: XYPosition, isValid?: boolean) => void;
+  cancelConnectionDraft: () => void;
+
+  /** Record what a person set on a widget, until the consumer echoes it into the entity. */
+  setWidgetValue: (entityId: string, socketId: string, value: unknown) => void;
+
+  // ========================================
+  // Phase 8.5: Evaluation
+  // ========================================
+
+  /**
+   * Hand the engine the consumer's callbacks. Called from the component whenever either changes;
+   * the engine keeps its records across the call. The type table arrives by `setEntityTypes`,
+   * because it decides more than evaluation.
+   */
+  setEvaluationHandlers: (onEvaluate?: OnEvaluate, onStatusChange?: OnStatusChange) => void;
+  /** Inputs changed on these entities. Marks them and their downstream stale; schedules a pass. */
+  markDirty: (ids: string | readonly string[]) => void;
+  /** Run one entity now, whatever its mode, then cascade. The manual trigger. */
+  evaluate: (entityId: string) => Promise<void>;
+  /** Run every dirty entity, gates included; resolves when the graph is quiet. */
+  evaluateDirty: () => Promise<void>;
+  /** Mark everything stale and run it all. */
+  evaluateAll: () => Promise<void>;
+  /** Mark everything stale; run reactive entities and ask manual ones to restore. */
+  restoreAll: () => Promise<void>;
+  /** Inject an output value; downstream is marked stale. */
+  setSocketValue: (entityId: string, socketId: string, value: unknown) => void;
+  getSocketValue: (entityId: string, socketId: string) => unknown;
+  getEvaluationStatus: (entityId: string) => EvaluationStatus;
+  getEvaluationRecord: (entityId: string) => EvaluationRecord | undefined;
+  /** Cancel every run in flight and drop the engine's timers. The component calls this on unmount. */
+  disposeEvaluation: () => void;
+
+  /** Which widget has a borrowed input open on it, as `widgetKey(entityId, socketId)`. */
+  setEditingWidgetKey: (key: string | null, part?: number) => void;
+  setPressedWidgetKey: (key: string | null) => void;
+  setFocusVisibleWidgetKey: (key: string | null) => void;
+
+  /** Open a widget's panel; the row is seeded from its value, the colour from its hex. */
+  /** @param scroll the scroll the panel was PLACED for, from the layout that positions it. */
+  openWidgetPopover: (popover: WidgetPopover, scroll?: number) => void;
+  closeWidgetPopover: () => void;
+  setPopoverIndex: (index: number) => void;
+  setPopoverScroll: (scroll: number) => void;
+  /** Move the colour picker's cursors. Writes in place; bumps `popoverVersion`. */
+  setPopoverHsv: (h: number, s: number, v: number) => void;
+
+  /** Move the keyboard cursor. See `focusedEntityId` for why this is not selection. */
+  setFocusedEntityId: (id: string | null) => void;
+
+  /**
+   * Last interacted on top. Brings the entity to the front of the stacking order, with its
+   * ancestors beneath it and — for a frame — its descendants above it, so a group never sits
+   * over its own children.
+   */
+  bringToFront: (entityId: string) => void;
+
+  /** Apply changes */
+  applyEntityChanges: (changes: EntityChange[]) => void;
+  applyEdgeChanges: (changes: EdgeChange[]) => void;
+
+  /** Selection - O(1) operations */
+  selectEntity: (id: string, additive?: boolean) => void;
+  selectEntities: (ids: string[]) => void;
+  /** Add an entity to the selection, or take it out if it is already in. Shift- or Cmd-click. */
+  toggleEntitySelection: (id: string) => void;
+  /** Line the selection up. Moves it and returns what moved; reporting is the caller's. */
+  alignSelection: (edge: AlignEdge) => Array<{ id: string; position: XYPosition }>;
+  /** Space the selection evenly. Moves it and returns what moved; reporting is the caller's. */
+  distributeSelection: (axis: DistributeAxis) => Array<{ id: string; position: XYPosition }>;
+  selectEdge: (id: string, additive?: boolean) => void;
+  selectEdges: (ids: string[]) => void;
+  selectAll: () => void;
+  deselectAll: () => void;
+  isEntitySelected: (id: string) => boolean;
+  isEdgeSelected: (id: string) => boolean;
+
+  /** Viewport controls */
+  pan: (delta: XYPosition) => void;
+  zoom: (delta: number, center?: XYPosition) => void;
+  fitView: (options?: FitViewOptions, canvasWidth?: number, canvasHeight?: number) => void;
+
+  /** Efficient batch position update for dragging */
+  updateEntityPositions: (updates: Array<{ id: string; position: XYPosition }>) => void;
+
+  /** Efficient dimension update for resizing (avoids full applyEntityChanges rebuild) */
+  updateEntityDimensions: (
+    id: string,
+    width: number,
+    height: number,
+    position?: XYPosition
+  ) => void;
+
+  /** Clear explicit width/height to revert to computed minimum from socket layout */
+  fitEntityToContent: (id: string) => void;
+
+  // ========================================
+  // Phase 6: Core Operations
+  // ========================================
+
+  /**
+   * Clone entities and edges with new IDs.
+   * Single-pass operation with pre-allocated ID pool and edge remapping.
+   */
+  cloneElements: <T extends EntityData = EntityData>(
+    entities: Entity<T>[],
+    edges: Edge[],
+    options?: CloneElementsOptions<T>
+  ) => CloneElementsResult;
+
+  /**
+   * Batch add entities and edges in a single state update.
+   * More efficient than multiple applyEntityChanges/applyEdgeChanges calls.
+   */
+  addElements: (batch: ElementsBatch) => void;
+
+  /**
+   * Delete entities and edges by ID.
+   * Automatically removes edges connected to deleted entities.
+   */
+  deleteElements: (batch: DeleteElementsBatch) => void;
+
+  /**
+   * Delete all currently selected entities and edges.
+   * Convenience wrapper around deleteElements.
+   */
+  deleteSelected: () => void;
+
+  /**
+   * Copy selected entities and connected edges to internal clipboard.
+   * No serialization - just holds references.
+   */
+  copySelectedToInternal: () => void;
+
+  /**
+   * Paste from internal clipboard.
+   * Clones the clipboard contents with new IDs.
+   */
+  pasteFromInternal: <T extends EntityData = EntityData>(
+    options?: Omit<CloneElementsOptions<T>, 'generateId'>
+  ) => CloneElementsResult | null;
+
+  /**
+   * Cut selected entities and edges to internal clipboard.
+   * Copies then deletes.
+   */
+  cutSelectedToInternal: () => void;
+
+  /**
+   * Serialize current flow state to a plain object.
+   * For persistence or browser clipboard.
+   */
+  toObject: () => FlowObject;
+
+  /**
+   * Get currently selected entities.
+   */
+  getSelectedEntities: () => Entity[];
+
+  /**
+   * Get edges connected to the given entity IDs.
+   */
+  getConnectedEdges: (entityIds: string[]) => Edge[];
+
+  // ========================================
+  // Phase 7C: Grouping Actions
+  // ========================================
+
+  /**
+   * Get direct children of a group entity.
+   */
+  getGroupChildren: (groupId: string) => Entity[];
+
+  /**
+   * Get all descendants of a group entity (recursive).
+   */
+  getGroupDescendants: (groupId: string) => Entity[];
+
+  /**
+   * Toggle a group's collapsed state.
+   * Fires a 'collapse' entity change event.
+   */
+  toggleGroupCollapse: (groupId: string) => void;
+
+  /**
+   * Expand a collapsed group.
+   */
+  expandGroup: (groupId: string) => void;
+
+  /**
+   * Collapse an expanded group.
+   */
+  collapseGroup: (groupId: string) => void;
+
+  /**
+   * Check if a group is collapsed.
+   */
+  isGroupCollapsed: (groupId: string) => boolean;
+
+  /**
+   * Get the bounds of a group (calculated from children).
+   * Returns null if group has no children.
+   */
+  getGroupBounds: (groupId: string) => Bounds | null;
+
+  /**
+   * Set the parent of an entity (for grouping).
+   * Validates that the operation doesn't create cycles.
+   */
+  setEntityParent: (entityId: string, parentId: string | null) => boolean;
+
+  /**
+   * Move a group and all its descendants.
+   * Updates positions in a single batch for performance.
+   */
+  moveGroup: (groupId: string, delta: XYPosition) => void;
+
+  // ============================================================================
+  // Graph Engine Queries (Phase 8)
+  // ============================================================================
+
+  /** Get entity IDs that directly feed into this entity. */
+  getIncomers: (entityId: string) => string[];
+  /** Get entity IDs that this entity directly feeds into. */
+  getOutgoers: (entityId: string) => string[];
+  /** Get all edges touching an entity via adjacency index. */
+  getEntityEdges: (entityId: string) => Edge[];
+  /** Get edges arriving at an entity (inputs). */
+  getInputEdges: (entityId: string) => Edge[];
+  /** Get edges leaving an entity (outputs). */
+  getOutputEdges: (entityId: string) => Edge[];
+  /** Get direct edges between two entities. */
+  getEdgesBetween: (entityA: string, entityB: string) => Edge[];
+  /** Walk upstream from an entity, yielding all ancestor entity IDs. */
+  walkUpstream: (startEntityId: string) => Generator<string>;
+  /** Walk downstream from an entity, yielding all dependent entity IDs. */
+  walkDownstream: (startEntityId: string) => Generator<string>;
+  /** Get cached graph analysis (topo sort, execution levels, cycles, roots, leaves). */
+  getAnalysis: () => CachedAnalysis;
+  /** Would adding an edge from source to target create a cycle? */
+  wouldCreateCycle: (sourceEntityId: string, targetEntityId: string) => boolean;
+  /** Get all entities downstream of changed entities, in topological order. */
+  getAffectedEntities: (changedEntityIds: string | string[]) => string[];
+  /** Find connected components. Returns Map<componentId, entityIds[]>. */
+  getConnectedComponents: () => Map<string, string[]>;
+  /** Check if two entities are in the same connected component. */
+  areConnected: (entityA: string, entityB: string) => boolean;
+  /** Get execution order for evaluating a specific entity (upstream subgraph). */
+  getExecutionOrder: (targetEntityId: string) => string[];
+  /** Get entities ready to execute given completed set. */
+  getReadyEntities: (entityIds: string[], completed: ReadonlySet<string>) => string[];
+  /** Insert an entity onto an existing edge (A→B becomes A→new→B). */
+  insertOnEdge: (edgeId: string, newEntity: Entity) => void;
+  /** Remove an entity and reconnect its inputs to outputs. */
+  bypassEntity: (entityId: string) => void;
+  /** Mark an entity as muted (skipped in execution). */
+  muteEntity: (entityId: string) => void;
+  /** Remove muted status from an entity. */
+  unmuteEntity: (entityId: string) => void;
+  /** Check if an entity is muted. */
+  isMuted: (entityId: string) => boolean;
+
+  // ========================================
+  // Phase 8: Graph Validation & Subgraph Mutations
+  // ========================================
+
+  /** Validate the graph structure. Returns a list of issues. */
+  validate: (
+    socketTypes?: Record<string, { compatibleWith?: string[] | '*' }>
+  ) => import('./graph').GraphValidationIssue[];
+  /** Check if all required input ports are connected. */
+  isGraphComplete: () => boolean;
+  /** Get compatible ports for a source socket (for connection drag UI). */
+  getCompatiblePorts: (
+    sourceEntityId: string,
+    sourceSocketId: string,
+    isSourceInput: boolean,
+    socketTypes: Record<string, { compatibleWith?: string[] | '*' }>,
+    allowCycles?: boolean
+  ) => Array<{ entityId: string; socketId: string; socketName: string; socketType: string }>;
+  /** Collapse a set of entities into a compound group entity. */
+  collapseToSubgraph: (entityIds: string[], groupId: string) => void;
+  /**
+   * Tidy the graph: put every entity in a column behind whatever feeds it.
+   *
+   * Returns the positions it decided on, so a controlled consumer can report them onwards; the
+   * store is already moved by the time it returns.
+   */
+  autoLayout: (options?: LayoutOptions) => Array<{ id: string; position: XYPosition }>;
+  /** Expand a compound group entity back to its children. */
+  expandSubgraph: (
+    groupId: string,
+    childEntities: Entity[],
+    internalEdges: Edge[],
+    portMapping: {
+      inputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+      outputs: Array<{ framePortId: string; originalEntityId: string; originalSocketId: string }>;
+    }
+  ) => void;
+}
+
+export type FlowStore = ReturnType<typeof createFlowStore>;
+
+// Helper to calculate socket Y offset using theme-aware layout (matches visual rendering)
+// Helper to build collapsedGroupIds set from entities
+function buildCollapsedGroupIds(entities: Entity[]): Set<string> {
+  const collapsed = new Set<string>();
+  for (const entity of entities) {
+    if (entity.type === 'frame' && entity.collapsed) {
+      collapsed.add(entity.id);
+    }
+  }
+  return collapsed;
+}
+
+/**
+ * What a new `entities` array changed, against the derived state already built for the old one —
+ * or `null` when the answer is "too much, rebuild everything".
+ *
+ * WHY THIS EXISTS. `setEntities` is the door the consumer's own array comes back through, and in a
+ * controlled setup that happens on EVERY FRAME OF A DRAG: the pointer moves one node, the app is
+ * told, the app re-renders, and the whole array arrives here. Having no idea what moved, this used
+ * to assume the worst and call `rebuildDerivedState` — a fresh entityMap, a fresh quadtree and a
+ * fresh socket quadtree, built from every entity in the graph, sixty times a second, to account
+ * for one node moving twelve pixels. `updateEntityPositions` had already updated both indices
+ * incrementally moments earlier; this threw that away and did it again the expensive way. Measured
+ * at two thousand nodes: about 24 KB of garbage per frame, dominated by the two trees subdividing.
+ *
+ * THE ONLY THING THE FAST PATH ALLOWS IS A MOVE. The derived state is built from a short, exact
+ * list of fields, and every one of them except `position` forces the full rebuild:
+ *
+ *   type, collapsed   -> buildCollapsedGroupIds
+ *   parentId          -> isEntityHidden, which walks the ancestor chain
+ *   width, height     -> quadtree bounds; width also sets the socket column (getSocketWorldX)
+ *   inputs, outputs   -> the socket quadtree, and the computed height when none is stated
+ *   preview           -> the computed height, same reason
+ *
+ * `data` is deliberately absent: nothing derived reads it, so a widget value changing is free.
+ * The four object-valued fields are compared BY REFERENCE, which is what `getEntitySocketLayout`
+ * already keys its own cache on, and what an immutable consumer update produces anyway.
+ *
+ * Returns the ids whose position moved, the ids whose object changed at all (a superset of the
+ * first, since an entity can change its `data` without moving) and whether the ARRAY ORDER moved,
+ * which is the one thing the caller still has to rebuild an index for. It is `null`, and only null,
+ * when the caller must fall back to the full rebuild.
+ */
+function planDerivedUpdate(
+  next: Entity[],
+  prevMap: ReadonlyMap<string, Entity>,
+  /**
+   * The id -> array-index map as it stands. Only read to answer whether the ORDER moved: the array
+   * index is how `resolveIndex` finds an entity, so a reorder invalidates it even though every
+   * other piece of derived state is untouched. Reordering without adding or removing is rare
+   * (`bringToFront` works on `stackOrder`, not on the array), so the common answer is false and the
+   * rebuild is skipped.
+   */
+  prevIndex: ReadonlyMap<string, number>
+): { moved: string[]; changed: Entity[]; reordered: boolean } | null {
+  // A different count means something was added or removed. Combined with every entity below
+  // being found in `prevMap`, and ids being unique, this settles that the id SET is identical.
+  if (next.length !== prevMap.size) return null;
+
+  const moved: string[] = [];
+  const changed: Entity[] = [];
+  let reordered = false;
+
+  for (let i = 0; i < next.length; i++) {
+    const entity = next[i];
+    const prev = prevMap.get(entity.id);
+    if (prev === undefined) return null;
+    if (prevIndex.get(entity.id) !== i) reordered = true;
+    // The common case by far: the consumer's update preserved this entity's identity because
+    // nothing about it changed. `resolveEntities` preserves identity too where the type table
+    // fills in nothing new, so this stays a pointer compare all the way through.
+    if (prev === entity) continue;
+
+    if (
+      prev.type !== entity.type ||
+      prev.collapsed !== entity.collapsed ||
+      prev.parentId !== entity.parentId ||
+      prev.width !== entity.width ||
+      prev.height !== entity.height ||
+      prev.inputs !== entity.inputs ||
+      prev.outputs !== entity.outputs ||
+      prev.preview !== entity.preview
+    ) {
+      return null;
+    }
+
+    changed.push(entity);
+    if (prev.position.x !== entity.position.x || prev.position.y !== entity.position.y) {
+      moved.push(entity.id);
+    }
+  }
+
+  return { moved, changed, reordered };
+}
+
+/** Preserve set identity unless a controlled replacement actually removes an owner. */
+function retainIds(ids: Set<string>, live: ReadonlyMap<string, unknown>): Set<string> {
+  let next: Set<string> | undefined;
+  for (const id of ids) if (!live.has(id)) (next ??= new Set(ids)).delete(id);
+  return next ?? ids;
+}
+
+function reconcileEntityReferences(
+  state: FlowState,
+  live: Map<string, Entity>
+): Partial<FlowState> {
+  const kept = (id: string | null) => (id !== null && live.has(id) ? id : null);
+  const socketLive = (handle: SocketHandle | null) => {
+    if (!handle) return null;
+    const entity = live.get(handle.entityId);
+    const sockets = handle.isInput ? entity?.inputs : entity?.outputs;
+    return sockets?.some((s) => s.id === handle.socketId) ? handle : null;
+  };
+  const draft = state.connectionDraft;
+  const widgetLive = (key: string | null) => {
+    if (key === null) return false;
+    for (const entity of live.values())
+      for (const socket of [...(entity.inputs ?? []), ...(entity.outputs ?? [])]) {
+        if (widgetKey(entity.id, socket.id) === key) return true;
+      }
+    return false;
+  };
+  const editingWidgetKey = widgetLive(state.editingWidgetKey) ? state.editingWidgetKey : null;
+  const popover = state.widgetPopover;
+  const widgetPopover = popover && widgetLive(popover.key) ? popover : null;
+  return {
+    selectedEntityIds: retainIds(state.selectedEntityIds, live),
+    mutedEntityIds: retainIds(state.mutedEntityIds, live),
+    focusedEntityId: kept(state.focusedEntityId),
+    hoveredEntityId: kept(state.hoveredEntityId),
+    editingEntityId: kept(state.editingEntityId),
+    hoveredSocketId: socketLive(state.hoveredSocketId),
+    hoveredWidget:
+      state.hoveredWidget &&
+      widgetLive(widgetKey(state.hoveredWidget.entityId, state.hoveredWidget.socketId))
+        ? state.hoveredWidget
+        : null,
+    connectionStart:
+      state.connectionStart && live.has(state.connectionStart.entityId)
+        ? state.connectionStart
+        : null,
+    connectionDraft: draft && socketLive(draft.source) ? draft : null,
+    editingWidgetKey,
+    editingWidgetPart: editingWidgetKey ? state.editingWidgetPart : -1,
+    pressedWidgetKey: widgetLive(state.pressedWidgetKey) ? state.pressedWidgetKey : null,
+    focusVisibleWidgetKey: widgetLive(state.focusVisibleWidgetKey)
+      ? state.focusVisibleWidgetKey
+      : null,
+    widgetPopover,
+    popoverIndex: widgetPopover ? state.popoverIndex : -1,
+    popoverScroll: widgetPopover ? state.popoverScroll : 0,
+  };
+}
+
+// Helper to rebuild derived state from entities
+// collapsedGroupIds is used to filter children of collapsed groups from quadtrees
+// socketLayout is used for correct entity height in quadtree bounds
+/**
+ * The moves that line up or space out the current selection, planned by `plan` over its rects.
+ *
+ * An entity whose frame is also selected is left out: it moves WITH the frame, and planned on its
+ * own as well it would be moved twice and pulled out of its frame. A frame that moves carries its
+ * contents, the same way `moveGroup` does, since positions here are absolute.
+ */
+function arrangeSelectionUpdates(
+  state: FlowState,
+  plan: (rects: ArrangeRect[]) => ArrangeMove[]
+): Array<{ id: string; position: XYPosition }> {
+  const { selectedEntityIds, entityMap, hiddenEntityIds, entities, socketLayout } = state;
+  const rects: ArrangeRect[] = [];
+  for (const id of selectedEntityIds) {
+    const entity = entityMap.get(id);
+    if (!entity || hiddenEntityIds.has(id)) continue;
+    if (getParentChain(entity, entityMap).some((parent) => selectedEntityIds.has(parent.id)))
+      continue;
+    const b = getEntityBounds(entity, socketLayout ?? undefined);
+    rects.push({ id, x: b.x, y: b.y, width: b.width, height: b.height });
+  }
+  const moves = plan(rects);
+  if (moves.length === 0) return [];
+
+  const parents = new Set<string>();
+  for (const e of entities) if (e.parentId !== undefined) parents.add(e.parentId);
+  const updates: Array<{ id: string; position: XYPosition }> = [];
+  for (const move of moves) {
+    const entity = entityMap.get(move.id);
+    if (!entity) continue;
+    updates.push({
+      id: move.id,
+      position: { x: entity.position.x + move.dx, y: entity.position.y + move.dy },
+    });
+    if (parents.has(move.id)) {
+      for (const [childId, position] of calculateDescendantPositions(entities, move.id, {
+        x: move.dx,
+        y: move.dy,
+      })) {
+        updates.push({ id: childId, position });
+      }
+    }
+  }
+  return updates;
+}
+
+function rebuildDerivedState(
+  entities: Entity[],
+  collapsedGroupIds?: Set<string>,
+  socketLayout?: ResolvedSocketLayout | null
+) {
+  const entityMap = new Map<string, Entity>();
+  const quadtree = new Quadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
+  const socketQuadtree = new SocketQuadtree({ x: -10000, y: -10000, width: 20000, height: 20000 });
+
+  // Build entityMap first (all entities, for O(1) lookup)
+  for (const entity of entities) {
+    entityMap.set(entity.id, entity);
+  }
+
+  // Build collapsed set if not provided (e.g., during initialization)
+  const collapsed = collapsedGroupIds ?? buildCollapsedGroupIds(entities);
+
+  // Pre-compute hidden entity IDs for O(1) lookup in hot paths
+  // This is O(n*d) but only runs when entities/collapsed state changes, not every frame
+  const hiddenEntityIds = new Set<string>();
+  for (const entity of entities) {
+    if (isEntityHidden(entity, entityMap, collapsed)) {
+      hiddenEntityIds.add(entity.id);
+    }
+  }
+
+  // Determine which entities are visible (not inside collapsed groups)
+  const visibleEntities: Entity[] = [];
+  for (const entity of entities) {
+    if (!hiddenEntityIds.has(entity.id)) {
+      visibleEntities.push(entity);
+    }
+  }
+
+  // Only add visible entities to quadtrees
+  for (const entity of visibleEntities) {
+    // Insert sockets into socket quadtree (positioned outside entity body)
+    if (entity.inputs) {
+      for (let i = 0; i < entity.inputs.length; i++) {
+        const socket = entity.inputs[i];
+        const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+        socketQuadtree.insert({
+          entityId: entity.id,
+          socketId: socket.id,
+          isInput: true,
+          x: getSocketWorldX(entity, true),
+          y: entity.position.y + yOffset,
+        });
+      }
+    }
+    if (entity.outputs) {
+      for (let i = 0; i < entity.outputs.length; i++) {
+        const socket = entity.outputs[i];
+        const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+        socketQuadtree.insert({
+          entityId: entity.id,
+          socketId: socket.id,
+          isInput: false,
+          x: getSocketWorldX(entity, false),
+          y: entity.position.y + yOffset,
+        });
+      }
+    }
+  }
+
+  quadtree.rebuild(visibleEntities, socketLayout ?? undefined);
+
+  return { entityMap, quadtree, socketQuadtree, collapsedGroupIds: collapsed, hiddenEntityIds };
+}
+
+/**
+ * Which sockets have an edge on them, keyed `entityId:socketId:input|output`.
+ *
+ * THE DIRECTION SUFFIX IS THE WHOLE POINT, and its absence was a silent three-way defect. This
+ * used to write `entityId:socketId` while four of its five readers asked for the three-part key —
+ * `sockets.tsx` for both directions, `widget-hit.ts` and `widgets-gl.tsx` for inputs — so those
+ * four lookups could never match anything and every one of them silently answered "not
+ * connected", forever. A connected input kept its widget painted AND kept taking presses, so a
+ * value arriving down an edge could be typed over by a control that should not have been there;
+ * and no socket dot on any node ever rendered in its connected state.
+ *
+ * Socket ids are scoped per direction — an entity may legally have an input and an output that
+ * share one id — so the two-part key was also ambiguous in principle, not only mismatched in
+ * practice. Both ends of every edge are recorded: an output with an edge leaving it is as
+ * connected as the input it arrives at, which is what `sockets.tsx` was already asking about.
+ */
+/**
+ * Whether the person has a widget write on this entity the consumer has not answered yet.
+ * O(overrides), which is at most a handful: an override lives only between a pointer event and
+ * the consumer's echo.
+ */
+function rebuildConnectedSockets(
+  edges: Edge[],
+  widgetValues?: Map<string, WidgetOverride>
+): Set<string> {
+  const connected = new Set<string>();
+  for (const edge of edges) {
+    if (edge.targetSocket) {
+      connected.add(connectedSocketKey(edge.target, edge.targetSocket, true));
+    }
+    if (edge.sourceSocket) {
+      connected.add(connectedSocketKey(edge.source, edge.sourceSocket, false));
+    }
+  }
+
+  // A widget stops being drawn the moment its socket is connected, and the local override for it
+  // retires only where it IS drawn (utils/widget-values.ts, read from widgets-gl.tsx). So an
+  // override set just before an edge landed on that socket survived — hidden, and with no path
+  // left to retire it — and then resurfaced as a stale value the moment the edge was removed,
+  // beating every external write to that socket until one happened to equal it. This is the one
+  // place that knows a socket's fate has changed, so this is where the override goes.
+  //
+  // No key parsing: `widgetKey` is `entityId:socketId` and the connected key is that plus
+  // `:input`.
+  if (widgetValues) {
+    for (const key of widgetValues.keys()) {
+      if (connected.has(`${key}:input`)) widgetValues.delete(key);
+    }
+  }
+  return connected;
+}
+
+/**
+ * Drop what an entity's widgets had pending, because the entity is gone.
+ *
+ * `widgetValues` had two writers and one eraser, and the eraser only ran when a value round-tripped
+ * through a painted widget. Nothing at all cleared a key when its entity was deleted, so the map
+ * grew for the life of the session — and worse, an id that came back (an undo restores ids
+ * verbatim) inherited the override the previous life of that id had left behind: the restored
+ * entity's own value was shown over by a number the person had set before deleting it, and the
+ * restore looked like it had failed.
+ *
+ * Both directions are swept. `setWidgetValue` is public and takes any socket id, so an output key
+ * is reachable even though only inputs currently draw widgets. Returns whether anything went, so
+ * the caller can bump `widgetValuesVersion` only when there is something to notice.
+ */
+function dropWidgetValues(widgetValues: Map<string, WidgetOverride>, entity: Entity): boolean {
+  if (widgetValues.size === 0) return false;
+  let dropped = false;
+  for (const sockets of [entity.inputs, entity.outputs]) {
+    if (!sockets) continue;
+    for (const socket of sockets) {
+      if (widgetValues.delete(widgetKey(entity.id, socket.id))) dropped = true;
+    }
+  }
+  return dropped;
+}
+
+/**
+ * The same sweep for a wholesale replacement of the entity array, where there is no list of what
+ * was removed: keep only the keys the new entities can still account for. This is the widget-value
+ * twin of `reconcileStackOrder`, and it exists for the same reason — `setEntities` is the one
+ * reconciler, so a key it does not clean up here is a key nothing will ever clean up.
+ */
+function reconcileWidgetValues(
+  widgetValues: Map<string, WidgetOverride>,
+  entities: Entity[]
+): boolean {
+  if (widgetValues.size === 0) return false;
+  const live = new Set<string>();
+  for (const entity of entities) {
+    for (const sockets of [entity.inputs, entity.outputs]) {
+      if (!sockets) continue;
+      for (const socket of sockets) live.add(widgetKey(entity.id, socket.id));
+    }
+  }
+  let dropped = false;
+  for (const key of widgetValues.keys()) {
+    if (!live.has(key)) {
+      widgetValues.delete(key);
+      dropped = true;
+    }
+  }
+  return dropped;
+}
+
+/** Narrow an entity's open-ended `data.values` bag without asserting it into shape. */
+function isValueBag(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const INPUTS_CHANGED = 1;
+const OVERRIDES_RETIRED = 2;
+
+/**
+ * Prop sync and change batches must agree about an input edit. The common move/rename path
+ * compares references only; socket/value scans are reserved for changed declarations or values.
+ * Flags avoid allocating a result object for every entity on every controlled drag frame.
+ */
+function reconcileEvaluationInputs(
+  prev: Entity,
+  next: Entity,
+  widgetValues: Map<string, WidgetOverride>
+): number {
+  if (prev === next) return 0;
+  let result =
+    prev.type !== next.type || prev.inputs !== next.inputs || prev.outputs !== next.outputs
+      ? INPUTS_CHANGED
+      : 0;
+  const a = (prev.data as { values?: unknown } | undefined)?.values;
+  const b = (next.data as { values?: unknown } | undefined)?.values;
+  if (a === b) return result;
+
+  const prevValues = isValueBag(a) ? a : undefined;
+  const nextValues = isValueBag(b) ? b : undefined;
+  const socketIds = new Set<string>([
+    ...(prevValues ? Object.keys(prevValues) : []),
+    ...(nextValues ? Object.keys(nextValues) : []),
+  ]);
+  for (const socketId of socketIds) {
+    const before = ownSocketValue(prevValues, socketId);
+    const after = ownSocketValue(nextValues, socketId);
+    if (Object.is(before, after)) continue;
+    const key = widgetKey(next.id, socketId);
+    const pending = widgetValues.get(key);
+    if (pending && Object.is(pending.value, after)) {
+      // Retire this socket's own echo without cancelling the run its local write started.
+      // A schema edit still invalidates, even if it arrives with that echo.
+      widgetValues.delete(key);
+      result |= OVERRIDES_RETIRED;
+    } else {
+      result |= INPUTS_CHANGED;
+    }
+  }
+  return result;
+}
+
+export const createFlowStore = (initialState?: Partial<FlowState>) => {
+  // Initialize derived state from initial entities and edges
+  /**
+   * The type table and the cache that keeps resolution off the hot path.
+   *
+   * `let`, not state, because resolution happens INSIDE `setEntities` — the store cannot read its
+   * own next state while computing it. The state field mirrors this for anyone outside.
+   */
+  let entityTypesRef: Record<string, EntityTypeDefinition> = initialState?.entityTypes ?? {};
+  let entityTypeCache = createEntityTypeCache();
+  const resolve = (entities: Entity[]) =>
+    resolveEntities(entities, entityTypesRef, entityTypeCache);
+  const resolveOne = (entity: Entity) => resolveEntity(entity, entityTypesRef, entityTypeCache);
+  // Own the array so hot position writes never modify a consumer-owned array.
+  const initialEntities = resolve(initialState?.entities ?? []).slice();
+  const initialEdges = initialState?.edges ?? [];
+  /**
+   * The resolved socket layout, when the caller already knows it — and <KookieFlow> does, because
+   * StyleProvider resolves it above the FlowProvider that builds this store.
+   *
+   * Without it this build ran on default row heights and was then thrown away whole. The mount
+   * effect in kookie-flow.tsx calls `setSocketLayout`, which found `socketLayout === null`, could
+   * not take its value-equality skip, and rebuilt both quadtrees a second time — every socket
+   * offset and every entity bound computed twice on mount, the first time from numbers that were
+   * wrong, and one extra notification to every subscriber watching the derived state. Seeding it
+   * makes the first build the correct one and lets the effect skip.
+   *
+   * It stays optional, and the layout-less build below stays the fallback rather than becoming a
+   * deferred build. FlowProvider is a public export that can be mounted with no style context at
+   * all, and geometry.ts documents the no-layout branch as the path the frames before the sync
+   * take; hit testing depends on both quadtrees being usable the moment the store exists, so
+   * "leave them empty until someone supplies a layout" would leave a standalone FlowProvider with
+   * every click and hover dead.
+   */
+  const initialSocketLayout = initialState?.socketLayout ?? null;
+  const { entityMap, quadtree, socketQuadtree, collapsedGroupIds, hiddenEntityIds } =
+    rebuildDerivedState(initialEntities, undefined, initialSocketLayout);
+  const connectedSockets = rebuildConnectedSockets(initialEdges);
+
+  /**
+   * The stacking counter. PER STORE, not module-level: a shared counter is the reentrancy
+   * defect the drag index had (see store.test.ts), and two graphs on one page would otherwise
+   * hand each other's presses ever-larger indices.
+   */
+  let stackCounter = 0;
+  /** Give every entity that has no index the next one, in array order — the order they painted in. */
+  const assignStackOrder = (order: Map<string, number>, entities: Entity[]) => {
+    for (const e of entities) if (!order.has(e.id)) order.set(e.id, ++stackCounter);
+  };
+  /** Drop ids that are gone, then assign the rest. Used when the whole array is replaced. */
+  const reconcileStackOrder = (order: Map<string, number>, entities: Entity[]) => {
+    const keep = new Set(entities.map((e) => e.id));
+    for (const id of order.keys()) if (!keep.has(id)) order.delete(id);
+    assignStackOrder(order, entities);
+  };
+  const initialStackOrder = new Map<string, number>();
+  assignStackOrder(initialStackOrder, initialEntities);
+  const initialAdjacencyIndex = graphEngine.buildAdjacencyIndex(initialEdges);
+  /**
+   * Side-channel for communicating moved entity IDs to renderers. Kept out of Zustand state so a
+   * drag frame allocates no Set.
+   *
+   * PER STORE, not module-level. These were module singletons, which made the library
+   * non-reentrant: `createFlowStore` cleared the shared id map on construction, so mounting a
+   * second <KookieFlow> stopped dragging from working in the first — measured, the first store's
+   * entity did not move at all.
+   */
+  const movedEntityIds = new Set<string>();
+  const movementTrackers = new Set<Set<string>>();
+  const markMovement = (id: string) => {
+    movedEntityIds.add(id);
+    for (const pending of movementTrackers) pending.add(id);
+  };
+
+  /**
+   * Persistent id-to-index map — avoids an O(n) rebuild on every drag frame.
+   *
+   * It must be rebuilt wherever the entities array changes length or order. When it goes stale and
+   * the stale index is past the end of the array, the drag path spreads `undefined` and appends an
+   * entity with `id === undefined` to state.entities. It self-heals on the next add/remove, which
+   * is exactly the profile of a bug that survives manual testing.
+   */
+  const idToIndex = new Map<string, number>();
+  const rebuildIdToIndex = (entities: Entity[]): void => {
+    idToIndex.clear();
+    for (let i = 0; i < entities.length; i++) {
+      idToIndex.set(entities[i].id, i);
+    }
+  };
+  rebuildIdToIndex(initialEntities);
+
+  /**
+   * Resolve an id to its array slot, verifying the cached index still points AT that entity.
+   *
+   * `index !== undefined` is not a sufficient guard. A stale index that is still in bounds writes
+   * to the WRONG entity, and one past the end makes `{...nextEntities[index]}` spread `undefined`
+   * — which appends an entity with `id === undefined` to state.entities. Checking identity catches
+   * both, and falling back to a scan means a stale cache costs one O(n) walk instead of corrupting
+   * the document. With the rebuilds above in place this fallback should never run.
+   */
+  const resolveIndex = (entities: Entity[], id: string): number => {
+    const cached = idToIndex.get(id);
+    if (cached !== undefined && entities[cached]?.id === id) return cached;
+    const found = entities.findIndex((e) => e.id === id);
+    if (found >= 0) idToIndex.set(id, found);
+    return found;
+  };
+
+  // Lazy cached analysis — closure-scoped, not in Zustand state (avoids re-render on compute)
+  let cachedAnalysis: CachedAnalysis | null = null;
+
+  /**
+   * The evaluation engine, closure-scoped for the same reason as the cache: it holds an
+   * AbortController per run and two maps mutated in place, none of which is state anyone
+   * renders. `evaluationVersion` is what renderers watch. `get`/`set` do not exist until
+   * `create` runs, so the host reads through references bound at the top of the initialiser.
+   */
+  let getState: (() => FlowState) | null = null;
+  let setState: ((partial: Partial<FlowState>) => void) | null = null;
+  const evaluationHost: EvaluationHost = {
+    getEntity: (id) => getState?.().entityMap.get(id),
+    entityIds: () => getState?.().entityMap.keys() ?? [],
+    index: () => (getState as () => FlowState)().adjacencyIndex,
+    isMuted: (id) => getState?.().mutedEntityIds.has(id) ?? false,
+    evaluationMode: (entity) => entityTypesRef[entity.type]?.evaluation ?? 'reactive',
+    readInputValue: (entity, socket) => {
+      // The same read widgets-gl.tsx makes for what to DRAW, so what runs is what is shown:
+      // the person's local write until the consumer echoes, then the entity's value, then the
+      // socket's default.
+      const state = (getState as () => FlowState)();
+      const values = (entity.data as { values?: Record<string, unknown> } | undefined)?.values;
+      return readWidgetValue(
+        state.widgetValues,
+        widgetKey(entity.id, socket.id),
+        ownSocketValue(values, socket.id) ?? socket.defaultValue
+      );
+    },
+    onChange: () => {
+      if (!getState || !setState) return;
+      setState({ evaluationVersion: getState().evaluationVersion + 1 });
+    },
+  };
+  const evaluator = new Evaluator(evaluationHost);
+  const forgetEntities = (ids: readonly string[] | ReadonlySet<string>): void => {
+    for (const id of ids) {
+      movedEntityIds.delete(id);
+      for (const pending of movementTrackers) pending.delete(id);
+    }
+    evaluator.forget(ids);
+    const muted = getState?.().mutedEntityIds;
+    if (!muted?.size) return;
+    let next: Set<string> | undefined;
+    for (const id of ids) {
+      if (!muted.has(id)) continue;
+      next ??= new Set(muted);
+      next.delete(id);
+    }
+    if (next) setState?.({ mutedEntityIds: next });
+  };
+
+  return createStore<FlowState>()(
+    subscribeWithSelector(
+      (set, get) => (
+        (getState = get),
+        (setState = set),
+        {
+          // Initial state - use extracted values to ensure they're set correctly
+          entities: initialEntities,
+          entityTypes: entityTypesRef,
+          helperLinesX: [],
+          helperLinesY: [],
+          helperLinesVersion: 0,
+          strokeVersion: 0,
+          edges: initialEdges,
+          viewport: initialState?.viewport ?? DEFAULT_VIEWPORT,
+          connectionStart: null,
+          hoveredEntityId: null,
+          hoveredSocketId: null,
+          hoveredWidget: null,
+          connectionDraft: null,
+          /**
+           * The socket's reach, in world px. Four radii out it wakes; a radius and a quarter in, the
+           * wire has fused with it. Both are radii of the DRAWN dot, so the pull scales with the
+           * socket rather than with the zoom — a socket reaches the same distance in the graph's own
+           * units at every scale, which is what makes aiming at one predictable.
+           *
+           * Two and a half radii was the first try and it was too tight to feel: fifteen world px is
+           * under half the width of the fingertip-sized target the same socket claims for its hit test.
+           */
+          magnet: new Magnet({ range: SOCKET_RADIUS * 4, fuse: SOCKET_RADIUS * 1.25 }),
+          pointerWorld: new Float32Array([NaN, NaN]),
+          selectionBox: null,
+          widgetValues: new Map<string, WidgetOverride>(),
+          widgetValuesVersion: 0,
+          evaluationVersion: 0,
+          editingWidgetKey: null,
+          editingWidgetPart: -1,
+          pressedWidgetKey: null,
+          focusVisibleWidgetKey: null,
+          widgetPopover: null,
+          popoverIndex: -1,
+          popoverScroll: 0,
+          popoverHsv: new Float32Array(3),
+          popoverVersion: 0,
+          lastChangedWidgetKey: null,
+          stackOrder: initialStackOrder,
+          stackVersion: 0,
+
+          // Selection state
+          selectedEntityIds: new Set<string>(),
+          selectedEdgeIds: new Set<string>(),
+          focusedEntityId: null,
+
+          // Derived state for O(1) lookups
+          entityMap,
+          quadtree,
+          socketQuadtree,
+          connectedSockets,
+
+          // Position version for tracking position changes
+          positionVersion: 0,
+
+          // Internal clipboard
+          internalClipboard: null,
+
+          // Text editing state (Phase 10)
+          editingEntityId: null,
+          editingContent: null,
+          editingCursor: null,
+
+          // Grouping state (Phase 7C)
+          collapsedGroupIds,
+          hiddenEntityIds,
+
+          // Graph engine state (Phase 8)
+          adjacencyIndex: initialAdjacencyIndex,
+          topologyVersion: 0,
+          mutedEntityIds: new Set<string>(),
+
+          // Socket layout (synced from React context for correct quadtree bounds)
+          socketLayout: initialSocketLayout,
+
+          // Setters - rebuild derived state when entities change
+          getMovedEntityIds: () => movedEntityIds,
+          trackEntityMovements: (pending) => {
+            for (const id of movedEntityIds) pending.add(id);
+            movementTrackers.add(pending);
+            return () => {
+              movementTrackers.delete(pending);
+              pending.clear();
+            };
+          },
+          clearMovedEntityIds: () => movedEntityIds.clear(),
+
+          setEntities: (rawEntities) => {
+            const state = get();
+            const entities = resolve(rawEntities);
+            // Type/socket declarations and external value edits invalidate evaluation. A socket's
+            // own pending widget echo retires its override without restarting the same computation.
+            const changedInputs: string[] = [];
+            let overridesRetired = false;
+            for (const next of entities) {
+              const prev = state.entityMap.get(next.id);
+              if (!prev) {
+                // A node that arrived through the CONSUMER's array — their own "add node" button, an
+                // undo of a delete, an agent's edit — has never run and has no outputs. `addElements`
+                // marks what it adds for exactly this reason; without the same rule here, the node
+                // sits idle, and whatever it feeds reads `undefined` for that input, falls back to the
+                // socket default and reports success. Nothing looks wrong and the number is wrong.
+                if (isEvaluated(next.type)) changedInputs.push(next.id);
+                continue;
+              }
+              const changed = reconcileEvaluationInputs(prev, next, state.widgetValues);
+              if (changed & INPUTS_CHANGED) changedInputs.push(next.id);
+              if (changed & OVERRIDES_RETIRED) overridesRetired = true;
+            }
+            /**
+             * A move, or a rebuild — see `planDerivedUpdate` for the exact list that decides.
+             *
+             * On the fast path the indices are UPDATED IN PLACE rather than replaced: the entityMap
+             * takes the entities whose objects changed, and the two quadtrees take the ones that
+             * actually moved, through the same calls `updateEntityPositions` makes. `collapsedGroupIds`
+             * and `hiddenEntityIds` are handed back untouched, which is not a shortcut but the answer:
+             * nothing on the fast path can change either, and a fresh Set would be a fresh identity
+             * that four layers subscribe to as "something was hidden or shown".
+             *
+             * The layers still hear about the move: `entities` is a new array on every path through
+             * here, and `positionVersion` is bumped below.
+             */
+            const plan = planDerivedUpdate(entities, state.entityMap, idToIndex);
+            let derived: ReturnType<typeof rebuildDerivedState>;
+            if (plan) {
+              for (const entity of plan.changed) state.entityMap.set(entity.id, entity);
+              /**
+               * REPORT WHAT MOVED, or the edge layer never hears about a move that arrives ONLY here.
+               *
+               * `movedEntityIds` is the side channel the edge layer's partial pass builds its affected
+               * set from, and until now only `updateEntityPositions` and `updateEntityDimensions` wrote
+               * it — which covers a pointer drag, because that calls one of them first. It does not
+               * cover a move that arrives purely through the consumer's array: an undo, an inspector
+               * field, a collaborative edit. Those used to be caught by accident, because the full
+               * rebuild minted a fresh `hiddenEntityIds` Set and the edge layer treats that identity as
+               * "something changed". Keeping the Set — which is the right answer, nothing was hidden —
+               * took that accident away, and the node would repaint at its new position with its wires
+               * still tessellated at the old one.
+               *
+               * Added, never cleared: that is the lifetime `updateEntityDimensions` documents. On a
+               * drag echo the position is already applied, so `plan.moved` is empty and the live
+               * gesture's ids are untouched. Over-reporting costs a redundant re-tessellation of edges
+               * that were already right; under-reporting leaves wires behind.
+               */
+              for (const id of plan.moved) markMovement(id);
+              for (const id of plan.moved) {
+                // A hidden entity is in neither index — `rebuildDerivedState` only ever inserted the
+                // visible ones — and `quadtree.update` would INSERT one that is absent rather than
+                // skip it, putting a node nobody can see in front of the hit test.
+                if (state.hiddenEntityIds.has(id)) continue;
+                const entity = state.entityMap.get(id);
+                if (!entity) continue;
+                state.quadtree.update(id, getEntityBounds(entity, state.socketLayout ?? undefined));
+                const inputX = getSocketWorldX(entity, true);
+                const outputX = getSocketWorldX(entity, false);
+                if (entity.inputs) {
+                  for (let i = 0; i < entity.inputs.length; i++) {
+                    const yOffset = getSocketYOffset(entity, i, true, state.socketLayout);
+                    state.socketQuadtree.update(
+                      id,
+                      entity.inputs[i].id,
+                      true,
+                      inputX,
+                      entity.position.y + yOffset
+                    );
+                  }
+                }
+                if (entity.outputs) {
+                  for (let i = 0; i < entity.outputs.length; i++) {
+                    const yOffset = getSocketYOffset(entity, i, false, state.socketLayout);
+                    state.socketQuadtree.update(
+                      id,
+                      entity.outputs[i].id,
+                      false,
+                      outputX,
+                      entity.position.y + yOffset
+                    );
+                  }
+                }
+              }
+              derived = {
+                entityMap: state.entityMap,
+                quadtree: state.quadtree,
+                socketQuadtree: state.socketQuadtree,
+                collapsedGroupIds: state.collapsedGroupIds,
+                hiddenEntityIds: state.hiddenEntityIds,
+              };
+            } else {
+              derived = rebuildDerivedState(entities, undefined, state.socketLayout);
+            }
+            cachedAnalysis = null;
+            /**
+             * Three passes the fast path can prove it does not need — about two thirds of its cost.
+             *
+             * The plan guarantees the id SET is unchanged (same count, every id found), so: the index
+             * from id to array position is already right unless the ORDER moved, which `planDerivedUpdate`
+             * reports; every id already has a stack index, so `reconcileStackOrder` has nothing to add or
+             * drop — and it allocates an n-element array and an n-entry Set to work that out, on a path
+             * that runs every frame of a drag, which is the allocation rule this package leads with; and
+             * the `gone` scan iterates `state.entityMap` asking `derived.entityMap.has(id)` when the two
+             * are THE SAME OBJECT on this path, so it is true for every key by construction.
+             *
+             * Measured at ten thousand entities, one node moved per frame: 2.4 ms of the 3.6 ms this
+             * function spent.
+             */
+            if (!plan || plan.reordered) rebuildIdToIndex(entities);
+            // Bump both topologyVersion and positionVersion so ALL downstream
+            // renderers (edges, sockets, widgets) detect the full replacement
+            if (!plan) {
+              reconcileStackOrder(state.stackOrder, entities);
+              // An entity the new array no longer holds is gone for the engine too: its run stopped, its
+              // outputs released. Unreachable on the fast path, where the id set is unchanged.
+              const gone: string[] = [];
+              for (const id of state.entityMap.keys())
+                if (!derived.entityMap.has(id)) gone.push(id);
+              if (gone.length > 0) forgetEntities(gone);
+            }
+            // The widget overrides need the same reconciliation, and for a sharper reason than tidiness:
+            // a key left behind for an id that is no longer here comes back to life if that id does,
+            // and shows a value the restored entity never held.
+            const widgetValuesDropped = reconcileWidgetValues(state.widgetValues, entities);
+            set({
+              entities: entities.slice(),
+              ...derived,
+              ...(!plan ? reconcileEntityReferences(state, derived.entityMap) : {}),
+              topologyVersion: state.topologyVersion + 1,
+              positionVersion: state.positionVersion + 1,
+              stackVersion: state.stackVersion + 1,
+              ...(widgetValuesDropped || overridesRetired
+                ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+                : {}),
+            });
+            if (changedInputs.length > 0) evaluator.markDirty(changedInputs);
+          },
+          setEntityTypes: (entityTypes) => {
+            if (sameTypeTable(entityTypesRef, entityTypes)) {
+              // Same table, new object — an app writing it inline in JSX. Adopt the reference and
+              // stop: re-resolving every node and rebuilding both quadtrees for this would be a
+              // full rebuild on every consumer render.
+              entityTypesRef = entityTypes;
+              set({ entityTypes });
+              return;
+            }
+            entityTypesRef = entityTypes;
+            // Every resolved entity was built against the OLD table, so the cache is worthless for
+            // resolving — but its `source` half is exactly what says what each node originally stated.
+            const previousCache = entityTypeCache;
+            entityTypeCache = createEntityTypeCache();
+            const state = get();
+            // Re-resolve from what the consumer handed over, not from the resolved copies: filling a
+            // gap once must not stop the next table from filling it differently.
+            const entities = resolveEntities(
+              state.entities.map((e) => sourceEntity(e, previousCache)),
+              entityTypes,
+              entityTypeCache
+            );
+            const changedInputs: string[] = [];
+            for (const entity of entities) {
+              const prev = state.entityMap.get(entity.id);
+              if (prev && (prev.inputs !== entity.inputs || prev.outputs !== entity.outputs)) {
+                changedInputs.push(entity.id);
+              }
+            }
+            set({
+              entityTypes,
+              entities,
+              ...rebuildDerivedState(entities, state.collapsedGroupIds, state.socketLayout),
+              topologyVersion: state.topologyVersion + 1,
+            });
+            if (changedInputs.length) evaluator.markDirty(changedInputs);
+            // Mode-only changes can release already-dirty manual gates.
+            evaluator.wake();
+          },
+          setEdges: (edges) => {
+            cachedAnalysis = null;
+            // IDs identify wires, not their endpoints. Reconnection keeps the ID but changes inputs.
+            const prevEdges = get().edges;
+            const nextIds = new Set<string>();
+            for (const e of edges) nextIds.add(e.id);
+            const prevById = new Map<string, Edge>();
+            for (const e of prevEdges) prevById.set(e.id, e);
+            const touched: string[] = [];
+            for (const e of edges) {
+              const prev = prevById.get(e.id);
+              if (!prev) touched.push(e.target);
+              else if (
+                prev.source !== e.source ||
+                prev.target !== e.target ||
+                prev.sourceSocket !== e.sourceSocket ||
+                prev.targetSocket !== e.targetSocket
+              ) {
+                touched.push(prev.target, e.target);
+              }
+            }
+            for (const e of prevEdges) if (!nextIds.has(e.id)) touched.push(e.target);
+            set({
+              edges,
+              selectedEdgeIds: retainIds(
+                get().selectedEdgeIds,
+                new Map(edges.map((edge) => [edge.id, edge]))
+              ),
+              connectedSockets: rebuildConnectedSockets(edges, get().widgetValues),
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(edges),
+              topologyVersion: get().topologyVersion + 1,
+            });
+            if (touched.length > 0) evaluator.markDirty(touched);
+          },
+          setSocketLayout: (layout) => {
+            const prev = get().socketLayout;
+            // Skip if layout values haven't changed (avoids unnecessary quadtree rebuilds)
+            if (
+              prev &&
+              prev.rowHeight === layout.rowHeight &&
+              prev.marginTop === layout.marginTop &&
+              prev.padding === layout.padding &&
+              prev.widgetHeight === layout.widgetHeight &&
+              prev.socketSize === layout.socketSize
+            ) {
+              return;
+            }
+            // Rebuild quadtree with correct entity heights
+            const { entities, collapsedGroupIds } = get();
+            const derived = rebuildDerivedState(entities, collapsedGroupIds, layout);
+            set({ socketLayout: layout, ...derived });
+          },
+          setViewport: (viewport) => set({ viewport }),
+          setHelperLines: (x, y) => {
+            const state = get();
+            if (sameGuides(state.helperLinesX, x) && sameGuides(state.helperLinesY, y)) return;
+            // Copied, not held. The caller refills its arrays in place on every move, so holding them
+            // made the next comparison an array against itself: the version stopped moving after the
+            // first guide, and that guide stayed drawn after the drag ended. A copy happens only when
+            // the guides change, which is a few times a drag.
+            set({
+              helperLinesX: x.slice(),
+              helperLinesY: y.slice(),
+              helperLinesVersion: state.helperLinesVersion + 1,
+            });
+          },
+          setStrokePoints: (id, points) => {
+            const state = get();
+            const entity = state.entityMap.get(id);
+            if (!entity) return;
+            // Replaced in the map and in the array IN PLACE, and nothing else rebuilt. A stroke has no
+            // sockets and nothing lands on it mid-stroke, so the indexes wait for the commit on release,
+            // which goes through the ordinary door and rebuilds them once.
+            const next: Entity = { ...entity, data: { ...entity.data, points } };
+            state.entityMap.set(id, next);
+            let index = idToIndex.get(id);
+            if (index === undefined || state.entities[index]?.id !== id) {
+              index = state.entities.findIndex((e) => e.id === id);
+              if (index >= 0) idToIndex.set(id, index);
+            }
+            if (index >= 0) state.entities[index] = next;
+            set({ strokeVersion: state.strokeVersion + 1 });
+          },
+          setHoveredEntityId: (hoveredEntityId) => set({ hoveredEntityId }),
+          /**
+           * Deduped by VALUE. The hit test runs on every pointermove and mints a fresh handle object
+           * each time, so an unguarded `set` notifies every subscriber sixty times a second with a
+           * deep-equal value — and the sockets renderer answers each one by rebuilding every socket in
+           * the graph.
+           *
+           * The guard lives here rather than at the call site because there is one of these and two of
+           * those, and because the caller's own version of it was missing `isInput` — socket ids are
+           * scoped per direction (the connected-set keys are `entity:socket:input|output`), so an
+           * entity with an input and an output sharing an id could move the hover between them and
+           * have it swallowed.
+           *
+           * This is an API-visible change: `FlowStore` is exported and a consumer can subscribe. What
+           * they stop receiving is a notification carrying a value equal to the one they already have.
+           */
+          setHoveredSocketId: (hoveredSocketId) => {
+            const prev = get().hoveredSocketId;
+            if (
+              prev?.entityId === hoveredSocketId?.entityId &&
+              prev?.socketId === hoveredSocketId?.socketId &&
+              prev?.isInput === hoveredSocketId?.isInput
+            ) {
+              return;
+            }
+            set({ hoveredSocketId });
+          },
+          /**
+           * Deduped by VALUE, for exactly the reason the socket hover above it is.
+           *
+           * The widget hit test runs on every pointermove that lands on an entity and mints a fresh
+           * handle each time, so an unguarded `set` would notify on every move — and the widget layer
+           * answers a notification by rebuilding every visible widget's instance data. Guarded, this
+           * fires twice per hover: once on enter, once on leave.
+           *
+           * The guard lives here rather than at the call site because that is where the socket version
+           * of it had to be moved to after a call-site copy went stale, and because the whole
+           * no-re-render claim rests on it: nothing subscribes to this through React, so the only
+           * subscriber is the renderer's dirty flag, and the dirty flag is only honest if the store
+           * refuses to raise it for a value it already holds.
+           */
+          setHoveredWidget: (hoveredWidget) => {
+            const prev = get().hoveredWidget;
+            if (
+              prev?.entityId === hoveredWidget?.entityId &&
+              prev?.socketId === hoveredWidget?.socketId
+            ) {
+              return;
+            }
+            set({ hoveredWidget });
+          },
+          startConnection: (entityId, socketId) => set({ connectionStart: { entityId, socketId } }),
+          endConnection: () => set({ connectionStart: null }),
+          setSelectionBox: (selectionBox) => set({ selectionBox }),
+          setEditingEntityId: (editingEntityId) => set({ editingEntityId }),
+          setEditingContent: (editingContent) => set({ editingContent }),
+          setEditingCursor: (start, end) => set({ editingCursor: { start, end } }),
+          startEditing: (entityId) => {
+            const entity = get().entityMap.get(entityId);
+            if (!entity || entity.type !== 'text') return;
+            const data = entity.data as { content?: string };
+            const content = data.content ?? '';
+            set({
+              editingEntityId: entityId,
+              editingContent: content,
+              editingCursor: { start: content.length, end: content.length },
+            });
+          },
+          stopEditing: () => {
+            set({
+              editingEntityId: null,
+              editingContent: null,
+              editingCursor: null,
+            });
+          },
+
+          // Connection draft actions
+          startConnectionDraft: (source, mouseWorld) => {
+            set({
+              connectionDraft: { source, mouseWorld, isValid: true },
+            });
+          },
+          updateConnectionDraft: (mouseWorld, isValid) => {
+            const { connectionDraft } = get();
+            if (connectionDraft) {
+              set({
+                connectionDraft: {
+                  ...connectionDraft,
+                  mouseWorld,
+                  isValid: isValid ?? connectionDraft.isValid,
+                },
+              });
+            }
+          },
+          cancelConnectionDraft: () => {
+            set({ connectionDraft: null, hoveredSocketId: null });
+          },
+
+          setWidgetValue: (entityId, socketId, value) => {
+            const { widgetValues, widgetValuesVersion, entityMap } = get();
+            // The person changed an input. Marked before the record below is written, and it does
+            // not matter: the run starts in a microtask and resolves its inputs then, through the
+            // same reader that draws them.
+            evaluator.markDirty(entityId);
+            // The BASELINE — what the entity says right now — is recorded alongside the value,
+            // because that is what tells us later whether the consumer has answered. See
+            // utils/widget-values.ts: comparing the echo against the value the person SET means a
+            // consumer that clamps or rounds never closes the round trip, and the widget shows the
+            // rejected value forever.
+            const entity = entityMap.get(entityId);
+            const values = entity?.data.values;
+            const held = isValueBag(values) ? ownSocketValue(values, socketId) : undefined;
+            // A socket nobody has set holds nothing, and what the widget DRAWS there — and what the
+            // engine reads — is the socket's default. That is what "unchanged" means for it. Recorded
+            // as `undefined` instead, the very first write on such a socket counted as answered the
+            // moment the consumer echoed anything at all, so the grip snapped back to the default
+            // mid-drag and a second press within the echo window read the old value again.
+            const baseline =
+              held ?? entity?.inputs?.find((socket) => socket.id === socketId)?.defaultValue;
+            const key = widgetKey(entityId, socketId);
+            widgetValues.set(key, { value, baseline });
+            set({ widgetValuesVersion: widgetValuesVersion + 1, lastChangedWidgetKey: key });
+          },
+
+          // ---- Phase 8.5: Evaluation ----
+          setEvaluationHandlers: (onEvaluate, onStatusChange) => {
+            evaluator.setHandlers(onEvaluate, onStatusChange);
+          },
+          markDirty: (ids) => evaluator.markDirty(ids),
+          evaluate: (entityId) => evaluator.evaluate(entityId),
+          evaluateDirty: () => evaluator.evaluateDirty(),
+          evaluateAll: () => evaluator.evaluateAll(),
+          restoreAll: () => evaluator.restoreAll(),
+          setSocketValue: (entityId, socketId, value) =>
+            evaluator.setSocketValue(entityId, socketId, value),
+          getSocketValue: (entityId, socketId) => evaluator.getSocketValue(entityId, socketId),
+          getEvaluationStatus: (entityId) => evaluator.status(entityId),
+          getEvaluationRecord: (entityId) => evaluator.record(entityId),
+          disposeEvaluation: () => evaluator.dispose(),
+
+          setEditingWidgetKey: (editingWidgetKey, part = -1) =>
+            set({ editingWidgetKey, editingWidgetPart: editingWidgetKey === null ? -1 : part }),
+
+          setPressedWidgetKey: (pressedWidgetKey) => {
+            if (get().pressedWidgetKey === pressedWidgetKey) return;
+            set({ pressedWidgetKey });
+          },
+
+          setFocusVisibleWidgetKey: (focusVisibleWidgetKey) => {
+            if (get().focusVisibleWidgetKey === focusVisibleWidgetKey) return;
+            set({ focusVisibleWidgetKey });
+          },
+
+          openWidgetPopover: (popover, scroll) => {
+            const { popoverHsv, popoverVersion } = get();
+            const index = popover.kind === 'select' ? popover.options.indexOf(popover.value) : -1;
+            if (popover.kind === 'color') {
+              const hsv = hexToHsv(popover.value) ?? [0, 0, 0.5];
+              popoverHsv[0] = hsv[0];
+              popoverHsv[1] = hsv[1];
+              popoverHsv[2] = hsv[2];
+            }
+            set({
+              widgetPopover: popover,
+              popoverIndex: index,
+              // The opening scroll comes from the layout that placed the panel, because v2 opens a
+              // select with the chosen row over its trigger and that row's offset IS the placement.
+              // The fallback is for a caller with no viewport to measure against.
+              popoverScroll:
+                scroll ??
+                (index < 0 ? 0 : scrollToShow(0, index, popover.options.length, POPOVER_MAX_ROWS)),
+              popoverVersion: popoverVersion + 1,
+            });
+          },
+          closeWidgetPopover: () => {
+            if (get().widgetPopover === null) return;
+            set({ widgetPopover: null, popoverIndex: -1, popoverScroll: 0 });
+          },
+          setPopoverIndex: (popoverIndex) => {
+            if (get().popoverIndex === popoverIndex) return;
+            set({ popoverIndex });
+          },
+          setPopoverScroll: (popoverScroll) => {
+            if (get().popoverScroll === popoverScroll) return;
+            set({ popoverScroll });
+          },
+          setPopoverHsv: (h, s, v) => {
+            const { popoverHsv, popoverVersion } = get();
+            popoverHsv[0] = h;
+            popoverHsv[1] = s;
+            popoverHsv[2] = v;
+            set({ popoverVersion: popoverVersion + 1 });
+          },
+
+          setFocusedEntityId: (focusedEntityId) => {
+            // Deduped, because the pointer path calls it on every press: a re-press on the node the
+            // cursor is already on must not re-commit the mirror, which would rebuild real DOM
+            // controls out from under a focused one.
+            if (get().focusedEntityId === focusedEntityId) return;
+            set({ focusedEntityId });
+          },
+
+          bringToFront: (entityId) => {
+            const { entityMap, entities, stackOrder, stackVersion } = get();
+            const entity = entityMap.get(entityId);
+            if (!entity) return;
+
+            // Already on top, and nothing under it to lift: a re-press must not repaint the scene.
+            if (stackOrder.get(entityId) === stackCounter && entity.type !== 'frame') return;
+
+            // Ancestors first (root outermost), then the entity, then — only for a frame, because
+            // the descendant walk is O(n) — its children in depth order, so they land above it.
+            const chain = getParentChain(entity, entityMap).reverse();
+            for (const a of chain) stackOrder.set(a.id, ++stackCounter);
+            stackOrder.set(entityId, ++stackCounter);
+            if (entity.type === 'frame') {
+              for (const d of sortByDepth(getGroupDescendants(entities, entityId), entityMap)) {
+                stackOrder.set(d.id, ++stackCounter);
+              }
+            }
+
+            // Keep the depth range inside the camera: renumber 1..n by current order, rarely.
+            if (stackCounter > stackCapacity(stackOrder.size)) {
+              const sorted = [...stackOrder.entries()].sort((a, b) => a[1] - b[1]);
+              stackCounter = 0;
+              for (const [id] of sorted) stackOrder.set(id, ++stackCounter);
+            }
+
+            set({ stackVersion: stackVersion + 1 });
+          },
+
+          // Apply changes
+          applyEntityChanges: (changes) => {
+            const { entities, collapsedGroupIds: currentCollapsed } = get();
+            const nextEntities = [...entities];
+            const changedInputs: string[] = [];
+            let collapsedChanged = false;
+            let topologyChanged = false;
+            let widgetValuesDropped = false;
+            const nextCollapsed = new Set(currentCollapsed);
+
+            // Build id->index map once for O(1) lookups: O(n)
+            const idToIndex = new Map<string, number>();
+            for (let i = 0; i < nextEntities.length; i++) {
+              idToIndex.set(nextEntities[i].id, i);
+            }
+
+            for (const change of changes) {
+              switch (change.type) {
+                case 'position': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEntities[index] = { ...nextEntities[index], position: change.position };
+                  }
+                  break;
+                }
+                case 'select': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEntities[index] = { ...nextEntities[index], selected: change.selected };
+                  }
+                  break;
+                }
+                case 'remove': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    const removed = nextEntities[index];
+                    nextEntities.splice(index, 1);
+                    topologyChanged = true;
+                    get().stackOrder.delete(change.id);
+                    forgetEntities([change.id]);
+                    // The stack index was already cleaned up here; the widget overrides were not, and
+                    // an id that returns must not inherit them.
+                    if (dropWidgetValues(get().widgetValues, removed)) widgetValuesDropped = true;
+                    // Update indices for subsequent removals (shift down)
+                    idToIndex.delete(change.id);
+                    for (let i = index; i < nextEntities.length; i++) {
+                      idToIndex.set(nextEntities[i].id, i);
+                    }
+                    // Also remove from collapsed set if it was a group
+                    if (nextCollapsed.has(change.id)) {
+                      nextCollapsed.delete(change.id);
+                      collapsedChanged = true;
+                    }
+                  }
+                  break;
+                }
+                case 'add': {
+                  const added = resolveOne(change.entity);
+                  idToIndex.set(added.id, nextEntities.length);
+                  nextEntities.push(added);
+                  topologyChanged = true;
+                  if (isEvaluated(added.type)) changedInputs.push(added.id);
+                  // A new entity arrives on top: it is the thing the person just made.
+                  get().stackOrder.set(added.id, ++stackCounter);
+                  // If adding a collapsed group, add to collapsed set
+                  if (change.entity.type === 'frame' && change.entity.collapsed) {
+                    nextCollapsed.add(change.entity.id);
+                    collapsedChanged = true;
+                  }
+                  break;
+                }
+                case 'dimensions': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEntities[index] = {
+                      ...nextEntities[index],
+                      width: change.dimensions.width,
+                      height: change.dimensions.height,
+                    };
+                  }
+                  break;
+                }
+                case 'collapse': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEntities[index] = { ...nextEntities[index], collapsed: change.collapsed };
+                    if (change.collapsed) {
+                      nextCollapsed.add(change.id);
+                    } else {
+                      nextCollapsed.delete(change.id);
+                    }
+                    collapsedChanged = true;
+                  }
+                  break;
+                }
+                case 'parent': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEntities[index] = {
+                      ...nextEntities[index],
+                      parentId: change.parentId ?? undefined,
+                    };
+                  }
+                  break;
+                }
+                case 'data': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    const entity = nextEntities[index];
+                    const merged = { ...entity, data: { ...entity.data, ...change.data } };
+                    // Auto-derive resizable when sizingMode changes on text entities
+                    if (entity.type === 'text' && 'sizingMode' in change.data) {
+                      const mode = (change.data as TextEntityData).sizingMode ?? 'auto-height';
+                      merged.resizable = resizableForSizingMode(mode);
+                    }
+                    nextEntities[index] = merged;
+                    const changed = reconcileEvaluationInputs(entity, merged, get().widgetValues);
+                    if (changed & INPUTS_CHANGED) changedInputs.push(change.id);
+                    if (changed & OVERRIDES_RETIRED) widgetValuesDropped = true;
+                  }
+                  break;
+                }
+                default: {
+                  // An unrecognised change type used to be dropped in silence. The union is public and
+                  // a consumer building changes by hand gets no signal that a typo'd `type` did
+                  // nothing at all — a behaviour test written against `{ type: 'update' }` reported a
+                  // component as broken when the component was fine and the change had simply been
+                  // thrown away. Unconditional, matching FontContext's existing warnings: the package
+                  // has no dev-only mechanism, and this is a programming error worth surfacing wherever
+                  // it happens.
+                  console.warn(
+                    `[kookie-flow] applyEntityChanges: ignoring unknown change type ${JSON.stringify(
+                      (change as { type?: unknown }).type
+                    )}. Valid types: position, select, remove, add, dimensions, collapse, parent, data.`
+                  );
+                  break;
+                }
+              }
+            }
+
+            // Rebuild derived state (entityMap, quadtree, socketQuadtree) to stay in sync
+            const finalCollapsed = collapsedChanged ? nextCollapsed : currentCollapsed;
+            const derived = rebuildDerivedState(nextEntities, finalCollapsed, get().socketLayout);
+            if (topologyChanged) {
+              cachedAnalysis = null;
+              rebuildIdToIndex(nextEntities);
+            }
+            set({
+              entities: nextEntities,
+              ...derived,
+              ...(topologyChanged
+                ? {
+                    topologyVersion: get().topologyVersion + 1,
+                    stackVersion: get().stackVersion + 1,
+                  }
+                : {}),
+              ...(widgetValuesDropped
+                ? { widgetValuesVersion: get().widgetValuesVersion + 1 }
+                : {}),
+            });
+            if (changedInputs.length) evaluator.markDirty(changedInputs);
+          },
+
+          applyEdgeChanges: (changes) => {
+            const { edges } = get();
+            const nextEdges = [...edges];
+
+            // Build id->index map once for O(1) lookups: O(e)
+            const idToIndex = new Map<string, number>();
+            for (let i = 0; i < nextEdges.length; i++) {
+              idToIndex.set(nextEdges[i].id, i);
+            }
+
+            let topologyChanged = false;
+            // Every target whose wire is about to appear or disappear: its inputs change.
+            const touchedTargets: string[] = [];
+            for (const change of changes) {
+              switch (change.type) {
+                case 'select': {
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    nextEdges[index] = { ...nextEdges[index], selected: change.selected };
+                  }
+                  break;
+                }
+                case 'remove': {
+                  {
+                    const removedIndex = idToIndex.get(change.id);
+                    if (removedIndex !== undefined)
+                      touchedTargets.push(nextEdges[removedIndex].target);
+                  }
+                  const index = idToIndex.get(change.id);
+                  if (index !== undefined) {
+                    topologyChanged = true;
+                    nextEdges.splice(index, 1);
+                    // Update indices for subsequent removals (shift down)
+                    idToIndex.delete(change.id);
+                    for (let i = index; i < nextEdges.length; i++) {
+                      idToIndex.set(nextEdges[i].id, i);
+                    }
+                  }
+                  break;
+                }
+                case 'add': {
+                  topologyChanged = true;
+                  touchedTargets.push(change.edge.target);
+                  idToIndex.set(change.edge.id, nextEdges.length);
+                  nextEdges.push(change.edge);
+                  break;
+                }
+              }
+            }
+
+            if (topologyChanged) cachedAnalysis = null;
+            set({
+              edges: nextEdges,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              ...(topologyChanged
+                ? {
+                    adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+                    topologyVersion: get().topologyVersion + 1,
+                  }
+                : {}),
+            });
+            if (touchedTargets.length > 0) evaluator.markDirty(touchedTargets);
+          },
+
+          // Selection - O(1) operations using Sets
+          selectEntity: (id, additive = false) => {
+            const { selectedEntityIds } = get();
+            if (additive) {
+              // Add to existing selection
+              const newSet = new Set(selectedEntityIds);
+              newSet.add(id);
+              set({ selectedEntityIds: newSet });
+            } else {
+              // Replace selection (clear edges too for unified selection)
+              set({
+                selectedEntityIds: new Set([id]),
+                selectedEdgeIds: new Set<string>(),
+              });
+            }
+          },
+
+          selectEntities: (ids) => {
+            set({ selectedEntityIds: new Set(ids) });
+          },
+
+          toggleEntitySelection: (id) => {
+            const next = new Set(get().selectedEntityIds);
+            if (!next.delete(id)) next.add(id);
+            set({ selectedEntityIds: next });
+          },
+
+          alignSelection: (edge) => {
+            const updates = arrangeSelectionUpdates(get(), (rects) => alignRects(rects, edge));
+            if (updates.length > 0) get().updateEntityPositions(updates);
+            return updates;
+          },
+
+          distributeSelection: (axis) => {
+            const updates = arrangeSelectionUpdates(get(), (rects) => distributeRects(rects, axis));
+            if (updates.length > 0) get().updateEntityPositions(updates);
+            return updates;
+          },
+
+          selectEdge: (id, additive = false) => {
+            const { selectedEdgeIds } = get();
+            if (additive) {
+              // Add to existing selection
+              const newSet = new Set(selectedEdgeIds);
+              newSet.add(id);
+              set({ selectedEdgeIds: newSet });
+            } else {
+              // Replace selection (clear entities too for unified selection)
+              set({
+                selectedEdgeIds: new Set([id]),
+                selectedEntityIds: new Set<string>(),
+              });
+            }
+          },
+
+          selectEdges: (ids) => {
+            set({ selectedEdgeIds: new Set(ids) });
+          },
+
+          selectAll: () => {
+            const { entities } = get();
+            set({ selectedEntityIds: new Set(entities.map((n) => n.id)) });
+          },
+
+          deselectAll: () => {
+            set({
+              selectedEntityIds: new Set<string>(),
+              selectedEdgeIds: new Set<string>(),
+            });
+          },
+
+          isEntitySelected: (id) => {
+            return get().selectedEntityIds.has(id);
+          },
+
+          isEdgeSelected: (id) => {
+            return get().selectedEdgeIds.has(id);
+          },
+
+          // Viewport
+          pan: (delta) => {
+            const { viewport } = get();
+            set({
+              viewport: {
+                ...viewport,
+                x: viewport.x + delta.x,
+                y: viewport.y + delta.y,
+              },
+            });
+          },
+
+          zoom: (delta, center) => {
+            const { viewport } = get();
+            const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport.zoom + delta));
+
+            if (center) {
+              // Zoom towards center point
+              const scale = newZoom / viewport.zoom;
+              set({
+                viewport: {
+                  x: center.x - (center.x - viewport.x) * scale,
+                  y: center.y - (center.y - viewport.y) * scale,
+                  zoom: newZoom,
+                },
+              });
+            } else {
+              set({
+                viewport: { ...viewport, zoom: newZoom },
+              });
+            }
+          },
+
+          fitView: (options: FitViewOptions = {}, canvasWidth?: number, canvasHeight?: number) => {
+            const { entities: allEntities, socketLayout } = get();
+
+            const {
+              padding = 50,
+              // includeHiddenEntities - reserved for future use when hidden entities are supported
+              minZoom: optMinZoom = MIN_ZOOM,
+              maxZoom: optMaxZoom = 1, // Default: don't zoom in past 100%
+              entities: entityIds,
+              // duration - reserved for future animation support
+            } = options;
+
+            // Determine which entities to fit
+            let entitiesToFit: Entity[];
+            if (entityIds && entityIds.length > 0) {
+              // Fit specific entities by ID
+              const entityIdSet = new Set(entityIds);
+              entitiesToFit = allEntities.filter((n) => entityIdSet.has(n.id));
+            } else {
+              // Fit all entities
+              entitiesToFit = allEntities;
+            }
+
+            if (entitiesToFit.length === 0) return;
+
+            // The host owns its viewport size. The engine also runs without a browser.
+            if (
+              canvasWidth === undefined ||
+              canvasHeight === undefined ||
+              !Number.isFinite(canvasWidth) ||
+              !Number.isFinite(canvasHeight) ||
+              canvasWidth <= 0 ||
+              canvasHeight <= 0
+            ) {
+              throw new RangeError('fitView requires positive, finite canvas width and height');
+            }
+            const containerWidth = canvasWidth;
+            const containerHeight = canvasHeight;
+
+            // Calculate bounds
+            let minX = Infinity,
+              minY = Infinity,
+              maxX = -Infinity,
+              maxY = -Infinity;
+
+            for (const entity of entitiesToFit) {
+              // 200x100 was neither the renderer's default width nor any entity's computed height, so
+              // fitView framed a box smaller than the content and cut entities off at the right and
+              // bottom edges.
+              const { width, height } = getEntityBounds(entity, socketLayout ?? undefined);
+              minX = Math.min(minX, entity.position.x);
+              minY = Math.min(minY, entity.position.y);
+              maxX = Math.max(maxX, entity.position.x + width);
+              maxY = Math.max(maxY, entity.position.y + height);
+            }
+
+            // Add padding
+            minX -= padding;
+            minY -= padding;
+            maxX += padding;
+            maxY += padding;
+
+            // Calculate zoom to fit content in container
+            const contentWidth = maxX - minX;
+            const contentHeight = maxY - minY;
+
+            // Clamp zoom between optMinZoom and optMaxZoom, then also clamp to global limits
+            const rawZoom = Math.min(
+              containerWidth / contentWidth,
+              containerHeight / contentHeight
+            );
+            const clampedZoom = Math.max(optMinZoom, Math.min(optMaxZoom, rawZoom));
+            const finalZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, clampedZoom));
+
+            // Center the content
+            const scaledWidth = contentWidth * finalZoom;
+            const scaledHeight = contentHeight * finalZoom;
+            const offsetX = (containerWidth - scaledWidth) / 2 - minX * finalZoom;
+            const offsetY = (containerHeight - scaledHeight) / 2 - minY * finalZoom;
+
+            set({
+              viewport: {
+                x: offsetX,
+                y: offsetY,
+                zoom: finalZoom,
+              },
+            });
+          },
+
+          // Efficient batch position update for dragging
+          // Updates positions and quadtree incrementally without full rebuild
+          // Work scales with the moved entities and their spatial-index updates, not graph size.
+          // Structural changes own a new array; movement replaces only the affected entity objects.
+          // Renderers subscribe to positionVersion instead of waking all entity-array subscribers.
+          updateEntityPositions: (updates) => {
+            const {
+              entities,
+              entityMap,
+              quadtree,
+              socketQuadtree,
+              positionVersion,
+              socketLayout,
+              hiddenEntityIds,
+            } = get();
+            const nextEntities = entities;
+
+            // Populate moved entity IDs side-channel for renderers
+            for (const { id } of updates) {
+              markMovement(id);
+            }
+
+            // Update each entity: O(k) using persistent idToIndex map
+            for (const { id, position } of updates) {
+              const index = resolveIndex(nextEntities, id);
+              if (index >= 0) {
+                const entity = { ...nextEntities[index], position };
+                nextEntities[index] = entity;
+                entityMap.set(id, entity);
+                /**
+                 * THE TWO INDICES HOLD VISIBLE ENTITIES ONLY, and `quadtree.update` does not know that.
+                 *
+                 * `update` is remove-then-insertOrGrow, and `SocketQuadtree.update` inserts when the key is
+                 * absent — so calling either on an entity that was legitimately NOT in the tree ADDS it.
+                 * A hidden entity reaches here whenever it travels with its collapsed frame:
+                 * `arrangeSelectionUpdates` expands a frame's move over its descendants, `moveGroup` does
+                 * the same, and select-all plus an arrow nudge moves every id in the selection.
+                 *
+                 * It used to be swept away again by the consumer's echo, because `setEntities` rebuilt both
+                 * trees from the visible entities on every call. Now that the echo updates them in place,
+                 * nothing sweeps: the ghost stays, nothing is drawn there (every renderer gates on
+                 * `hiddenEntityIds`) and yet a press inside the collapsed frame hit-tests the quadtree and
+                 * selects a node that is not on screen. Guarding the WRITER fixes the uncontrolled case too,
+                 * where no echo was ever going to arrive.
+                 *
+                 * The position still travels: `entityMap` is written above, so the entity moves with its
+                 * frame and is indexed correctly the moment it is shown again.
+                 */
+                if (hiddenEntityIds.has(id)) continue;
+                quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
+
+                // Update socket positions in socketQuadtree
+                const inputX = getSocketWorldX(entity, true);
+                const outputX = getSocketWorldX(entity, false);
+                if (entity.inputs) {
+                  for (let i = 0; i < entity.inputs.length; i++) {
+                    const socket = entity.inputs[i];
+                    const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+                    socketQuadtree.update(id, socket.id, true, inputX, position.y + yOffset);
+                  }
+                }
+                if (entity.outputs) {
+                  for (let i = 0; i < entity.outputs.length; i++) {
+                    const socket = entity.outputs[i];
+                    const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+                    socketQuadtree.update(id, socket.id, false, outputX, position.y + yOffset);
+                  }
+                }
+              }
+            }
+
+            // Increment positionVersion so subscribers know positions changed
+            set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+          },
+
+          updateEntityDimensions: (id, width, height, position) => {
+            const {
+              entities,
+              entityMap,
+              quadtree,
+              socketQuadtree,
+              positionVersion,
+              socketLayout,
+              hiddenEntityIds,
+            } = get();
+
+            // O(1) existence check via entityMap
+            const existing = entityMap.get(id);
+            if (!existing) return;
+
+            const nextEntities = entities;
+            const index = resolveIndex(nextEntities, id);
+            if (index < 0) return;
+
+            const entity = {
+              ...existing,
+              width,
+              height,
+              ...(position ? { position } : {}),
+            };
+            nextEntities[index] = entity;
+            entityMap.set(id, entity);
+            // Both indices hold VISIBLE entities only, and `update` INSERTS an absent id rather than
+            // skipping it — see updateEntityPositions for the ghost that produces. The entityMap write
+            // above still carries the change, so the entity is indexed correctly when it is shown again.
+            if (hiddenEntityIds.has(id)) {
+              set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+              return;
+            }
+            quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
+
+            // Accumulate (don't clear) moved entity IDs so that multiple
+            // updateEntityDimensions calls in the same frame (e.g. TextEntities
+            // auto-sizing two text nodes) all appear in the fast-path set.
+            // Each renderer clears only its own pending set after consuming the batch.
+            markMovement(id);
+
+            // Always update socket quadtree — width changes move output sockets,
+            // position changes move all sockets
+            const pos = entity.position;
+            const inputX = getSocketWorldX(entity, true);
+            const outputX = getSocketWorldX(entity, false);
+            if (entity.inputs) {
+              for (let i = 0; i < entity.inputs.length; i++) {
+                const socket = entity.inputs[i];
+                const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+                socketQuadtree.update(id, socket.id, true, inputX, pos.y + yOffset);
+              }
+            }
+            if (entity.outputs) {
+              for (let i = 0; i < entity.outputs.length; i++) {
+                const socket = entity.outputs[i];
+                const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+                socketQuadtree.update(id, socket.id, false, outputX, pos.y + yOffset);
+              }
+            }
+
+            // Bump positionVersion so sockets, edges, and widgets detect the change
+            set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+          },
+
+          fitEntityToContent: (id) => {
+            const {
+              entities,
+              entityMap,
+              quadtree,
+              socketQuadtree,
+              positionVersion,
+              socketLayout,
+              hiddenEntityIds,
+            } = get();
+            const existing = entityMap.get(id);
+            if (!existing) return;
+
+            const nextEntities = [...entities];
+            const index = resolveIndex(nextEntities, id);
+            if (index < 0) return;
+
+            // Clear explicit dimensions to revert to computed minimum
+            const { width: _w, height: _h, ...rest } = existing;
+            const entity = rest as Entity;
+            nextEntities[index] = entity;
+            entityMap.set(id, entity);
+            // Both indices hold VISIBLE entities only, and `update` INSERTS an absent id rather than
+            // skipping it — see updateEntityPositions for the ghost that produces. The entityMap write
+            // above still carries the change, so the entity is indexed correctly when it is shown again.
+            if (hiddenEntityIds.has(id)) {
+              set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+              return;
+            }
+            quadtree.update(id, getEntityBounds(entity, socketLayout ?? undefined));
+
+            // Dropping the explicit size is a resize, so it has to finish like one. This used to set
+            // `entities` and nothing else: the socket index kept the sockets where the OLD width put
+            // them, so after a fit the output dot's hit box sat off to one side of the dot and a press
+            // on the visible socket missed; and with no `positionVersion` bump the edges layer, which
+            // watches only that counter and the entity count, never redrew — every edge on the entity
+            // stayed anchored to the old geometry. `updateEntityDimensions` does both, and this is the
+            // same operation with the target size computed rather than given.
+            const pos = entity.position;
+            const inputX = getSocketWorldX(entity, true);
+            const outputX = getSocketWorldX(entity, false);
+            if (entity.inputs) {
+              for (let i = 0; i < entity.inputs.length; i++) {
+                const socket = entity.inputs[i];
+                const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+                socketQuadtree.update(id, socket.id, true, inputX, pos.y + yOffset);
+              }
+            }
+            if (entity.outputs) {
+              for (let i = 0; i < entity.outputs.length; i++) {
+                const socket = entity.outputs[i];
+                const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+                socketQuadtree.update(id, socket.id, false, outputX, pos.y + yOffset);
+              }
+            }
+
+            set({ entities: nextEntities, positionVersion: positionVersion + 1 });
+          },
+
+          // ========================================
+          // Phase 6: Core Operations Implementation
+          // ========================================
+
+          cloneElements: <T extends EntityData = EntityData>(
+            entitiesToClone: Entity<T>[],
+            edgesToClone: Edge[],
+            options?: CloneElementsOptions<T>
+          ): CloneElementsResult => {
+            const {
+              offset = { x: 50, y: 50 },
+              transformData,
+              generateId = defaultGenerateId,
+              preserveExternalConnections = false,
+            } = options ?? {};
+
+            // Build ID map in single pass
+            const idMap = new Map<string, string>();
+            for (const entity of entitiesToClone) {
+              idMap.set(entity.id, generateId());
+            }
+
+            // Clone entities with new IDs and offset positions
+            const clonedEntities: Entity[] = entitiesToClone.map((entity) => {
+              const newId = idMap.get(entity.id)!;
+              const newData = transformData ? transformData(entity.data as T) : { ...entity.data };
+              return {
+                ...entity,
+                id: newId,
+                position: {
+                  x: entity.position.x + offset.x,
+                  y: entity.position.y + offset.y,
+                },
+                data: newData,
+                selected: false,
+              };
+            });
+
+            // Build set of cloned entity IDs for fast lookup
+            const clonedEntityIdSet = new Set(entitiesToClone.map((n) => n.id));
+
+            // Clone edges, remapping source/target
+            const clonedEdges: Edge[] = [];
+            for (const edge of edgesToClone) {
+              const sourceInCloned = clonedEntityIdSet.has(edge.source);
+              const targetInCloned = clonedEntityIdSet.has(edge.target);
+
+              if (sourceInCloned && targetInCloned) {
+                // Internal edge: remap both endpoints
+                const newSource = idMap.get(edge.source)!;
+                const newTarget = idMap.get(edge.target)!;
+                clonedEdges.push({
+                  ...edge,
+                  id: generateId(),
+                  source: newSource,
+                  target: newTarget,
+                  selected: false,
+                });
+              } else if (preserveExternalConnections) {
+                // External edge: remap only the cloned endpoint, keep external reference
+                if (sourceInCloned) {
+                  // Source is cloned, target is external
+                  clonedEdges.push({
+                    ...edge,
+                    id: generateId(),
+                    source: idMap.get(edge.source)!,
+                    target: edge.target, // Keep original external target
+                    selected: false,
+                  });
+                } else if (targetInCloned) {
+                  // Target is cloned, source is external
+                  clonedEdges.push({
+                    ...edge,
+                    id: generateId(),
+                    source: edge.source, // Keep original external source
+                    target: idMap.get(edge.target)!,
+                    selected: false,
+                  });
+                }
+              }
+              // If not preserveExternalConnections and edge is external, skip it
+            }
+
+            return { entities: clonedEntities, edges: clonedEdges, idMap };
+          },
+
+          addElements: (batch) => {
+            const {
+              entities: currentEntities,
+              edges: currentEdges,
+              entityMap,
+              quadtree,
+              socketQuadtree,
+              socketLayout,
+              stackOrder,
+              stackVersion,
+              collapsedGroupIds: liveCollapsed,
+            } = get();
+            // Resolved on the way in, like the prop sync: a node added by a plugin or a paste gets
+            // its type's sockets the same way one that arrived as a prop does.
+            const newEntities = resolve(batch.entities ?? []);
+            const newEdges = batch.edges ?? [];
+            // A new entity has never run, and a new wire changes what its target reads. Marked now
+            // against the pre-add index; the pass itself runs in a microtask, after the set below,
+            // and finds the new entities in place.
+            const arrivedInputs: string[] = [];
+            // Ink, pictures and text compute nothing. Marked, a consumer's `onEvaluate` that switches on
+            // node types was called for each — for the pen, on the stroke's first point — and recorded
+            // an error against it.
+            for (const e of newEntities) if (isEvaluated(e.type)) arrivedInputs.push(e.id);
+            for (const e of newEdges) arrivedInputs.push(e.target);
+
+            if (newEntities.length === 0 && newEdges.length === 0) return;
+
+            // Single state update with all new elements
+            const nextEntities = [...currentEntities, ...newEntities];
+            const nextEdges = [...currentEdges, ...newEdges];
+
+            /**
+             * A batch that touches VISIBILITY has to relay it; everything else takes the cheap path.
+             *
+             * This function maintains `entityMap` and both quadtrees incrementally and has never
+             * maintained `collapsedGroupIds` or `hiddenEntityIds` — its `set()` below simply omits
+             * them. That was survivable while the consumer's echo through `setEntities` rebuilt them a
+             * moment later; now that the echo updates derived state in place and hands the same Sets
+             * back, nothing recomputes them and the miss is permanent. Measured: paste a node whose
+             * parent is a collapsed frame and it is drawn and hit-testable inside a frame that is
+             * supposed to have swallowed it, for ever; paste a collapsed frame and `isGroupCollapsed`
+             * answers false against its own `collapsed: true`.
+             *
+             * Two shapes make a batch structural: an arriving frame that is already collapsed (which
+             * hides entities that may ALREADY be in both trees, so no incremental update of
+             * `hiddenEntityIds` would be equivalent), and an arriving entity whose parent chain reaches
+             * a frame that is collapsed now. Both are rebuilt outright.
+             *
+             * This is not a hot path — an add is a paste, a drop or a node button, never a drag frame —
+             * so the fallback costs the optimisation nothing.
+             */
+            // `liveCollapsed`, from get(), NOT the module-scope `collapsedGroupIds` — that name is
+            // bound to the derived state computed once at construction (see the destructure near the
+            // top of createFlowStore) and is empty for the life of the store on most graphs. Reading it
+            // here compiled, and answered the wrong question the moment anything was collapsed.
+            const structural = newEntities.some(
+              (e) =>
+                (e.type === 'frame' && e.collapsed) ||
+                isEntityHidden(e, entityMap, liveCollapsed) ||
+                (e.parentId !== undefined && liveCollapsed.has(e.parentId))
+            );
+
+            // Incremental update: add new entities to existing data structures
+            // O(k log n) instead of O(n log n) full rebuild
+            for (const entity of newEntities) {
+              entityMap.set(entity.id, entity);
+            }
+            quadtree.incrementalAdd(newEntities, socketLayout ?? undefined);
+
+            // Add new sockets to socket quadtree (positioned outside entity body)
+            for (const entity of newEntities) {
+              if (entity.inputs) {
+                for (let i = 0; i < entity.inputs.length; i++) {
+                  const socket = entity.inputs[i];
+                  const yOffset = getSocketYOffset(entity, i, true, socketLayout);
+                  socketQuadtree.insert({
+                    entityId: entity.id,
+                    socketId: socket.id,
+                    isInput: true,
+                    x: getSocketWorldX(entity, true),
+                    y: entity.position.y + yOffset,
+                  });
+                }
+              }
+              if (entity.outputs) {
+                for (let i = 0; i < entity.outputs.length; i++) {
+                  const socket = entity.outputs[i];
+                  const yOffset = getSocketYOffset(entity, i, false, socketLayout);
+                  socketQuadtree.insert({
+                    entityId: entity.id,
+                    socketId: socket.id,
+                    isInput: false,
+                    x: getSocketWorldX(entity, false),
+                    y: entity.position.y + yOffset,
+                  });
+                }
+              }
+            }
+
+            // Everything arriving here lands on top, exactly as applyEntityChanges' add branch puts a
+            // new entity there. Without an index these entities fell through `stackOrder.get(id) ?? 0`
+            // to the bottom of the stack: a paste at the default {50,50} offset painted BEHIND the
+            // entity it was copied from, and a press on the overlap picked the original, because
+            // topmostEntityId was comparing the paste's 0 against the original's real index. Paste,
+            // insert-on-edge and collapse all reach the graph through here.
+            assignStackOrder(stackOrder, newEntities);
+
+            cachedAnalysis = null;
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              // A structural batch relays the visibility sets and, with them, both trees — the
+              // incremental inserts above are thrown away rather than corrected, because a newly
+              // collapsed frame can hide entities that were already indexed.
+              ...(structural ? rebuildDerivedState(nextEntities, undefined, socketLayout) : {}),
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: get().topologyVersion + 1,
+              stackVersion: stackVersion + 1,
+            });
+            if (arrivedInputs.length > 0) evaluator.markDirty(arrivedInputs);
+          },
+
+          deleteElements: (batch) => {
+            const {
+              entities,
+              edges,
+              selectedEntityIds,
+              selectedEdgeIds,
+              entityMap,
+              quadtree,
+              socketQuadtree,
+              stackOrder,
+              stackVersion,
+              widgetValues,
+              widgetValuesVersion,
+              hiddenEntityIds,
+              socketLayout,
+            } = get();
+            // The target of every wire that goes with this delete loses an input. A deleted target
+            // is not marked: the engine forgets a dirty entity it can no longer find.
+            {
+              const goneEntities = new Set(batch.entityIds ?? []);
+              const goneEdges = new Set(batch.edgeIds ?? []);
+              const orphaned: string[] = [];
+              for (const e of edges) {
+                const goes =
+                  goneEdges.has(e.id) || goneEntities.has(e.source) || goneEntities.has(e.target);
+                if (goes && !goneEntities.has(e.target)) orphaned.push(e.target);
+              }
+              if (orphaned.length > 0) evaluator.markDirty(orphaned);
+            }
+            const { entityIds = [], edgeIds = [] } = batch;
+
+            if (entityIds.length === 0 && edgeIds.length === 0) return;
+
+            // Build sets for O(1) lookup
+            const entityIdsToDelete = new Set(entityIds);
+            const edgeIdsToDelete = new Set(edgeIds);
+
+            // Also delete edges connected to deleted entities
+            for (const edge of edges) {
+              if (entityIdsToDelete.has(edge.source) || entityIdsToDelete.has(edge.target)) {
+                edgeIdsToDelete.add(edge.id);
+              }
+            }
+
+            // Incremental removal from spatial structures O(k log n)
+            // Remove sockets first, then entities
+            //
+            // The two per-entity maps that are NOT derived state have to be swept here as well.
+            // `stackOrder` and `widgetValues` are mutated in place and never rebuilt, and this path
+            // cleaned up neither: with delete bound to a key, as the shortcuts docs recommend, both
+            // grew without bound while `entities.length` stayed flat, and bringToFront's compaction
+            // then renumbered the dead ids too, so they permanently held indices ahead of live
+            // entities. A restored id also inherited whatever override its previous life left behind.
+            // applyEntityChanges' remove branch already did the stackOrder half; this is the same
+            // removal reached through the batch API.
+            let widgetValuesDropped = false;
+            let hierarchyChanged = false;
+            for (const entityId of entityIdsToDelete) {
+              const entity = entityMap.get(entityId);
+              if (entity) {
+                if (entity.type === 'frame' || hiddenEntityIds.has(entityId))
+                  hierarchyChanged = true;
+                if (entity.inputs) {
+                  for (const socket of entity.inputs) {
+                    socketQuadtree.remove(entityId, socket.id, true);
+                  }
+                }
+                if (entity.outputs) {
+                  for (const socket of entity.outputs) {
+                    socketQuadtree.remove(entityId, socket.id, false);
+                  }
+                }
+                if (dropWidgetValues(widgetValues, entity)) widgetValuesDropped = true;
+              }
+              entityMap.delete(entityId);
+              stackOrder.delete(entityId);
+            }
+            quadtree.incrementalRemove(Array.from(entityIdsToDelete));
+            forgetEntities(entityIdsToDelete);
+
+            // Filter out deleted elements
+            const nextEntities = entities.filter((n) => !entityIdsToDelete.has(n.id));
+            for (let i = 0; i < nextEntities.length; i++) {
+              const entity = nextEntities[i];
+              if (entity.parentId && entityIdsToDelete.has(entity.parentId)) {
+                nextEntities[i] = { ...entity, parentId: undefined };
+                hierarchyChanged = true;
+              }
+            }
+            const nextEdges = edges.filter((e) => !edgeIdsToDelete.has(e.id));
+
+            // Update selection - remove deleted items
+            const nextSelectedEntityIds = new Set(selectedEntityIds);
+            const nextSelectedEdgeIds = new Set(selectedEdgeIds);
+            for (const id of entityIdsToDelete) {
+              nextSelectedEntityIds.delete(id);
+            }
+            for (const id of edgeIdsToDelete) {
+              nextSelectedEdgeIds.delete(id);
+            }
+
+            cachedAnalysis = null;
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: get().topologyVersion + 1,
+              stackVersion: stackVersion + 1,
+              selectedEntityIds: nextSelectedEntityIds,
+              selectedEdgeIds: nextSelectedEdgeIds,
+              // Ordinary node deletion keeps incremental indices; hierarchy edits must reveal survivors.
+              ...(hierarchyChanged
+                ? rebuildDerivedState(nextEntities, undefined, socketLayout)
+                : {}),
+              ...(widgetValuesDropped ? { widgetValuesVersion: widgetValuesVersion + 1 } : {}),
+            });
+          },
+
+          deleteSelected: () => {
+            const { selectedEntityIds, selectedEdgeIds, deleteElements } = get();
+            deleteElements({
+              entityIds: Array.from(selectedEntityIds),
+              edgeIds: Array.from(selectedEdgeIds),
+            });
+          },
+
+          copySelectedToInternal: () => {
+            const { getSelectedEntities, getConnectedEdges, selectedEntityIds } = get();
+            const selectedEntities = getSelectedEntities();
+
+            if (selectedEntities.length === 0) return;
+
+            // Get ALL edges connected to selected entities (both internal and external)
+            // Filtering to internal-only or preserving external happens at paste time
+            const entityIds = Array.from(selectedEntityIds);
+            const connectedEdges = getConnectedEdges(entityIds);
+
+            set({
+              internalClipboard: {
+                entities: selectedEntities,
+                edges: connectedEdges,
+              },
+            });
+          },
+
+          pasteFromInternal: <T extends EntityData = EntityData>(
+            options?: PasteFromInternalOptions<T>
+          ): CloneElementsResult | null => {
+            const { internalClipboard, cloneElements, addElements, selectEntities, selectEdges } =
+              get();
+
+            if (!internalClipboard || internalClipboard.entities.length === 0) {
+              return null;
+            }
+
+            const { preserveExternalConnections = false } = options ?? {};
+            const clipboardEntityIds = new Set(internalClipboard.entities.map((n) => n.id));
+
+            // Filter edges based on preserveExternalConnections option
+            // - false (default): only edges where BOTH endpoints are in clipboard (internal edges)
+            // - true: all edges where AT LEAST ONE endpoint is in clipboard (reconnect to existing entities)
+            const edgesToClone = preserveExternalConnections
+              ? internalClipboard.edges
+              : internalClipboard.edges.filter(
+                  (e) => clipboardEntityIds.has(e.source) && clipboardEntityIds.has(e.target)
+                );
+
+            // Clone with default offset
+            const result = cloneElements(internalClipboard.entities as Entity<T>[], edgesToClone, {
+              offset: options?.offset ?? { x: 50, y: 50 },
+              transformData: options?.transformData,
+              // For external connections, we need to preserve the original external entity references
+              preserveExternalConnections,
+            });
+
+            // Add to graph
+            addElements({ entities: result.entities, edges: result.edges });
+
+            // Select pasted elements
+            selectEntities(result.entities.map((n) => n.id));
+            selectEdges(result.edges.map((e) => e.id));
+
+            return result;
+          },
+
+          cutSelectedToInternal: () => {
+            const { copySelectedToInternal, deleteSelected } = get();
+            copySelectedToInternal();
+            deleteSelected();
+          },
+
+          /**
+           * The document as it stands — including what the person has set on a widget and the consumer
+           * has not echoed back.
+           *
+           * This used to return `entities` untouched, which meant a save did not match the canvas. In
+           * an uncontrolled graph nothing ever echoes, so `widgetValues` is where the slider's value
+           * lives permanently (utils/widget-values.ts states that trade outright: "a consumer that
+           * never echoes keeps showing the local value"). Dragging a slider from 0.25 to 0.8 and saving
+           * wrote 0.25, and reloading snapped the slider back — the person's edit was visible on screen
+           * and absent from the file.
+           *
+           * Folding, not retiring: `readWidgetValue` drops a key once the value has round-tripped, and
+           * that belongs to the paint, which is the only thing that knows a widget was actually shown.
+           * A save reads. It also keeps the entity objects it was given whenever there is nothing
+           * pending for them, so the common case allocates nothing.
+           */
+          toObject: (): FlowObject => {
+            const { entities, edges, viewport, widgetValues } = get();
+            if (widgetValues.size === 0) return toFlowObject(entities, edges, viewport);
+
+            const folded = entities.map((entity) => {
+              let pending: Record<string, unknown> | null = null;
+              for (const sockets of [entity.inputs, entity.outputs]) {
+                if (!sockets) continue;
+                for (const socket of sockets) {
+                  const key = widgetKey(entity.id, socket.id);
+                  if (!widgetValues.has(key)) continue;
+                  if (pending === null) pending = Object.create(null) as Record<string, unknown>;
+                  pending[socket.id] = widgetValues.get(key)?.value;
+                }
+              }
+              if (pending === null) return entity;
+              // Same place the widgets read from: `entity.data.values`, keyed by socket id.
+              const existing = entity.data.values;
+              return {
+                ...entity,
+                data: {
+                  ...entity.data,
+                  values: { ...(isValueBag(existing) ? existing : {}), ...pending },
+                },
+              };
+            });
+            return toFlowObject(folded, edges, viewport);
+          },
+
+          getSelectedEntities: (): Entity[] => {
+            const { entities, selectedEntityIds } = get();
+            if (selectedEntityIds.size === 0) return [];
+            return entities.filter((n) => selectedEntityIds.has(n.id));
+          },
+
+          getConnectedEdges: (entityIds: string[]): Edge[] => {
+            if (entityIds.length === 0) return [];
+            const { adjacencyIndex } = get();
+            const seen = new Set<string>();
+            const result: Edge[] = [];
+            for (const entityId of entityIds) {
+              const edges = adjacencyIndex.byEntity.get(entityId);
+              if (edges) {
+                for (const edge of edges) {
+                  if (!seen.has(edge.id)) {
+                    seen.add(edge.id);
+                    result.push(edge);
+                  }
+                }
+              }
+            }
+            return result;
+          },
+
+          // ========================================
+          // Phase 7C: Grouping Actions Implementation
+          // ========================================
+
+          getGroupChildren: (groupId: string): Entity[] => {
+            const { entities } = get();
+            return utilGetGroupChildren(entities, groupId);
+          },
+
+          getGroupDescendants: (groupId: string): Entity[] => {
+            const { entities } = get();
+            return utilGetGroupDescendants(entities, groupId);
+          },
+
+          toggleGroupCollapse: (groupId: string): void => {
+            const { entityMap, collapsedGroupIds, applyEntityChanges } = get();
+            const group = entityMap.get(groupId);
+            if (!group || group.type !== 'frame') return;
+
+            const newCollapsed = !collapsedGroupIds.has(groupId);
+            applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: newCollapsed }]);
+          },
+
+          expandGroup: (groupId: string): void => {
+            const { collapsedGroupIds, applyEntityChanges } = get();
+            if (collapsedGroupIds.has(groupId)) {
+              applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: false }]);
+            }
+          },
+
+          collapseGroup: (groupId: string): void => {
+            const { collapsedGroupIds, applyEntityChanges } = get();
+            if (!collapsedGroupIds.has(groupId)) {
+              applyEntityChanges([{ type: 'collapse', id: groupId, collapsed: true }]);
+            }
+          },
+
+          isGroupCollapsed: (groupId: string): boolean => {
+            const { collapsedGroupIds } = get();
+            return collapsedGroupIds.has(groupId);
+          },
+
+          getGroupBounds: (groupId: string): Bounds | null => {
+            const { entities } = get();
+            return utilCalculateGroupBounds(
+              entities,
+              groupId,
+              undefined,
+              get().socketLayout ?? undefined
+            );
+          },
+
+          setEntityParent: (entityId: string, parentId: string | null): boolean => {
+            const { entityMap, applyEntityChanges } = get();
+            const entity = entityMap.get(entityId);
+            if (!entity) return false;
+
+            // Validate: can't parent to self
+            if (parentId === entityId) return false;
+
+            // Validate: can't create cycle (if proposedParent is a descendant of entity)
+            if (parentId) {
+              const parent = entityMap.get(parentId);
+              if (!parent) return false;
+
+              // Check if parentId is a descendant of entityId
+              let current: string | undefined = parent.parentId;
+              const visited = new Set<string>([parentId]);
+              while (current) {
+                if (current === entityId || visited.has(current)) return false;
+                visited.add(current);
+                const currentEntity = entityMap.get(current);
+                current = currentEntity?.parentId;
+              }
+            }
+
+            applyEntityChanges([{ type: 'parent', id: entityId, parentId }]);
+            return true;
+          },
+
+          moveGroup: (groupId: string, delta: XYPosition): void => {
+            const { entities, entityMap, updateEntityPositions } = get();
+            const group = entityMap.get(groupId);
+            if (!group) return;
+
+            // Get positions for group and all descendants
+            const descendantPositions = calculateDescendantPositions(entities, groupId, delta);
+
+            // Build updates array
+            const updates: Array<{ id: string; position: XYPosition }> = [
+              {
+                id: groupId,
+                position: { x: group.position.x + delta.x, y: group.position.y + delta.y },
+              },
+            ];
+
+            for (const [id, position] of descendantPositions) {
+              updates.push({ id, position });
+            }
+
+            updateEntityPositions(updates);
+          },
+
+          // ========================================
+          // Phase 8: Graph Engine Implementation
+          // ========================================
+
+          getIncomers: (entityId: string): string[] => {
+            return graphEngine.getIncomers(get().adjacencyIndex, entityId);
+          },
+
+          getOutgoers: (entityId: string): string[] => {
+            return graphEngine.getOutgoers(get().adjacencyIndex, entityId);
+          },
+
+          getEntityEdges: (entityId: string): Edge[] => {
+            return graphEngine.getEntityEdges(get().adjacencyIndex, entityId);
+          },
+
+          getInputEdges: (entityId: string): Edge[] => {
+            return graphEngine.getInputEdges(get().adjacencyIndex, entityId);
+          },
+
+          getOutputEdges: (entityId: string): Edge[] => {
+            return graphEngine.getOutputEdges(get().adjacencyIndex, entityId);
+          },
+
+          getEdgesBetween: (entityA: string, entityB: string): Edge[] => {
+            return graphEngine.getEdgesBetween(get().adjacencyIndex, entityA, entityB);
+          },
+
+          walkUpstream: (startEntityId: string): Generator<string> => {
+            return graphEngine.walkUpstream(get().adjacencyIndex, startEntityId);
+          },
+
+          walkDownstream: (startEntityId: string): Generator<string> => {
+            return graphEngine.walkDownstream(get().adjacencyIndex, startEntityId);
+          },
+
+          getAnalysis: (): CachedAnalysis => {
+            const { entities, adjacencyIndex, topologyVersion, mutedEntityIds } = get();
+            if (cachedAnalysis && cachedAnalysis.topologyVersion === topologyVersion) {
+              return cachedAnalysis;
+            }
+            const entityIds = entities.map((n) => n.id);
+            const result = graphEngine.computeAnalysis(entityIds, adjacencyIndex, mutedEntityIds);
+            cachedAnalysis = { ...result, topologyVersion };
+            return cachedAnalysis;
+          },
+
+          wouldCreateCycle: (sourceEntityId: string, targetEntityId: string): boolean => {
+            return graphEngine.wouldCreateCycle(
+              get().adjacencyIndex,
+              sourceEntityId,
+              targetEntityId
+            );
+          },
+
+          getAffectedEntities: (changedEntityIds: string | string[]): string[] => {
+            const { adjacencyIndex, mutedEntityIds } = get();
+            const analysis = get().getAnalysis();
+            return graphEngine.getAffectedEntities(
+              changedEntityIds,
+              adjacencyIndex,
+              analysis.topologicalOrder,
+              mutedEntityIds
+            );
+          },
+
+          getConnectedComponents: (): Map<string, string[]> => {
+            const { entities, adjacencyIndex } = get();
+            return graphEngine.getConnectedComponents(
+              entities.map((n) => n.id),
+              adjacencyIndex
+            );
+          },
+
+          areConnected: (entityA: string, entityB: string): boolean => {
+            return graphEngine.areConnected(get().adjacencyIndex, entityA, entityB);
+          },
+
+          getExecutionOrder: (targetEntityId: string): string[] => {
+            return graphEngine.getExecutionOrder(get().adjacencyIndex, targetEntityId);
+          },
+
+          getReadyEntities: (entityIds: string[], completed: ReadonlySet<string>): string[] => {
+            return graphEngine.getReadyEntities(entityIds, get().adjacencyIndex, completed);
+          },
+
+          insertOnEdge: (edgeId: string, newEntity: Entity): void => {
+            const state = get();
+            const edge = state.edges.find((e) => e.id === edgeId);
+            if (!edge) return;
+
+            newEntity = resolveOne(newEntity);
+
+            const changes = graphEngine.computeInsertOnEdge(
+              edge,
+              newEntity,
+              state.entityMap.get(edge.source),
+              state.entityMap.get(edge.target)
+            );
+
+            const positionedEntity = { ...newEntity, position: changes.entityPosition };
+            const nextEntities = [...state.entities, positionedEntity];
+            const nextEdges = state.edges
+              .filter((e) => e.id !== changes.removeEdgeId)
+              .concat(changes.newEdges);
+
+            const derived = rebuildDerivedState(
+              nextEntities,
+              state.collapsedGroupIds,
+              state.socketLayout
+            );
+            cachedAnalysis = null;
+            // The entity dropped onto the edge is the thing the person just made, so it arrives on top.
+            // With no index it sat at 0 and painted under the two entities it was inserted between.
+            state.stackOrder.set(positionedEntity.id, ++stackCounter);
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: state.topologyVersion + 1,
+              stackVersion: state.stackVersion + 1,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              ...derived,
+            });
+            evaluator.markDirty(newEntity.id);
+            evaluator.markDirty(edge.target);
+          },
+
+          bypassEntity: (entityId: string): void => {
+            const state = get();
+            const changes = graphEngine.computeBypass(entityId, state.adjacencyIndex);
+
+            const removeEdgeIdSet = new Set(changes.removeEdgeIds);
+            const nextEdges = state.edges
+              .filter((e) => !removeEdgeIdSet.has(e.id))
+              .concat(changes.newEdges);
+            const nextEntities = state.entities.filter((n) => n.id !== changes.removeEntityId);
+
+            const derived = rebuildDerivedState(
+              nextEntities,
+              state.collapsedGroupIds,
+              state.socketLayout
+            );
+            cachedAnalysis = null;
+
+            // A bypass removes an entity, so it owes the same sweep every other removal owes: the two
+            // in-place maps keyed by entity id are not derived state and no rebuild will clear them.
+            const bypassed = state.entityMap.get(changes.removeEntityId);
+            forgetEntities([changes.removeEntityId]);
+            state.stackOrder.delete(changes.removeEntityId);
+            const widgetValuesDropped = bypassed
+              ? dropWidgetValues(state.widgetValues, bypassed)
+              : false;
+
+            // Update selection
+            const nextSelectedEntityIds = new Set(state.selectedEntityIds);
+            nextSelectedEntityIds.delete(entityId);
+            const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
+            for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
+
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: state.topologyVersion + 1,
+              stackVersion: state.stackVersion + 1,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              selectedEntityIds: nextSelectedEntityIds,
+              selectedEdgeIds: nextSelectedEdgeIds,
+              ...derived,
+              ...(widgetValuesDropped
+                ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+                : {}),
+            });
+            for (const edge of changes.newEdges) evaluator.markDirty(edge.target);
+            // Unpaired outgoing edges disappear too; their targets now read their default inputs.
+            for (const edge of state.edges) {
+              if (edge.source === entityId && edge.target !== entityId)
+                evaluator.markDirty(edge.target);
+            }
+          },
+
+          muteEntity: (entityId: string): void => {
+            const { mutedEntityIds, topologyVersion } = get();
+            if (mutedEntityIds.has(entityId)) return;
+            const next = new Set(mutedEntityIds);
+            next.add(entityId);
+            cachedAnalysis = null;
+            set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
+            evaluator.markDirty(entityId);
+          },
+
+          unmuteEntity: (entityId: string): void => {
+            const { mutedEntityIds, topologyVersion } = get();
+            if (!mutedEntityIds.has(entityId)) return;
+            const next = new Set(mutedEntityIds);
+            next.delete(entityId);
+            cachedAnalysis = null;
+            set({ mutedEntityIds: next, topologyVersion: topologyVersion + 1 });
+            evaluator.markDirty(entityId);
+          },
+
+          isMuted: (entityId: string): boolean => {
+            return get().mutedEntityIds.has(entityId);
+          },
+
+          // ========================================
+          // Phase 8: Graph Validation & Subgraph Mutations
+          // ========================================
+
+          validate: (socketTypes) => {
+            const { entities, edges, adjacencyIndex } = get();
+            return graphEngine.validate(entities, edges, adjacencyIndex, socketTypes);
+          },
+
+          isGraphComplete: () => {
+            const { entities, adjacencyIndex } = get();
+            return graphEngine.isGraphComplete(entities, adjacencyIndex);
+          },
+
+          getCompatiblePorts: (
+            sourceEntityId,
+            sourceSocketId,
+            isSourceInput,
+            socketTypes,
+            allowCycles
+          ) => {
+            const { entities, adjacencyIndex } = get();
+            return graphEngine.getCompatiblePorts(
+              sourceEntityId,
+              sourceSocketId,
+              isSourceInput,
+              entities,
+              socketTypes,
+              adjacencyIndex,
+              allowCycles
+            );
+          },
+
+          autoLayout: (options) => {
+            const state = get();
+            const nodes = state.entities
+              // A child of a frame is placed by its frame, and a collapsed group's children are not
+              // on the board at all. Laying either out moves something nobody can see.
+              .filter((e) => e.parentId === undefined && !state.hiddenEntityIds.has(e.id))
+              .map((e) => ({
+                id: e.id,
+                width: e.width ?? DEFAULT_ENTITY_WIDTH,
+                // Bounds knows the no-layout case: before the style context syncs, a height comes
+                // from the same defaults the quadtree is built on.
+                height: e.height ?? getEntityBounds(e, state.socketLayout ?? undefined).height,
+              }));
+            if (nodes.length === 0) return [];
+            const { positions } = layoutGraph(nodes, state.edges, options);
+            const updates: Array<{ id: string; position: XYPosition }> = [];
+            // Children use absolute world coordinates. Rank only roots, then translate each
+            // descendant by its root's delta in one pass, including collapsed descendants.
+            const deltas = new Map<string, XYPosition>();
+            for (const node of nodes) {
+              const position = positions.get(node.id);
+              const entity = state.entityMap.get(node.id);
+              if (position && entity) {
+                deltas.set(node.id, {
+                  x: position.x - entity.position.x,
+                  y: position.y - entity.position.y,
+                });
+              }
+            }
+            for (const entity of state.entities) {
+              let delta = deltas.get(entity.id);
+              if (!delta && entity.parentId) {
+                for (const parent of getParentChain(entity, state.entityMap)) {
+                  delta = deltas.get(parent.id);
+                  if (delta) break;
+                }
+              }
+              if (delta)
+                updates.push({
+                  id: entity.id,
+                  position: {
+                    x: entity.position.x + delta.x,
+                    y: entity.position.y + delta.y,
+                  },
+                });
+            }
+            // The same door a drag commits through, so every index and quadtree follows.
+            get().updateEntityPositions(updates);
+            return updates;
+          },
+          collapseToSubgraph: (entityIds: string[], groupId: string): void => {
+            const state = get();
+            const result = graphEngine.computeCollapseToSubgraph(
+              entityIds,
+              groupId,
+              state.entities,
+              state.adjacencyIndex,
+              state.socketLayout ?? undefined
+            );
+
+            // Create the frame entity
+            const frameEntity: Entity = {
+              id: result.frameEntity.id,
+              type: 'frame',
+              position: result.frameEntity.position,
+              width: result.frameEntity.width,
+              height: result.frameEntity.height,
+              data: { label: 'Group' },
+              inputs: result.frameInputs.map((p) => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+              })),
+              outputs: result.frameOutputs.map((p) => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+              })),
+            };
+
+            // Set children's parentId to the group
+            const childIdSet = new Set(entityIds);
+            const removeEdgeIdSet = new Set(result.removeEdgeIds);
+            const changedInputs = new Set<string>([frameEntity.id]);
+            for (const edge of state.edges) {
+              if (removeEdgeIdSet.has(edge.id)) changedInputs.add(edge.target);
+            }
+            for (const edge of result.newEdges) changedInputs.add(edge.target);
+            const nextEntities = state.entities
+              .map((n) => (childIdSet.has(n.id) ? { ...n, parentId: groupId } : n))
+              .concat(frameEntity);
+            const nextEdges = state.edges
+              .filter((e) => !removeEdgeIdSet.has(e.id))
+              .concat(result.newEdges);
+
+            const derived = rebuildDerivedState(
+              nextEntities,
+              state.collapsedGroupIds,
+              state.socketLayout
+            );
+            cachedAnalysis = null;
+
+            // The new frame goes on top of the graph and its children go on top of IT — bringToFront's
+            // ordering for a frame, kept here for its reason: a frame body drawn above the entities it
+            // contains hides them. The frame had no stack index at all before, which put it at the
+            // bottom of the whole graph, behind entities it has nothing to do with.
+            state.stackOrder.set(frameEntity.id, ++stackCounter);
+            for (const child of sortByDepth(
+              nextEntities.filter((n) => childIdSet.has(n.id)),
+              derived.entityMap
+            )) {
+              state.stackOrder.set(child.id, ++stackCounter);
+            }
+
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: state.topologyVersion + 1,
+              stackVersion: state.stackVersion + 1,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              ...derived,
+            });
+            // The frame's computation remains the app's; scheduling follows its new inputs like
+            // every other added node. Retained children also lost their old internal/boundary wires.
+            evaluator.markDirty([...changedInputs]);
+          },
+
+          expandSubgraph: (groupId, childEntities, internalEdges, portMapping): void => {
+            const state = get();
+            const result = graphEngine.computeExpandSubgraph(
+              groupId,
+              childEntities,
+              internalEdges,
+              state.entities,
+              state.adjacencyIndex,
+              portMapping
+            );
+
+            const removeEdgeIdSet = new Set(result.removeEdgeIds);
+            const changedInputs = new Set<string>();
+            // Unmapped boundary edges disappear too, leaving their targets on local/default inputs.
+            for (const edge of state.edges) {
+              if (removeEdgeIdSet.has(edge.id) && edge.target !== result.removeEntityId) {
+                changedInputs.add(edge.target);
+              }
+            }
+            for (const edge of result.restoreEdges) changedInputs.add(edge.target);
+            for (const edge of result.reconnectEdges) changedInputs.add(edge.target);
+            const restored = resolve(result.restoreEntities);
+            for (const entity of restored) {
+              if (isEvaluated(entity.type)) changedInputs.add(entity.id);
+            }
+            // Remove group entity, restore children (clear parentId), add reconnect edges
+            const nextEntities = state.entities
+              .filter((n) => n.id !== result.removeEntityId)
+              .map((n) => (n.parentId === groupId ? { ...n, parentId: undefined } : n))
+              .concat(restored.map((n) => ({ ...n, parentId: undefined })));
+            const nextEdges = state.edges
+              .filter((e) => !removeEdgeIdSet.has(e.id))
+              .concat(result.restoreEdges)
+              .concat(result.reconnectEdges);
+
+            const derived = rebuildDerivedState(nextEntities, undefined, state.socketLayout);
+            cachedAnalysis = null;
+            // Expansion deletes the group just as surely as deleteElements: release outputs,
+            // abort any in-flight computation, and drop mute state before its id can be reused.
+            forgetEntities([result.removeEntityId]);
+
+            // An expand both removes the frame and brings entities back, and the restored ones may
+            // never have had an index in this store at all — they arrive as arguments. Reconciling
+            // against the final array is the one operation that covers both halves: drop the frame's
+            // key, hand every id that lacks one the next index. Without it the frame's entry outlived
+            // the frame and every restored child sat at 0, behind the rest of the graph.
+            reconcileStackOrder(state.stackOrder, nextEntities);
+            const widgetValuesDropped = reconcileWidgetValues(state.widgetValues, nextEntities);
+
+            // Update selection
+            const nextSelectedEntityIds = new Set(state.selectedEntityIds);
+            nextSelectedEntityIds.delete(groupId);
+            const nextSelectedEdgeIds = new Set(state.selectedEdgeIds);
+            for (const id of removeEdgeIdSet) nextSelectedEdgeIds.delete(id);
+
+            // Length/order changed: the drag fast path's index is stale until this runs.
+            rebuildIdToIndex(nextEntities);
+            set({
+              entities: nextEntities,
+              edges: nextEdges,
+              adjacencyIndex: graphEngine.buildAdjacencyIndex(nextEdges),
+              topologyVersion: state.topologyVersion + 1,
+              stackVersion: state.stackVersion + 1,
+              connectedSockets: rebuildConnectedSockets(nextEdges, get().widgetValues),
+              selectedEntityIds: nextSelectedEntityIds,
+              selectedEdgeIds: nextSelectedEdgeIds,
+              ...derived,
+              ...(widgetValuesDropped
+                ? { widgetValuesVersion: state.widgetValuesVersion + 1 }
+                : {}),
+            });
+            if (changedInputs.size) evaluator.markDirty([...changedInputs]);
+          },
+        }
+      )
+    )
+  );
+};

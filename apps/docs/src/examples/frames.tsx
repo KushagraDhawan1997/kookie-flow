@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Button, Flex, Stack } from '@kookie-ui/react';
+import { Button, Flex, Stack } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
 
 const initialEntities: Entity[] = [

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Box, ContextMenu, ContextMenuTrigger, Theme } from '@kookie-ui/react';
+import { Box, ContextMenu, ContextMenuTrigger } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   screenToWorld,
@@ -152,7 +152,6 @@ function CanvasImpl(props: CanvasProps) {
             style: MINIMAP_CLEAR,
           }}
           header="inside"
-          ThemeComponent={Theme}
           ariaLabel="Studio graph"
         >
           <Toolbar />

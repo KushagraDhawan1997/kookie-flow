@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import NextLink from 'next/link';
-import { Flex, Heading, Page, Stack, Text } from '@kookie-ui/react';
+import { Flex, Heading, Page, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
 import { ArrowRightIcon } from '../../icons';
 import { ProviderLogo } from '../../provider-logos';

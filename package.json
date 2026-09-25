@@ -10,7 +10,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs": "pnpm --filter docs dev",
-    "clean": "turbo clean && rm -rf node_modules"
+    "clean": "turbo clean && rm -rf node_modules",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "test:packages": "node scripts/test-packages.mjs"
   },
   "devDependencies": {
     "prettier": "^3.9.6",

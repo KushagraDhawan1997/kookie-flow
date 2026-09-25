@@ -11,7 +11,7 @@ import {
   Toolbar,
   ToolbarButton,
   ToolbarTitle,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { AppearanceToggle } from './appearance-toggle';
 import { ArrowLeftIcon } from './icons';

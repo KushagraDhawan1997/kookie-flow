@@ -26,7 +26,7 @@
  * declaration, but relying on that is a mechanism nobody wrote down.
  */
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { iconStroke } from "@kookie-ui/react";
+import { iconStroke } from "@kushagradhawan/kookie-ui-react";
 import {
   AiProgrammingIcon,
   Alert02Icon,

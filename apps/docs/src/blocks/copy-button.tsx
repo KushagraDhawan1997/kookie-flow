@@ -21,7 +21,7 @@
  * the requirement loud rather than a comment nobody reads.
  */
 import * as React from "react";
-import { ToolbarButton, type Size } from "@kookie-ui/react";
+import { ToolbarButton, type Size } from "@kushagradhawan/kookie-ui-react";
 
 import { CopyIcon } from "../app/icons";
 

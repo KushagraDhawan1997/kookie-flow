@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, ToolbarButton } from '@kookie-ui/react';
+import { Button, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 
 import { setAppearance, useAppearance, type AppearanceChoice } from './appearance';
 import { MoonIcon, SunIcon, SystemIcon } from './icons';

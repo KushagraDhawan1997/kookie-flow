@@ -1,5 +1,5 @@
 /* Docs-app base — consumer CSS, deliberately this small. The page paints --color-page and
-   reads the foreground context. Everything visible beyond this file is @kookie-ui/react —
+   reads the foreground context. Everything visible beyond this file is @kushagradhawan/kookie-ui-react —
    the docs are a real consumer, and the stance is that they use nothing else.
 
    A page made of CARDS is --color-ground instead; see §10. */

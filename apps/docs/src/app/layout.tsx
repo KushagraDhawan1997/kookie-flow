@@ -1,9 +1,9 @@
-import "@kookie-ui/react/styles.css";
+import "@kushagradhawan/kookie-ui-react/styles.css";
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
 import { Inter, Inter_Tight } from "next/font/google";
-import { TooltipProvider } from "@kookie-ui/react";
+import { TooltipProvider } from "@kushagradhawan/kookie-ui-react";
 
 import { appearanceScript } from "./appearance-script";
 import { DevOutlineGate } from "./dev-outline";

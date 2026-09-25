@@ -39,7 +39,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import { EmptyState } from "../../blocks/empty-state";
 import { SearchIcon } from "../icons";

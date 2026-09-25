@@ -20,7 +20,7 @@ import {
   Stack,
   Text,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { AgentChoice, readAgentSettings } from '../../agent-choice';
 import { AttachButton } from '../../attach-button';

@@ -20,7 +20,7 @@ import {
   Text,
   TextArea,
   TextField,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import type { Edge, Entity, EvaluationStatus, KookieFlowInstance, WidgetType } from '@kushagradhawan/kookie-flow';
 import { formatUsd, isMediaRef, registry, SOCKET_TYPES, valueBag, type SocketSpec } from 'studio-core';
 

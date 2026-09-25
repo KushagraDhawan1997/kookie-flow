@@ -1,0 +1,1148 @@
+{
+  "name": "@kushagradhawan/kookie-flow-webgl",
+  "version": "0.2.0",
+  "description": "Kookie Flow WebGL renderer and glass design.",
+  "author": "Kushagra Dhawan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KushagraDhawan1997/kookie-flow",
+    "directory": "packages/kookie-flow-webgl"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./plugins": {
+      "kookie-flow-source": "./src/plugins/index.ts",
+      "import": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/index.d.cts",
+        "default": "./dist/plugins/index.cjs"
+      }
+    },
+    "./types": {
+      "kookie-flow-source": "./src/types/index.ts",
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      }
+    },
+    "./internal/components/canvas-capture": {
+      "kookie-flow-source": "./src/components/canvas-capture.tsx",
+      "import": {
+        "types": "./dist/components/canvas-capture.d.ts",
+        "default": "./dist/components/canvas-capture.js"
+      },
+      "require": {
+        "types": "./dist/components/canvas-capture.d.cts",
+        "default": "./dist/components/canvas-capture.cjs"
+      }
+    },
+    "./internal/components/comment-entities": {
+      "kookie-flow-source": "./src/components/comment-entities.tsx",
+      "import": {
+        "types": "./dist/components/comment-entities.d.ts",
+        "default": "./dist/components/comment-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/comment-entities.d.cts",
+        "default": "./dist/components/comment-entities.cjs"
+      }
+    },
+    "./internal/components/connection-line": {
+      "kookie-flow-source": "./src/components/connection-line.tsx",
+      "import": {
+        "types": "./dist/components/connection-line.d.ts",
+        "default": "./dist/components/connection-line.js"
+      },
+      "require": {
+        "types": "./dist/components/connection-line.d.cts",
+        "default": "./dist/components/connection-line.cjs"
+      }
+    },
+    "./internal/components/context": {
+      "kookie-flow-source": "./src/components/context.tsx",
+      "import": {
+        "types": "./dist/components/context.d.ts",
+        "default": "./dist/components/context.js"
+      },
+      "require": {
+        "types": "./dist/components/context.d.cts",
+        "default": "./dist/components/context.cjs"
+      }
+    },
+    "./internal/components/dom-layer": {
+      "kookie-flow-source": "./src/components/dom-layer.tsx",
+      "import": {
+        "types": "./dist/components/dom-layer.d.ts",
+        "default": "./dist/components/dom-layer.js"
+      },
+      "require": {
+        "types": "./dist/components/dom-layer.d.cts",
+        "default": "./dist/components/dom-layer.cjs"
+      }
+    },
+    "./internal/components/draw-entities": {
+      "kookie-flow-source": "./src/components/draw-entities.tsx",
+      "import": {
+        "types": "./dist/components/draw-entities.d.ts",
+        "default": "./dist/components/draw-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/draw-entities.d.cts",
+        "default": "./dist/components/draw-entities.cjs"
+      }
+    },
+    "./internal/components/edges": {
+      "kookie-flow-source": "./src/components/edges.tsx",
+      "import": {
+        "types": "./dist/components/edges.d.ts",
+        "default": "./dist/components/edges.js"
+      },
+      "require": {
+        "types": "./dist/components/edges.d.cts",
+        "default": "./dist/components/edges.cjs"
+      }
+    },
+    "./internal/components/entity-selection": {
+      "kookie-flow-source": "./src/components/entity-selection.tsx",
+      "import": {
+        "types": "./dist/components/entity-selection.d.ts",
+        "default": "./dist/components/entity-selection.js"
+      },
+      "require": {
+        "types": "./dist/components/entity-selection.d.cts",
+        "default": "./dist/components/entity-selection.cjs"
+      }
+    },
+    "./internal/components/error-boundary": {
+      "kookie-flow-source": "./src/components/error-boundary.tsx",
+      "import": {
+        "types": "./dist/components/error-boundary.d.ts",
+        "default": "./dist/components/error-boundary.js"
+      },
+      "require": {
+        "types": "./dist/components/error-boundary.d.cts",
+        "default": "./dist/components/error-boundary.cjs"
+      }
+    },
+    "./internal/components/grid": {
+      "kookie-flow-source": "./src/components/grid.tsx",
+      "import": {
+        "types": "./dist/components/grid.d.ts",
+        "default": "./dist/components/grid.js"
+      },
+      "require": {
+        "types": "./dist/components/grid.d.cts",
+        "default": "./dist/components/grid.cjs"
+      }
+    },
+    "./internal/components/helper-lines": {
+      "kookie-flow-source": "./src/components/helper-lines.tsx",
+      "import": {
+        "types": "./dist/components/helper-lines.d.ts",
+        "default": "./dist/components/helper-lines.js"
+      },
+      "require": {
+        "types": "./dist/components/helper-lines.d.cts",
+        "default": "./dist/components/helper-lines.cjs"
+      }
+    },
+    "./internal/components/image-entities": {
+      "kookie-flow-source": "./src/components/image-entities.tsx",
+      "import": {
+        "types": "./dist/components/image-entities.d.ts",
+        "default": "./dist/components/image-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/image-entities.d.cts",
+        "default": "./dist/components/image-entities.cjs"
+      }
+    },
+    "./internal/components/index": {
+      "kookie-flow-source": "./src/components/index.ts",
+      "import": {
+        "types": "./dist/components/index.d.ts",
+        "default": "./dist/components/index.js"
+      },
+      "require": {
+        "types": "./dist/components/index.d.cts",
+        "default": "./dist/components/index.cjs"
+      }
+    },
+    "./internal/components/interaction-state": {
+      "kookie-flow-source": "./src/components/interaction-state.ts",
+      "import": {
+        "types": "./dist/components/interaction-state.d.ts",
+        "default": "./dist/components/interaction-state.js"
+      },
+      "require": {
+        "types": "./dist/components/interaction-state.d.cts",
+        "default": "./dist/components/interaction-state.cjs"
+      }
+    },
+    "./internal/components/kookie-flow": {
+      "kookie-flow-source": "./src/components/kookie-flow.tsx",
+      "import": {
+        "types": "./dist/components/kookie-flow.d.ts",
+        "default": "./dist/components/kookie-flow.js"
+      },
+      "require": {
+        "types": "./dist/components/kookie-flow.d.cts",
+        "default": "./dist/components/kookie-flow.cjs"
+      }
+    },
+    "./internal/components/media-viewer": {
+      "kookie-flow-source": "./src/components/media-viewer.tsx",
+      "import": {
+        "types": "./dist/components/media-viewer.d.ts",
+        "default": "./dist/components/media-viewer.js"
+      },
+      "require": {
+        "types": "./dist/components/media-viewer.d.cts",
+        "default": "./dist/components/media-viewer.cjs"
+      }
+    },
+    "./internal/components/mesh-entities": {
+      "kookie-flow-source": "./src/components/mesh-entities.tsx",
+      "import": {
+        "types": "./dist/components/mesh-entities.d.ts",
+        "default": "./dist/components/mesh-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/mesh-entities.d.cts",
+        "default": "./dist/components/mesh-entities.cjs"
+      }
+    },
+    "./internal/components/minimap": {
+      "kookie-flow-source": "./src/components/minimap.tsx",
+      "import": {
+        "types": "./dist/components/minimap.d.ts",
+        "default": "./dist/components/minimap.js"
+      },
+      "require": {
+        "types": "./dist/components/minimap.d.cts",
+        "default": "./dist/components/minimap.cjs"
+      }
+    },
+    "./internal/components/nodes": {
+      "kookie-flow-source": "./src/components/nodes.tsx",
+      "import": {
+        "types": "./dist/components/nodes.d.ts",
+        "default": "./dist/components/nodes.js"
+      },
+      "require": {
+        "types": "./dist/components/nodes.d.cts",
+        "default": "./dist/components/nodes.cjs"
+      }
+    },
+    "./internal/components/preview-entities": {
+      "kookie-flow-source": "./src/components/preview-entities.tsx",
+      "import": {
+        "types": "./dist/components/preview-entities.d.ts",
+        "default": "./dist/components/preview-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/preview-entities.d.cts",
+        "default": "./dist/components/preview-entities.cjs"
+      }
+    },
+    "./internal/components/reroute-nodes": {
+      "kookie-flow-source": "./src/components/reroute-nodes.tsx",
+      "import": {
+        "types": "./dist/components/reroute-nodes.d.ts",
+        "default": "./dist/components/reroute-nodes.js"
+      },
+      "require": {
+        "types": "./dist/components/reroute-nodes.d.cts",
+        "default": "./dist/components/reroute-nodes.cjs"
+      }
+    },
+    "./internal/components/selection-box": {
+      "kookie-flow-source": "./src/components/selection-box.tsx",
+      "import": {
+        "types": "./dist/components/selection-box.d.ts",
+        "default": "./dist/components/selection-box.js"
+      },
+      "require": {
+        "types": "./dist/components/selection-box.d.cts",
+        "default": "./dist/components/selection-box.cjs"
+      }
+    },
+    "./internal/components/sockets": {
+      "kookie-flow-source": "./src/components/sockets.tsx",
+      "import": {
+        "types": "./dist/components/sockets.d.ts",
+        "default": "./dist/components/sockets.js"
+      },
+      "require": {
+        "types": "./dist/components/sockets.d.cts",
+        "default": "./dist/components/sockets.cjs"
+      }
+    },
+    "./internal/components/text-edit-cursor": {
+      "kookie-flow-source": "./src/components/text-edit-cursor.tsx",
+      "import": {
+        "types": "./dist/components/text-edit-cursor.d.ts",
+        "default": "./dist/components/text-edit-cursor.js"
+      },
+      "require": {
+        "types": "./dist/components/text-edit-cursor.d.cts",
+        "default": "./dist/components/text-edit-cursor.cjs"
+      }
+    },
+    "./internal/components/text-edit-overlay": {
+      "kookie-flow-source": "./src/components/text-edit-overlay.tsx",
+      "import": {
+        "types": "./dist/components/text-edit-overlay.d.ts",
+        "default": "./dist/components/text-edit-overlay.js"
+      },
+      "require": {
+        "types": "./dist/components/text-edit-overlay.d.cts",
+        "default": "./dist/components/text-edit-overlay.cjs"
+      }
+    },
+    "./internal/components/text-entities": {
+      "kookie-flow-source": "./src/components/text-entities.tsx",
+      "import": {
+        "types": "./dist/components/text-entities.d.ts",
+        "default": "./dist/components/text-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/text-entities.d.cts",
+        "default": "./dist/components/text-entities.cjs"
+      }
+    },
+    "./internal/components/text-renderer": {
+      "kookie-flow-source": "./src/components/text-renderer.tsx",
+      "import": {
+        "types": "./dist/components/text-renderer.d.ts",
+        "default": "./dist/components/text-renderer.js"
+      },
+      "require": {
+        "types": "./dist/components/text-renderer.d.cts",
+        "default": "./dist/components/text-renderer.cjs"
+      }
+    },
+    "./internal/components/toolbar": {
+      "kookie-flow-source": "./src/components/toolbar.tsx",
+      "import": {
+        "types": "./dist/components/toolbar.d.ts",
+        "default": "./dist/components/toolbar.js"
+      },
+      "require": {
+        "types": "./dist/components/toolbar.d.cts",
+        "default": "./dist/components/toolbar.cjs"
+      }
+    },
+    "./internal/components/video-entities": {
+      "kookie-flow-source": "./src/components/video-entities.tsx",
+      "import": {
+        "types": "./dist/components/video-entities.d.ts",
+        "default": "./dist/components/video-entities.js"
+      },
+      "require": {
+        "types": "./dist/components/video-entities.d.cts",
+        "default": "./dist/components/video-entities.cjs"
+      }
+    },
+    "./internal/components/widget-a11y-mirror": {
+      "kookie-flow-source": "./src/components/widget-a11y-mirror.tsx",
+      "import": {
+        "types": "./dist/components/widget-a11y-mirror.d.ts",
+        "default": "./dist/components/widget-a11y-mirror.js"
+      },
+      "require": {
+        "types": "./dist/components/widget-a11y-mirror.d.cts",
+        "default": "./dist/components/widget-a11y-mirror.cjs"
+      }
+    },
+    "./internal/components/widget-edit-overlay": {
+      "kookie-flow-source": "./src/components/widget-edit-overlay.tsx",
+      "import": {
+        "types": "./dist/components/widget-edit-overlay.d.ts",
+        "default": "./dist/components/widget-edit-overlay.js"
+      },
+      "require": {
+        "types": "./dist/components/widget-edit-overlay.d.cts",
+        "default": "./dist/components/widget-edit-overlay.cjs"
+      }
+    },
+    "./internal/components/widget-popover": {
+      "kookie-flow-source": "./src/components/widget-popover.tsx",
+      "import": {
+        "types": "./dist/components/widget-popover.d.ts",
+        "default": "./dist/components/widget-popover.js"
+      },
+      "require": {
+        "types": "./dist/components/widget-popover.d.cts",
+        "default": "./dist/components/widget-popover.cjs"
+      }
+    },
+    "./internal/components/widgets-gl": {
+      "kookie-flow-source": "./src/components/widgets-gl.tsx",
+      "import": {
+        "types": "./dist/components/widgets-gl.d.ts",
+        "default": "./dist/components/widgets-gl.js"
+      },
+      "require": {
+        "types": "./dist/components/widgets-gl.d.cts",
+        "default": "./dist/components/widgets-gl.cjs"
+      }
+    },
+    "./internal/contexts/FontContext": {
+      "kookie-flow-source": "./src/contexts/FontContext.tsx",
+      "import": {
+        "types": "./dist/contexts/FontContext.d.ts",
+        "default": "./dist/contexts/FontContext.js"
+      },
+      "require": {
+        "types": "./dist/contexts/FontContext.d.cts",
+        "default": "./dist/contexts/FontContext.cjs"
+      }
+    },
+    "./internal/contexts/StyleContext": {
+      "kookie-flow-source": "./src/contexts/StyleContext.tsx",
+      "import": {
+        "types": "./dist/contexts/StyleContext.d.ts",
+        "default": "./dist/contexts/StyleContext.js"
+      },
+      "require": {
+        "types": "./dist/contexts/StyleContext.d.cts",
+        "default": "./dist/contexts/StyleContext.cjs"
+      }
+    },
+    "./internal/contexts/ThemeContext": {
+      "kookie-flow-source": "./src/contexts/ThemeContext.tsx",
+      "import": {
+        "types": "./dist/contexts/ThemeContext.d.ts",
+        "default": "./dist/contexts/ThemeContext.js"
+      },
+      "require": {
+        "types": "./dist/contexts/ThemeContext.d.cts",
+        "default": "./dist/contexts/ThemeContext.cjs"
+      }
+    },
+    "./internal/contexts/index": {
+      "kookie-flow-source": "./src/contexts/index.ts",
+      "import": {
+        "types": "./dist/contexts/index.d.ts",
+        "default": "./dist/contexts/index.js"
+      },
+      "require": {
+        "types": "./dist/contexts/index.d.cts",
+        "default": "./dist/contexts/index.cjs"
+      }
+    },
+    "./internal/core/embedded-font": {
+      "kookie-flow-source": "./src/core/embedded-font.ts",
+      "import": {
+        "types": "./dist/core/embedded-font.d.ts",
+        "default": "./dist/core/embedded-font.js"
+      },
+      "require": {
+        "types": "./dist/core/embedded-font.d.cts",
+        "default": "./dist/core/embedded-font.cjs"
+      }
+    },
+    "./internal/core/palette": {
+      "kookie-flow-source": "./src/core/palette.ts",
+      "import": {
+        "types": "./dist/core/palette.d.ts",
+        "default": "./dist/core/palette.js"
+      },
+      "require": {
+        "types": "./dist/core/palette.d.cts",
+        "default": "./dist/core/palette.cjs"
+      }
+    },
+    "./internal/core/theme-colors": {
+      "kookie-flow-source": "./src/core/theme-colors.ts",
+      "import": {
+        "types": "./dist/core/theme-colors.d.ts",
+        "default": "./dist/core/theme-colors.js"
+      },
+      "require": {
+        "types": "./dist/core/theme-colors.d.cts",
+        "default": "./dist/core/theme-colors.cjs"
+      }
+    },
+    "./internal/gl/backdrop": {
+      "kookie-flow-source": "./src/gl/backdrop.ts",
+      "import": {
+        "types": "./dist/gl/backdrop.d.ts",
+        "default": "./dist/gl/backdrop.js"
+      },
+      "require": {
+        "types": "./dist/gl/backdrop.d.cts",
+        "default": "./dist/gl/backdrop.cjs"
+      }
+    },
+    "./internal/gl/ease": {
+      "kookie-flow-source": "./src/gl/ease.ts",
+      "import": {
+        "types": "./dist/gl/ease.d.ts",
+        "default": "./dist/gl/ease.js"
+      },
+      "require": {
+        "types": "./dist/gl/ease.d.cts",
+        "default": "./dist/gl/ease.cjs"
+      }
+    },
+    "./internal/gl/glass": {
+      "kookie-flow-source": "./src/gl/glass.ts",
+      "import": {
+        "types": "./dist/gl/glass.d.ts",
+        "default": "./dist/gl/glass.js"
+      },
+      "require": {
+        "types": "./dist/gl/glass.d.cts",
+        "default": "./dist/gl/glass.cjs"
+      }
+    },
+    "./internal/gl/index": {
+      "kookie-flow-source": "./src/gl/index.ts",
+      "import": {
+        "types": "./dist/gl/index.d.ts",
+        "default": "./dist/gl/index.js"
+      },
+      "require": {
+        "types": "./dist/gl/index.d.cts",
+        "default": "./dist/gl/index.cjs"
+      }
+    },
+    "./internal/gl/lens": {
+      "kookie-flow-source": "./src/gl/lens.ts",
+      "import": {
+        "types": "./dist/gl/lens.d.ts",
+        "default": "./dist/gl/lens.js"
+      },
+      "require": {
+        "types": "./dist/gl/lens.d.cts",
+        "default": "./dist/gl/lens.cjs"
+      }
+    },
+    "./internal/gl/material": {
+      "kookie-flow-source": "./src/gl/material.ts",
+      "import": {
+        "types": "./dist/gl/material.d.ts",
+        "default": "./dist/gl/material.js"
+      },
+      "require": {
+        "types": "./dist/gl/material.d.cts",
+        "default": "./dist/gl/material.cjs"
+      }
+    },
+    "./internal/gl/motion": {
+      "kookie-flow-source": "./src/gl/motion.ts",
+      "import": {
+        "types": "./dist/gl/motion.d.ts",
+        "default": "./dist/gl/motion.js"
+      },
+      "require": {
+        "types": "./dist/gl/motion.d.cts",
+        "default": "./dist/gl/motion.cjs"
+      }
+    },
+    "./internal/gl/sdf": {
+      "kookie-flow-source": "./src/gl/sdf.ts",
+      "import": {
+        "types": "./dist/gl/sdf.d.ts",
+        "default": "./dist/gl/sdf.js"
+      },
+      "require": {
+        "types": "./dist/gl/sdf.d.cts",
+        "default": "./dist/gl/sdf.cjs"
+      }
+    },
+    "./internal/hooks/history-owner": {
+      "kookie-flow-source": "./src/hooks/history-owner.ts",
+      "import": {
+        "types": "./dist/hooks/history-owner.d.ts",
+        "default": "./dist/hooks/history-owner.js"
+      },
+      "require": {
+        "types": "./dist/hooks/history-owner.d.cts",
+        "default": "./dist/hooks/history-owner.cjs"
+      }
+    },
+    "./internal/hooks/index": {
+      "kookie-flow-source": "./src/hooks/index.ts",
+      "import": {
+        "types": "./dist/hooks/index.d.ts",
+        "default": "./dist/hooks/index.js"
+      },
+      "require": {
+        "types": "./dist/hooks/index.d.cts",
+        "default": "./dist/hooks/index.cjs"
+      }
+    },
+    "./internal/hooks/usePrefersReducedMotion": {
+      "kookie-flow-source": "./src/hooks/usePrefersReducedMotion.ts",
+      "import": {
+        "types": "./dist/hooks/usePrefersReducedMotion.d.ts",
+        "default": "./dist/hooks/usePrefersReducedMotion.js"
+      },
+      "require": {
+        "types": "./dist/hooks/usePrefersReducedMotion.d.cts",
+        "default": "./dist/hooks/usePrefersReducedMotion.cjs"
+      }
+    },
+    "./internal/hooks/useThemeTokens": {
+      "kookie-flow-source": "./src/hooks/useThemeTokens.ts",
+      "import": {
+        "types": "./dist/hooks/useThemeTokens.d.ts",
+        "default": "./dist/hooks/useThemeTokens.js"
+      },
+      "require": {
+        "types": "./dist/hooks/useThemeTokens.d.cts",
+        "default": "./dist/hooks/useThemeTokens.cjs"
+      }
+    },
+    "./internal/index": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./internal/plugins/index": {
+      "kookie-flow-source": "./src/plugins/index.ts",
+      "import": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/index.d.cts",
+        "default": "./dist/plugins/index.cjs"
+      }
+    },
+    "./internal/plugins/useClipboard": {
+      "kookie-flow-source": "./src/plugins/useClipboard.ts",
+      "import": {
+        "types": "./dist/plugins/useClipboard.d.ts",
+        "default": "./dist/plugins/useClipboard.js"
+      },
+      "require": {
+        "types": "./dist/plugins/useClipboard.d.cts",
+        "default": "./dist/plugins/useClipboard.cjs"
+      }
+    },
+    "./internal/plugins/useContextMenu": {
+      "kookie-flow-source": "./src/plugins/useContextMenu.ts",
+      "import": {
+        "types": "./dist/plugins/useContextMenu.d.ts",
+        "default": "./dist/plugins/useContextMenu.js"
+      },
+      "require": {
+        "types": "./dist/plugins/useContextMenu.d.cts",
+        "default": "./dist/plugins/useContextMenu.cjs"
+      }
+    },
+    "./internal/plugins/useKeyboardShortcuts": {
+      "kookie-flow-source": "./src/plugins/useKeyboardShortcuts.ts",
+      "import": {
+        "types": "./dist/plugins/useKeyboardShortcuts.d.ts",
+        "default": "./dist/plugins/useKeyboardShortcuts.js"
+      },
+      "require": {
+        "types": "./dist/plugins/useKeyboardShortcuts.d.cts",
+        "default": "./dist/plugins/useKeyboardShortcuts.cjs"
+      }
+    },
+    "./internal/types/index": {
+      "kookie-flow-source": "./src/types/index.ts",
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      }
+    },
+    "./internal/utils/accent-colors": {
+      "kookie-flow-source": "./src/utils/accent-colors.ts",
+      "import": {
+        "types": "./dist/utils/accent-colors.d.ts",
+        "default": "./dist/utils/accent-colors.js"
+      },
+      "require": {
+        "types": "./dist/utils/accent-colors.d.cts",
+        "default": "./dist/utils/accent-colors.cjs"
+      }
+    },
+    "./internal/utils/canvas-runtime": {
+      "kookie-flow-source": "./src/utils/canvas-runtime.ts",
+      "import": {
+        "types": "./dist/utils/canvas-runtime.d.ts",
+        "default": "./dist/utils/canvas-runtime.js"
+      },
+      "require": {
+        "types": "./dist/utils/canvas-runtime.d.cts",
+        "default": "./dist/utils/canvas-runtime.cjs"
+      }
+    },
+    "./internal/utils/color": {
+      "kookie-flow-source": "./src/utils/color.ts",
+      "import": {
+        "types": "./dist/utils/color.d.ts",
+        "default": "./dist/utils/color.js"
+      },
+      "require": {
+        "types": "./dist/utils/color.d.cts",
+        "default": "./dist/utils/color.cjs"
+      }
+    },
+    "./internal/utils/comment-paint": {
+      "kookie-flow-source": "./src/utils/comment-paint.ts",
+      "import": {
+        "types": "./dist/utils/comment-paint.d.ts",
+        "default": "./dist/utils/comment-paint.js"
+      },
+      "require": {
+        "types": "./dist/utils/comment-paint.d.cts",
+        "default": "./dist/utils/comment-paint.cjs"
+      }
+    },
+    "./internal/utils/corner-shader": {
+      "kookie-flow-source": "./src/utils/corner-shader.ts",
+      "import": {
+        "types": "./dist/utils/corner-shader.d.ts",
+        "default": "./dist/utils/corner-shader.js"
+      },
+      "require": {
+        "types": "./dist/utils/corner-shader.d.cts",
+        "default": "./dist/utils/corner-shader.cjs"
+      }
+    },
+    "./internal/utils/download-media": {
+      "kookie-flow-source": "./src/utils/download-media.ts",
+      "import": {
+        "types": "./dist/utils/download-media.d.ts",
+        "default": "./dist/utils/download-media.js"
+      },
+      "require": {
+        "types": "./dist/utils/download-media.d.cts",
+        "default": "./dist/utils/download-media.cjs"
+      }
+    },
+    "./internal/utils/edge-validity": {
+      "kookie-flow-source": "./src/utils/edge-validity.ts",
+      "import": {
+        "types": "./dist/utils/edge-validity.d.ts",
+        "default": "./dist/utils/edge-validity.js"
+      },
+      "require": {
+        "types": "./dist/utils/edge-validity.d.cts",
+        "default": "./dist/utils/edge-validity.cjs"
+      }
+    },
+    "./internal/utils/entity-cursor": {
+      "kookie-flow-source": "./src/utils/entity-cursor.ts",
+      "import": {
+        "types": "./dist/utils/entity-cursor.d.ts",
+        "default": "./dist/utils/entity-cursor.js"
+      },
+      "require": {
+        "types": "./dist/utils/entity-cursor.d.cts",
+        "default": "./dist/utils/entity-cursor.cjs"
+      }
+    },
+    "./internal/utils/image-decode-worker": {
+      "kookie-flow-source": "./src/utils/image-decode-worker.ts",
+      "import": {
+        "types": "./dist/utils/image-decode-worker.d.ts",
+        "default": "./dist/utils/image-decode-worker.js"
+      },
+      "require": {
+        "types": "./dist/utils/image-decode-worker.d.cts",
+        "default": "./dist/utils/image-decode-worker.cjs"
+      }
+    },
+    "./internal/utils/image-loader": {
+      "kookie-flow-source": "./src/utils/image-loader.ts",
+      "import": {
+        "types": "./dist/utils/image-loader.d.ts",
+        "default": "./dist/utils/image-loader.js"
+      },
+      "require": {
+        "types": "./dist/utils/image-loader.d.cts",
+        "default": "./dist/utils/image-loader.cjs"
+      }
+    },
+    "./internal/utils/index": {
+      "kookie-flow-source": "./src/utils/index.ts",
+      "import": {
+        "types": "./dist/utils/index.d.ts",
+        "default": "./dist/utils/index.js"
+      },
+      "require": {
+        "types": "./dist/utils/index.d.cts",
+        "default": "./dist/utils/index.cjs"
+      }
+    },
+    "./internal/utils/media-chrome": {
+      "kookie-flow-source": "./src/utils/media-chrome.ts",
+      "import": {
+        "types": "./dist/utils/media-chrome.d.ts",
+        "default": "./dist/utils/media-chrome.js"
+      },
+      "require": {
+        "types": "./dist/utils/media-chrome.d.cts",
+        "default": "./dist/utils/media-chrome.cjs"
+      }
+    },
+    "./internal/utils/media-glass": {
+      "kookie-flow-source": "./src/utils/media-glass.ts",
+      "import": {
+        "types": "./dist/utils/media-glass.d.ts",
+        "default": "./dist/utils/media-glass.js"
+      },
+      "require": {
+        "types": "./dist/utils/media-glass.d.cts",
+        "default": "./dist/utils/media-glass.cjs"
+      }
+    },
+    "./internal/utils/media-paste": {
+      "kookie-flow-source": "./src/utils/media-paste.ts",
+      "import": {
+        "types": "./dist/utils/media-paste.d.ts",
+        "default": "./dist/utils/media-paste.js"
+      },
+      "require": {
+        "types": "./dist/utils/media-paste.d.cts",
+        "default": "./dist/utils/media-paste.cjs"
+      }
+    },
+    "./internal/utils/media-quad": {
+      "kookie-flow-source": "./src/utils/media-quad.ts",
+      "import": {
+        "types": "./dist/utils/media-quad.d.ts",
+        "default": "./dist/utils/media-quad.js"
+      },
+      "require": {
+        "types": "./dist/utils/media-quad.d.cts",
+        "default": "./dist/utils/media-quad.cjs"
+      }
+    },
+    "./internal/utils/media-runtime": {
+      "kookie-flow-source": "./src/utils/media-runtime.ts",
+      "import": {
+        "types": "./dist/utils/media-runtime.d.ts",
+        "default": "./dist/utils/media-runtime.js"
+      },
+      "require": {
+        "types": "./dist/utils/media-runtime.d.cts",
+        "default": "./dist/utils/media-runtime.cjs"
+      }
+    },
+    "./internal/utils/mesh-loader": {
+      "kookie-flow-source": "./src/utils/mesh-loader.ts",
+      "import": {
+        "types": "./dist/utils/mesh-loader.d.ts",
+        "default": "./dist/utils/mesh-loader.js"
+      },
+      "require": {
+        "types": "./dist/utils/mesh-loader.d.cts",
+        "default": "./dist/utils/mesh-loader.cjs"
+      }
+    },
+    "./internal/utils/msdf-shader": {
+      "kookie-flow-source": "./src/utils/msdf-shader.ts",
+      "import": {
+        "types": "./dist/utils/msdf-shader.d.ts",
+        "default": "./dist/utils/msdf-shader.js"
+      },
+      "require": {
+        "types": "./dist/utils/msdf-shader.d.cts",
+        "default": "./dist/utils/msdf-shader.cjs"
+      }
+    },
+    "./internal/utils/note-ink": {
+      "kookie-flow-source": "./src/utils/note-ink.ts",
+      "import": {
+        "types": "./dist/utils/note-ink.d.ts",
+        "default": "./dist/utils/note-ink.js"
+      },
+      "require": {
+        "types": "./dist/utils/note-ink.d.cts",
+        "default": "./dist/utils/note-ink.cjs"
+      }
+    },
+    "./internal/utils/preview-band": {
+      "kookie-flow-source": "./src/utils/preview-band.ts",
+      "import": {
+        "types": "./dist/utils/preview-band.d.ts",
+        "default": "./dist/utils/preview-band.js"
+      },
+      "require": {
+        "types": "./dist/utils/preview-band.d.cts",
+        "default": "./dist/utils/preview-band.cjs"
+      }
+    },
+    "./internal/utils/preview-source": {
+      "kookie-flow-source": "./src/utils/preview-source.ts",
+      "import": {
+        "types": "./dist/utils/preview-source.d.ts",
+        "default": "./dist/utils/preview-source.js"
+      },
+      "require": {
+        "types": "./dist/utils/preview-source.d.cts",
+        "default": "./dist/utils/preview-source.cjs"
+      }
+    },
+    "./internal/utils/progress-ease": {
+      "kookie-flow-source": "./src/utils/progress-ease.ts",
+      "import": {
+        "types": "./dist/utils/progress-ease.d.ts",
+        "default": "./dist/utils/progress-ease.js"
+      },
+      "require": {
+        "types": "./dist/utils/progress-ease.d.cts",
+        "default": "./dist/utils/progress-ease.cjs"
+      }
+    },
+    "./internal/utils/runtime-atlas": {
+      "kookie-flow-source": "./src/utils/runtime-atlas.ts",
+      "import": {
+        "types": "./dist/utils/runtime-atlas.d.ts",
+        "default": "./dist/utils/runtime-atlas.js"
+      },
+      "require": {
+        "types": "./dist/utils/runtime-atlas.d.cts",
+        "default": "./dist/utils/runtime-atlas.cjs"
+      }
+    },
+    "./internal/utils/socket-types": {
+      "kookie-flow-source": "./src/utils/socket-types.ts",
+      "import": {
+        "types": "./dist/utils/socket-types.d.ts",
+        "default": "./dist/utils/socket-types.js"
+      },
+      "require": {
+        "types": "./dist/utils/socket-types.d.cts",
+        "default": "./dist/utils/socket-types.cjs"
+      }
+    },
+    "./internal/utils/stroke-geometry": {
+      "kookie-flow-source": "./src/utils/stroke-geometry.ts",
+      "import": {
+        "types": "./dist/utils/stroke-geometry.d.ts",
+        "default": "./dist/utils/stroke-geometry.js"
+      },
+      "require": {
+        "types": "./dist/utils/stroke-geometry.d.cts",
+        "default": "./dist/utils/stroke-geometry.cjs"
+      }
+    },
+    "./internal/utils/style-resolver": {
+      "kookie-flow-source": "./src/utils/style-resolver.ts",
+      "import": {
+        "types": "./dist/utils/style-resolver.d.ts",
+        "default": "./dist/utils/style-resolver.js"
+      },
+      "require": {
+        "types": "./dist/utils/style-resolver.d.cts",
+        "default": "./dist/utils/style-resolver.cjs"
+      }
+    },
+    "./internal/utils/text-cursor-layout": {
+      "kookie-flow-source": "./src/utils/text-cursor-layout.ts",
+      "import": {
+        "types": "./dist/utils/text-cursor-layout.d.ts",
+        "default": "./dist/utils/text-cursor-layout.js"
+      },
+      "require": {
+        "types": "./dist/utils/text-cursor-layout.d.cts",
+        "default": "./dist/utils/text-cursor-layout.cjs"
+      }
+    },
+    "./internal/utils/theme-root": {
+      "kookie-flow-source": "./src/utils/theme-root.ts",
+      "import": {
+        "types": "./dist/utils/theme-root.d.ts",
+        "default": "./dist/utils/theme-root.js"
+      },
+      "require": {
+        "types": "./dist/utils/theme-root.d.cts",
+        "default": "./dist/utils/theme-root.cjs"
+      }
+    },
+    "./internal/utils/video-loader": {
+      "kookie-flow-source": "./src/utils/video-loader.ts",
+      "import": {
+        "types": "./dist/utils/video-loader.d.ts",
+        "default": "./dist/utils/video-loader.js"
+      },
+      "require": {
+        "types": "./dist/utils/video-loader.d.cts",
+        "default": "./dist/utils/video-loader.cjs"
+      }
+    },
+    "./internal/utils/viewport-cull": {
+      "kookie-flow-source": "./src/utils/viewport-cull.ts",
+      "import": {
+        "types": "./dist/utils/viewport-cull.d.ts",
+        "default": "./dist/utils/viewport-cull.js"
+      },
+      "require": {
+        "types": "./dist/utils/viewport-cull.d.cts",
+        "default": "./dist/utils/viewport-cull.cjs"
+      }
+    },
+    "./internal/utils/viewport-culler": {
+      "kookie-flow-source": "./src/utils/viewport-culler.ts",
+      "import": {
+        "types": "./dist/utils/viewport-culler.d.ts",
+        "default": "./dist/utils/viewport-culler.js"
+      },
+      "require": {
+        "types": "./dist/utils/viewport-culler.d.cts",
+        "default": "./dist/utils/viewport-culler.cjs"
+      }
+    },
+    "./internal/utils/widget-geometry": {
+      "kookie-flow-source": "./src/utils/widget-geometry.ts",
+      "import": {
+        "types": "./dist/utils/widget-geometry.d.ts",
+        "default": "./dist/utils/widget-geometry.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-geometry.d.cts",
+        "default": "./dist/utils/widget-geometry.cjs"
+      }
+    },
+    "./internal/utils/widget-hit": {
+      "kookie-flow-source": "./src/utils/widget-hit.ts",
+      "import": {
+        "types": "./dist/utils/widget-hit.d.ts",
+        "default": "./dist/utils/widget-hit.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-hit.d.cts",
+        "default": "./dist/utils/widget-hit.cjs"
+      }
+    },
+    "./internal/utils/widget-mirror": {
+      "kookie-flow-source": "./src/utils/widget-mirror.ts",
+      "import": {
+        "types": "./dist/utils/widget-mirror.d.ts",
+        "default": "./dist/utils/widget-mirror.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-mirror.d.cts",
+        "default": "./dist/utils/widget-mirror.cjs"
+      }
+    },
+    "./internal/utils/widget-parts": {
+      "kookie-flow-source": "./src/utils/widget-parts.ts",
+      "import": {
+        "types": "./dist/utils/widget-parts.d.ts",
+        "default": "./dist/utils/widget-parts.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-parts.d.cts",
+        "default": "./dist/utils/widget-parts.cjs"
+      }
+    },
+    "./internal/utils/widget-text": {
+      "kookie-flow-source": "./src/utils/widget-text.ts",
+      "import": {
+        "types": "./dist/utils/widget-text.d.ts",
+        "default": "./dist/utils/widget-text.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-text.d.cts",
+        "default": "./dist/utils/widget-text.cjs"
+      }
+    },
+    "./internal/utils/widgets": {
+      "kookie-flow-source": "./src/utils/widgets.ts",
+      "import": {
+        "types": "./dist/utils/widgets.d.ts",
+        "default": "./dist/utils/widgets.js"
+      },
+      "require": {
+        "types": "./dist/utils/widgets.d.cts",
+        "default": "./dist/utils/widgets.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "fonts"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo",
+    "generate:fonts": "node scripts/generate-fonts.js"
+  },
+  "dependencies": {
+    "@kushagradhawan/kookie-flow-core": "workspace:*",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "~19.2.18",
+    "@types/react-dom": "~19.2.7",
+    "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "msdf-bmfont-xml": "^2.8.0",
+    "playwright-core": "^1.63.0",
+    "react": "~19.2.8",
+    "react-dom": "~19.2.8",
+    "three": "^0.186.0",
+    "tsup": "^8.3.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0",
+    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz",
+    "vite": "^8.3.0",
+    "@types/node": "^26.5.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "peerDependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "~0.186.0",
+    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

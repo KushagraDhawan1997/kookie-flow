@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "rootDir": "../..",
+    "customConditions": ["kookie-flow-source"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -24,8 +26,8 @@
     // React Three Fiber — into a program that has no reason to compile them. If something here
     // ever needs a runtime value from the library, this mapping is what has to change first.
     "paths": {
-      "@kushagradhawan/kookie-flow": ["../kookie-flow/src/types/index.ts"],
-      "@kushagradhawan/kookie-flow/layout": ["../kookie-flow/src/core/layout.ts"]
+      "@kushagradhawan/kookie-flow": ["../kookie-flow-core/src/types/index.ts"],
+      "@kushagradhawan/kookie-flow/layout": ["../kookie-flow-core/src/core/layout.ts"]
     }
   },
   "include": ["src"]

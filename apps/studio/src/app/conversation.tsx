@@ -51,7 +51,7 @@ import {
   Text,
   iconStroke,
   type Size,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import "./conversation.css";
 

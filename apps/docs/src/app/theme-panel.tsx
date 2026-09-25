@@ -25,7 +25,7 @@ import {
   Text,
   ToolbarButton,
   themeAxes,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import { setContrast, useAppearance, type ContrastChoice } from "./appearance";
 import { SettingsIcon } from "./icons";

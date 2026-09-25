@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const source =
-  process.env.KOOKIE_BENCH_SOURCE ?? fileURLToPath(new URL('../../src', import.meta.url));
+  process.env.KOOKIE_BENCH_SOURCE ?? fileURLToPath(new URL('../../../kookie-flow-core/src/', import.meta.url));
 
 const scratch = mkdtempSync(join(tmpdir(), 'kookie-scale-'));
 try {

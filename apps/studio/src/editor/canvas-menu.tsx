@@ -9,7 +9,7 @@ import {
   MenuSub,
   MenuSubContent,
   MenuSubTrigger,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import { registry } from 'studio-core';
 
 import { modelForNode } from '@/app/(app)/models/models';

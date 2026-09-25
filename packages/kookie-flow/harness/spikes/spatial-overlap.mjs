@@ -10,7 +10,7 @@ try {
   const file = join(temp, 'stress.mjs');
   await build({
     stdin: {
-      contents: `import {Quadtree} from './src/core/spatial.ts';
+      contents: `import {Quadtree} from '../kookie-flow-core/src/core/spatial.ts';
     const tree = new Quadtree({x:0,y:0,width:1,height:1});
     const count = Number(process.argv[2]);
     const nodes = Array.from({length:count},(_,i)=>({id:String(i),type:'frame',data:{},position:{x:0,y:0},width:10000,height:10000}));

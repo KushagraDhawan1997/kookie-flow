@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@kookie-ui/react';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   Toolbar as EntityToolbar,

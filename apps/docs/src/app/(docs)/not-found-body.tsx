@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button, Flex, Page } from "@kookie-ui/react";
+import { Button, Flex, Page } from "@kushagradhawan/kookie-ui-react";
 
 import { PageFrame } from "./page-frame";
 

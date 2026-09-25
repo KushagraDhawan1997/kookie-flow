@@ -58,7 +58,7 @@
  */
 import * as React from "react";
 
-import { Stack, Text } from "@kookie-ui/react";
+import { Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import "./table-of-contents.css";
 

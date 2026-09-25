@@ -7,7 +7,7 @@ import {
   MenuRadioItem,
   MenuTrigger,
   ToolbarButton,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import { setAppearance, useAppearance, type AppearanceChoice } from "./appearance";
 import { MoonIcon, SunIcon, SystemIcon } from "./icons";

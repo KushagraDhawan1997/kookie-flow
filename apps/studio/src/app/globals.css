@@ -1,4 +1,4 @@
-/* The studio's own CSS, deliberately this small. Everything visible is @kookie-ui/react; the
+/* The studio's own CSS, deliberately this small. Everything visible is @kushagradhawan/kookie-ui-react; the
    page paints --color-page and the app reads in Inter, the face the canvas labels are cut from.
    `:root:root` so this outranks tokens.css's `:root` whichever order the bundler emits them, and
    both slots are stated because `--font-heading` substitutes where it is declared. */

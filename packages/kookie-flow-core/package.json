@@ -1,0 +1,473 @@
+{
+  "name": "@kushagradhawan/kookie-flow-core",
+  "version": "0.2.0",
+  "description": "Browser-independent graph engine, evaluation, layout and history.",
+  "author": "Kushagra Dhawan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KushagraDhawan1997/kookie-flow",
+    "directory": "packages/kookie-flow-core"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./layout": {
+      "kookie-flow-source": "./src/core/layout.ts",
+      "import": {
+        "types": "./dist/core/layout.d.ts",
+        "default": "./dist/core/layout.js"
+      },
+      "require": {
+        "types": "./dist/core/layout.d.cts",
+        "default": "./dist/core/layout.cjs"
+      }
+    },
+    "./graph": {
+      "kookie-flow-source": "./src/core/graph.ts",
+      "import": {
+        "types": "./dist/core/graph.d.ts",
+        "default": "./dist/core/graph.js"
+      },
+      "require": {
+        "types": "./dist/core/graph.d.cts",
+        "default": "./dist/core/graph.cjs"
+      }
+    },
+    "./history": {
+      "kookie-flow-source": "./src/core/history.ts",
+      "import": {
+        "types": "./dist/core/history.d.ts",
+        "default": "./dist/core/history.js"
+      },
+      "require": {
+        "types": "./dist/core/history.d.cts",
+        "default": "./dist/core/history.cjs"
+      }
+    },
+    "./document": {
+      "kookie-flow-source": "./src/core/document.ts",
+      "import": {
+        "types": "./dist/core/document.d.ts",
+        "default": "./dist/core/document.js"
+      },
+      "require": {
+        "types": "./dist/core/document.d.cts",
+        "default": "./dist/core/document.cjs"
+      }
+    },
+    "./store": {
+      "kookie-flow-source": "./src/core/store.ts",
+      "import": {
+        "types": "./dist/core/store.d.ts",
+        "default": "./dist/core/store.js"
+      },
+      "require": {
+        "types": "./dist/core/store.d.cts",
+        "default": "./dist/core/store.cjs"
+      }
+    },
+    "./types": {
+      "kookie-flow-source": "./src/types/index.ts",
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      }
+    },
+    "./internal/core/constants": {
+      "kookie-flow-source": "./src/core/constants.ts",
+      "import": {
+        "types": "./dist/core/constants.d.ts",
+        "default": "./dist/core/constants.js"
+      },
+      "require": {
+        "types": "./dist/core/constants.d.cts",
+        "default": "./dist/core/constants.cjs"
+      }
+    },
+    "./internal/core/document": {
+      "kookie-flow-source": "./src/core/document.ts",
+      "import": {
+        "types": "./dist/core/document.d.ts",
+        "default": "./dist/core/document.js"
+      },
+      "require": {
+        "types": "./dist/core/document.d.cts",
+        "default": "./dist/core/document.cjs"
+      }
+    },
+    "./internal/core/entity-types": {
+      "kookie-flow-source": "./src/core/entity-types.ts",
+      "import": {
+        "types": "./dist/core/entity-types.d.ts",
+        "default": "./dist/core/entity-types.js"
+      },
+      "require": {
+        "types": "./dist/core/entity-types.d.cts",
+        "default": "./dist/core/entity-types.cjs"
+      }
+    },
+    "./internal/core/evaluation": {
+      "kookie-flow-source": "./src/core/evaluation.ts",
+      "import": {
+        "types": "./dist/core/evaluation.d.ts",
+        "default": "./dist/core/evaluation.js"
+      },
+      "require": {
+        "types": "./dist/core/evaluation.d.cts",
+        "default": "./dist/core/evaluation.cjs"
+      }
+    },
+    "./internal/core/graph-diff": {
+      "kookie-flow-source": "./src/core/graph-diff.ts",
+      "import": {
+        "types": "./dist/core/graph-diff.d.ts",
+        "default": "./dist/core/graph-diff.js"
+      },
+      "require": {
+        "types": "./dist/core/graph-diff.d.cts",
+        "default": "./dist/core/graph-diff.cjs"
+      }
+    },
+    "./internal/core/graph-validation": {
+      "kookie-flow-source": "./src/core/graph-validation.ts",
+      "import": {
+        "types": "./dist/core/graph-validation.d.ts",
+        "default": "./dist/core/graph-validation.js"
+      },
+      "require": {
+        "types": "./dist/core/graph-validation.d.cts",
+        "default": "./dist/core/graph-validation.cjs"
+      }
+    },
+    "./internal/core/graph": {
+      "kookie-flow-source": "./src/core/graph.ts",
+      "import": {
+        "types": "./dist/core/graph.d.ts",
+        "default": "./dist/core/graph.js"
+      },
+      "require": {
+        "types": "./dist/core/graph.d.cts",
+        "default": "./dist/core/graph.cjs"
+      }
+    },
+    "./internal/core/history": {
+      "kookie-flow-source": "./src/core/history.ts",
+      "import": {
+        "types": "./dist/core/history.d.ts",
+        "default": "./dist/core/history.js"
+      },
+      "require": {
+        "types": "./dist/core/history.d.cts",
+        "default": "./dist/core/history.cjs"
+      }
+    },
+    "./internal/core/layout": {
+      "kookie-flow-source": "./src/core/layout.ts",
+      "import": {
+        "types": "./dist/core/layout.d.ts",
+        "default": "./dist/core/layout.js"
+      },
+      "require": {
+        "types": "./dist/core/layout.d.cts",
+        "default": "./dist/core/layout.cjs"
+      }
+    },
+    "./internal/core/serialize": {
+      "kookie-flow-source": "./src/core/serialize.ts",
+      "import": {
+        "types": "./dist/core/serialize.d.ts",
+        "default": "./dist/core/serialize.js"
+      },
+      "require": {
+        "types": "./dist/core/serialize.d.cts",
+        "default": "./dist/core/serialize.cjs"
+      }
+    },
+    "./internal/core/spatial": {
+      "kookie-flow-source": "./src/core/spatial.ts",
+      "import": {
+        "types": "./dist/core/spatial.d.ts",
+        "default": "./dist/core/spatial.js"
+      },
+      "require": {
+        "types": "./dist/core/spatial.d.cts",
+        "default": "./dist/core/spatial.cjs"
+      }
+    },
+    "./internal/core/store": {
+      "kookie-flow-source": "./src/core/store.ts",
+      "import": {
+        "types": "./dist/core/store.d.ts",
+        "default": "./dist/core/store.js"
+      },
+      "require": {
+        "types": "./dist/core/store.d.cts",
+        "default": "./dist/core/store.cjs"
+      }
+    },
+    "./internal/gl/magnet": {
+      "kookie-flow-source": "./src/gl/magnet.ts",
+      "import": {
+        "types": "./dist/gl/magnet.d.ts",
+        "default": "./dist/gl/magnet.js"
+      },
+      "require": {
+        "types": "./dist/gl/magnet.d.cts",
+        "default": "./dist/gl/magnet.cjs"
+      }
+    },
+    "./internal/index": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./internal/types/index": {
+      "kookie-flow-source": "./src/types/index.ts",
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      }
+    },
+    "./internal/utils/alignment": {
+      "kookie-flow-source": "./src/utils/alignment.ts",
+      "import": {
+        "types": "./dist/utils/alignment.d.ts",
+        "default": "./dist/utils/alignment.js"
+      },
+      "require": {
+        "types": "./dist/utils/alignment.d.cts",
+        "default": "./dist/utils/alignment.cjs"
+      }
+    },
+    "./internal/utils/arrange": {
+      "kookie-flow-source": "./src/utils/arrange.ts",
+      "import": {
+        "types": "./dist/utils/arrange.d.ts",
+        "default": "./dist/utils/arrange.js"
+      },
+      "require": {
+        "types": "./dist/utils/arrange.d.cts",
+        "default": "./dist/utils/arrange.cjs"
+      }
+    },
+    "./internal/utils/connections": {
+      "kookie-flow-source": "./src/utils/connections.ts",
+      "import": {
+        "types": "./dist/utils/connections.d.ts",
+        "default": "./dist/utils/connections.js"
+      },
+      "require": {
+        "types": "./dist/utils/connections.d.cts",
+        "default": "./dist/utils/connections.cjs"
+      }
+    },
+    "./internal/utils/edge-curve": {
+      "kookie-flow-source": "./src/utils/edge-curve.ts",
+      "import": {
+        "types": "./dist/utils/edge-curve.d.ts",
+        "default": "./dist/utils/edge-curve.js"
+      },
+      "require": {
+        "types": "./dist/utils/edge-curve.d.cts",
+        "default": "./dist/utils/edge-curve.cjs"
+      }
+    },
+    "./internal/utils/entity-depth": {
+      "kookie-flow-source": "./src/utils/entity-depth.ts",
+      "import": {
+        "types": "./dist/utils/entity-depth.d.ts",
+        "default": "./dist/utils/entity-depth.js"
+      },
+      "require": {
+        "types": "./dist/utils/entity-depth.d.cts",
+        "default": "./dist/utils/entity-depth.cjs"
+      }
+    },
+    "./internal/utils/entity-kind": {
+      "kookie-flow-source": "./src/utils/entity-kind.ts",
+      "import": {
+        "types": "./dist/utils/entity-kind.d.ts",
+        "default": "./dist/utils/entity-kind.js"
+      },
+      "require": {
+        "types": "./dist/utils/entity-kind.d.cts",
+        "default": "./dist/utils/entity-kind.cjs"
+      }
+    },
+    "./internal/utils/geometry": {
+      "kookie-flow-source": "./src/utils/geometry.ts",
+      "import": {
+        "types": "./dist/utils/geometry.d.ts",
+        "default": "./dist/utils/geometry.js"
+      },
+      "require": {
+        "types": "./dist/utils/geometry.d.cts",
+        "default": "./dist/utils/geometry.cjs"
+      }
+    },
+    "./internal/utils/grouping": {
+      "kookie-flow-source": "./src/utils/grouping.ts",
+      "import": {
+        "types": "./dist/utils/grouping.d.ts",
+        "default": "./dist/utils/grouping.js"
+      },
+      "require": {
+        "types": "./dist/utils/grouping.d.cts",
+        "default": "./dist/utils/grouping.cjs"
+      }
+    },
+    "./internal/utils/hex-color": {
+      "kookie-flow-source": "./src/utils/hex-color.ts",
+      "import": {
+        "types": "./dist/utils/hex-color.d.ts",
+        "default": "./dist/utils/hex-color.js"
+      },
+      "require": {
+        "types": "./dist/utils/hex-color.d.cts",
+        "default": "./dist/utils/hex-color.cjs"
+      }
+    },
+    "./internal/utils/hsv": {
+      "kookie-flow-source": "./src/utils/hsv.ts",
+      "import": {
+        "types": "./dist/utils/hsv.d.ts",
+        "default": "./dist/utils/hsv.js"
+      },
+      "require": {
+        "types": "./dist/utils/hsv.d.cts",
+        "default": "./dist/utils/hsv.cjs"
+      }
+    },
+    "./internal/utils/popover-layout": {
+      "kookie-flow-source": "./src/utils/popover-layout.ts",
+      "import": {
+        "types": "./dist/utils/popover-layout.d.ts",
+        "default": "./dist/utils/popover-layout.js"
+      },
+      "require": {
+        "types": "./dist/utils/popover-layout.d.cts",
+        "default": "./dist/utils/popover-layout.cjs"
+      }
+    },
+    "./internal/utils/socket-key": {
+      "kookie-flow-source": "./src/utils/socket-key.ts",
+      "import": {
+        "types": "./dist/utils/socket-key.d.ts",
+        "default": "./dist/utils/socket-key.js"
+      },
+      "require": {
+        "types": "./dist/utils/socket-key.d.cts",
+        "default": "./dist/utils/socket-key.cjs"
+      }
+    },
+    "./internal/utils/socket-layout-cache": {
+      "kookie-flow-source": "./src/utils/socket-layout-cache.ts",
+      "import": {
+        "types": "./dist/utils/socket-layout-cache.d.ts",
+        "default": "./dist/utils/socket-layout-cache.js"
+      },
+      "require": {
+        "types": "./dist/utils/socket-layout-cache.d.cts",
+        "default": "./dist/utils/socket-layout-cache.cjs"
+      }
+    },
+    "./internal/utils/socket-layout": {
+      "kookie-flow-source": "./src/utils/socket-layout.ts",
+      "import": {
+        "types": "./dist/utils/socket-layout.d.ts",
+        "default": "./dist/utils/socket-layout.js"
+      },
+      "require": {
+        "types": "./dist/utils/socket-layout.d.cts",
+        "default": "./dist/utils/socket-layout.cjs"
+      }
+    },
+    "./internal/utils/text-layout": {
+      "kookie-flow-source": "./src/utils/text-layout.ts",
+      "import": {
+        "types": "./dist/utils/text-layout.d.ts",
+        "default": "./dist/utils/text-layout.js"
+      },
+      "require": {
+        "types": "./dist/utils/text-layout.d.cts",
+        "default": "./dist/utils/text-layout.cjs"
+      }
+    },
+    "./internal/utils/text-texture": {
+      "kookie-flow-source": "./src/utils/text-texture.ts",
+      "import": {
+        "types": "./dist/utils/text-texture.d.ts",
+        "default": "./dist/utils/text-texture.js"
+      },
+      "require": {
+        "types": "./dist/utils/text-texture.d.cts",
+        "default": "./dist/utils/text-texture.cjs"
+      }
+    },
+    "./internal/utils/widget-values": {
+      "kookie-flow-source": "./src/utils/widget-values.ts",
+      "import": {
+        "types": "./dist/utils/widget-values.d.ts",
+        "default": "./dist/utils/widget-values.js"
+      },
+      "require": {
+        "types": "./dist/utils/widget-values.d.cts",
+        "default": "./dist/utils/widget-values.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "tsup": "^8.3.0",
+    "vitest": "^5.0.0",
+    "@types/node": "^26.5.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

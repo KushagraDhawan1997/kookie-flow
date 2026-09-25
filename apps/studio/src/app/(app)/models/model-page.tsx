@@ -18,7 +18,7 @@ import {
   TableRow,
   Text,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { CopyIcon, ExternalIcon } from '../../icons';
 import { ProviderLogo } from '../../provider-logos';

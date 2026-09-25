@@ -6,31 +6,26 @@ This document is the orchestrator. Detailed plans live in sub-files linked below
 
 ---
 
-## Architecture at a Glance
+## Current architecture — package split (September 2026)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    <KookieFlow>                             │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ DOM Layer (pointer-events: none except on widgets)    │  │
-│  │  [Node Labels] [Socket Labels] [Widgets] [Portals]   │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ WebGL Canvas (R3F)                                    │  │
-│  │  Grid · Nodes · Sockets · Edges · SelectionBox       │  │
-│  │  TextEntities · ImageEntities · ConnectionLine        │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│                    Zustand Store                            │
-│  entities[], edges[], viewport, selection, connectionState  │
-└─────────────────────────────────────────────────────────────┘
-```
+- `@kushagradhawan/kookie-flow-core`: data/store/evaluation/history/layout; no React or browser.
+- `@kushagradhawan/kookie-flow-webgl`: GPU rendering and interaction, owning glass and tokens.
+- `@kushagradhawan/kookie-flow-react`: application API and `useGraph`.
+- `@kushagradhawan/kookie-flow`: compatibility forwarding imports.
 
-**Coordinate system:** Y-down (matches DOM), orthographic camera, `screenPos = (worldPos + viewport.offset) * viewport.zoom`
+Nodes, labels, socket widgets and notes draw in WebGL. DOM is bounded to native text editing,
+the focused accessibility mirror, and app chrome. There is no per-node React-component escape
+hatch and no design-system adapter. The personal renderer retains Kookie Flow's design.
+
+See [package migration, ownership and two-way copy rules](../docs/PACKAGES.md). Older sub-plans
+below record earlier architecture and are superseded by this section where they conflict.
+
+Package split work: physical extraction, vanilla store, explicit layout contract, scoped theme
+reads, cache isolation, GPU notes, removal of DOM widget APIs, UI package rename, boundary checks,
+packed-consumer checks, and multi-editor browser qualification. Womp copying and product
+acceptance are deferred until the organization repository is accessible.
+
+**Coordinates:** Y-down; `screen = world * zoom + viewport offset`.
 
 ---
 

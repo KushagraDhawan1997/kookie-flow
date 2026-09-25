@@ -8,32 +8,26 @@ nodes pans and zooms without React re-rendering.
 [changelog](https://github.com/KushagraDhawan1997/kookie-flow/blob/main/CHANGELOG.md) marks every
 breaking change.
 
-Peer dependencies are React/React DOM ^19.2.8, three.js ~0.186.0, React Three Fiber ^9.7.0 and
-drei ^10.7.8. It also needs the tested KookieUI snapshot (`@kookie-ui/react` 0.0.0), its stylesheet,
-and a browser with WebGL 2. KookieUI is not published: install the tarball in `vendor/` explicitly.
-Node tooling and CJS consumers require Node 24 or newer. See [production qualification](./PRODUCTION.md)
-for the release gate, document validation, distribution instructions and supported scope.
+This is the compatibility entry for the split core, WebGL and React packages. New integrations
+should import `@kushagradhawan/kookie-flow-react`.
+
+The 0.2.0 candidates are unpublished. Pack with pnpm and install all four Flow archives plus the
+pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.1` archive from this repository's `vendor/`.
+Do not substitute current UI v2 without qualifying it: that source changed since the tested snapshot.
+See [package migration](../../docs/PACKAGES.md) and [production qualification](./PRODUCTION.md).
+
+Renderer peers: React/React DOM ^19.2.8, Three ~0.186.0, Fiber ^9.7.0 and drei ^10.7.8.
+Node tooling and CJS consumers require Node 24+. The browser needs WebGL 2.
 
 ## Setup
-
-Install the package and its peers:
-
-```bash
-pnpm add @kushagradhawan/kookie-flow react react-dom three @react-three/fiber @react-three/drei
-```
-
-KookieUI v2 supplies the theme and the selection toolbar's controls. It isn't on npm yet, so
-build it from its [repository](https://github.com/KushagraDhawan1997/kookie-ui-v2) and depend
-on the packed tarball. The
-[Installation](https://kookie-flow.vercel.app/start/installation) chapter shows each step.
 
 Import KookieUI's stylesheet once and put a `Theme` at the root of your app. The canvas reads
 its colours and corners from that theme, so it follows your app into dark mode. Kookie Flow has
 no stylesheet of its own.
 
 ```tsx
-import "@kookie-ui/react/styles.css";
-import { Theme } from "@kookie-ui/react";
+import "@kushagradhawan/kookie-ui-react/styles.css";
+import { Theme } from "@kushagradhawan/kookie-ui-react";
 
 export default function App({ children }: { children: React.ReactNode }) {
   return <Theme>{children}</Theme>;

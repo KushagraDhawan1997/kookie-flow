@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launch } from './browser.mjs';
 import { hardeningChecks } from './hardening.mjs';
+import { gpuNoteChecks } from './gpu-notes.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
@@ -1506,243 +1507,7 @@ await withPage('count=12&seed=1', async (page) => {
   );
 });
 
-// ---------------------------------------------------------------- comments
-
-head('comments');
-
-/**
- * A comment shows the words it currently has.
- *
- * Comments are the last persistent-DOM surface in the package, and their content, background,
- * text colour and font size were all written by JSX that only re-ran when the NUMBER of comments
- * changed. Editing a comment through `onEntitiesChange` — the only route a consumer has — left the
- * div showing whatever it had at mount, for the life of the mount.
- *
- * The obvious repair is to re-render more often, and it is the wrong one: `entities.filter(...)`
- * allocates a fresh array on every store change and a drag republishes `entities` on every
- * pointermove, so a reference compare would re-render once per drag frame. The content moved into
- * the imperative path instead — the one that already runs per frame and already owns the
- * transform. So this law checks BOTH halves: the text follows, and the render count does not move.
- */
-await withPage('scene=comments', async (page) => {
-  const read = () =>
-    page.evaluate(() =>
-      Array.from(document.querySelectorAll('[data-entity-id]'))
-        .filter((el) => el.dataset.bg !== undefined || el.textContent)
-        .map((el) => ({
-          id: el.dataset.entityId,
-          text: el.textContent,
-          bg: el.style.backgroundColor,
-          fontSize: el.style.fontSize,
-        }))
-    );
-
-  const before = await read();
-  check(
-    'INSTRUMENT: the comments render at all',
-    before.length === 2 && before.some((c) => c.text === 'first note'),
-    JSON.stringify(before)
-  );
-
-  // Edit through the store, the way a consumer's applyEntityChanges would.
-  const commitsBefore = await page.evaluate(() => window.__harness.reactCommits().commits);
-  await page.evaluate(() => {
-    const s = window.__harness.store.getState();
-    // `data`, not `update` — the change union has no `update` variant, and `applyEntityChanges`
-    // ignores an unknown type SILENTLY. The first version of this law used `update` and reported
-    // the comment as stale against a working fix, which is a law describing a code path that does
-    // not exist.
-    s.applyEntityChanges([
-      {
-        type: 'data',
-        id: 'note-a',
-        data: { content: 'edited', backgroundColor: '#B3E5FC', textColor: '#01579B', fontSize: 22 },
-      },
-    ]);
-  });
-  await page.waitForTimeout(250);
-
-  const after = await read();
-  const a = after.find((c) => c.id === 'note-a');
-
-  check('a comment follows its content', a?.text === 'edited', JSON.stringify(a));
-  check(
-    'a comment follows its colour and size',
-    a?.bg === 'rgb(179, 229, 252)' && a?.fontSize !== before.find((c) => c.id === 'note-a')?.fontSize,
-    JSON.stringify(a)
-  );
-
-  // The other comment must be untouched — a fix that repaints everything would also pass the two
-  // laws above.
-  const b = after.find((c) => c.id === 'note-b');
-  check('the other comment is unchanged', b?.text === 'second note', JSON.stringify(b));
-
-  // ...and none of it cost a re-render, which is the constraint that ruled out the obvious repair.
-  const commitsAfter = await page.evaluate(() => window.__harness.reactCommits().commits);
-  check(
-    'editing a comment costs no React commit',
-    commitsAfter === commitsBefore,
-    `${commitsBefore} -> ${commitsAfter}`
-  );
-
-  // Identity: swap one comment for another WITHOUT changing the count. A length-based detector
-  // leaves the new one mounted blank, which is what the old code did.
-  await page.evaluate(() => {
-    const s = window.__harness.store.getState();
-    s.applyEntityChanges([{ type: 'remove', id: 'note-b' }]);
-    s.applyEntityChanges([
-      {
-        type: 'add',
-        entity: {
-          id: 'note-c',
-          type: 'comment',
-          position: { x: 340, y: 80 },
-          width: 200,
-          height: 120,
-          data: { content: 'replacement', backgroundColor: '#FFCCBC', textColor: '#BF360C', fontSize: 14 },
-        },
-      },
-    ]);
-  });
-  await page.waitForTimeout(400);
-
-  const swapped = await read();
-  const c = swapped.find((x) => x.id === 'note-c');
-  check(
-    'a comment swapped in at the same count paints',
-    c?.text === 'replacement',
-    JSON.stringify(swapped)
-  );
-});
-
-
-/**
- * A NOTE'S CORNER IS THE CANVAS'S CORNER.
- *
- * The canvas draws the hover and selection line of every entity as a squircle at the card radius x
- * 1.613, and the note div was a plain border-radius at the raw radius — a circle, rounder, and a
- * different curve from the line drawn around it. The owner saw it as a squircle line with the wrong
- * paint inside. v2's surface rule is the fix: corner-shape squircle at the compensated radius.
- *
- * Stated three ways, so it cannot be satisfied by accident: the corner is a squircle where the
- * browser can draw one, the radius scales with zoom, and selecting the note leaves its own shadow
- * alone — the canvas's ring is the selection, and a second ring painted here would be a circle.
- */
-await withPage('scene=comments', async (page) => {
-  const read = () =>
-    page.evaluate(() => {
-      const el = [...document.querySelectorAll('[data-entity-id="note-a"]')].find((e) => e.dataset.bg !== undefined);
-      if (!el) return null;
-      const cs = getComputedStyle(el);
-      return {
-        supported: CSS.supports('corner-shape', 'squircle'),
-        shape: cs.getPropertyValue('corner-shape'),
-        radius: parseFloat(cs.borderTopLeftRadius),
-        shadow: cs.boxShadow,
-        zoom: window.__harness.store.getState().viewport.zoom,
-      };
-    });
-  const before = await read();
-  check('INSTRUMENT: the note is on the page', before !== null, String(before));
-  if (!before) return;
-  check(
-    'a note is drawn with a squircle corner where the browser can draw one',
-    !before.supported || ['squircle', 'superellipse(2)'].includes(before.shape),
-    `supported=${before.supported} corner-shape=${before.shape}`
-  );
-
-  await page.evaluate(() => {
-    const s = window.__harness.store.getState();
-    s.setViewport({ ...s.viewport, zoom: s.viewport.zoom * 2 });
-  });
-  await page.waitForTimeout(200);
-  const zoomed = await read();
-  check(
-    'and its corner scales with zoom, as the canvas line around it does',
-    zoomed !== null && before.radius > 0 && Math.abs(zoomed.radius / before.radius - 2) < 0.05,
-    `${before.radius}px at zoom ${before.zoom}, ${zoomed?.radius}px at zoom ${zoomed?.zoom}`
-  );
-
-  await page.evaluate(() => window.__harness.store.getState().selectEntity?.('note-a'));
-  await page.evaluate(() => {
-    const s = window.__harness.store.getState();
-    if (!s.selectedEntityIds.has('note-a')) s.setSelectedEntityIds?.(new Set(['note-a']));
-  });
-  await page.waitForTimeout(200);
-  const selected = await read();
-  const isSelected = await page.evaluate(() => window.__harness.store.getState().selectedEntityIds.has('note-a'));
-  check('INSTRUMENT: the note is selected', isSelected, String(isSelected));
-  check(
-    'and selecting it paints no ring of its own: the canvas draws the selection',
-    selected !== null && selected.shadow === zoomed.shadow,
-    `resting ${zoomed?.shadow} / selected ${selected?.shadow}`
-  );
-});
-
-/**
- * A NOTE WITH NO COLOURS OF ITS OWN READS IN BOTH APPEARANCES.
- *
- * A comment used to default to a Material yellow and a grey ink written as hex: fine on a white
- * page, a glaring pastel slab on a dark one, and the same pastel whatever the theme. A note now
- * mixes a hue with the theme's page and text colours. So the law asks what a person would: in
- * light the fill is light, in dark it is dark, the text is legible on it in both (WCAG 4.5), and a
- * different hue is a different fill.
- */
-for (const appearance of ['light', 'dark']) {
-  await withPage(`scene=comments&appearance=${appearance}`, async (page) => {
-    const r = await page.evaluate(async () => {
-      const s = window.__harness.store.getState();
-      s.applyEntityChanges([
-        { type: 'add', entity: { id: 'note-plain', type: 'comment', position: { x: 80, y: 260 }, width: 200, height: 100, data: { content: 'plain' } } },
-        { type: 'add', entity: { id: 'note-green', type: 'comment', position: { x: 340, y: 260 }, width: 200, height: 100, data: { content: 'green', color: 'green' } } },
-      ]);
-      await new Promise((res) => setTimeout(res, 300));
-      const toRGB = (css) => {
-        const c = document.createElement('canvas');
-        c.width = 1;
-        c.height = 1;
-        const x = c.getContext('2d');
-        x.fillStyle = '#000';
-        x.fillStyle = css;
-        x.fillRect(0, 0, 1, 1);
-        const d = x.getImageData(0, 0, 1, 1).data;
-        return [d[0], d[1], d[2]];
-      };
-      const lum = ([r, g, b]) => {
-        const f = (v) => {
-          v /= 255;
-          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-        };
-        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-      };
-      const read = (id) => {
-        const el = document.querySelector(`[data-entity-id="${id}"]`);
-        if (!el) return null;
-        const cs = getComputedStyle(el);
-        const bg = toRGB(cs.backgroundColor);
-        const fg = toRGB(cs.color);
-        const hi = Math.max(lum(bg), lum(fg));
-        const lo = Math.min(lum(bg), lum(fg));
-        return { bg, fg, bgLum: lum(bg), contrast: (hi + 0.05) / (lo + 0.05) };
-      };
-      return { plain: read('note-plain'), green: read('note-green') };
-    });
-    check(`INSTRUMENT: both ${appearance} notes render`, r.plain !== null && r.green !== null, JSON.stringify(r));
-    if (!r.plain || !r.green) return;
-    check(
-      `a plain note in ${appearance} has a ${appearance} fill`,
-      appearance === 'light' ? r.plain.bgLum > 0.6 : r.plain.bgLum < 0.2,
-      `fill rgb(${r.plain.bg}) luminance ${r.plain.bgLum.toFixed(3)}`
-    );
-    check(
-      `and its text is legible on it in ${appearance}`,
-      r.plain.contrast >= 4.5,
-      `contrast ${r.plain.contrast.toFixed(2)} (text rgb(${r.plain.fg}) on rgb(${r.plain.bg}))`
-    );
-    const hueDelta = Math.max(...r.plain.bg.map((v, k) => Math.abs(v - r.green.bg[k])));
-    check(`and a green note in ${appearance} is a different fill`, hueDelta > 12, `plain rgb(${r.plain.bg}) green rgb(${r.green.bg})`);
-  });
-}
+await gpuNoteChecks({ head, withPage, check, context, port, skipping });
 
 // ---------------------------------------------------------------- keyboard scope
 
@@ -1854,105 +1619,31 @@ await withPage('count=6&seed=1', async (page) => {
 
 head('widgets');
 
-/**
- * A widget follows the graph it is sitting on.
- *
- * The snapshot behind every socket widget was re-taken only when the NUMBER of entities or the SIZE
- * of the connected-socket set changed, so four ordinary things a consumer does produced nothing:
- * giving an entity a colour left its widgets on the default theme, adding a socket to an entity
- * that already had one added no widget, swapping the `widgetTypes` map kept the old components, and
- * connecting a socket did not disable the widget on it — the connected-set is rebuilt as a fresh
- * Set on every edge change and its size stays put when one connection replaces another.
- *
- * The value itself had the same shape of bug one level down: `useState(initialValue)` seeds once,
- * so a value changed anywhere but in the widget never reached the control.
- */
-//
-// RE-KEYED ONTO THE SURVIVING DOM PATH. The seven built-in widgets draw in WebGL now and take
-// their interaction there — see the `GL widgets` section, which covers them end to end. What is
-// still DOM, and what these laws are now about, is a widget component the CONSUMER supplied: the
-// library cannot draw a component it has never seen, and `plans/technical-decisions.md` names
-// custom node content as the escape hatch that stays in the DOM.
-//
-// The bugs described above were about the SNAPSHOT behind the widget list, which the custom path
-// shares line for line — so this still guards them, on the only widgets that can still show them.
-await withPage('count=4&seed=1&widgets=1&customWidget=1', async (page) => {
-  const countWidgets = () =>
-    page.evaluate(() => document.querySelectorAll('[data-entity-id] input, [data-entity-id] textarea').length);
-
+/** A same-count graph update changes the drawn widgets and the active edit value. */
+await withPage('scene=widgets&widgets=1', async (page) => {
+  const countWidgets = () => page.evaluate(() => window.__harness.drawnInstances().filter(p => p.kind === 'widgets').length);
   const before = await countWidgets();
-  check('INSTRUMENT: widgets render at all', before > 0, `${before} widgets`);
-
-  // Adding a socket to an entity that ALREADY has sockets: the entity count does not move.
+  check('INSTRUMENT: widgets reach the GPU', before > 0, String(before));
   await page.evaluate(() => {
     const s = window.__harness.store.getState();
-    const first = s.entities[0];
-    s.applyEntityChanges([
-      {
-        type: 'data',
-        id: first.id,
-        data: {},
-      },
-    ]);
-    // Go through setEntities, which is the path a controlled consumer's prop takes.
-    s.setEntities(
-      s.entities.map((e) =>
-        e.id === first.id
-          ? { ...e, inputs: [...(e.inputs ?? []), { id: 'added', name: 'Added', type: 'string' }] }
-          : e
-      )
-    );
+    s.setEntities(s.entities.map(e => e.id === 'w' ? { ...e, inputs: [...e.inputs, { id: 'added', name: 'Added', type: 'string' }] } : e));
   });
   await page.waitForTimeout(300);
-
   const after = await countWidgets();
-  check(
-    'adding a socket to an existing entity adds its widget',
-    after === before + 1,
-    `${before} -> ${after} widgets`
-  );
-
-  // A widget's value follows an external write.
-  const wrote = await page.evaluate(async () => {
+  check('adding a socket adds a GPU widget without changing entity count', after === before + 1, `${before} -> ${after}`);
+  await page.evaluate(() => {
     const s = window.__harness.store.getState();
-    const target = s.entities.find((e) => (e.inputs ?? []).some((i) => i.id === 'added'));
-    if (!target) return null;
-    s.setEntities(
-      s.entities.map((e) =>
-        e.id === target.id
-          ? { ...e, data: { ...e.data, values: { ...(e.data?.values ?? {}), added: 'from outside' } } }
-          : e
-      )
-    );
-    return target.id;
+    s.setEntities(s.entities.map(e => e.id === 'w' ? { ...e, data: { ...e.data, values: { ...e.data.values, added: 'from outside' } } } : e));
   });
   await page.waitForTimeout(300);
-
-  if (wrote) await page.waitForFunction(() =>
-    [...document.querySelectorAll('input[aria-label="Added"]')].some((el) => el.value === 'from outside'),
-    undefined, { timeout: 10_000 });
-
-  // The law below used to sit inside `if (wrote)` with no `else`. When the socket named 'added'
-  // is not on any entity — a fixture edit, a setEntities that drops unknown sockets — the whole
-  // law EVAPORATED: one fewer `ok` line, `failures` still empty, and the summary still `0 failed`.
-  // Nothing in this runner compares the pass count against an expected total, so a suite that
-  // quietly shrinks is indistinguishable from one that quietly passes.
-  check('INSTRUMENT: the added socket reached an entity', wrote !== null, String(wrote));
-
-  const shows = await page.evaluate(
-    (id) => {
-      if (!id) return null;
-      const scope = document.querySelector(`[data-entity-id="${id}"]`)?.parentElement;
-      if (!scope) return null;
-      return Array.from(scope.querySelectorAll('input,textarea')).map((el) => el.value);
-    },
-    wrote
-  );
-  check(
-    'a widget value follows an external write',
-    Array.isArray(shows) && shows.includes('from outside'),
-    JSON.stringify(shows)
-  );
+  const at = await page.evaluate(() => window.__harness.widgetPoint('w', 'added'));
+  check('INSTRUMENT: the new widget has a hit target', at !== null, JSON.stringify(at));
+  if (!at) return;
+  await page.mouse.dblclick(at.x, at.y);
+  await page.waitForTimeout(250);
+  const values = await page.evaluate(() => [...document.querySelectorAll('input:not([data-a11y-mirror]),textarea:not([data-a11y-mirror])')].map(e => e.value));
+  check('editing a GPU widget starts with its external value', values.includes('from outside'), JSON.stringify(values));
+  await page.keyboard.press('Escape');
 });
 
 // ---------------------------------------------------------------- selection outlines

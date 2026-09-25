@@ -53,7 +53,7 @@
  *    would announce a first-use state on every page load.
  */
 import * as React from "react";
-import { Flex, Heading, Stack, Text } from "@kookie-ui/react";
+import { Flex, Heading, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import "./empty-state.css";
 

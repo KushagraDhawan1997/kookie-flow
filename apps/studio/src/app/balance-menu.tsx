@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, ToolbarButton } from '@kookie-ui/react';
+import { Button, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 import { formatUsd } from 'studio-core';
 
 import { BALANCE_CHANGED, type BillingView } from '@/shared/billing';

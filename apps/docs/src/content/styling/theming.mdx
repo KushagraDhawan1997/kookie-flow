@@ -11,8 +11,8 @@ Import the KookieUI stylesheet once, and render `KookieFlow` anywhere inside a `
 ```tsx title="app.tsx"
 "use client";
 
-import "@kookie-ui/react/styles.css";
-import { Theme } from "@kookie-ui/react";
+import "@kushagradhawan/kookie-ui-react/styles.css";
+import { Theme } from "@kushagradhawan/kookie-ui-react";
 import { KookieFlow, useGraph } from "@kushagradhawan/kookie-flow";
 
 export function App() {
@@ -48,21 +48,16 @@ inside the root Theme. A `--scale` you set on the Theme, or on an element above 
 the canvas draws along with the rest of the page: node padding, socket rows, and the height of
 every widget.
 
-The canvas reads the first element with the `kui-theme` class in the document, which is
-normally your root `Theme`. A nested `Theme` around the canvas isn't read, so the canvas still
-paints with the root Theme's values.
+Each canvas reads its own inherited theme scope. A nested `Theme` around one canvas can use a
+different appearance or density from a sibling canvas.
 
 ### When the canvas reads the theme again
 
-The canvas reads the tokens when it mounts. It reads them again when the window finishes
-loading, in case the stylesheet arrived late, and whenever the Theme element's class or one of
-the attributes a `Theme` writes changes. Those attributes cover `appearance`, `density`,
-`radius`, `contrast`, `pointer` and `depth`.
-
-A change that leaves the Theme element untouched isn't seen. That includes a stylesheet that
-loads after the window has finished loading, a media query that starts matching, an inline
-style, and an attribute written on `<html>`. When a read finds the same values as before,
-nothing on the canvas re-renders.
+The canvas rereads tokens on mount, window load, and changes to theme attributes, classes or
+inline styles on its scope or ancestors. It also listens for appearance, contrast and pointer
+media-query changes. This includes inherited changes on `<html>`. Reads that find identical
+values do not update the canvas. Arbitrary stylesheet replacement after window load still needs
+a corresponding theme attribute change or remount.
 
 ### Follow a dark mode toggle
 
@@ -76,7 +71,7 @@ Pass the mode to the root Theme instead, so the change lands on the element the 
 "use client";
 
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Theme } from "@kookie-ui/react";
+import { Theme } from "@kushagradhawan/kookie-ui-react";
 
 type Appearance = "light" | "dark" | "inherit";
 

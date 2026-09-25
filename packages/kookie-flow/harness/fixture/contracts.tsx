@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Theme } from '@kookie-ui/react';
-import { KookieFlow } from '../../src/components/kookie-flow';
-import { useFlowStoreApi } from '../../src/components/context';
-import type { Entity, Edge, KookieFlowInstance } from '../../src/types';
+import { Theme } from '@kushagradhawan/kookie-ui-react';
+import { KookieFlow } from '@kushagradhawan/kookie-flow-webgl/internal/components/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-webgl/internal/components/context';
+import type { Entity, Edge, KookieFlowInstance } from '@kushagradhawan/kookie-flow-webgl/types';
 let currentStore: ReturnType<typeof useFlowStoreApi>;
 function Probe() {
   currentStore = useFlowStoreApi();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Button, Flex, Stack, Text } from '@kookie-ui/react';
+import { Button, Flex, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   useGraph,

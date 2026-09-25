@@ -166,6 +166,8 @@ overrides:
   '@esbuild-kit/core-utils>esbuild': ^0.25.0
   three-stdlib>fflate: ^0.6.11
 
+pnpmfileChecksum: sha256-J8KC7XUkpBojrOSbZYx1/+EmxG+FPBJQxRnkifPeOU8=
+
 importers:
 
   .:
@@ -188,12 +190,12 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.2.8)
-      '@kookie-ui/react':
-        specifier: file:../../vendor/kookie-ui-react-0.0.0.tgz
-        version: file:vendor/kookie-ui-react-0.0.0.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@kushagradhawan/kookie-flow':
         specifier: workspace:*
         version: link:../../packages/kookie-flow
+      '@kushagradhawan/kookie-ui-react':
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@mdx-js/loader':
         specifier: ^3.1.1
         version: 3.1.1
@@ -261,12 +263,12 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.2.8)
-      '@kookie-ui/react':
-        specifier: file:../../vendor/kookie-ui-react-0.0.0.tgz
-        version: file:vendor/kookie-ui-react-0.0.0.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@kushagradhawan/kookie-flow':
         specifier: workspace:*
         version: link:../../packages/kookie-flow
+      '@kushagradhawan/kookie-ui-react':
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -328,13 +330,19 @@ importers:
 
   packages/kookie-flow:
     dependencies:
-      zustand:
-        specifier: ^5.0.15
-        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@kushagradhawan/kookie-flow-core':
+        specifier: workspace:*
+        version: link:../kookie-flow-core
+      '@kushagradhawan/kookie-flow-react':
+        specifier: workspace:*
+        version: link:../kookie-flow-react
     devDependencies:
-      '@kookie-ui/react':
-        specifier: file:../../vendor/kookie-ui-react-0.0.0.tgz
-        version: file:vendor/kookie-ui-react-0.0.0.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@kushagradhawan/kookie-flow-webgl':
+        specifier: workspace:*
+        version: link:../kookie-flow-webgl
+      '@kushagradhawan/kookie-ui-react':
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -386,6 +394,132 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.19.7)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+
+  packages/kookie-flow-core:
+    dependencies:
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+
+  packages/kookie-flow-react:
+    dependencies:
+      '@kushagradhawan/kookie-flow-core':
+        specifier: workspace:*
+        version: link:../kookie-flow-core
+      '@kushagradhawan/kookie-flow-webgl':
+        specifier: workspace:*
+        version: link:../kookie-flow-webgl
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      '@types/react':
+        specifier: ~19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ~19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1(@noble/hashes@2.4.0)
+      react:
+        specifier: ~19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ~19.2.8
+        version: 19.2.8(react@19.2.8)
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+
+  packages/kookie-flow-webgl:
+    dependencies:
+      '@kushagradhawan/kookie-flow-core':
+        specifier: workspace:*
+        version: link:../kookie-flow-core
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@kushagradhawan/kookie-ui-react':
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@react-three/drei':
+        specifier: ^10.7.8
+        version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
+      '@react-three/fiber':
+        specifier: ^9.7.0
+        version: 9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      '@types/react':
+        specifier: ~19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ~19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      '@types/three':
+        specifier: ^0.186.0
+        version: 0.186.0
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1(@noble/hashes@2.4.0)
+      msdf-bmfont-xml:
+        specifier: ^2.8.0
+        version: 2.8.0
+      playwright-core:
+        specifier: ^1.63.0
+        version: 1.63.0
+      react:
+        specifier: ~19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ~19.2.8
+        version: 19.2.8(react@19.2.8)
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
 
   packages/studio-core:
     dependencies:
@@ -1447,9 +1581,9 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kookie-ui/react@file:vendor/kookie-ui-react-0.0.0.tgz':
-    resolution: {integrity: sha512-iFFq3xHrClmP5Cmr7XSXJl4+4/smsA7WbrJtXJW4ba878V9xYrh+WHI9xM39a3EfuRiTVCFCVIlNtsHXZ8Vm/w==, tarball: file:vendor/kookie-ui-react-0.0.0.tgz}
-    version: 0.0.0
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz':
+    resolution: {integrity: sha512-jNB1zZrdRe6n4Nx/uih/x3g0nRiv7pUnJRd5CRz1HSoCV01HYj9nl2OqTCmWcLykkzTGNcSKYLD0XmuzSdPVlw==, tarball: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz}
+    version: 0.0.0-flow.1
     hasBin: true
     peerDependencies:
       react: ^19.0.0
@@ -4962,7 +5096,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kookie-ui/react@file:vendor/kookie-ui-react-0.0.0.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@base-ui/react': 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@shadcn/react': 0.3.1(@types/react@19.2.18)(react@19.2.8)
