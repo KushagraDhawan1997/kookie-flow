@@ -713,6 +713,8 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
           const container = containerRef.current;
           const width = container?.clientWidth ?? window.innerWidth;
           const height = container?.clientHeight ?? window.innerHeight;
+          // Hidden panels have no viewport to fit. Keep the camera until the host is visible.
+          if (width <= 0 || height <= 0) return;
 
           // Merge user options with component-level zoom constraints
           const fitMinZoom = Math.max(minZoom, Math.min(maxZoom, options?.minZoom ?? minZoom));

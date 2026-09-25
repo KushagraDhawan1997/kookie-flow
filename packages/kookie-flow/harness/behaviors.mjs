@@ -1622,6 +1622,13 @@ head('widgets');
 /** A same-count graph update changes the drawn widgets and the active edit value. */
 await withPage('scene=widgets&widgets=1', async (page) => {
   const countWidgets = () => page.evaluate(() => window.__harness.drawnInstances().filter(p => p.kind === 'widgets').length);
+  // The fixture's React-ready signal can precede R3F's first initialized frame.
+  // Wait for the known scene to reach the GPU before measuring a delta.
+  await page.waitForFunction(() => {
+    const h = window.__harness;
+    const expected = h.widgetSockets().length;
+    return expected > 0 && h.drawnInstances().filter(p => p.kind === 'widgets').length === expected;
+  }, undefined, { timeout: 15_000 });
   const before = await countWidgets();
   check('INSTRUMENT: widgets reach the GPU', before > 0, String(before));
   await page.evaluate(() => {
@@ -2074,26 +2081,9 @@ await withPage('count=12&seed=1', async (page) => {
     JSON.stringify(root)
   );
 
-  /**
-   * The package resolves the host independently of the fixture, and this asserts they AGREE.
-   *
-   * THE FIRST SPELLING OF THIS LAW COULD NOT FAIL, and its own sabotage caught it: it created a
-   * span, appended it to the fixture's answer, and then checked the span's parent was the fixture's
-   * answer — true by construction, and it stayed green while the fixture was sabotaged to return
-   * `document.documentElement`. Comparing a mechanism against itself is not an agreement law.
-   *
-   * The package's answer is reachable only through its behaviour: `getColorProbe` (src/utils/
-   * color.ts) parents a hidden span to whatever IT resolved, so forcing a colour resolution and
-   * watching where that span lands tells us where the PACKAGE thinks the theme is.
-   *
-   * WATCHED DURING THE CALL, not looked for afterwards. The probes are ephemeral now — attached,
-   * read and removed inside one synchronous call — because a probe left parented inside the
-   * server-rendered `.kui-theme` element during a React hydration render makes React 19 throw a
-   * mismatch on the leftover sibling, which is what the docs app was reporting. So a law that
-   * queries the document after the call finds nothing and fails, which is what this one did the
-   * moment the probes changed. Hooking `appendChild` still observes the package's own choice
-   * rather than assuming it, so the law is as capable of failing as it was.
-   */
+  // Observe the real parser's temporary probe while it runs in the mounted editor's
+  // context. It must inherit that editor's theme rather than the document appearance.
+  // Probes are removed synchronously, so inspect appendChild rather than the final DOM.
   const agree = await page.evaluate(() => {
     const parents = [];
     const original = Element.prototype.appendChild;
@@ -2117,20 +2107,16 @@ await withPage('count=12&seed=1', async (page) => {
     }
 
     const pkg = parents.length ? parents[parents.length - 1] : null;
-    const fixture = window.__harness.themeRoot();
+    const editor = document.querySelector('[data-kookie-flow-theme]');
     return {
       found: parents.length,
-      same:
-        pkg !== null &&
-        pkg.tagName === fixture.tag &&
-        (pkg.className || '') === fixture.className &&
-        (pkg === document.documentElement) === fixture.isDocumentElement,
+      same: pkg !== null && pkg === editor && pkg.closest('.kui-theme') !== null,
       pkg: pkg ? `${pkg.tagName}.${pkg.className}` : null,
-      fixture: `${fixture.tag}.${fixture.className}`,
+      editor: editor ? `${editor.tagName}.${editor.className}` : null,
     };
   });
   check('INSTRUMENT: the package built a probe to locate', agree.found > 0, JSON.stringify(agree));
-  check('the fixture and the package resolve the same host', agree.same, JSON.stringify(agree));
+  check('the package probe inherits the mounted editor theme', agree.same, JSON.stringify(agree));
 
   const v = await page.evaluate(() => window.__harness.tokenValues());
   console.log(`  measured  ${Object.entries(v).map(([k, n]) => `${k}=${n}`).join('  ')}`);

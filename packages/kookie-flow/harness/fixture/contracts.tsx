@@ -30,6 +30,7 @@ const initial: Entity[] = [
 ];
 function App() {
   const ref = useRef<KookieFlowInstance>(null);
+  const host = useRef<HTMLDivElement>(null);
   const [entities, setEntities] = useState(initial);
   const [result, setResult] = useState('Ready');
   const report = () =>
@@ -46,7 +47,7 @@ function App() {
     );
   return (
     <Theme>
-      <div style={{ position: 'fixed', inset: 0 }}>
+      <div ref={host} style={{ position: 'fixed', inset: 0 }}>
         <KookieFlow
           ref={ref}
           entities={entities}
@@ -117,6 +118,20 @@ function App() {
           }}
         >
           Fit with conflicting zoom bounds
+        </button>
+        <button
+          onClick={() => {
+            if (!host.current) return;
+            host.current.style.display = 'none';
+            try {
+              ref.current?.fitView();
+            } finally {
+              host.current.style.display = '';
+            }
+            report();
+          }}
+        >
+          Fit hidden canvas
         </button>
         <pre id="props-result">{result}</pre>
       </section>

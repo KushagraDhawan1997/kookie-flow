@@ -331,7 +331,7 @@ export function widgetValueText(
       };
     }
 
-    // text, textarea, and the 'text' fallback type resolveWidgetConfig gives an inline component
+    // Text and textarea share the GPU text path.
     default: {
       const printed = printable(value);
       if (printed === null || printed === '') {

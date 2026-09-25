@@ -21,9 +21,9 @@ import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-webgl/internal/comp
 import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '@kushagradhawan/kookie-flow-core/types';
 import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeControls, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
 import { capture } from '@kushagradhawan/kookie-flow-webgl/internal/utils/canvas-runtime';
-import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '@kushagradhawan/kookie-flow-webgl/internal/utils/color';
+import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, withColorScope } from '@kushagradhawan/kookie-flow-webgl/internal/utils/color';
 import { FALLBACK_TOKENS } from '@kushagradhawan/kookie-flow-webgl/internal/hooks/useThemeTokens';
-import { useTheme } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/ThemeContext';
+import { useTheme, useThemeScope } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/ThemeContext';
 import { frozenHue } from '@kushagradhawan/kookie-flow-webgl/internal/core/palette';
 import { getWidgetBox, sliderTrackWidth } from '@kushagradhawan/kookie-flow-webgl/internal/utils/widget-geometry';
 import { popoverLayoutFor, POPOVER_PAD } from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
@@ -942,6 +942,9 @@ function Probe() {
   // mounted) rather than what the GL layer is painting from. A law reading it could not see a
   // token change at all: caught when a deliberate sabotage of the space-index shift failed to
   // move the number it was supposed to move.
+  const liveScope = useThemeScope();
+  const liveScopeRef = useRef(liveScope);
+  liveScopeRef.current = liveScope;
   const liveTokensRef = useRef(liveTokens);
   liveTokensRef.current = liveTokens;
   // The style the RENDERER resolved, through a ref for the same reason as the tokens above. A
@@ -1282,7 +1285,13 @@ function Probe() {
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
-      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, frozenHue },
+      lib: {
+        parseColorToRGB: (v) => withColorScope(liveScopeRef.current, () => parseColorToRGB(v)),
+        parseColorToRGBA: (v) => withColorScope(liveScopeRef.current, () => parseColorToRGBA(v)),
+        resolveColorToRGB: (v) => withColorScope(liveScopeRef.current, () => resolveColorToRGB(v)),
+        parsePx: (v) => withColorScope(liveScopeRef.current, () => parsePx(v)),
+        frozenHue,
+      },
       contextFacts: () => ({ depth: contextFacts.depth, linkFailures: [...contextFacts.linkFailures] }),
       uploadHistogram: () => [...uploadHistogram.entries()].map(([b, v]) => ({ bucket: b, ...v })),
       indexedSockets() {
@@ -1311,7 +1320,7 @@ function Probe() {
        */
       readLength(name: string) {
         const raw = getComputedStyle(themeRoot()).getPropertyValue(name).trim();
-        return { raw, parsed: parsePx(raw) };
+        return { raw, parsed: withColorScope(liveScopeRef.current, () => parsePx(raw)) };
       },
     };
 

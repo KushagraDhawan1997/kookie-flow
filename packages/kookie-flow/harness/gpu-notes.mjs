@@ -170,7 +170,9 @@ export async function gpuNoteChecks({ head, withPage, check, context, port, skip
         const fill = h.readPixel(v.x + 180 * v.zoom, v.y + 160 * v.zoom);
         let inset = -1;
         for (let i = 0; i < 40 * v.zoom; i++) {
-          const p = h.readPixel(v.x + 80 * v.zoom + i, v.y + 82 * v.zoom);
+          // Scan along the corner diagonal, where pixel antialiasing shifts the
+          // intersection by at most a few pixels, rather than along its near-flat top.
+          const p = h.readPixel(v.x + 80 * v.zoom + i, v.y + 80 * v.zoom + i);
           if (p.slice(0, 3).every((c, k) => Math.abs(c - fill[k]) < 4)) {
             inset = i;
             break;
@@ -259,6 +261,41 @@ export async function gpuNoteChecks({ head, withPage, check, context, port, skip
         JSON.stringify({ plain, green })
       );
     });
+
+  await withPage('scene=comments', async (page) => {
+    const samples = [];
+    for (const count of [32, 128, 512, 1024]) {
+      await page.evaluate((n) => {
+        const state = window.__harness.store.getState();
+        state.setEdges([]);
+        state.setViewport({ x: 0, y: 0, zoom: 1 });
+        state.setEntities(Array.from({ length: n }, (_, i) => ({
+          id: `note-capacity-${i}`,
+          type: 'comment',
+          width: 24,
+          height: 16,
+          data: { content: '' },
+          position: { x: 60 + (i % 32) * 34, y: 80 + Math.floor(i / 32) * 20 },
+        })));
+      }, count);
+      // R3F queues superseded mesh disposal at idle priority.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestIdleCallback(resolve, { timeout: 2000 })))));
+      await page.waitForTimeout(900);
+      samples.push(await page.evaluate(() => {
+        const h = window.__harness, l = h.glLifetimes();
+        return {
+          buffers: l.buffersCreated - l.buffersDeleted,
+          bodies: h.drawnInstances().filter((p) => p.kind.startsWith('comments-')).length,
+        };
+      }));
+    }
+    check(
+      'GPU note capacity growth disposes superseded instance buffers',
+      samples[0].buffers > 0 && samples.every((s) => s.bodies > 0 && s.buffers === samples[0].buffers),
+      JSON.stringify(samples)
+    );
+  });
 
   head('package composition');
   if (skipping()) return;

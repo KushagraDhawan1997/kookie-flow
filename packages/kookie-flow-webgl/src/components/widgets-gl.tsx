@@ -1459,6 +1459,7 @@ export function WidgetsGL({
         // probe that matched on it would be reporting whichever mesh it happened to find.
         name="widgets"
         args={[bgGeometry, undefined, capacity]}
+        count={0}
         material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_BG}
@@ -1468,6 +1469,7 @@ export function WidgetsGL({
         ref={fgMeshRef}
         name="widgets-selected"
         args={[fgGeometry, undefined, capacity]}
+        count={0}
         material={material}
         frustumCulled={false}
         renderOrder={RENDER_ORDER_FG}

@@ -173,7 +173,6 @@ function CommentBatch({ foreground }: { foreground: boolean }) {
       count={0}
       frustumCulled={false}
       renderOrder={foreground ? 4 : 1}
-      dispose={null}
     />
   );
 }
