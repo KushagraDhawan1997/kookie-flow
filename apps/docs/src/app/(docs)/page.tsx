@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kookie-ui/react";
+import { Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import { PageFrame } from "./page-frame";
 import { SECTIONS, chaptersIn } from "./chapters";

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Text } from '@kookie-ui/react';
+import { Text } from '@kushagradhawan/kookie-ui-react';
 
 import type { SaveStatus as Status, SaveStatusStore } from './use-autosave';
 

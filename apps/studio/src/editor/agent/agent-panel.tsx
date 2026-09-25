@@ -19,7 +19,7 @@ import {
   Spinner,
   Stack,
   Text,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { AgentChoice } from '@/app/agent-choice';
 import { AttachButton } from '@/app/attach-button';

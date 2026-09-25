@@ -1,0 +1,110 @@
+{
+  "name": "@kushagradhawan/kookie-flow-react",
+  "version": "0.2.0",
+  "description": "React API for Kookie Flow.",
+  "author": "Kushagra Dhawan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KushagraDhawan1997/kookie-flow",
+    "directory": "packages/kookie-flow-react"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./plugins": {
+      "kookie-flow-source": "./src/plugins/index.ts",
+      "import": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/index.d.cts",
+        "default": "./dist/plugins/index.cjs"
+      }
+    },
+    "./internal/hooks/use-graph": {
+      "kookie-flow-source": "./src/hooks/use-graph.ts",
+      "import": {
+        "types": "./dist/hooks/use-graph.d.ts",
+        "default": "./dist/hooks/use-graph.js"
+      },
+      "require": {
+        "types": "./dist/hooks/use-graph.d.cts",
+        "default": "./dist/hooks/use-graph.cjs"
+      }
+    },
+    "./internal/index": {
+      "kookie-flow-source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./internal/plugins/index": {
+      "kookie-flow-source": "./src/plugins/index.ts",
+      "import": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/index.d.cts",
+        "default": "./dist/plugins/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@kushagradhawan/kookie-flow-core": "workspace:*",
+    "@kushagradhawan/kookie-flow-webgl": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "tsup": "^8.3.0",
+    "vitest": "^5.0.0",
+    "@types/node": "^26.5.1",
+    "react": "~19.2.8",
+    "react-dom": "~19.2.8",
+    "@types/react": "~19.2.18",
+    "@types/react-dom": "~19.2.7",
+    "@testing-library/react": "^16.3.3",
+    "jsdom": "^30.0.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

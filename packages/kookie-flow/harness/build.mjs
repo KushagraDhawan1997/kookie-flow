@@ -18,8 +18,9 @@ const require = createRequire(import.meta.url);
 mkdirSync(out, { recursive: true });
 
 await build({
-  entryPoints: [join(here, 'fixture', 'app.tsx'), join(here, 'fixture', 'contracts.tsx')],
+  entryPoints: [join(here, 'fixture', 'app.tsx'), join(here, 'fixture', 'contracts.tsx'), join(here, 'fixture', 'packages.tsx')],
   bundle: true,
+  conditions: ['kookie-flow-source'],
   format: 'esm',
   target: 'chrome120',
   jsx: 'automatic',
@@ -31,8 +32,9 @@ await build({
 
 copyFileSync(join(here, 'fixture', 'index.html'), join(out, 'index.html'));
 copyFileSync(join(here, 'fixture', 'contracts.html'), join(out, 'contracts.html'));
+copyFileSync(join(here, 'fixture', 'packages.html'), join(out, 'packages.html'));
 copyFileSync(
-  require.resolve('@kookie-ui/react/styles.css'),
+  require.resolve('@kushagradhawan/kookie-ui-react/styles.css'),
   join(out, 'kookie-ui.css')
 );
 // Media the fixture serves rather than inlines: a video and a glTF are binary formats esbuild has

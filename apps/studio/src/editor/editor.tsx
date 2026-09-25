@@ -19,7 +19,7 @@ import {
   TextField,
   Toolbar,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import {
   screenToWorld,
   useGraph,

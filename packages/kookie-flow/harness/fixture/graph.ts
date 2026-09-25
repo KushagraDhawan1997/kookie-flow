@@ -15,7 +15,7 @@
  * implementations disagree.
  */
 
-import type { Entity, Edge, EntityTypeDefinition, Socket } from '../../src/types';
+import type { Entity, Edge, EntityTypeDefinition, Socket } from '@kushagradhawan/kookie-flow-core/types';
 
 /** mulberry32 — small, fast, and stable across engines. */
 function rng(seed: number): () => number {

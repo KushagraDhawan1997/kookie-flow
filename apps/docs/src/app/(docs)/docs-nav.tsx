@@ -19,7 +19,7 @@
 import type * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, ShellNavGroup, ShellNavItem, ShellScroll } from "@kookie-ui/react";
+import { Box, ShellNavGroup, ShellNavItem, ShellScroll } from "@kushagradhawan/kookie-ui-react";
 
 import {
   BoardIcon,

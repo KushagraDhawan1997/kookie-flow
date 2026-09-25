@@ -26,7 +26,7 @@ import {
   Text,
   TextField,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import type { GraphSummary } from '@/server/graphs';
 import { EmptyState } from '../../empty-state';

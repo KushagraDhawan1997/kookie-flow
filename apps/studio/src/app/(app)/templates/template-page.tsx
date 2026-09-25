@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, Flex, Heading, Notice, Page, Stack, Text, ToolbarButton } from '@kookie-ui/react';
+import { Card, Flex, Heading, Notice, Page, Stack, Text, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 import { formatUsd, MICROS_PER_DOLLAR } from 'studio-core';
 
 import { RunIcon } from '../../icons';

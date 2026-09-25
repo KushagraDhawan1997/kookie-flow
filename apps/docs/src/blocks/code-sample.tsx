@@ -50,7 +50,7 @@ import {
   Surface,
   Toolbar,
   ToolbarGroup,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 
 import { CopyButton } from "./copy-button";
 import { Expandable } from "./expandable";

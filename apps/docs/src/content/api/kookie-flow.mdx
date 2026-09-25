@@ -71,10 +71,8 @@ you set it.
 | --- | --- | --- | --- | --- |
 | `showSocketLabels` | `boolean` | `true` | Whether socket names are drawn beside the sockets. | [Sockets](/entities/sockets) |
 | `showWidgets` | `boolean` | `true` | Whether an unconnected input shows a control for its value. | [Sockets](/entities/sockets) |
-| `widgetTypes` | `Record<string, React.ComponentType<WidgetProps>>` | none | Your own widget components, by widget type name. | [Sockets](/entities/sockets) |
 | `onWidgetChange` | `(entityId: string, socketId: string, value: unknown) => void` | none | Called when someone changes a widget's value. | [Sockets](/entities/sockets) |
 | `socketLabelWidth` | `number` | `96` | The width kept for a socket's label before its widget starts. | [Sockets](/entities/sockets) |
-| `ThemeComponent` | `React.ComponentType<{ children: React.ReactNode }>` | none | A component that wraps each of your own widget components on an entity that sets a `color`, for theming of your own. | [Sockets](/entities/sockets) |
 
 ### Evaluation
 
@@ -242,7 +240,6 @@ or array, `KookieFlow` redoes work even if the contents are the same.
 | `socketTypes` | Every edge is synced again, and the canvas rebuilds its buffers for edges, sockets and widgets. |
 | `entityTypes` | The table is compared entry by entry. A new object holding the same entry objects resolves nothing again, but new entry objects make every entity resolve again. |
 | `font` | A custom `FontConfig` with the same name and atlas URLs isn't loaded again, but a new object still re-renders every component inside the flow that reads the font. |
-| `widgetTypes`, `ThemeComponent` | A component defined inside your render function is a new component each time, so React remounts every widget that uses it. |
 
 Define these outside your component, or wrap them in `useMemo`:
 

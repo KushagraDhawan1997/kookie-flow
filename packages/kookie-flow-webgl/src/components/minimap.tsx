@@ -1,0 +1,871 @@
+import {
+  useRef,
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useMemo,
+  type CSSProperties,
+} from 'react';
+import { useFlowStoreApi } from './context';
+import { useTheme } from '../contexts/ThemeContext';
+import { useSocketLayout } from '../contexts/StyleContext';
+import { THEME_COLORS } from '../core/theme-colors';
+import { rgbToHex } from '../utils/color';
+import type { MinimapProps, Entity } from '../types/index';
+import {
+  DEFAULT_ENTITY_WIDTH,
+  MINIMAP_DEFAULTS,
+} from '@kushagradhawan/kookie-flow-core/internal/core/constants';
+import { calculateMinEntityHeight, type ResolvedSocketLayout } from '../utils/style-resolver';
+
+/** Transform to map world coordinates to minimap coordinates */
+interface MinimapTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** Drag state for viewport indicator */
+interface DragState {
+  startMinimapX: number;
+  startMinimapY: number;
+  startViewportX: number;
+  startViewportY: number;
+}
+
+/** Minimum rendered size in pixels - below this, skip rendering */
+const MIN_RENDER_SIZE = 0.5;
+
+/**
+ * Calculate the transform to fit all entities into minimap with padding.
+ * Writes directly to output object to avoid allocations.
+ * Returns false if no valid transform (empty or degenerate bounds).
+ */
+function calculateMinimapTransform(
+  entities: Entity[],
+  minimapWidth: number,
+  minimapHeight: number,
+  padding: number,
+  socketLayout: ResolvedSocketLayout,
+  out: MinimapTransform
+): boolean {
+  if (entities.length === 0) return false;
+
+  // Calculate world bounds
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+    const outputCount = entity.outputs?.length ?? 0;
+    const inputCount = entity.inputs?.length ?? 0;
+    const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
+    const px = entity.position.x;
+    const py = entity.position.y;
+    if (px < minX) minX = px;
+    if (py < minY) minY = py;
+    if (px + w > maxX) maxX = px + w;
+    if (py + h > maxY) maxY = py + h;
+  }
+
+  const worldWidth = maxX - minX;
+  const worldHeight = maxY - minY;
+
+  // Handle degenerate cases
+  if (worldWidth <= 0 || worldHeight <= 0) return false;
+
+  // Available minimap area (with padding)
+  const availableWidth = minimapWidth - padding * 2;
+  const availableHeight = minimapHeight - padding * 2;
+
+  // Scale to fit
+  const scale = Math.min(availableWidth / worldWidth, availableHeight / worldHeight);
+
+  // Center in minimap
+  const scaledWidth = worldWidth * scale;
+  const scaledHeight = worldHeight * scale;
+
+  out.scale = scale;
+  out.offsetX = padding + (availableWidth - scaledWidth) / 2 - minX * scale;
+  out.offsetY = padding + (availableHeight - scaledHeight) / 2 - minY * scale;
+
+  return true;
+}
+
+/** Position styles for each corner */
+const POSITION_STYLES: Record<string, CSSProperties> = {
+  'top-left': { top: 10, left: 10 },
+  'top-right': { top: 10, right: 10 },
+  'bottom-left': { bottom: 10, left: 10 },
+  'bottom-right': { bottom: 10, right: 10 },
+};
+
+/**
+ * Minimap component - Canvas 2D overview of the graph.
+ *
+ * Performance optimizations:
+ * - Canvas 2D for efficient rendering of 10k+ rectangles (single composite)
+ * - RAF-throttled updates (single render per frame)
+ * - Fine-grained dirty flags (skip entity redraw for viewport-only changes)
+ * - Cached offscreen entity layer in standard mode, blitted on viewport-only frames
+ * - Array identity plus position hash for bounds invalidation (detects entity moves)
+ * - Inline coordinate math (zero object allocations in render loop)
+ * - Culling for sub-pixel entities
+ * - ResizeObserver for container size (no layout queries in render)
+ * - HiDPI support for crisp rendering
+ */
+export function Minimap({
+  position = 'bottom-right',
+  width = MINIMAP_DEFAULTS.width,
+  height = MINIMAP_DEFAULTS.height,
+  backgroundColor: backgroundColorProp,
+  entityColor: entityColorProp,
+  selectedEntityColor: selectedEntityColorProp,
+  viewportColor: viewportColorProp,
+  viewportBorderColor: viewportBorderColorProp,
+  padding = MINIMAP_DEFAULTS.padding,
+  interactive = true,
+  zoomable = false,
+  className,
+  style,
+}: MinimapProps) {
+  const store = useFlowStoreApi();
+  const tokens = useTheme();
+  const socketLayout = useSocketLayout();
+
+  // Derive colors from theme with prop overrides
+  const { backgroundColor, entityColor, selectedEntityColor, viewportColor, viewportBorderColor } =
+    useMemo(() => {
+      const bgRgb = tokens[THEME_COLORS.minimap.background];
+      const entityRgb = tokens[THEME_COLORS.minimap.node];
+      const selectedRgb = tokens[THEME_COLORS.minimap.nodeSelected];
+      const viewportRgb = tokens[THEME_COLORS.minimap.viewport];
+      const viewportBorderRgb = tokens[THEME_COLORS.minimap.viewportBorder];
+
+      return {
+        backgroundColor:
+          backgroundColorProp ??
+          `rgba(${Math.round(bgRgb[0] * 255)}, ${Math.round(bgRgb[1] * 255)}, ${Math.round(bgRgb[2] * 255)}, 0.9)`,
+        entityColor: entityColorProp ?? rgbToHex(entityRgb),
+        selectedEntityColor: selectedEntityColorProp ?? rgbToHex(selectedRgb),
+        viewportColor:
+          viewportColorProp ??
+          `rgba(${Math.round(viewportRgb[0] * 255)}, ${Math.round(viewportRgb[1] * 255)}, ${Math.round(viewportRgb[2] * 255)}, 0.3)`,
+        viewportBorderColor: viewportBorderColorProp ?? rgbToHex(viewportBorderRgb),
+      };
+    }, [
+      tokens,
+      backgroundColorProp,
+      entityColorProp,
+      selectedEntityColorProp,
+      viewportColorProp,
+      viewportBorderColorProp,
+    ]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const rafIdRef = useRef<number>(0);
+
+  // Pre-allocated transform object (reused, never recreated)
+  const transformRef = useRef<MinimapTransform>({ scale: 1, offsetX: 0, offsetY: 0 });
+  const hasValidTransformRef = useRef(false);
+
+  // Change detection
+  const lastPositionVersionRef = useRef<number>(-1);
+  const lastEntitiesRef = useRef<Entity[] | null>(null);
+  const lastSelectionRef = useRef<Set<string> | null>(null);
+
+  /**
+   * Offscreen entity layer — standard mode only.
+   *
+   * In standard mode the transform is fitted to the entity bounds alone, so the entity rectangles
+   * land on exactly the same minimap pixels frame after frame no matter where the main viewport
+   * sits; only the indicator moves. The draw loop ran anyway, unguarded. Because the subscription
+   * below has no selector, every `set()` in the store wakes this component, so a pan, a connection
+   * drag, a widget slider or a plain hover each paid one `fillStyle` assignment and one `fillRect`
+   * per entity per frame — a thousand of each at a thousand nodes — to repaint pixels that were
+   * already identical. The dirty flags to skip that work were computed and reset but gated nothing
+   * except the transform recompute.
+   *
+   * The entity pixels now live on this canvas and are repainted only when the entities or the
+   * selection actually change. A viewport-only frame is a clear, one `drawImage`, and the
+   * indicator.
+   *
+   * The zoomable branch deliberately gets none of this. There the entity screen positions are
+   * derived from `viewport.zoom` and `viewport.x/y` on every frame, so its pixels genuinely do
+   * change with the viewport and a cache keyed on entities alone would freeze the graph in place
+   * while the user pans.
+   */
+  const entityLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const entityLayerCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const entityLayerValidRef = useRef(false);
+
+  // Container size (updated via ResizeObserver, not layout queries)
+  const containerSizeRef = useRef({ width: 0, height: 0 });
+
+  // Drag state
+  const isDraggingRef = useRef(false);
+  const dragStateRef = useRef<DragState | null>(null);
+  // Track when drag just ended to ignore the subsequent click event
+  const justFinishedDraggingRef = useRef(false);
+
+  // Viewport indicator bounds (for hit testing)
+  const viewportRectRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  // Dirty flags
+  const dirtyRef = useRef({
+    entities: true, // Entities changed (positions, count, etc.)
+    selection: true, // Selection changed
+    viewport: true, // Viewport changed
+  });
+
+  // Main render function - only redraws what's necessary
+  const render = useCallback(() => {
+    rafIdRef.current = 0;
+
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    const { entities, viewport, selectedEntityIds, positionVersion } = store.getState();
+    const containerWidth = containerSizeRef.current.width;
+    const containerHeight = containerSizeRef.current.height;
+
+    /**
+     * What actually changed — two O(1) comparisons, where there used to be an O(n) checksum.
+     *
+     * Array identity is the primary signal, because every store path that touches entities
+     * rebuilds the array. It catches what a position hash cannot see — a resize, a socket added
+     * or removed, an entity added or deleted, `fitEntityToContent` stripping an explicit
+     * width/height — and all of those change the pixels the cached layer holds.
+     *
+     * `positionVersion` is the second, and it is what the checksum was for. The checksum walked
+     * EVERY entity's position and mixed it into an integer, on every frame this renders — and
+     * this renders on any store write at all, so a pan across a large graph was paying a full
+     * sweep of the graph per frame to be told, every time, that nothing had moved. The store bumps
+     * `positionVersion` on every write that moves or resizes anything (`updateEntityPositions`,
+     * `updateEntityDimensions`, `fitEntityToContent`, `applyEntityChanges`), so the counter answers
+     * the same question exactly, for every mutation that goes through the store.
+     *
+     * WHAT IS GIVEN UP, stated rather than smuggled: a position mutated IN PLACE on an entity
+     * object, behind the store's back, with the array left alone. Nothing in the package does that
+     * — the entities here are the store's own resolved copies, rebuilt on every change — and a
+     * consumer cannot: they hand entities in as a prop and get them back through callbacks.
+     */
+    const entitiesChanged =
+      entities !== lastEntitiesRef.current || positionVersion !== lastPositionVersionRef.current;
+    const selectionChanged = selectedEntityIds !== lastSelectionRef.current;
+
+    if (entitiesChanged) {
+      lastEntitiesRef.current = entities;
+      lastPositionVersionRef.current = positionVersion;
+      dirtyRef.current.entities = true;
+    }
+    if (selectionChanged) {
+      lastSelectionRef.current = selectedEntityIds;
+      dirtyRef.current.selection = true;
+    }
+
+    // Clear canvas
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, width, height);
+
+    if (entities.length === 0) {
+      // Reset dirty flags
+      dirtyRef.current.entities = false;
+      dirtyRef.current.selection = false;
+      dirtyRef.current.viewport = false;
+      return;
+    }
+
+    if (zoomable) {
+      // Zoomable mode: minimap mirrors main viewport zoom/pan
+      const baseScale = MINIMAP_DEFAULTS.zoomableBaseScale;
+      const minimapScale = viewport.zoom * baseScale;
+
+      // Calculate the center of what's visible in world space
+      const invZoom = 1 / viewport.zoom;
+      const worldCenterX = (-viewport.x + containerWidth / 2) * invZoom;
+      const worldCenterY = (-viewport.y + containerHeight / 2) * invZoom;
+
+      // Offset to center the view in the minimap
+      const offsetX = width / 2 - worldCenterX * minimapScale;
+      const offsetY = height / 2 - worldCenterY * minimapScale;
+
+      // Drawn straight onto the visible canvas every frame, with no cached layer: `minimapScale`
+      // and the offsets above are functions of the live viewport, so these pixels really do change
+      // whenever the user pans or zooms. Caching them would freeze the graph mid-pan.
+      //
+      // Draw entities - inline coordinate math, no object allocations
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+        const outputCount = entity.outputs?.length ?? 0;
+        const inputCount = entity.inputs?.length ?? 0;
+        const h = entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
+
+        const scaledW = w * minimapScale;
+        const scaledH = h * minimapScale;
+
+        // Culling: skip sub-pixel entities
+        if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
+
+        const x = entity.position.x * minimapScale + offsetX;
+        const y = entity.position.y * minimapScale + offsetY;
+
+        // Culling: skip entities outside minimap bounds
+        if (x + scaledW < 0 || x > width || y + scaledH < 0 || y > height) continue;
+
+        const isSelected = selectedEntityIds.has(entity.id);
+        ctx.fillStyle = isSelected
+          ? selectedEntityColor
+          : typeof entityColor === 'function'
+            ? entityColor(entity)
+            : entityColor;
+        ctx.fillRect(
+          x,
+          y,
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
+          Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
+        );
+      }
+
+      // Draw viewport indicator as border
+      ctx.strokeStyle = viewportBorderColor;
+      ctx.lineWidth = MINIMAP_DEFAULTS.viewportBorderWidth;
+      ctx.strokeRect(
+        MINIMAP_DEFAULTS.viewportBorderWidth / 2,
+        MINIMAP_DEFAULTS.viewportBorderWidth / 2,
+        width - MINIMAP_DEFAULTS.viewportBorderWidth,
+        height - MINIMAP_DEFAULTS.viewportBorderWidth
+      );
+
+      viewportRectRef.current = { x: 0, y: 0, w: width, h: height };
+    } else {
+      // Standard mode: show all entities, viewport indicator resizes with zoom
+
+      // Recalculate transform if entities changed
+      if (dirtyRef.current.entities) {
+        hasValidTransformRef.current = calculateMinimapTransform(
+          entities,
+          width,
+          height,
+          padding,
+          socketLayout,
+          transformRef.current
+        );
+      }
+
+      if (!hasValidTransformRef.current) {
+        dirtyRef.current.entities = false;
+        dirtyRef.current.selection = false;
+        dirtyRef.current.viewport = false;
+        return;
+      }
+
+      const { scale, offsetX, offsetY } = transformRef.current;
+
+      // The entity layer goes to the offscreen canvas when there is one, and is repainted only
+      // when the entities or the selection moved. If the environment refused a second 2D context
+      // we fall back to painting straight onto the visible canvas on every frame — exactly the old
+      // behaviour, because a minimap that costs too much still beats a blank one.
+      const layer = entityLayerRef.current;
+      const layerCtx = entityLayerCtxRef.current;
+      const target = layerCtx ?? ctx;
+      const canCache = layer !== null && layerCtx !== null;
+
+      if (
+        !canCache ||
+        !entityLayerValidRef.current ||
+        dirtyRef.current.entities ||
+        dirtyRef.current.selection
+      ) {
+        if (layerCtx) layerCtx.clearRect(0, 0, width, height);
+
+        // Draw entities - inline coordinate math, no object allocations
+        for (let i = 0; i < entities.length; i++) {
+          const entity = entities[i];
+          const w = entity.width ?? DEFAULT_ENTITY_WIDTH;
+          const outputCount = entity.outputs?.length ?? 0;
+          const inputCount = entity.inputs?.length ?? 0;
+          const h =
+            entity.height ?? calculateMinEntityHeight(outputCount, inputCount, socketLayout);
+
+          const scaledW = w * scale;
+          const scaledH = h * scale;
+
+          // Culling: skip sub-pixel entities (unlikely in standard mode but check anyway)
+          if (scaledW < MIN_RENDER_SIZE && scaledH < MIN_RENDER_SIZE) continue;
+
+          // Inline worldToMinimap: x = worldX * scale + offsetX
+          const x = entity.position.x * scale + offsetX;
+          const y = entity.position.y * scale + offsetY;
+
+          const isSelected = selectedEntityIds.has(entity.id);
+          target.fillStyle = isSelected
+            ? selectedEntityColor
+            : typeof entityColor === 'function'
+              ? entityColor(entity)
+              : entityColor;
+          target.fillRect(
+            x,
+            y,
+            Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledW),
+            Math.max(MINIMAP_DEFAULTS.minNodeSize, scaledH)
+          );
+        }
+
+        entityLayerValidRef.current = canCache;
+      }
+
+      // Blit before the indicator: the indicator has always been drawn on top of the entities.
+      if (layer && layerCtx) ctx.drawImage(layer, 0, 0, width, height);
+
+      // Draw viewport indicator
+      if (containerWidth > 0 && containerHeight > 0) {
+        // Calculate what's visible in world space
+        const invZoom = 1 / viewport.zoom;
+        const worldLeft = -viewport.x * invZoom;
+        const worldTop = -viewport.y * invZoom;
+        const worldRight = worldLeft + containerWidth * invZoom;
+        const worldBottom = worldTop + containerHeight * invZoom;
+
+        // Inline worldToMinimap
+        const minX = worldLeft * scale + offsetX;
+        const minY = worldTop * scale + offsetY;
+        const maxX = worldRight * scale + offsetX;
+        const maxY = worldBottom * scale + offsetY;
+
+        const rectWidth = maxX - minX;
+        const rectHeight = maxY - minY;
+
+        // Store for hit testing
+        viewportRectRef.current = { x: minX, y: minY, w: rectWidth, h: rectHeight };
+
+        // Draw filled rectangle
+        ctx.fillStyle = viewportColor;
+        ctx.fillRect(minX, minY, rectWidth, rectHeight);
+
+        // Draw border
+        ctx.strokeStyle = viewportBorderColor;
+        ctx.lineWidth = MINIMAP_DEFAULTS.viewportBorderWidth;
+        ctx.strokeRect(minX, minY, rectWidth, rectHeight);
+      }
+    }
+
+    // Reset dirty flags
+    dirtyRef.current.entities = false;
+    dirtyRef.current.selection = false;
+    dirtyRef.current.viewport = false;
+  }, [
+    store,
+    width,
+    height,
+    padding,
+    backgroundColor,
+    entityColor,
+    selectedEntityColor,
+    viewportColor,
+    viewportBorderColor,
+    zoomable,
+    // `socketLayout` is read in the draw loop and by `calculateMinimapTransform`, but was missing
+    // here, so a theme or entity-size change left this closure holding the old row heights. That
+    // was survivable while the loop repainted on every store write and the numbers eventually
+    // caught up; with the entity layer cached it would stick, so the dependency is now honest.
+    // It comes from a `useMemo` in StyleContext, so listing it costs nothing in practice.
+    socketLayout,
+  ]);
+
+  // Schedule render via RAF
+  const scheduleRender = useCallback(() => {
+    if (rafIdRef.current === 0) {
+      rafIdRef.current = requestAnimationFrame(render);
+    }
+  }, [render]);
+
+  // Check if point is inside viewport indicator
+  const isInsideViewportIndicator = useCallback((minimapX: number, minimapY: number): boolean => {
+    const rect = viewportRectRef.current;
+    return (
+      minimapX >= rect.x &&
+      minimapX <= rect.x + rect.w &&
+      minimapY >= rect.y &&
+      minimapY <= rect.y + rect.h
+    );
+  }, []);
+
+  // Click handler - pan to clicked position
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Stop propagation to prevent main canvas from receiving event
+      e.stopPropagation();
+
+      // Skip click if we just finished dragging (click fires after pointerUp)
+      if (justFinishedDraggingRef.current) {
+        justFinishedDraggingRef.current = false;
+        return;
+      }
+
+      if (!interactive || isDraggingRef.current) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      // Use CSS pixels (not canvas pixels) - transform is in CSS pixel space
+      const minimapX = e.clientX - rect.left;
+      const minimapY = e.clientY - rect.top;
+
+      const { viewport, setViewport } = store.getState();
+      const containerWidth = containerSizeRef.current.width;
+      const containerHeight = containerSizeRef.current.height;
+
+      if (zoomable) {
+        // In zoomable mode, clicking pans relative to current view
+        const baseScale = MINIMAP_DEFAULTS.zoomableBaseScale;
+        const minimapScale = viewport.zoom * baseScale;
+        const invZoom = 1 / viewport.zoom;
+
+        // Current world center
+        const worldCenterX = (-viewport.x + containerWidth / 2) * invZoom;
+        const worldCenterY = (-viewport.y + containerHeight / 2) * invZoom;
+
+        // Offset used in rendering
+        const offsetX = width / 2 - worldCenterX * minimapScale;
+        const offsetY = height / 2 - worldCenterY * minimapScale;
+
+        // Convert click to world coords (inline minimapToWorld)
+        const worldX = (minimapX - offsetX) / minimapScale;
+        const worldY = (minimapY - offsetY) / minimapScale;
+
+        const newX = containerWidth / 2 - worldX * viewport.zoom;
+        const newY = containerHeight / 2 - worldY * viewport.zoom;
+
+        setViewport({ x: newX, y: newY, zoom: viewport.zoom });
+      } else {
+        // Standard mode
+        if (!hasValidTransformRef.current) return;
+
+        // Don't pan if clicking on viewport indicator
+        if (isInsideViewportIndicator(minimapX, minimapY)) return;
+
+        // Inline minimapToWorld
+        const { scale, offsetX, offsetY } = transformRef.current;
+        const worldX = (minimapX - offsetX) / scale;
+        const worldY = (minimapY - offsetY) / scale;
+
+        const newX = containerWidth / 2 - worldX * viewport.zoom;
+        const newY = containerHeight / 2 - worldY * viewport.zoom;
+
+        setViewport({ x: newX, y: newY, zoom: viewport.zoom });
+      }
+    },
+    [store, interactive, isInsideViewportIndicator, zoomable, width, height]
+  );
+
+  // Pointer down handler - start drag if on viewport indicator (or anywhere in zoomable mode)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      // Stop propagation to prevent main canvas from receiving event
+      e.stopPropagation();
+
+      if (!interactive) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      // Use CSS pixels (not canvas pixels) - transform is in CSS pixel space
+      const minimapX = e.clientX - rect.left;
+      const minimapY = e.clientY - rect.top;
+
+      // In zoomable mode, drag anywhere to pan; in standard mode, only on viewport indicator
+      const canDrag = zoomable || isInsideViewportIndicator(minimapX, minimapY);
+
+      if (canDrag) {
+        isDraggingRef.current = true;
+        const { viewport } = store.getState();
+        dragStateRef.current = {
+          startMinimapX: minimapX,
+          startMinimapY: minimapY,
+          startViewportX: viewport.x,
+          startViewportY: viewport.y,
+        };
+        canvas.setPointerCapture(e.pointerId);
+        canvas.style.cursor = 'grabbing';
+      }
+    },
+    [store, interactive, isInsideViewportIndicator, zoomable]
+  );
+
+  // Pointer move handler - drag viewport indicator
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      // Stop propagation to prevent main canvas from receiving event
+      e.stopPropagation();
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      // Use CSS pixels (not canvas pixels) - transform is in CSS pixel space
+      const minimapX = e.clientX - rect.left;
+      const minimapY = e.clientY - rect.top;
+
+      if (isDraggingRef.current && dragStateRef.current) {
+        // Calculate delta in minimap space
+        const deltaMinimapX = minimapX - dragStateRef.current.startMinimapX;
+        const deltaMinimapY = minimapY - dragStateRef.current.startMinimapY;
+
+        const { viewport, setViewport } = store.getState();
+
+        if (zoomable) {
+          // In zoomable mode, delta is inverted (dragging moves the view, not an indicator)
+          const baseScale = MINIMAP_DEFAULTS.zoomableBaseScale;
+          const minimapScale = viewport.zoom * baseScale;
+          const deltaWorldX = deltaMinimapX / minimapScale;
+          const deltaWorldY = deltaMinimapY / minimapScale;
+
+          setViewport({
+            x: dragStateRef.current.startViewportX + deltaWorldX * viewport.zoom,
+            y: dragStateRef.current.startViewportY + deltaWorldY * viewport.zoom,
+            zoom: viewport.zoom,
+          });
+        } else {
+          // Standard mode: moving indicator right = viewport moves right = x decreases
+          if (!hasValidTransformRef.current) return;
+          const { scale } = transformRef.current;
+
+          const deltaWorldX = deltaMinimapX / scale;
+          const deltaWorldY = deltaMinimapY / scale;
+
+          setViewport({
+            x: dragStateRef.current.startViewportX - deltaWorldX * viewport.zoom,
+            y: dragStateRef.current.startViewportY - deltaWorldY * viewport.zoom,
+            zoom: viewport.zoom,
+          });
+        }
+      } else if (interactive) {
+        // Update cursor based on hover
+        if (zoomable) {
+          canvas.style.cursor = 'grab';
+        } else if (isInsideViewportIndicator(minimapX, minimapY)) {
+          canvas.style.cursor = 'grab';
+        } else {
+          canvas.style.cursor = 'pointer';
+        }
+      }
+    },
+    [store, interactive, isInsideViewportIndicator, zoomable]
+  );
+
+  // Pointer up handler - end drag
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      // Always stop propagation to prevent main canvas from receiving event
+      e.stopPropagation();
+
+      const wasDragging = isDraggingRef.current;
+      isDraggingRef.current = false;
+      dragStateRef.current = null;
+
+      // Mark that we just finished dragging so click handler ignores next click
+      if (wasDragging) {
+        justFinishedDraggingRef.current = true;
+      }
+
+      const canvas = canvasRef.current;
+      if (canvas) {
+        try {
+          canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may already be released
+        }
+        canvas.style.cursor = interactive ? 'pointer' : 'default';
+      }
+
+      // Prevent click from firing after drag
+      if (wasDragging) {
+        e.preventDefault();
+      }
+    },
+    [interactive]
+  );
+
+  // Handle lost pointer capture - reset drag state
+  const handleLostPointerCapture = useCallback(() => {
+    isDraggingRef.current = false;
+    dragStateRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.style.cursor = interactive ? 'pointer' : 'default';
+    }
+  }, [interactive]);
+
+  // Initialize canvas context, get container size, and subscribe to store
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Get container size BEFORE initial render (needed for viewport indicator)
+    const parent = canvas.parentElement?.parentElement;
+    if (parent) {
+      containerSizeRef.current = {
+        width: parent.clientWidth,
+        height: parent.clientHeight,
+      };
+    }
+
+    /**
+     * HiDPI sizing, re-applied when the device pixel ratio CHANGES.
+     *
+     * `devicePixelRatio` was read exactly once, at mount. Dragging the window to a monitor with a
+     * different density, or changing the OS display scale, left the minimap rendering at the old
+     * ratio for the rest of the session — a soft, upscaled canvas beside a crisp WebGL one.
+     *
+     * Done imperatively, with no state and no re-render: this file's rules forbid a React render
+     * in the drawing path, and the repair needs neither. `canvas.width` is set BEFORE `ctx.scale`,
+     * because assigning the backing size resets the context's transform — reversing those two
+     * lines silently discards the scale.
+     */
+    const applyDpr = () => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      const c = canvas.getContext('2d');
+      if (!c) return null;
+      c.scale(dpr, dpr);
+      ctxRef.current = c;
+
+      /**
+       * The offscreen entity layer is sized and scaled here, beside the visible canvas, because
+       * the two must never disagree about resolution: the blit maps the layer onto the same
+       * backing pixels, so a layer left at the old ratio after a monitor change is precisely the
+       * soft, upscaled minimap this whole block exists to prevent.
+       *
+       * Same ordering trap as above — assigning `width`/`height` resets the layer context's
+       * transform, so the scale is re-applied after, not before. It also discards the layer's
+       * contents, which is why the cache is marked invalid on the way out. That invalidation
+       * doubles as the hook for everything else that changes what the layer should contain: this
+       * effect re-runs whenever `render` changes identity, which is whenever the size, padding,
+       * colours, socket layout or mode change.
+       *
+       * Zoomable mode gets no layer at all — it draws every frame from the live viewport, so a
+       * second backing store there would be half a megabyte of pixels nothing ever reads.
+       */
+      entityLayerValidRef.current = false;
+      if (zoomable) {
+        entityLayerRef.current = null;
+        entityLayerCtxRef.current = null;
+        return c;
+      }
+
+      let layer = entityLayerRef.current;
+      if (!layer) {
+        layer = document.createElement('canvas');
+        entityLayerRef.current = layer;
+      }
+      layer.width = width * dpr;
+      layer.height = height * dpr;
+      const layerCtx = layer.getContext('2d');
+      if (layerCtx) layerCtx.scale(dpr, dpr);
+      entityLayerCtxRef.current = layerCtx;
+
+      return c;
+    };
+
+    if (!applyDpr()) return;
+
+    // `matchMedia` is how a DPR change is observed — there is no resize event for it, and a
+    // media-query list has to be re-created after each change because the value it tests has moved.
+    let dprQuery: MediaQueryList | null = null;
+    const watchDpr = () => {
+      if (typeof window.matchMedia !== 'function') return;
+      dprQuery?.removeEventListener('change', onDprChange);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprQuery.addEventListener('change', onDprChange);
+    };
+    function onDprChange() {
+      applyDpr();
+      dirtyRef.current.viewport = true;
+      scheduleRender();
+      watchDpr();
+    }
+    watchDpr();
+
+    // Initial render (container size is now set)
+    render();
+
+    // Subscribe to store changes
+    const unsub = store.subscribe(scheduleRender);
+
+    return () => {
+      unsub();
+      dprQuery?.removeEventListener('change', onDprChange);
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [store, width, height, zoomable, render, scheduleRender]);
+
+  // ResizeObserver for container size changes - avoids layout queries in render loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const parent = canvas.parentElement?.parentElement;
+    if (!parent) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerSizeRef.current = {
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        };
+        // Viewport indicator needs redraw when container size changes
+        dirtyRef.current.viewport = true;
+        scheduleRender();
+      }
+    });
+
+    observer.observe(parent);
+
+    return () => observer.disconnect();
+  }, [scheduleRender]);
+
+  const positionStyle = POSITION_STYLES[position] || POSITION_STYLES['bottom-right'];
+
+  const containerStyle: CSSProperties = {
+    position: 'absolute',
+    ...positionStyle,
+    width,
+    height,
+    // A floating panel, so the SURFACE family, as v2's own floating surfaces use. `--radius-2` is a
+    // control radius, and at v2's default `full` level every control radius is 9999px: the minimap
+    // came out a pill.
+    borderRadius: 'var(--radius-surface-1)',
+    overflow: 'hidden',
+    boxShadow: 'var(--shadow-2)',
+    pointerEvents: interactive ? 'auto' : 'none',
+    // Last, so a stated style wins over everything above. A stylesheet rule cannot beat an inline
+    // style, so without this an app had no way to move the minimap off its corner.
+    ...style,
+  };
+
+  return (
+    <div style={containerStyle} className={className}>
+      <canvas
+        ref={canvasRef}
+        style={{ width, height, display: 'block' }}
+        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onLostPointerCapture={handleLostPointerCapture}
+      />
+    </div>
+  );
+}

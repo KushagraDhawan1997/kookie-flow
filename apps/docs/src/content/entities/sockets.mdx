@@ -41,7 +41,7 @@ with no `height` grows to fit every row.
 | `id` | `string` | required | The socket's id. Edges refer to it. |
 | `name` | `string` | required | The label drawn beside the socket, and the accessible name of its widget. |
 | `type` | `string` | required | A key in the socket type table. Sets the colour, the compatibility and the default widget. |
-| `widget` | `WidgetType \| false \| InlineWidgetComponent` | from the type | The widget to show. `false` shows none. |
+| `widget` | `WidgetType \| false` | from the type | The widget to show. `false` shows none. |
 | `min` | `number` | from the type | The lowest value of a slider. |
 | `max` | `number` | from the type | The highest value of a slider. |
 | `step` | `number` | from the type | The increment a slider snaps to, and the decimal places a slider or number field shows. |
@@ -236,63 +236,9 @@ disappear from the widget on its next redraw. For an unconnected input with a bu
 `onEvaluate` reads the value the widget shows, as the [Evaluation](/data/evaluation) chapter
 describes.
 
-## Replace a widget with your own component
+## Custom controls
 
-A widget component is a React component that takes `WidgetProps`. Use one on a single socket by
-passing an `InlineWidgetComponent`, `{ component }`, as its `widget`. To replace a built-in widget
-everywhere, pass `widgetTypes` to `KookieFlow`, keyed by `WidgetType`:
-
-```tsx
-import { KookieFlow, type Socket, type WidgetProps } from '@kushagradhawan/kookie-flow';
-
-function StarRating({ label, value, onChange, max = 5 }: WidgetProps) {
-  const rating = typeof value === 'number' ? value : 0;
-  return (
-    <div role="radiogroup" aria-label={label}>
-      {Array.from({ length: max }, (_, i) => (
-        <button key={i} type="button" aria-label={`${i + 1} of ${max}`} onClick={() => onChange(i + 1)}>
-          {i < rating ? '★' : '☆'}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// On one socket:
-const rating: Socket = { id: 'rating', name: 'Rating', type: 'int', max: 5, widget: { component: StarRating } };
-
-// In place of every number widget on the canvas:
-const widgetTypes = { number: StarRating };
-
-<KookieFlow entities={entities} edges={edges} widgetTypes={widgetTypes} />;
-```
-
-| Prop | Type | Meaning |
-| --- | --- | --- |
-| `label` | `string` | The socket's `name`. Use it as the control's accessible name. |
-| `value` | `unknown` | The current value, from `data.values` or `defaultValue`. |
-| `onChange` | `(value: unknown) => void` | Call it with the new value. It reaches `onWidgetChange`. |
-| `min`, `max`, `step` | `number` | From the socket, falling back to its type. |
-| `options` | `string[]` | From the socket. |
-| `optionLabels` | `Record<string, string>` | From the socket. |
-| `placeholder` | `string` | From the socket. |
-| `rows` | `number` | From the socket. |
-| `disabled` | `boolean` | Not set by the canvas, because a connected input has no widget. |
-
-Your component is mounted as HTML over the widget's area and scales with the zoom. Presses and key
-presses inside it don't reach the canvas, so pressing it doesn't select or drag the node.
-The canvas still draws a built-in widget in that area underneath, so give your component's root
-an opaque background.
-
-### Wrap your widgets
-
-`ThemeComponent` is a component the canvas wraps around each of your own widget components, on
-entities that have a `color`. It receives `children` and nothing else, so it can't tell which
-colour the entity has. Built-in widgets are never wrapped.
-
-```tsx
-import { Theme } from '@kookie-ui/react';
-import { KookieFlow } from '@kushagradhawan/kookie-flow';
-
-<KookieFlow entities={entities} edges={edges} widgetTypes={widgetTypes} ThemeComponent={Theme} />;
-```
+Socket widgets render in WebGL. Set `widget` to a supported `WidgetType`, or `false` to hide it.
+Inline React components, `widgetTypes` and `ThemeComponent` are no longer supported.
+To draw a new kind of node control, implement it in the WebGL renderer package. App toolbars and
+inspectors can use ordinary React components outside the graph and update `data.values`.

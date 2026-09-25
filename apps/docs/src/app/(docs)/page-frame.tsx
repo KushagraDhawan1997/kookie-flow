@@ -1,4 +1,4 @@
-import { Box, Stack } from "@kookie-ui/react";
+import { Box, Stack } from "@kushagradhawan/kookie-ui-react";
 
 import { SiteFooter } from "./site-footer";
 

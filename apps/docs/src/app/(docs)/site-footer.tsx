@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Surface } from "@kookie-ui/react";
+import { Surface } from "@kushagradhawan/kookie-ui-react";
 
 import { Footer } from "../../blocks/footer";
 import { CHAPTERS, SECTIONS } from "./chapters";

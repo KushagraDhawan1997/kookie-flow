@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Button, Flex, Stack, Text } from '@kookie-ui/react';
+import { Button, Flex, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow, useGraph, type Edge, type Entity, type EntityTypeDefinition, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow';
 
 const float = (id: string, name: string) => ({ id, name, type: 'float', min: 0, max: 10, step: 1 });

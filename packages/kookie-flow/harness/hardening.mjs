@@ -133,6 +133,13 @@ export async function hardeningChecks({ head, withPage, check, context, port, sk
         'fitView reconciles conflicting options inside component limits',
         (await read()).viewport.zoom === 1
       );
+      const beforeHiddenFit = (await read()).viewport;
+      await page.getByRole('button', { name: 'Fit hidden canvas', exact: true }).click();
+      check(
+        'fitView on a hidden React canvas preserves the camera without throwing',
+        JSON.stringify((await read()).viewport) === JSON.stringify(beforeHiddenFit) && errors.length === 0,
+        errors.join('\n')
+      );
       await page.getByRole('button', { name: 'Preserve imperative edges', exact: true }).click();
       check(
         'schema sync preserves the live edge document',

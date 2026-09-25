@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Text, ToolbarButton } from '@kookie-ui/react';
+import { Text, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   useGraph,

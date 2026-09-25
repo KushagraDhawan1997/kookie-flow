@@ -23,7 +23,7 @@ import {
   TableRow,
   Text,
   ToolbarButton,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 import { formatUsd } from 'studio-core';
 
 import { TOP_UP_DOLLARS, type LedgerEntry } from '@/shared/billing';

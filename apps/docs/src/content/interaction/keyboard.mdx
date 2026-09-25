@@ -94,10 +94,8 @@ A change made this way calls `onWidgetChange` with the same kind of value a poin
 boolean for a checkbox, a number for a slider, and a string for a text field. The
 [Sockets and widgets](/entities/sockets) chapter describes those values.
 
-A connected input has no control, because its value arrives along the edge. A widget type you
-replaced with your own component through `widgetTypes`, or an inline widget component, has no
-extra control either, because your component is already a real element. With `showWidgets`
-set to `false` there are no controls to reach.
+A connected input has no control, because its value arrives along the edge. With `showWidgets`
+set to `false` there are no controls to reach. The mirror only contains the focused node’s controls.
 
 ## Add your own shortcuts
 

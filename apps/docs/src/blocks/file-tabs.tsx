@@ -20,7 +20,7 @@
  * what ships here is a `useState` and a list.
  */
 import * as React from "react";
-import { Box, Stack, Tabs, TabsList, TabsPanel, TabsTab, Toolbar, ToolbarGroup, type Size } from "@kookie-ui/react";
+import { Box, Stack, Tabs, TabsList, TabsPanel, TabsTab, Toolbar, ToolbarGroup, type Size } from "@kushagradhawan/kookie-ui-react";
 
 import { CodeSampleView } from "./code-sample";
 import { CopyButton } from "./copy-button";

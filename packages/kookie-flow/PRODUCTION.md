@@ -34,23 +34,19 @@ React DOM 19.2.8, Fiber 9.7.0, drei 10.7.8 and three 0.186.0. React/Fiber/drei s
 current major; three stays within 0.186. Node tooling and CJS consumers require Node 24 or newer.
 Do not infer compatibility with an older three release or a future major from this work.
 
-`@kookie-ui/react` is still an unpublished 0.0.0 snapshot. The npm registry returned 404 during
-qualification. The peer is therefore pinned to 0.0.0, and consumers must install the tested
-`vendor/kookie-ui-react-0.0.0.tgz` explicitly. The package test proves this installation route:
+The renderer uses the unpublished `@kushagradhawan/kookie-ui-react@0.0.0-flow.1` archive in
+`vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz`. It preserves the old tested UI snapshot;
+only its package identity changed. Current UI v2 is a separate upgrade. See
+[package installation](../../docs/PACKAGES.md) for the four Flow archives and all peers.
 
-```sh
-pnpm --filter @kushagradhawan/kookie-flow run build
-cd packages/kookie-flow
-npm pack
-# In the consuming application, using paths to the two produced/supplied archives:
-npm install /path/to/kushagradhawan-kookie-flow-0.1.0.tgz /path/to/kookie-ui-react-0.0.0.tgz
-```
+Use `pnpm pack`: its `beforePacking` hook removes workspace-only source export conditions.
+The isolated consumer test packs with pnpm and checks the real tarballs. Core installs alone
+without React/Three or DOM types. The React consumer exercises both module formats, declaration
+formats, public plugins/layout and implementation identity across compatibility imports.
 
-Install the remaining peers at supported versions and import KookieUI's stylesheet as shown in
-README.md. Public npm-only distribution remains blocked until a versioned KookieUI release is
-available and its compatibility is retested. Do not overwrite the vendored snapshot silently;
-its integrity is recorded in the lockfile. The core's MIT license and Inter's font license ship
-in the archive; Studio has its own license and is not included in this core package.
+Public npm-only distribution still requires versioned UI and Flow publications and qualification.
+No publication is part of this change. Every archive includes MIT licensing; the renderer also
+ships Inter's license. Studio is not included in these library packages.
 
 ## Loading documents
 
@@ -98,8 +94,11 @@ IDs must exist in the appropriate direction. Parent and edge identifiers are opa
 - Theme changes update materials without replacing instanced meshes. Capacity changes own fresh
   geometries so superseded attributes can be disposed. Browser tests require zero buffer growth
   after warm-up; the old allowance for a known per-theme leak has been removed.
-- Custom DOM widgets follow direct data edits, corrected consumer responses and configuration changes.
-  Widget animation clocks submit their terminal frame even after a slow frame.
+- Graph widgets and notes render in WebGL. Native editing and the focused accessibility mirror
+  remain bounded; 10,000 notes add no per-node DOM. Widget animation clocks submit their terminal
+  frame even after a slow frame. Inline DOM widget APIs have been removed.
+- Theme reads are scoped to each editor and observe inherited ancestor changes. Layout caches
+  distinguish metric sets and entity/socket identity, so multiple editors cannot poison each other.
 - Socket value dictionaries treat IDs such as `__proto__` as own keys through evaluation and saving.
 - Text measurement, wrapping, glyph buffers, runtime atlases and cursor offsets handle
   supplementary Unicode code points. Kerning keys cannot collide with BMP pairs. Text caches
@@ -109,8 +108,8 @@ IDs must exist in the appropriate direction. Parent and edge identifiers are opa
 
 The bundled font atlas has a limited character set. Supply a matching custom atlas for additional
 characters. Codepoint support is not complex-script shaping, bidirectional layout, color emoji
-or full grapheme-cluster editing. A product requiring these should provide DOM text editing/rendering
-or a shaping layer and run language-specific acceptance tests.
+or full grapheme-cluster editing. A product requiring these should add a shaping layer and run language-specific acceptance tests.
+Native input editing may use DOM; graph text rendering remains GPU-based.
 
 The canvas uses continuous rendering for animation; idle work is not zero. Performance figures
 from synthetic stores do not establish an interactive node-count limit. Profile representative

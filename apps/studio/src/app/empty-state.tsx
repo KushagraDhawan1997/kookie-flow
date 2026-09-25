@@ -15,7 +15,7 @@
  *    `minHeight` to pass. The centring and the measure are in `empty-state.css`.
  */
 import * as React from 'react';
-import { Flex, Heading, Stack, Text } from '@kookie-ui/react';
+import { Flex, Heading, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
 import './empty-state.css';
 

@@ -8,7 +8,10 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
-    "types": ["mdx", "node"],
+    "types": [
+      "mdx",
+      "node"
+    ],
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -33,7 +36,11 @@
       "@kushagradhawan/kookie-flow/plugins": [
         "../../packages/kookie-flow/src/plugins/index.ts"
       ]
-    }
+    },
+    "rootDir": "../..",
+    "customConditions": [
+      "kookie-flow-source"
+    ]
   },
   "include": [
     "next-env.d.ts",

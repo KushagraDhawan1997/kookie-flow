@@ -14,24 +14,24 @@
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
-import { Theme } from '@kookie-ui/react';
-import { KookieFlow } from '../../src/components/kookie-flow';
-import { Toolbar } from '../../src/components/toolbar';
-import { useFlowStoreApi } from '../../src/components/context';
-import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '../../src/types';
+import { Theme } from '@kushagradhawan/kookie-ui-react';
+import { KookieFlow } from '@kushagradhawan/kookie-flow-webgl/internal/components/kookie-flow';
+import { Toolbar } from '@kushagradhawan/kookie-flow-webgl/internal/components/toolbar';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-webgl/internal/components/context';
+import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '@kushagradhawan/kookie-flow-core/types';
 import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeControls, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
-import { capture } from '../../src/utils/canvas-runtime';
-import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx } from '../../src/utils/color';
-import { FALLBACK_TOKENS } from '../../src/hooks/useThemeTokens';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import { frozenHue } from '../../src/core/palette';
-import { getWidgetBox, sliderTrackWidth } from '../../src/utils/widget-geometry';
-import { popoverLayoutFor, POPOVER_PAD } from '../../src/utils/popover-layout';
-import { EDGE_SOCKET_RIM } from '../../src/utils/edge-curve';
-import { useResolvedStyle } from '../../src/contexts/StyleContext';
-import { resolveWidgetConfig } from '../../src/utils/widgets';
-import { DEFAULT_SOCKET_TYPES } from '../../src/core/constants';
-import { getOrbit } from '../../src/utils/media-runtime';
+import { capture } from '@kushagradhawan/kookie-flow-webgl/internal/utils/canvas-runtime';
+import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, withColorScope } from '@kushagradhawan/kookie-flow-webgl/internal/utils/color';
+import { FALLBACK_TOKENS } from '@kushagradhawan/kookie-flow-webgl/internal/hooks/useThemeTokens';
+import { useTheme, useThemeScope } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/ThemeContext';
+import { frozenHue } from '@kushagradhawan/kookie-flow-webgl/internal/core/palette';
+import { getWidgetBox, sliderTrackWidth } from '@kushagradhawan/kookie-flow-webgl/internal/utils/widget-geometry';
+import { popoverLayoutFor, POPOVER_PAD } from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
+import { EDGE_SOCKET_RIM } from '@kushagradhawan/kookie-flow-core/internal/utils/edge-curve';
+import { useResolvedStyle } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/StyleContext';
+import { resolveWidgetConfig } from '@kushagradhawan/kookie-flow-webgl/internal/utils/widgets';
+import { DEFAULT_SOCKET_TYPES } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
+import { getOrbit } from '@kushagradhawan/kookie-flow-webgl/internal/utils/media-runtime';
 
 declare global {
   interface Window {
@@ -223,7 +223,6 @@ function params() {
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
     radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
     toolbar: q.get('toolbar') === '1',
-    customWidget: q.get('customWidget') === '1',
     entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
@@ -609,30 +608,6 @@ const TOOLBAR_TYPES = {
   comment: { type: 'comment', toolbar: true as const },
 };
 
-/**
- * A consumer-supplied widget component — the DOM escape hatch, and the only widget that still
- * mounts as DOM now that the seven built-ins draw in WebGL.
- *
- * Deliberately plain: the point is that the library renders whatever component it was handed and
- * keeps its snapshot in step with the graph, not that this looks like anything.
- */
-function CustomTextWidget({ value, onChange, label }: {
-  value?: unknown;
-  onChange?: (v: unknown) => void;
-  label?: string;
-}) {
-  return (
-    <input
-      aria-label={label ?? 'custom'}
-      value={value === undefined || value === null ? '' : String(value)}
-      onChange={(e) => onChange?.(e.target.value)}
-      style={{ width: '100%' }}
-    />
-  );
-}
-
-const CUSTOM_WIDGET_TYPES = { text: CustomTextWidget, string: CustomTextWidget };
-
 function themeRoot(): Element {
   return document.querySelector('.kui-theme') ?? document.documentElement;
 }
@@ -967,6 +942,9 @@ function Probe() {
   // mounted) rather than what the GL layer is painting from. A law reading it could not see a
   // token change at all: caught when a deliberate sabotage of the space-index shift failed to
   // move the number it was supposed to move.
+  const liveScope = useThemeScope();
+  const liveScopeRef = useRef(liveScope);
+  liveScopeRef.current = liveScope;
   const liveTokensRef = useRef(liveTokens);
   liveTokensRef.current = liveTokens;
   // The style the RENDERER resolved, through a ref for the same reason as the tokens above. A
@@ -1307,7 +1285,13 @@ function Probe() {
       gl: () => JSON.parse(JSON.stringify(gl)),
       resetGl: resetGlCounters,
       frames: frameStats,
-      lib: { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, frozenHue },
+      lib: {
+        parseColorToRGB: (v) => withColorScope(liveScopeRef.current, () => parseColorToRGB(v)),
+        parseColorToRGBA: (v) => withColorScope(liveScopeRef.current, () => parseColorToRGBA(v)),
+        resolveColorToRGB: (v) => withColorScope(liveScopeRef.current, () => resolveColorToRGB(v)),
+        parsePx: (v) => withColorScope(liveScopeRef.current, () => parsePx(v)),
+        frozenHue,
+      },
       contextFacts: () => ({ depth: contextFacts.depth, linkFailures: [...contextFacts.linkFailures] }),
       uploadHistogram: () => [...uploadHistogram.entries()].map(([b, v]) => ({ bucket: b, ...v })),
       indexedSockets() {
@@ -1336,7 +1320,7 @@ function Probe() {
        */
       readLength(name: string) {
         const raw = getComputedStyle(themeRoot()).getPropertyValue(name).trim();
-        return { raw, parsed: parsePx(raw) };
+        return { raw, parsed: withColorScope(liveScopeRef.current, () => parsePx(raw)) };
       },
     };
 
@@ -1442,7 +1426,6 @@ function App() {
         onEdgesChange={i === 0 ? onEdgesChange : undefined}
         onConnect={i === 0 ? onConnect : undefined}
         showWidgets={p.widgets}
-        {...(p.customWidget ? { widgetTypes: CUSTOM_WIDGET_TYPES } : {})}
         /**
          * Apply a widget change the way a real consumer would.
          *

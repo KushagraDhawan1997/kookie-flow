@@ -1,6 +1,6 @@
 'use client';
 
-import { Theme } from '@kookie-ui/react';
+import { Theme } from '@kushagradhawan/kookie-ui-react';
 
 /**
  * The root scope. `appearance="inherit"`: the pre-paint script stamped the mode on <html>, and

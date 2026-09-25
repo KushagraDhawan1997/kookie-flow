@@ -12,7 +12,7 @@ import {
   MenuRadioItem,
   MenuTrigger,
   Separator,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { AGENT_EFFORTS, AGENT_MODEL_GROUPS, AGENT_MODELS, AUTO_MODEL, type AgentSettings } from './agent-models';
 import { AutoIcon, CheckIcon, ChevronDownIcon } from './icons';

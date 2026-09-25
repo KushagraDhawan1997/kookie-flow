@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
-import { Code, Text, Theme } from '@kookie-ui/react';
+import { Code, Text } from '@kushagradhawan/kookie-ui-react';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -179,7 +179,6 @@ export default function ControlsPage() {
         radius="medium"
         header="inside"
         accentHeader
-        ThemeComponent={Theme}
       />
     </DemoFrame>
   );

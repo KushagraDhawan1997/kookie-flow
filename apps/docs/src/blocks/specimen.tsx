@@ -28,7 +28,7 @@
  * derive it from the example's source, and a consumer knows what they are passing.
  */
 import * as React from "react";
-import { Box, Card, Flex, Stack, Surface, Toolbar, ToolbarGroup, type Size } from "@kookie-ui/react";
+import { Box, Card, Flex, Stack, Surface, Toolbar, ToolbarGroup, type Size } from "@kushagradhawan/kookie-ui-react";
 
 /**
  * The index the figure's chrome row rests at, and the one home for it.

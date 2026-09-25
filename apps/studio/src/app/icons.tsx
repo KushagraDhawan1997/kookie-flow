@@ -5,7 +5,7 @@
  * box is the system's.
  */
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
-import { iconStroke } from '@kookie-ui/react';
+import { iconStroke } from '@kushagradhawan/kookie-ui-react';
 import {
   ArrowLeft01Icon,
   ComputerIcon,

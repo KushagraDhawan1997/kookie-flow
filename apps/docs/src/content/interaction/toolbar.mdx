@@ -37,7 +37,7 @@ show your theme's glass material. The whole row is one tab stop, and the arrow k
 
 | Prop | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `size` | `ToolbarProps['size']` from `@kookie-ui/react` | `'3'` | The size every control in the toolbar takes, unless a control states its own. |
+| `size` | `ToolbarProps['size']` from `@kushagradhawan/kookie-ui-react` | `'3'` | The size every control in the toolbar takes, unless a control states its own. |
 | `children` | `ToolbarRenderFn` | none | Replaces the toolbar's contents for every selection. See [Replace the toolbar's contents](#replace-the-toolbars-contents). |
 
 ## Turn on the built-in controls
@@ -122,7 +122,7 @@ a plain `Button` would be a second tab stop. Put buttons that belong together in
 with `backdrop`, so they share one glass capsule like the built-in controls.
 
 ```tsx
-import { ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
+import { ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
 import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
@@ -193,7 +193,7 @@ from `entities` what to show. Return `null` to show nothing.
 ```tsx title="board.tsx"
 'use client';
 
-import { ToolbarButton, ToolbarGroup } from '@kookie-ui/react';
+import { ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow';
 
 export function Board() {

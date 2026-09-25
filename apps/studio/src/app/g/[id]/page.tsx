@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { Box, Card, Code, Flex, Heading, Link, Stack, Text } from '@kookie-ui/react';
+import { Box, Card, Code, Flex, Heading, Link, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 import NextLink from 'next/link';
 import { parseDocument } from 'studio-core';
 import { getGraph } from '@/server/graphs';

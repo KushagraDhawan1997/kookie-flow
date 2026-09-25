@@ -1,4 +1,4 @@
-import { Heading } from '@kookie-ui/react';
+import { Heading } from '@kushagradhawan/kookie-ui-react';
 
 /**
  * The studio's mark, set in PP Acma at the step the docs site's sidebar uses; globals.css

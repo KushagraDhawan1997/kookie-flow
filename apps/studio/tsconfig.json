@@ -35,7 +35,11 @@
       "@kushagradhawan/kookie-flow/layout": [
         "../../packages/kookie-flow/src/core/layout.ts"
       ]
-    }
+    },
+    "rootDir": "../..",
+    "customConditions": [
+      "kookie-flow-source"
+    ]
   },
   "include": [
     "next-env.d.ts",

@@ -16,7 +16,7 @@ import {
   SelectItem,
   Slider,
   Checkbox,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 const q = new URLSearchParams(location.search);
 const appearance = (q.get('appearance') ?? 'light') as 'light' | 'dark';

@@ -5,6 +5,22 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Package split (0.2.0 candidate) !
+
+- Extract graph logic into `@kushagradhawan/kookie-flow-core`, rendering and interaction into
+  `@kushagradhawan/kookie-flow-webgl`, and the application API into `@kushagradhawan/kookie-flow-react`.
+  Existing root/plugins/layout import paths forward through the compatibility package.
+- Core is a vanilla Zustand store with no React/browser dependency. Standalone `fitView` requires
+  viewport dimensions; the React component still supplies them.
+- Scope theme reads per editor and isolate layout caches across different editor metrics.
+- Draw comments using instanced GPU bodies and MSDF text. Remove custom DOM widgets and their
+  `widgetTypes`, `ThemeComponent`, `InlineWidgetComponent` and `WidgetProps` APIs. The old note CSS
+  shadow is not reproduced. Native editing and focused accessibility controls remain bounded.
+- Rename the UI peer to `@kushagradhawan/kookie-ui-react`, preserving the existing visual snapshot
+  as `0.0.0-flow.1`; current UI v2's motion removal is a separate upgrade.
+- Add dependency-boundary, real packed-consumer and multi-editor/GPU-note regression gates.
+  See `docs/PACKAGES.md` for installation and manual two-way copy rules. No npm publication yet.
+
 ### Core hardening after the isolated audit
 
 - Bound rectangle-quadtree storage under overlap; preserve all movements in a render batch;

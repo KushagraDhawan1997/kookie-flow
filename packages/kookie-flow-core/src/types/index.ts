@@ -1,0 +1,903 @@
+/** Position in 2D space */
+export interface XYPosition {
+  x: number;
+  y: number;
+}
+
+/** Dimensions */
+export interface Dimensions {
+  width: number;
+  height: number;
+}
+
+/** Viewport state */
+export interface Viewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** Edge rendering type */
+export type EdgeType = 'straight' | 'bezier' | 'step' | 'smoothstep';
+
+/** An edge or centre line of a selection's bounds, to line the selection up on. */
+export type AlignEdge = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
+
+/** The axis a selection is spaced evenly along. */
+export type DistributeAxis = 'horizontal' | 'vertical';
+
+/** Edge marker type */
+export type EdgeMarkerType = 'arrow' | 'arrowClosed';
+
+/** Edge marker configuration */
+export interface EdgeMarker {
+  type: EdgeMarkerType;
+  /** Width of the marker in pixels. Default: 12 */
+  width?: number;
+  /** Height of the marker in pixels. Default: 12 */
+  height?: number;
+  /** Color override (defaults to edge color) */
+  color?: string;
+}
+
+/** Edge label configuration */
+export interface EdgeLabelConfig {
+  /** Label text */
+  text: string;
+  /** Position along edge (0 = start, 0.5 = middle, 1 = end). Default: 0.5 */
+  position?: number;
+  /** Background color. Default: transparent */
+  bgColor?: string;
+  /** Text color. Default: #ffffff */
+  textColor?: string;
+  /** Font size in pixels. Default: 12 */
+  fontSize?: number;
+}
+
+// ============================================================================
+// Widget Types (Phase 7D)
+// ============================================================================
+
+/** Built-in widget types for socket inputs */
+export type WidgetType =
+  | 'slider'
+  | 'number'
+  | 'select'
+  | 'checkbox'
+  | 'text'
+  | 'color'
+  | 'textarea'
+  /** An on/off toggle at the row's trailing edge. Value: `boolean`. */
+  | 'switch'
+  /** Two to four `options` side by side, one pressed. Value: `string`. */
+  | 'segmented'
+  /** `dimensions` numbers in one field, each dragged or typed. Value: `number[]`. */
+  | 'vector'
+  /** An integer field with a button that rolls a new one. Value: `number`. */
+  | 'seed';
+
+/** Socket layout mode for widget positioning */
+export type SocketLayoutMode = 'inline' | 'stacked';
+
+/** Resolved widget configuration (after merging socket + type defaults) */
+export interface ResolvedWidgetConfig {
+  /** Widget type */
+  type: WidgetType;
+  /** Min value for slider/number */
+  min?: number;
+  /** Max value for slider/number */
+  max?: number;
+  /** Step value for slider/number */
+  step?: number;
+  /** Options for select */
+  options?: string[];
+  /** What each option reads as, by value */
+  optionLabels?: Record<string, string>;
+  /** How many components a vector has, 2 to 4 */
+  dimensions?: number;
+  /** Placeholder for text input */
+  placeholder?: string;
+  /** Default value */
+  defaultValue?: unknown;
+  /** Number of visible text lines (for textarea) */
+  rows?: number;
+}
+
+/** Socket type definition */
+export interface SocketType {
+  color: string;
+  name: string;
+  /** Compatibility rules */
+  compatibleWith?: string[] | '*';
+  /** Default widget type for sockets of this type */
+  widget?: WidgetType;
+  /** Default min value for slider/number widgets */
+  min?: number;
+  /** Default max value for slider/number widgets */
+  max?: number;
+  /** Default step value for slider/number widgets */
+  step?: number;
+  /** Default component count for vector widgets. Default: 3 */
+  dimensions?: 2 | 3 | 4;
+}
+
+/** Socket definition on an entity */
+export interface Socket {
+  id: string;
+  name: string;
+  type: string;
+  /** Position relative to entity (0 = top, 1 = bottom) */
+  position?: number;
+  /** Widget type override (false = disable widget) */
+  widget?: WidgetType | false;
+  /** Min value override for slider/number */
+  min?: number;
+  /** Max value override for slider/number */
+  max?: number;
+  /** Step value override for slider/number */
+  step?: number;
+  /** Options for select and segmented widgets */
+  options?: string[];
+  /**
+   * What each option reads as, by value: `{ png: 'PNG' }`. The value is what is stored and
+   * evaluated; the label is only what a person sees. An option with no entry reads as its value.
+   */
+  optionLabels?: Record<string, string>;
+  /** Component count override for a vector widget */
+  dimensions?: 2 | 3 | 4;
+  /** Placeholder for text widget */
+  placeholder?: string;
+  /** Default value when unconnected */
+  defaultValue?: unknown;
+  /**
+   * Layout mode for this socket's widget.
+   * - 'inline' (default): Label on left, widget on right
+   * - 'stacked': Label above widget, widget spans full entity width
+   */
+  layout?: SocketLayoutMode;
+  /**
+   * Number of rows this socket occupies.
+   * For textarea: rows: 3 gives 3x widget height.
+   * Works with both inline and stacked layouts.
+   * Default: 1
+   */
+  rows?: number;
+  /**
+   * Explicit height override in pixels.
+   * Takes precedence over `rows` calculation.
+   */
+  height?: number;
+}
+
+/** Socket handle for identifying a specific socket on an entity */
+export interface SocketHandle {
+  entityId: string;
+  socketId: string;
+  isInput: boolean;
+}
+
+/**
+ * Which widget the pointer is over, as the two ids that name it.
+ *
+ * A widget only ever exists on an INPUT socket, so unlike `SocketHandle` this carries no
+ * direction — there is nothing for it to distinguish. Two fields rather than one `entityId:socketId`
+ * string because the renderer compares this against every visible widget inside the frame loop,
+ * and a joined key would mean a string concatenation per widget per frame in the one layer whose
+ * whole reason for existing is that a pan costs nothing.
+ */
+export interface WidgetHandle {
+  entityId: string;
+  socketId: string;
+}
+
+/**
+ * A widget's floating panel — a select's list or a colour widget's picker — while it is open.
+ *
+ * Drawn in GL by `components/widget-popover.tsx`, pressed by the canvas's pointer handlers and
+ * driven by its keyboard handler, all from this one record. `box` is the trigger's world box as
+ * it was when the panel opened: the panel hangs off it, and it is snapshotted rather than
+ * re-derived so the panel does not jump if the node re-lays itself out under an open list.
+ *
+ * `key` is `widgetKey(entityId, socketId)`, carried so the widget layer can light the trigger
+ * without a concatenation per widget per frame.
+ */
+export interface WidgetPopover {
+  kind: 'select' | 'color';
+  entityId: string;
+  socketId: string;
+  key: string;
+  box: { x: number; y: number; width: number; height: number };
+  /** The list, for a select; empty for a colour picker. */
+  options: string[];
+  /** What each row reads as, index for index with `options`. Absent: the options themselves. */
+  labels?: string[];
+  /** The value the trigger showed when the panel opened. */
+  value: string;
+  /** The widest option, in world px at the row font size, so the list can outgrow its trigger. */
+  widest: number;
+  /** Motion-clock time the panel opened, for its entrance. */
+  openedAt: number;
+}
+
+/** Entity status for visual feedback */
+/**
+ * `dirty` is set by the evaluation engine when an entity's inputs have changed and nothing has
+ * answered yet. The others may be set by the consumer on `entity.data.status`, which always wins
+ * over what the engine reports.
+ */
+export type EntityStatus = 'dirty' | 'error' | 'warning' | 'running' | 'success';
+
+/** Base entity data */
+export interface EntityData {
+  label?: string;
+  /** Entity status for visual feedback rendering */
+  status?: EntityStatus;
+  /** Human-readable status message */
+  statusMessage?: string;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Special Entity Types
+// ============================================================================
+
+/** Built-in special entity types */
+export type BuiltInEntityType =
+  'frame' | 'comment' | 'reroute' | 'draw' | 'text' | 'image' | 'video' | 'mesh';
+
+/** Data for frame entities (spatial containers) */
+export interface FrameEntityData extends EntityData {
+  /** Frame title shown in header */
+  label?: string;
+  /** Optional description shown below title when expanded */
+  description?: string;
+  /** Background color for the frame */
+  backgroundColor?: string;
+  /** Border color for the frame */
+  borderColor?: string;
+}
+
+/** Data for comment/sticky note entities */
+export interface CommentEntityData extends EntityData {
+  /** Comment text content */
+  content: string;
+  /**
+   * The note's hue. Its fill, edge and text are all mixed from this one colour against the theme's
+   * page and text colours, so a note reads in light and dark alike. Falls back to the entity's own
+   * `color`, then to yellow.
+   */
+  color?: AccentColor;
+  /** Replaces the fill the hue gives. Any CSS colour. */
+  backgroundColor?: string;
+  /** Replaces the text colour the hue gives. Any CSS colour. */
+  textColor?: string;
+  /** Font size in pixels. Default: 14 */
+  fontSize?: number;
+}
+
+/** Data for reroute/waypoint entities */
+export interface RerouteEntityData extends EntityData {
+  /** Optional label (rarely used, mostly for debugging) */
+  label?: string;
+}
+
+/**
+ * Data for draw entities — ink on the canvas.
+ *
+ * One entity is one stroke. Not one entity per drawing: a stroke is what a person makes in one
+ * gesture, and it is what they expect to be able to select, move, colour and undo on its own.
+ */
+export interface DrawEntityData extends EntityData {
+  /**
+   * The stroke, flat and relative to the entity's own top-left: x, y, x, y.
+   *
+   * Relative so that moving the entity moves one position rather than rewriting the stroke, and
+   * flat so a thousand-point scribble is one array rather than a thousand objects.
+   */
+  points?: number[];
+  /** How thick the ink is, in world pixels. Default: 3. */
+  strokeWidth?: number;
+  /** The ink's colour. Defaults to the theme's primary text colour. */
+  strokeColor?: string;
+}
+
+/** Sizing mode for text entities (Figma parity) */
+export type TextSizingMode = 'auto-width' | 'auto-height' | 'fixed';
+
+/** Data for text entities (standalone text blocks on canvas) */
+export interface TextEntityData extends EntityData {
+  /** Text content (required for text entities) */
+  content: string;
+  /** Font size in pixels (default: 16) */
+  fontSize?: number;
+  /** Font family (default: system-ui) */
+  fontFamily?: string;
+  /** Font weight (default: 400) */
+  fontWeight?: number;
+  /** Text color as CSS color string (default: from theme) */
+  textColor?: string;
+  /** Text alignment (default: 'left') */
+  textAlign?: 'left' | 'center' | 'right';
+  /** Line height multiplier (default: 1.5) */
+  lineHeight?: number;
+  /** Letter spacing in pixels (default: 0) */
+  letterSpacing?: number;
+  /** Sizing mode: 'auto-width' | 'auto-height' | 'fixed'. Default: 'auto-height' */
+  sizingMode?: TextSizingMode;
+}
+
+/** Data for image entities */
+export interface ImageEntityData extends EntityData {
+  /** Image source URL or data URL */
+  src?: string;
+  /** Alt text for accessibility */
+  alt?: string;
+  /** Object fit mode */
+  objectFit?: 'contain' | 'cover' | 'fill';
+  /** Lock aspect ratio during resize (default true for images; Shift inverts) */
+  aspectLocked?: boolean;
+  /**
+   * The expand and download buttons, drawn in the top-right corner under the pointer. Default: true.
+   *
+   * Expand opens the picture in a viewer over the page; download saves its file. `false` for a
+   * picture used as decoration.
+   */
+  controls?: boolean;
+}
+
+/** Data for video entities */
+export interface VideoEntityData extends EntityData {
+  /** Video source URL */
+  src?: string;
+  /** Poster frame URL */
+  poster?: string;
+  /**
+   * Play whenever the entity is on screen. Default: false.
+   *
+   * "Whenever it can be seen" rather than "from mount": a video off the viewport is paused, so
+   * this is a standing wish rather than a one-shot. Playback is always muted — every browser's
+   * autoplay policy refuses an unmuted `play()` without a user gesture.
+   */
+  autoplay?: boolean;
+  /**
+   * Explicit play/pause, overriding `autoplay` when set.
+   *
+   * Still subject to the concurrent-decoder cap: asking more videos to play than the platform can
+   * decode leaves the surplus on their poster frame rather than failing.
+   */
+  playing?: boolean;
+  /** Whether to loop. Default: true */
+  loop?: boolean;
+  /** Object fit mode. Default: 'contain' — a clip letterboxes rather than crops. */
+  objectFit?: 'contain' | 'cover' | 'fill';
+  /** Lock aspect ratio during resize (default true for video; Shift inverts) */
+  aspectLocked?: boolean;
+  /**
+   * Play, pause and scrub, drawn on the clip under the pointer. Default: true.
+   *
+   * `false` for a video used as decoration — a background loop should not grow a control bar
+   * when the pointer crosses it. A clip too small for a bar never shows one either way.
+   */
+  controls?: boolean;
+}
+
+/** Data for 3D mesh entities */
+export interface MeshEntityData extends EntityData {
+  /** URL to glTF/GLB file */
+  src?: string;
+  /**
+   * Which way the camera looks at the model, as a DIRECTION from its centre — not a world point.
+   *
+   * The distance is derived from the model's own bounding sphere, so the preview frames correctly
+   * whatever the model's scale, and a consumer choosing an angle does not have to know how big the
+   * file it just loaded is. Default: { x: 0, y: 0.4, z: 1 }, slightly above and in front.
+   */
+  cameraPosition?: { x: number; y: number; z: number };
+  /**
+   * Turn the model continuously. Default: false.
+   *
+   * Off by default because it is the one thing that makes a preview cost something every frame: a
+   * still model's render target is drawn once and then sampled for free. An entity that opts in
+   * pays for itself and for nothing else on the board.
+   */
+  autoRotate?: boolean;
+  /** Radians per second when `autoRotate` is on. Default: 0.6 */
+  rotateSpeed?: number;
+  /** Lock aspect ratio during resize (default true for mesh; Shift inverts) */
+  aspectLocked?: boolean;
+  /**
+   * Turn the model by dragging it. Default: true.
+   *
+   * The whole body turns, so the drag that MOVES the entity lives in a strip along the top —
+   * shown under the pointer, the way a window's title bar is the part you move it by. `false`
+   * gives the body back to dragging and leaves the model at its stated camera.
+   */
+  orbit?: boolean;
+  /**
+   * The expand and download buttons, drawn in the top-right corner under the pointer. Default: true.
+   *
+   * Expand opens the model in a viewer over the page, where it can be turned at full size;
+   * download saves its file.
+   */
+  controls?: boolean;
+}
+
+/** Draw entity type */
+export type DrawEntity = Entity<DrawEntityData> & {
+  type: 'draw';
+};
+
+/** Text entity type */
+export type TextEntity = Entity<TextEntityData> & {
+  type: 'text';
+};
+
+/** Image entity type */
+export type ImageEntity = Entity<ImageEntityData> & {
+  type: 'image';
+};
+
+/** Video entity type */
+export type VideoEntity = Entity<VideoEntityData> & {
+  type: 'video';
+};
+
+/** Mesh entity type */
+export type MeshEntity = Entity<MeshEntityData> & {
+  type: 'mesh';
+};
+
+/** Frame entity type (spatial container) */
+export type FrameEntity = Entity<FrameEntityData> & {
+  type: 'frame';
+  collapsed?: boolean;
+  extent?: 'auto' | 'fixed';
+};
+
+/** Comment entity type */
+export type CommentEntity = Entity<CommentEntityData> & {
+  type: 'comment';
+};
+
+/** Reroute entity type */
+export type RerouteEntity = Entity<RerouteEntityData> & {
+  type: 'reroute';
+};
+
+/** Helper type guard for frame entities */
+export function isFrameEntity(entity: Entity): entity is FrameEntity {
+  return entity.type === 'frame';
+}
+
+/** Helper type guard for comment entities */
+export function isCommentEntity(entity: Entity): entity is CommentEntity {
+  return entity.type === 'comment';
+}
+
+/** Helper type guard for reroute entities */
+export function isRerouteEntity(entity: Entity): entity is RerouteEntity {
+  return entity.type === 'reroute';
+}
+
+/** Helper type guard for text entities */
+export function isTextEntity(entity: Entity): entity is TextEntity {
+  return entity.type === 'text';
+}
+
+/** Helper type guard for image entities */
+export function isImageEntity(entity: Entity): entity is ImageEntity {
+  return entity.type === 'image';
+}
+
+/** Type guard for video entities */
+export function isVideoEntity(entity: Entity): entity is VideoEntity {
+  return entity.type === 'video';
+}
+
+/** Type guard for 3D mesh entities */
+export function isMeshEntity(entity: Entity): entity is MeshEntity {
+  return entity.type === 'mesh';
+}
+
+/** Entity in the graph */
+export interface Entity<T extends EntityData = EntityData> {
+  id: string;
+  type: string;
+  position: XYPosition;
+  data: T;
+  width?: number;
+  height?: number;
+  selected?: boolean;
+  dragging?: boolean;
+  inputs?: Socket[];
+  outputs?: Socket[];
+  /** Per-entity accent color override (matches Kookie UI accent colors) */
+  color?: AccentColor;
+  /**
+   * Whether this entity is resizable via drag handles.
+   * - true (default): resizable in both width and height
+   * - false: not resizable
+   * - { width?: boolean; height?: boolean }: per-axis control
+   */
+  resizable?: boolean | { width?: boolean; height?: boolean };
+
+  /**
+   * A band inside the body showing what one of this entity's outputs holds — the picture a node
+   * made, the model it loaded. See `EntityPreview`.
+   */
+  preview?: EntityPreview;
+
+  // ============================================================================
+  // Grouping / Hierarchy
+  // ============================================================================
+
+  /**
+   * Parent frame entity ID. When set, this entity is a child of the frame.
+   * Child entities move with their parent and are hidden when the frame is collapsed.
+   */
+  parentId?: string;
+  /**
+   * Whether this frame entity is collapsed (only applies to frame entities).
+   * When collapsed, child entities are hidden and edges are rerouted through the frame.
+   */
+  collapsed?: boolean;
+  /**
+   * Extent mode for frame entities. Determines if the frame auto-sizes to fit children.
+   * - 'auto': Frame resizes to fit children with padding (default)
+   * - 'fixed': Frame uses explicit width/height
+   */
+  extent?: 'auto' | 'fixed';
+}
+
+/**
+ * A picture, a video or a model, drawn inside the entity's body.
+ *
+ * The node names one of its OUTPUT SOCKETS and the library draws whatever value is sitting on it.
+ * Values live in the evaluation engine rather than on entity data, so a node that produced an
+ * image shows it without the app echoing anything back through props — the same reason status
+ * lives there. `setSocketValue` fills the band for a graph that does not evaluate at all.
+ *
+ * What can be drawn: an image URL or data URI, a video URL, a `.glb`/`.gltf` model URL, or an
+ * `ImageBitmap`, `HTMLImageElement` or `HTMLCanvasElement` handed over directly. Anything else —
+ * a number, an object, nothing yet — leaves the band empty.
+ */
+export interface EntityPreview {
+  /** The output socket whose value is shown. */
+  socket: string;
+  /** The band's height in world pixels. Default: 160. */
+  height?: number;
+  /** Whether the picture fills the band and crops, or fits inside it whole. Default: 'cover'. */
+  fit?: 'cover' | 'contain';
+  /**
+   * Where the band sits in the body. Default: `'bottom'`.
+   *
+   * `'bottom'` is the default because adding a band to an existing node then moves nothing: every
+   * socket keeps the row it had and the card grows downwards. `'top'` is for a node whose picture
+   * IS its point — a generator, where the result is what you look at and the inputs are the
+   * controls underneath it.
+   */
+  position?: 'top' | 'bottom';
+  /**
+   * The same controls a media entity carries, drawn on the band under the pointer. Default: true.
+   *
+   * Every band gets the expand button, and a band showing a file gets a download button beside
+   * it. A clip also gets its play bar, and a model turns when the
+   * band is dragged — the rest of the card still moves the node.
+   */
+  controls?: boolean;
+}
+
+/** Edge connecting two entities */
+export interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  sourceSocket?: string;
+  targetSocket?: string;
+  /** Edge rendering type (overrides defaultEdgeType) */
+  type?: EdgeType;
+  selected?: boolean;
+  animated?: boolean;
+  /** Whether the edge connects incompatible socket types (in loose mode) */
+  invalid?: boolean;
+  /** Edge label (string or full config) */
+  label?: string | EdgeLabelConfig;
+  /** Marker at the start of the edge (source side) */
+  markerStart?: EdgeMarkerType | EdgeMarker;
+  /** Marker at the end of the edge (target side) */
+  markerEnd?: EdgeMarkerType | EdgeMarker;
+
+  // ============================================================================
+  // Reroute Support (Phase 7C)
+  // ============================================================================
+
+  /**
+   * IDs of reroute entities that this edge passes through.
+   * Edge is rendered as segments: source → reroute1 → reroute2 → ... → target
+   * Order matters - first reroute is closest to source.
+   */
+  reroutes?: string[];
+}
+
+/** Connection in progress */
+export interface Connection {
+  source: string | null;
+  sourceSocket: string | null;
+  target: string | null;
+  targetSocket: string | null;
+  /** Whether the connection has incompatible socket types (in loose mode) */
+  invalid?: boolean;
+}
+
+/** Connection mode for validation */
+export type ConnectionMode = 'strict' | 'loose';
+
+/** Connection validation params passed to isValidConnection callback */
+export interface ConnectionValidationParams {
+  source: SocketHandle;
+  target: SocketHandle;
+  sourceSocketType: string;
+  targetSocketType: string;
+}
+
+/** Connection validation function */
+export type IsValidConnectionFn = (
+  params: ConnectionValidationParams,
+  socketTypes: Record<string, SocketType>
+) => boolean;
+
+/** Parameters passed to onConnectStart callback */
+export interface OnConnectStartParams {
+  entityId: string;
+  socketId: string;
+  isInput: boolean;
+}
+
+/** State passed to onConnectEnd callback */
+export interface ConnectionEndState {
+  /** Whether the connection landed on a valid socket */
+  isValid: boolean;
+  /** The socket where the drag originated */
+  source: {
+    entityId: string;
+    socketId: string;
+    isInput: boolean;
+  };
+  /** World coordinates of the drop point */
+  position: XYPosition;
+}
+
+/** Entity change event */
+export type EntityChange =
+  | { type: 'position'; id: string; position: XYPosition }
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
+  | { type: 'add'; entity: Entity }
+  | { type: 'dimensions'; id: string; dimensions: Dimensions }
+  | { type: 'collapse'; id: string; collapsed: boolean }
+  | { type: 'parent'; id: string; parentId: string | null }
+  | { type: 'data'; id: string; data: EntityData };
+
+/** Edge change event */
+export type EdgeChange =
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
+  | { type: 'add'; edge: Edge };
+
+/** Entity type definition for custom rendering */
+export interface EntityTypeDefinition {
+  /** Entity type identifier */
+  type: string;
+  /** The header text for nodes of this type that carry no `data.label` of their own. */
+  label?: string;
+  /** The size nodes of this type open at, unless the node states its own. */
+  defaultWidth?: number;
+  defaultHeight?: number;
+  /**
+   * The sockets every node of this type has, unless the node states its own.
+   *
+   * Ids are required and are the app's: an edge names the socket it lands on, so a socket the
+   * table invented an id for could never be wired to anything the app saved.
+   */
+  inputs?: Socket[];
+  outputs?: Socket[];
+  /** The preview band every node of this type has, unless the node states its own. */
+  preview?: EntityPreview;
+  /**
+   * How entities of this type answer a change in their inputs. Default: 'reactive'.
+   *
+   * `reactive` re-runs as soon as its inputs settle. `manual` is a gate: the change marks it
+   * dirty and stops there until `evaluate(id)` opens it, after which reactive entities downstream
+   * cascade as normal. Anything expensive — a generation, a render — should be manual.
+   */
+  evaluation?: EvaluationMode;
+}
+
+/** Options for cloning elements */
+export interface CloneElementsOptions<T extends EntityData = EntityData> {
+  /** Offset to apply to cloned entity positions */
+  offset?: XYPosition;
+  /** Transform function for entity data (for app-specific transformations) */
+  transformData?: (data: T) => T;
+  /** Custom ID generation function */
+  generateId?: () => string;
+  /**
+   * When true, edges with one endpoint outside the cloned set will preserve
+   * that external reference instead of being filtered out.
+   * Default: false
+   */
+  preserveExternalConnections?: boolean;
+}
+
+/** Result of cloning elements */
+export interface CloneElementsResult {
+  /** Cloned entities with new IDs */
+  entities: Entity[];
+  /** Cloned edges with new IDs and remapped entity references */
+  edges: Edge[];
+  /** Map from old ID to new ID */
+  idMap: Map<string, string>;
+}
+
+/** Elements batch (for add/delete operations) */
+export interface ElementsBatch {
+  entities?: Entity[];
+  edges?: Edge[];
+}
+
+/** Delete elements batch (by ID) */
+export interface DeleteElementsBatch {
+  entityIds?: string[];
+  edgeIds?: string[];
+}
+
+/**
+ * A whole graph as data: what `toObject()` hands you and what `<KookieFlow entities edges>` takes
+ * back. Selection and drag state are not in it — they describe the moment, not the graph.
+ */
+export interface FlowObject {
+  entities: Entity[];
+  edges: Edge[];
+  viewport: Viewport;
+}
+
+/** Internal clipboard state */
+export interface InternalClipboard {
+  entities: Entity[];
+  edges: Edge[];
+}
+
+/** Options for pasting from internal clipboard */
+export interface PasteFromInternalOptions<T extends EntityData = EntityData> {
+  /** Offset to apply to pasted entity positions. Default: { x: 50, y: 50 } */
+  offset?: XYPosition;
+  /** Transform function for entity data (for app-specific transformations) */
+  transformData?: (data: T) => T;
+  /**
+   * Preserve external connections when pasting.
+   * When true, edges connecting to non-copied entities will be recreated,
+   * connecting the pasted entities to the original external entities.
+   * Default: false (only internal edges are pasted)
+   */
+  preserveExternalConnections?: boolean;
+}
+
+// ============================================================================
+// Font Types
+// ============================================================================
+
+// Re-export FontMetrics from text-layout for public API
+export type { FontMetrics } from '../utils/text-layout';
+import type { FontMetrics } from '../utils/text-layout';
+export type {
+  EvaluationMode,
+  EvaluationStatus,
+  EvaluationRecord,
+  EvaluationContext,
+  OnEvaluate,
+  OnStatusChange,
+} from '../core/evaluation';
+import type { EvaluationMode } from '../core/evaluation';
+
+/** Built-in font presets with pre-generated MSDF atlases */
+export type FontPreset = 'inter' | 'roboto' | 'source-serif' | 'system';
+
+/** Font weight configuration for MSDF rendering */
+export interface FontWeightConfig {
+  /** MSDF font metrics */
+  metrics: FontMetrics;
+  /** MSDF atlas URL or base64 data URL */
+  atlasUrl: string;
+}
+
+/** Custom font configuration */
+export interface FontConfig {
+  /** Font name for identification */
+  name: string;
+  /** Font weights configuration */
+  weights: {
+    regular: FontWeightConfig;
+    semibold?: FontWeightConfig;
+  };
+}
+
+// ============================================================================
+// Styling Types (Milestone 2)
+// ============================================================================
+
+/** Entity size scale (matches Kookie UI Card) */
+export type EntitySize = '1' | '2' | '3' | '4' | '5';
+
+/** Entity visual variant (matches Kookie UI Card) */
+export type EntityVariant = 'surface' | 'outline' | 'soft' | 'classic' | 'ghost';
+
+/** Entity border radius style */
+export type EntityRadius = 'none' | 'small' | 'medium' | 'large' | 'full';
+
+/**
+ * Where an entity's title is drawn: `inside` the body in a band of its own, `outside` above the
+ * body, or `none` — no title at all.
+ */
+export type HeaderPosition = 'none' | 'inside' | 'outside';
+
+/** 26 Kookie UI accent colors */
+export type AccentColor =
+  | 'gray'
+  | 'gold'
+  | 'bronze'
+  | 'brown'
+  | 'yellow'
+  | 'amber'
+  | 'orange'
+  | 'tomato'
+  | 'red'
+  | 'ruby'
+  | 'crimson'
+  | 'pink'
+  | 'plum'
+  | 'purple'
+  | 'violet'
+  | 'iris'
+  | 'indigo'
+  | 'blue'
+  | 'cyan'
+  | 'teal'
+  | 'jade'
+  | 'green'
+  | 'grass'
+  | 'lime'
+  | 'mint'
+  | 'sky';
+
+/** Style overrides for entities (fine-grained control) */
+export interface EntityStyleOverrides {
+  /** Background color (CSS color, converted to RGB for WebGL) */
+  background?: string;
+  /** Border color (CSS color) */
+  borderColor?: string;
+  /** Border width in pixels */
+  borderWidth?: number;
+  /** Border radius in pixels (overrides radius prop) */
+  borderRadius?: number;
+  /** Shadow level or 'none' */
+  shadow?: '1' | '2' | '3' | '4' | '5' | '6' | 'none';
+}
+
+/** Minimap position */
+export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+/** Options for fitView() */
+export interface FitViewOptions {
+  /** Padding around the content in pixels. Default: 50 */
+  padding?: number;
+  /** Whether to include hidden entities in the bounds calculation. Default: true */
+  includeHiddenEntities?: boolean;
+  /** Minimum zoom level for the fit. Default: uses component's minZoom */
+  minZoom?: number;
+  /** Maximum zoom level for the fit. Default: 1 (won't zoom in past 100%) */
+  maxZoom?: number;
+  /** Specific entities to fit (by ID). If not provided, fits all entities. */
+  entities?: string[];
+  /** Animation duration in ms. 0 = instant. Default: 0 */
+  duration?: number;
+}

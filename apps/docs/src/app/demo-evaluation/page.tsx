@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Code, Flex, Switch, Text, ToolbarButton } from '@kookie-ui/react';
+import { Code, Flex, Switch, Text, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
 import {
   KookieFlow,
   useGraph,

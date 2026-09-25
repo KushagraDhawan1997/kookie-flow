@@ -21,7 +21,7 @@ export default defineConfig({
           exclude: ['src/**/*.dom.test.ts', 'src/**/*.dom.test.tsx'],
           // Vitest empties every stylesheet, a `?raw` one included. v2's is let through so
           // gl/material.test.ts can hold the GL clocks to the tokens v2 actually ships.
-          css: { include: [/@kookie-ui\/react\/dist\/styles\.css/] },
+          css: { include: [/@kushagradhawan\/kookie-ui-react\/dist\/styles\.css/] },
         },
       },
       {

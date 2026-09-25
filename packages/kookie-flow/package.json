@@ -1,12 +1,13 @@
 {
   "name": "@kushagradhawan/kookie-flow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
   "author": "Kushagra Dhawan",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/KushagraDhawan1997/kookie-flow"
+    "url": "https://github.com/KushagraDhawan1997/kookie-flow",
+    "directory": "packages/kookie-flow"
   },
   "keywords": [
     "react",
@@ -24,6 +25,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "kookie-flow-source": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -34,6 +36,7 @@
       }
     },
     "./plugins": {
+      "kookie-flow-source": "./src/plugins/index.ts",
       "import": {
         "types": "./dist/plugins/index.d.ts",
         "default": "./dist/plugins/index.js"
@@ -44,6 +47,7 @@
       }
     },
     "./layout": {
+      "kookie-flow-source": "./src/core/layout.ts",
       "import": {
         "types": "./dist/core/layout.d.ts",
         "default": "./dist/core/layout.js"
@@ -56,18 +60,17 @@
   },
   "files": [
     "dist",
-    "fonts",
     "PRODUCTION.md"
   ],
   "sideEffects": false,
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "tsc --noEmit && tsc -p tsconfig.harness.json",
-    "test": "vitest run",
+    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc --noEmit && tsc -p tsconfig.harness.json",
+    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-react test",
     "test:watch": "vitest",
     "clean": "rm -rf dist .turbo",
-    "generate:fonts": "node scripts/generate-fonts.js",
+    "generate:fonts": "pnpm --filter @kushagradhawan/kookie-flow-webgl generate:fonts",
     "harness:build": "node harness/build.mjs",
     "harness:spike:color": "node harness/spikes/color-parity.mjs",
     "harness:spike:labels": "node harness/spikes/label-zoom.mjs",
@@ -85,11 +88,12 @@
     "harness:store": "node harness/spikes/core-store-bench.mjs",
     "harness:evaluation": "node harness/spikes/evaluation-bench.mjs",
     "test:spatial-stress": "node harness/spikes/spatial-overlap.mjs",
-    "test:package": "node scripts/test-package.mjs",
-    "check:release": "pnpm run lint && pnpm run test && pnpm run test:spatial-stress && pnpm run build && pnpm run test:package && pnpm run test:browser"
+    "test:package": "node ../../scripts/test-packages.mjs",
+    "check:release": "pnpm -w check:boundaries && pnpm run lint && pnpm run test && pnpm run test:spatial-stress && pnpm --filter @kushagradhawan/kookie-flow... run build && pnpm run test:package && pnpm run test:browser"
   },
   "dependencies": {
-    "zustand": "^5.0.15"
+    "@kushagradhawan/kookie-flow-react": "workspace:*",
+    "@kushagradhawan/kookie-flow-core": "workspace:*"
   },
   "peerDependencies": {
     "@react-three/drei": "^10.7.8",
@@ -97,7 +101,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "~0.186.0",
-    "@kookie-ui/react": "0.0.0"
+    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.1"
   },
   "devDependencies": {
     "@react-three/drei": "^10.7.8",
@@ -116,10 +120,14 @@
     "tsup": "^8.3.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.0",
-    "@kookie-ui/react": "file:../../vendor/kookie-ui-react-0.0.0.tgz",
-    "vite": "^8.3.0"
+    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz",
+    "vite": "^8.3.0",
+    "@kushagradhawan/kookie-flow-webgl": "workspace:*"
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

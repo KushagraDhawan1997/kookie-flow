@@ -159,6 +159,5 @@ export function exportPng(flow: KookieFlowInstance) {
 }
 ```
 
-Only what the canvas draws with WebGL is in the image. Comments, widget components you supply
-through `widgetTypes`, the minimap, and anything you pass as `children` are drawn outside the WebGL
-canvas, so they're left out.
+The image includes WebGL nodes, notes, text, widgets and media. The minimap, toolbars, native edit
+fields and anything you pass as `children` live outside the canvas, so they're left out.

@@ -14,7 +14,7 @@ import {
   Stack,
   Text,
   TextField,
-} from '@kookie-ui/react';
+} from '@kushagradhawan/kookie-ui-react';
 
 import { authClient } from '../auth-client';
 import { Wordmark } from '../wordmark';

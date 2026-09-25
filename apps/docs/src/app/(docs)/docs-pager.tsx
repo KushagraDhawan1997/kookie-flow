@@ -39,7 +39,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   useToolbarOverflow,
-} from "@kookie-ui/react";
+} from "@kushagradhawan/kookie-ui-react";
 import Link from "next/link";
 
 import { ArrowLeftIcon, ArrowRightIcon } from "../icons";

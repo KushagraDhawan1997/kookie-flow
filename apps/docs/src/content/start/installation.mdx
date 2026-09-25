@@ -2,73 +2,51 @@ Kookie Flow is a React component that draws a node graph with WebGL. You install
 React Three Fiber and three.js, which do the drawing, and KookieUI v2, which supplies the
 theme and the controls. It needs React 19 and a browser with WebGL 2.
 
-## Install the package
+## Choose the package
+
+`@kushagradhawan/kookie-flow-react` is the normal React entry. The renderer lives in
+`@kushagradhawan/kookie-flow-webgl`; graph logic lives in `@kushagradhawan/kookie-flow-core`.
+The old `@kushagradhawan/kookie-flow` import forwards to the new packages.
+
+These 0.2.0 candidates are not published. Build all sibling packages and pack them with pnpm:
 
 ```bash
-pnpm add @kushagradhawan/kookie-flow
+pnpm install --frozen-lockfile
+pnpm --filter @kushagradhawan/kookie-flow... run build
+pnpm test:packages
+pnpm --filter '@kushagradhawan/kookie-flow*' -r pack --pack-destination ./artifacts
 ```
 
-The package has no stylesheet of its own. The canvas reads its colours, corners and spacing
-from the KookieUI theme at runtime, so the only CSS you import is KookieUI's.
+Install all four archives in your app, together with
+`vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz`. This UI archive preserves the tested Flow
+appearance. Current UI v2 source is a separate upgrade and is not interchangeable with it.
 
-`KookieFlow` uses hooks and a WebGL context, and the package doesn't mark itself as client
-code. In the Next.js App Router, render it from a file that starts with `"use client"`.
+## Install the renderer peers
 
-Use the ES module build where your tooling allows it. The canvas draws text with a bundled
-Inter font atlas, and the ES module build keeps that atlas in a separate chunk that loads only
-when a canvas draws with Inter. The CommonJS build can't load a chunk, so it carries the atlas
-inline and its entry file is larger.
-
-## Install the peer dependencies
-
-```bash
-pnpm add react react-dom three @react-three/fiber @react-three/drei
-```
-
-| Package | Version |
+| Package | Supported range |
 | --- | --- |
-| `react` | 19.0.0 or later |
-| `react-dom` | 19.0.0 or later |
-| `three` | 0.170.0 or later |
-| `@react-three/fiber` | 9.0.0 or later |
-| `@react-three/drei` | 10.0.0 or later |
-| `@kookie-ui/react` | any version (see the next section) |
+| `react`, `react-dom` | ^19.2.8 |
+| `three` | ~0.186.0 |
+| `@react-three/fiber` | ^9.7.0 |
+| `@react-three/drei` | ^10.7.8 |
+| `@kushagradhawan/kookie-ui-react` | 0.0.0-flow.1 from the supplied archive |
 
-Kookie Flow doesn't bundle any of these. It uses the copies your app installs.
+The core alone needs no React, Three, KookieUI or browser globals. Node tooling and CJS require
+Node 24+. Both module formats and their declarations are tested outside the monorepo.
 
-## Add KookieUI v2
+`KookieFlow` uses hooks and WebGL. In Next.js App Router, import it from a `"use client"` file.
+The canvas has no stylesheet of its own: its appearance comes from the KookieUI stylesheet.
 
-`@kookie-ui/react` is a required peer dependency. The main entry imports the selection toolbar's
-controls from it. Install the tarball below before installing Kookie Flow.
-
-KookieUI v2 isn't published to npm yet. Build it from its repository and pack it into a
-tarball:
-
-```bash
-git clone https://github.com/KushagraDhawan1997/kookie-ui-v2.git
-cd kookie-ui-v2 && pnpm install
-pnpm --filter @kookie-ui/react run build
-cd packages/ui && npm pack --pack-destination /path/to/your-app/vendor
-```
-
-Then depend on the tarball from your app:
-
-```json title="package.json"
-{
-  "dependencies": {
-    "@kookie-ui/react": "file:./vendor/kookie-ui-react-0.0.0.tgz"
-  }
-}
-```
+## Add the theme
 
 Import the stylesheet once and put a `Theme` at the root of your app. The canvas reads its
-colours and corners from the first `Theme` element on the page, so the graph follows the theme's
+colours and corners from its own inherited `Theme` scope, so the graph follows the theme's
 light or dark appearance and its radius. The [Theming](/styling/theming) chapter covers what
 the canvas reads.
 
 ```tsx title="app/layout.tsx"
-import "@kookie-ui/react/styles.css";
-import { Theme } from "@kookie-ui/react";
+import "@kushagradhawan/kookie-ui-react/styles.css";
+import { Theme } from "@kushagradhawan/kookie-ui-react";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -90,7 +68,7 @@ Give the parent a height, or place it in a layout that hands it one.
 ```tsx title="app/editor/page.tsx"
 "use client";
 
-import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow";
+import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow-react";
 
 const entities: Entity[] = [
   { id: "a", type: "note", position: { x: 0, y: 0 }, data: { label: "First node" } },
@@ -118,7 +96,7 @@ holds your graph.
 
 ## Import from the plugins subpath
 
-Three hooks live in a second entry point, `@kushagradhawan/kookie-flow/plugins`:
+Three hooks live in a second entry point, `@kushagradhawan/kookie-flow-react/plugins`:
 
 - `useClipboard` copies, cuts and pastes the selection. See [Clipboard and cloning](/data/clipboard).
 - `useKeyboardShortcuts` binds your own keys. See [Keyboard](/interaction/keyboard).
@@ -128,8 +106,8 @@ Three hooks live in a second entry point, `@kushagradhawan/kookie-flow/plugins`:
 child of `KookieFlow`. Called anywhere else, it throws.
 
 ```tsx
-import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow";
-import { useClipboard, useKeyboardShortcuts } from "@kushagradhawan/kookie-flow/plugins";
+import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow-react";
+import { useClipboard, useKeyboardShortcuts } from "@kushagradhawan/kookie-flow-react/plugins";
 
 function ClipboardKeys() {
   const { copy, cut, paste } = useClipboard();
@@ -168,8 +146,8 @@ pnpm add -D @types/three
 Import types with `import type`, so they leave no trace in your bundle:
 
 ```ts
-import type { Edge, Entity, KookieFlowInstance } from "@kushagradhawan/kookie-flow";
-import type { UseClipboardReturn } from "@kushagradhawan/kookie-flow/plugins";
+import type { Edge, Entity, KookieFlowInstance } from "@kushagradhawan/kookie-flow-react";
+import type { UseClipboardReturn } from "@kushagradhawan/kookie-flow-react/plugins";
 ```
 
 Next, the [Quick start](/start/quick-start) builds a two-node graph you can wire up by

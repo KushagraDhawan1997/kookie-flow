@@ -88,8 +88,8 @@ The canvas works out every input at the moment a run starts, one socket at a tim
    even before your `onWidgetChange` has written it back. After that comes
    `data.values[socketId]` on the entity, and then the socket's `defaultValue`.
 
-A widget you supply through `widgetTypes` reaches a run when your `onWidgetChange` writes the
-value into `data.values`. The [Sockets and widgets](/entities/sockets) chapter shows that write.
+An app inspector can update evaluation inputs by writing to `data.values`. The
+[Sockets and widgets](/entities/sockets) chapter shows that write.
 
 Output values are kept by the canvas, not in your entities, so a result never passes through
 your React state. Read one with `getSocketValue(entityId, socketId)` on the ref.
