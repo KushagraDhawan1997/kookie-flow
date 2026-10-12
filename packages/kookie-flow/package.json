@@ -101,7 +101,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "~0.186.0",
-    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.1"
+    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.2"
   },
   "devDependencies": {
     "@react-three/drei": "^10.7.8",
@@ -120,7 +120,7 @@
     "tsup": "^8.3.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.0",
-    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz",
+    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz",
     "vite": "^8.3.0",
     "@kushagradhawan/kookie-flow-webgl": "workspace:*"
   },

@@ -161,7 +161,7 @@ try {
   const dependencies = {
     ...tarballs,
     '@kushagradhawan/kookie-ui-react':
-      'file:' + join(root, 'vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz'),
+      'file:' + join(root, 'vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz'),
   };
   for (const peer of Object.keys(manifests.webgl.peerDependencies))
     if (!(peer in dependencies)) dependencies[peer] = legacyDev[peer].replace(/^[~^]/, '');

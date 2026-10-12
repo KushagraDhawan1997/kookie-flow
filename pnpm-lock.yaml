@@ -194,8 +194,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/kookie-flow
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@mdx-js/loader':
         specifier: ^3.1.1
         version: 3.1.1
@@ -267,8 +267,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/kookie-flow
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -280,7 +280,7 @@ importers:
         version: 7.0.107(zod@4.6.2)
       better-auth:
         specifier: 1.7.4
-        version: 1.7.4(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9))(next@16.3.5(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)))
+        version: 1.7.4(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9))(next@16.3.5(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)))
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9)
@@ -329,7 +329,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+        version: 5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
 
   packages/kookie-flow:
     dependencies:
@@ -344,8 +344,8 @@ importers:
         specifier: workspace:*
         version: link:../kookie-flow-webgl
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -467,8 +467,8 @@ importers:
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -1584,9 +1584,9 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz':
-    resolution: {integrity: sha512-jNB1zZrdRe6n4Nx/uih/x3g0nRiv7pUnJRd5CRz1HSoCV01HYj9nl2OqTCmWcLykkzTGNcSKYLD0XmuzSdPVlw==, tarball: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz}
-    version: 0.0.0-flow.1
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz':
+    resolution: {integrity: sha512-zHZM+k7OoUGixd9vOs1U1AYVKYTBmYYOsTqJCULHjwP15rJtgaB+3MgyA/ic+Kf47FDy4PTDT+pZotwN3NolKQ==, tarball: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz}
+    version: 0.0.0-flow.2
     hasBin: true
     peerDependencies:
       react: ^19.0.0
@@ -5093,7 +5093,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.1.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@base-ui/react': 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@shadcn/react': 0.3.1(@types/react@19.2.18)(react@19.2.8)
@@ -5653,7 +5653,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.22: {}
 
-  better-auth@1.7.4(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9))(next@16.3.5(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))):
+  better-auth@1.7.4(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9))(next@16.3.5(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))):
     dependencies:
       '@better-auth/core': 1.7.4(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.4.0(zod@4.6.2))(jose@6.2.12)(kysely@0.29.5)(nanostores@1.5.3)
       '@better-auth/drizzle-adapter': 1.7.4(@better-auth/core@1.7.4(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.4.0(zod@4.6.2))(jose@6.2.12)(kysely@0.29.5)(nanostores@1.5.3))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(kysely@0.29.5)(postgres@3.4.9))
@@ -5678,7 +5678,7 @@ snapshots:
       next: 16.3.5(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
-      vitest: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+      vitest: 5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
@@ -7842,6 +7842,28 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.19.7
       jsdom: 30.0.1(@noble/hashes@2.4.0)
+    transitivePeerDependencies:
+      - msw
+
+  vitest@5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)):
+    dependencies:
+      '@types/chai': 5.2.3
+      '@vitest/mocker': 5.0.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
+      chai: 6.2.2
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 1.3.1
+      obug: 2.2.1
+      picomatch: 4.0.7
+      std-env: 4.2.0
+      tinybench: 6.1.4
+      tinyexec: 1.3.0
+      tinyglobby: 0.2.17
+      vite: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 26.5.1
+      jsdom: 25.0.1
     transitivePeerDependencies:
       - msw
 

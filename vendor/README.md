@@ -1,9 +1,7 @@
 # Kookie UI snapshot
 
-Flow pins `@kushagradhawan/kookie-ui-react@0.0.0-flow.1` to preserve its existing appearance during the package split. This archive is the previous `kookie-ui-react-0.0.0.tgz` with only the package name and version changed in package/package.json. Every other member is byte-identical, including JavaScript, declarations, CSS and fonts.
+Flow pins `@kushagradhawan/kookie-ui-react@0.0.0-flow.2`, packed from `kookie-ui-v2` main at `d32836a` (motion removal merged). Only the version in package/package.json differs from v2's own `pnpm pack` output.
 
-The current Kookie UI v2 repository has newer design changes. Upgrade to that release as a separate reviewed change. The snapshot must be supplied to consumers until a versioned UI dependency is published. Neither package has been published by this change.
+To refresh: build `packages/ui` in kookie-ui-v2, pack it, bump the `flow.N` version, and update every reference. A new version is required; pnpm reuses a lockfile entry whose name and version are unchanged.
 
-Original SHA-256: `a99acd6594d4296ff062cbae25a5743a4a4a37d44d1d19c6859e5c0e2abb5538`
-
-Renamed SHA-256: `017ea10f79c75a87e46cf6f21b2e57e0e600073c22aacef315415d1e40a05192`
+SHA-256: `d3eaa6be0039d81f66a5bb7b2d8652eed3cda15e6c44196cf95a096c5a24ab85`

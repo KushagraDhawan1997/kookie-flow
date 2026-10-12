@@ -12,7 +12,7 @@ This is the compatibility entry for the split core, WebGL and React packages. Ne
 should import `@kushagradhawan/kookie-flow-react`.
 
 The 0.2.0 candidates are unpublished. Pack with pnpm and install all four Flow archives plus the
-pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.1` archive from this repository's `vendor/`.
+pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.2` archive from this repository's `vendor/`.
 Do not substitute current UI v2 without qualifying it: that source changed since the tested snapshot.
 See [package migration](../../docs/PACKAGES.md) and [production qualification](./PRODUCTION.md).
 
