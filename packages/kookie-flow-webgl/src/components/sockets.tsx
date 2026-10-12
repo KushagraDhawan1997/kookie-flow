@@ -302,6 +302,12 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
   const dirtyRef = useRef(true);
   const positionDirtyRef = useRef(false);
   /**
+   * This layer's own record of what moved. It read the store's shared set, which the edge layer
+   * clears after its pass — and edges draw first, so every drag frame found the set empty and the
+   * sockets stayed put until the drop's full rebuild caught them up.
+   */
+  const pendingMovesRef = useRef(new Set<string>());
+  /**
    * The camera moved, and whether that matters. Sockets used to answer "never" — this layer had
    * NO viewport cull at all: it wrote every socket of every entity in the graph, set both meshes'
    * `count` to the total, and let the GPU clip. On forty thousand sockets that is forty thousand
@@ -687,6 +693,8 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
   );
   const attachBg = useMemo(() => attach('bg'), [attach]);
   const attachFg = useMemo(() => attach('fg'), [attach]);
+
+  useEffect(() => store.getState().trackEntityMovements(pendingMovesRef.current), [store]);
 
   // Store subscriptions
   useEffect(() => {
@@ -1102,7 +1110,7 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
 
     // Position-only fast path: only update instance matrices for moved entities
     if (!dirtyRef.current && positionDirtyRef.current) {
-      const movedIds = store.getState().getMovedEntityIds();
+      const movedIds = pendingMovesRef.current;
       const socketRanges = entitySocketRangesRef.current;
 
       if (movedIds.size > 0 && socketRanges.size > 0) {
@@ -1203,6 +1211,8 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
       }
 
       positionDirtyRef.current = false;
+      // Kept on a bail into the full rebuild, which clears it once it has rewritten everything.
+      if (!dirtyRef.current) movedIds.clear();
       return;
     }
 
@@ -1313,6 +1323,7 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
     fgMesh.count = clampedCount;
     dirtyRef.current = false;
     positionDirtyRef.current = false;
+    pendingMovesRef.current.clear();
     hoverDirtyRef.current = false;
     hoverTouchedRef.current.clear();
   });
