@@ -71,6 +71,27 @@ describe('triage on the server', () => {
     expect(messages[0]?.parts).toHaveLength(1);
   });
 
+  it('takes stored lines out of the model\u2019s copy when triage is off, not just new ones', async () => {
+    const { answers } = await triage(
+      'Concept art for a controller for a handheld games console',
+      '',
+      undefined
+    );
+    const messages: UIMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Concept art' }],
+        metadata: { triage: answers },
+      },
+    ];
+    expect(withTriageNotes(messages)[0]?.parts).toHaveLength(2);
+    // A conversation triaged before the flag was set keeps its answers; the model must stop reading
+    // them, or the off side of the comparison is measured against an agent still being hinted.
+    process.env.STUDIO_TRIAGE = 'off';
+    expect(withTriageNotes(messages)[0]?.parts).toHaveLength(1);
+  });
+
   it('is invisible to the mock agent, which reads only the words the person wrote', async () => {
     const { answers } = await triage('a controller', '', undefined);
     const [user] = withTriageNotes([

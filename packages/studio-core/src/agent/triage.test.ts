@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CANVAS_CHARS,
   isTriageAnswers,
   isTriageNote,
   readTriage,
@@ -46,6 +47,16 @@ describe('triage', () => {
     expect(kept?.shapeP).toBe(1);
   });
 
+  it('knows its own line from a message that merely starts the same way', () => {
+    const kept = readTriage(answers);
+    if (!kept) throw new Error('no answers');
+    expect(isTriageNote(triageNote(kept))).toBe(true);
+    // A person may write this. Read as a note, their message reached the scripted agent as empty.
+    expect(isTriageNote('[triage] why is this note showing up?')).toBe(false);
+    expect(isTriageNote('[triage]')).toBe(false);
+    expect(isTriageNote(`${triageNote(kept)} and then some`)).toBe(false);
+  });
+
   it('writes one line, the same every time, that the mock and the panel can tell apart', () => {
     const kept = readTriage(answers);
     if (!kept) throw new Error('no answers');
@@ -61,6 +72,9 @@ describe('triage', () => {
   it('names an empty canvas and bounds a large one', () => {
     expect(triageState('a cat', '  ').canvas).toBe('The canvas is empty.');
     const big = triageState('a cat', 'n1 source/text\n'.repeat(1000));
+    // The browser slices to this before sending, so the route's body limit is never the thing that
+    // decides whether a large graph gets a triage at all.
+    expect(CANVAS_CHARS).toBe(6_000);
     expect(big.canvas.length).toBeLessThan(6_100);
     expect(big.canvas.endsWith('…')).toBe(true);
     expect(big.message).toBe('a cat');

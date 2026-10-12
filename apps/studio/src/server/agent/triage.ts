@@ -112,8 +112,13 @@ export async function triage(
  * its metadata gets the line they make, after its own words. The stored conversation and the panel
  * keep the messages as they were; only the copy sent to the model changes, and it changes the same way
  * on every step, so the provider's cache holds.
+ *
+ * `STUDIO_TRIAGE=off` takes the lines out here too, not only off new messages: a conversation
+ * triaged last week would otherwise keep feeding its stored hints to the model, and the off side of
+ * the comparison the flag exists for would be measured against an agent still reading them.
  */
 export function withTriageNotes(messages: readonly UIMessage[]): UIMessage[] {
+  if (!triageEnabled()) return [...messages];
   return messages.map((message) => {
     if (
       message.role !== 'user' ||

@@ -10,7 +10,7 @@
 
 import { Chat } from '@ai-sdk/react';
 import { DefaultChatTransport, getToolName, isToolUIPart, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
-import { isBrowserTool, isTriageAnswers, type GraphOp, type TriageAnswers } from 'studio-core';
+import { CANVAS_CHARS, isBrowserTool, isTriageAnswers, type GraphOp, type TriageAnswers } from 'studio-core';
 
 import { readAgentSettings } from '@/app/agent-choice';
 import { AGENT_EFFORTS, DEFAULT_AGENT_SETTINGS, type AgentSettings } from '@/app/agent-models';
@@ -32,6 +32,8 @@ export interface AgentSessionState {
   settings: AgentSettings;
   pendingRun: PendingRun | null;
   running: boolean;
+  /** A message is being read by triage and has not reached the chat yet. */
+  delivering: boolean;
   /** Picture node ids attached since the last message. */
   attached: string[];
   uploading: boolean;
@@ -130,6 +132,24 @@ export class AgentSession {
   private starting: Promise<void> | null = null;
   /** The attached pictures' addresses, beside `state.attached`, so the sent message can show them. */
   private attachedUrls: string[] = [];
+  /**
+   * Messages reach the chat one at a time, in the order they were sent. Each waits for its triage
+   * first, and two waits that overlapped would hand the chat two messages at once: the AI SDK's
+   * `Chat` starts a request per `sendMessage` and keeps only the last as the one `stop` aborts, so
+   * two steps would stream into one message list, bill two turns, and save over each other.
+   */
+  private queue: Promise<void> = Promise.resolve();
+  private waiting = 0;
+  /**
+   * Bumped by anything that makes a message in flight no longer wanted — today Start over, which
+   * empties the conversation. A delivery whose generation has moved on is dropped rather than
+   * resurrecting the message into a conversation the person cleared.
+   *
+   * Not bumped by `close()`: the session outlives the panel on purpose (see the note at the top),
+   * and a message typed before the pane closed is still the person's message, so it is sent.
+   */
+  private generation = 0;
+  private triageRequest: AbortController | null = null;
 
   constructor(
     private readonly graphId: string,
@@ -142,6 +162,7 @@ export class AgentSession {
       settings: DEFAULT_AGENT_SETTINGS,
       pendingRun: null,
       running: false,
+      delivering: false,
       attached: [],
       uploading: false,
     };
@@ -160,6 +181,16 @@ export class AgentSession {
     if (this.disposed) return;
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * `delivering` is written even while disposed, unlike everything else: a delivery that ends after
+   * the pane closed would otherwise leave the flag raised, and the composer it blocks would still be
+   * blocked when the pane opened again.
+   */
+  private setDelivering(delivering: boolean): void {
+    this.state = { ...this.state, delivering };
+    if (!this.disposed) for (const listener of this.listeners) listener();
   }
 
   /** Load the conversation, make the chat, and send an ask waiting from Home. Once, however often asked. */
@@ -282,34 +313,81 @@ export class AgentSession {
     const effort = AGENT_EFFORTS.find((e) => e.id === pending.effort)?.id ?? this.state.settings.effort;
     this.set({ settings: { model: pending.model || this.state.settings.model, effort } });
     const ids = this.host.addPictures(pending.pictures);
-    void this.deliver(chat, withPictures(pending.text, ids), pending.pictures.map((p) => p.url).filter(Boolean));
+    this.enqueue(chat, withPictures(pending.text, ids), pending.pictures.map((p) => p.url).filter(Boolean));
+  }
+
+  /**
+   * Queue a message for the chat. `delivering` is raised for as long as anything is queued, and the
+   * panel blocks the composer on it: without that the composer stays live through the triage wait,
+   * and a second Enter inside it would be a second message racing the first.
+   */
+  private enqueue(chat: Chat<UIMessage>, text: string, pictures: string[]): void {
+    // Taken here rather than inside `deliver`, which runs a tick later: a Start over in between
+    // would bump the generation before the delivery had read it, and the message it means to drop
+    // would compare equal and be sent.
+    const generation = this.generation;
+    this.waiting++;
+    this.setDelivering(true);
+    this.queue = this.queue
+      .then(() => this.deliver(chat, text, pictures, generation))
+      .catch((error: unknown) => {
+        console.error('[studio] the message was not sent', error);
+      })
+      .finally(() => {
+        this.waiting--;
+        if (this.waiting === 0) this.setDelivering(false);
+      });
   }
 
   /**
    * Ask the server to read the message before it goes (`/api/agent/triage`), and send it with the
    * answers on its metadata, where the step route turns them into a line for the model and the panel
    * ignores them. A triage that fails, or takes too long, is a message sent without one.
+   *
+   * The message is sent even if the pane closed while triage ran — the session outlives the panel,
+   * and dropping it there lost what the person had typed with nothing said. Only a conversation
+   * cleared underneath it (the generation) or a different chat stops it.
    */
-  private async deliver(chat: Chat<UIMessage>, text: string, pictures: string[]): Promise<void> {
+  private async deliver(
+    chat: Chat<UIMessage>,
+    text: string,
+    pictures: string[],
+    generation: number
+  ): Promise<void> {
+    if (this.generation !== generation) return;
     const triage = await this.triage(text);
-    if (this.disposed || this.state.chat !== chat) return;
-    void chat.sendMessage({ text, metadata: { pictures, ...(triage ? { triage } : {}) } });
+    if (this.generation !== generation || this.state.chat !== chat) return;
+    await chat.sendMessage({ text, metadata: { pictures, ...(triage ? { triage } : {}) } });
   }
 
   private async triage(text: string): Promise<TriageAnswers | null> {
+    const request = new AbortController();
+    this.triageRequest = request;
     try {
       const res = await fetch('/api/agent/triage', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: this.graphId, text, canvas: this.host.readGraph([]) }),
-        signal: AbortSignal.timeout(TRIAGE_TIMEOUT_MS),
+        body: JSON.stringify({
+          id: this.graphId,
+          text,
+          // The server reads at most `CANVAS_CHARS` of it and refuses a body far larger, so a big
+          // graph would answer 400 and turn triage off for good on exactly the graphs where the
+          // extend-or-new question is worth asking.
+          canvas: this.host.readGraph([]).slice(0, CANVAS_CHARS),
+        }),
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(TRIAGE_TIMEOUT_MS)]),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.warn(`[studio] the message went without triage: the server answered ${res.status}`);
+        return null;
+      }
       const body: unknown = await res.json();
       return isRecord(body) && isTriageAnswers(body.triage) ? body.triage : null;
     } catch (error) {
       console.warn('[studio] the message went without triage', error);
       return null;
+    } finally {
+      if (this.triageRequest === request) this.triageRequest = null;
     }
   }
 
@@ -325,7 +403,7 @@ export class AgentSession {
     const pictures = this.attachedUrls;
     this.attachedUrls = [];
     this.set({ attached: [] });
-    void this.deliver(chat, message, pictures);
+    this.enqueue(chat, message, pictures);
   }
 
   async decide(approve: boolean): Promise<void> {
@@ -372,6 +450,10 @@ export class AgentSession {
   async startOver(): Promise<void> {
     const { chat } = this.state;
     if (!chat) return;
+    // A message still in triage belongs to the conversation being cleared: stop asking about it, and
+    // move the generation on so the delivery behind it does not put it back afterwards.
+    this.generation++;
+    this.triageRequest?.abort();
     await chat.stop();
     chat.messages = [];
     this.attachedUrls = [];

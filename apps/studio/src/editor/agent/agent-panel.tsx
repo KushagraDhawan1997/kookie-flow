@@ -79,7 +79,10 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
   const [text, setText] = React.useState('');
 
 
-  const thinking = status === 'submitted' || status === 'streaming';
+  // `delivering` is a message waiting for its triage: it has left the composer but not reached the
+  // chat, so `status` is still 'ready'. Without it here the composer stays live through that wait and
+  // a second Enter sends a second message that races the first into its own step request.
+  const thinking = status === 'submitted' || status === 'streaming' || state.delivering;
   const blocked = thinking || state.running || state.pendingRun !== null;
   // A model reasoning streams nothing to show (Claude and GPT hand back empty or no reasoning text), so
   // the panel says it is thinking until words or a tool call arrive.
@@ -89,7 +92,8 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
   const stepsLive = thinking && last?.role === 'assistant' && blocksOf(last).at(-1)?.kind === 'steps';
   const quiet =
     !stepsLive &&
-    (status === 'submitted' ||
+    (state.delivering ||
+      status === 'submitted' ||
       (status === 'streaming' && (!lastPart || lastPart.type === 'step-start' || lastPart.type === 'reasoning')));
   const send = () => {
     if (!text.trim() || blocked) return;
