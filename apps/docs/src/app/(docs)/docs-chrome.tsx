@@ -56,7 +56,7 @@ import { DocsNav, type NavSection } from "./docs-nav";
 import { DocsSearch } from "./docs-search";
 import { DocsTabBar } from "./docs-tab-bar";
 import { PAGES } from "./markdown";
-import { Wordmark } from "./wordmark";
+import { Logo } from "./logo";
 import { buildSearchIndex } from "./search-index";
 import "./prose.css";
 
@@ -229,10 +229,10 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
                 className="kd-masthead"
                 style={{ color: "inherit", textDecoration: "none" }}
               >
-                {/* STEP 8, the short form "Flow" (2026-09-14, Kushagra). One word in PP Playground
-                    runs 24-85 at this step (measured 2026-09-14), so it clears the search button
-                    even at the sidebar's 240 floor, where the button sits at 175-215. */}
-                <Wordmark size="7" />
+                {/* THE MARK ALONE (2026-09-27, Kushagra). The word said the name a second time
+                    in the one row a reader glances at all day; the footer spells it out. Its
+                    height is a type line, so it stands with the row it sits in. */}
+                <Logo height="var(--line-height-7)" />
               </Link>
               <DocsSearch index={buildSearchIndex()} />
             </Toolbar>

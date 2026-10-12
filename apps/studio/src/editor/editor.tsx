@@ -41,7 +41,7 @@ import {
 import { AppearanceToggle } from '@/app/appearance-toggle';
 import { BalanceMenu } from '@/app/balance-menu';
 import { PanelRightIcon, RedoIcon, RunIcon, UndoIcon } from '@/app/icons';
-import { Wordmark } from '@/app/wordmark';
+import { Logo } from '@/app/logo';
 import { ports } from '@/runtime/ports';
 import { pendingAskKey } from '@/shared/agent';
 import { AgentPanel } from './agent/agent-panel';
@@ -348,7 +348,7 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
               {/* The mark is the way home, as the docs site's is. The link carries the name: the
                   word inside it is a picture of the name and hidden from assistive tech. */}
               <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
-                <Wordmark />
+                <Logo height="var(--line-height-7)" />
               </NextLink>
               {/* NO SEPARATORS, as the docs band has none: each control is its own capsule and the
                   air between capsules does the separating. The gap is one step wider than the

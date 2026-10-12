@@ -51,7 +51,7 @@ import {
   UpscaleIcon,
   VideoIcon,
 } from '../icons';
-import { Wordmark } from '../wordmark';
+import { Logo } from '../logo';
 import './app-shell.css';
 
 const TOOLS = [
@@ -93,7 +93,7 @@ export function AppShell({ name, email, children }: AppShellProps) {
         <ShellPaneHeader>
           <Toolbar size="3">
             <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
-              <Wordmark />
+              <Logo height="var(--line-height-7)" />
             </NextLink>
           </Toolbar>
         </ShellPaneHeader>

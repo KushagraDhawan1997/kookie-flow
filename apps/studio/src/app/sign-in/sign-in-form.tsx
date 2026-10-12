@@ -17,7 +17,7 @@ import {
 } from '@kushagradhawan/kookie-ui-react';
 
 import { authClient } from '../auth-client';
-import { Wordmark } from '../wordmark';
+import { Logo } from '../logo';
 
 /**
  * One screen for both ways in. Who may create an account, and which account inherits what was made
@@ -59,7 +59,7 @@ export function SignInForm({ next }: { next: string }) {
             <Stack gap="4">
               {/* Its own row, set apart from the heading so the two do not read as one line of type. */}
               <Box pb="4">
-                <Wordmark />
+                <Logo height="var(--line-height-8)" />
               </Box>
               <Heading size="5">{signingUp ? 'Create an account' : 'Sign in'}</Heading>
 

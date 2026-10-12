@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <style>path{fill:#111113}@media (prefers-color-scheme:dark){path{fill:#fff}}</style>
-  <path transform="translate(11.51 60.00) scale(0.07254)" d="M77 0L77-772L488-772L488-648L479-648Q438-704 393-727Q348-750 280-750L280-750L213-750L213-434L449-434L449-409L213-409L213 0L77 0Z"/>
+  <style>g{fill:#111113}@media (prefers-color-scheme:dark){g{fill:#fff}}</style>
+  <g transform="translate(13.82 8.00) scale(0.72727)"><rect width="24" height="50" rx="12"/><path d="M26 12C26 5.37258 31.3726 0 38 0V0C44.6274 0 50 5.37258 50 12V12C50 18.6274 44.6274 24 38 24H26V12Z"/><path d="M26 26H30C41.0457 26 50 34.9543 50 46V54C50 60.6274 44.6274 66 38 66V66C31.3726 66 26 60.6274 26 54V26Z"/></g>
 </svg>

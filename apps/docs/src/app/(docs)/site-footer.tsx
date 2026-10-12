@@ -4,7 +4,7 @@ import { Surface } from "@kushagradhawan/kookie-ui-react";
 
 import { Footer } from "../../blocks/footer";
 import { CHAPTERS, SECTIONS } from "./chapters";
-import { Wordmark } from "./wordmark";
+import { Logo } from "./logo";
 
 /**
  * This site's own footer, and the footer block's first real consumer (2026-09-01, Kushagra:
@@ -75,7 +75,7 @@ export function SiteFooter() {
                 signs a page off rather than heading it, but the masthead sits in a narrow
                 sidebar and this sits in the page's own column, so the step that reads as a mark
                 there reads as a caption here. */}
-            <Wordmark form="full" size="8" />
+            <Logo height="var(--line-height-8)" />
           </Link>
         }
         groups={[
