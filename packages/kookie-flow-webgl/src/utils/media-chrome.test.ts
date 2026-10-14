@@ -8,7 +8,6 @@ import {
   EXPAND_BUTTON_SIZE,
   MESH_DRAG_STRIP_HEIGHT,
   ORBIT_MAX_PITCH,
-  easeChromePresence,
   fitsControls,
   fitsDownload,
   fitsExpand,
@@ -93,18 +92,6 @@ describe('a downloaded file name', () => {
     expect(downloadFileName('data:video/mp4;base64,AAAA', 'video', 'video/mp4')).toBe('video.mp4');
     expect(downloadFileName('blob:https://x/1', 'mesh', 'model/gltf-binary')).toBe('mesh.glb');
     expect(downloadFileName('https://cdn.test/files/abc123', 'image', '')).toBe('image');
-  });
-});
-
-describe('chrome fading', () => {
-  it('arrives, settles exactly, and leaves no entry once gone', () => {
-    const presences = new Map<string, number>();
-    let p = 0;
-    for (let i = 0; i < 120; i++) p = easeChromePresence(presences, 'a', true, 1 / 60);
-    expect(p).toBe(1);
-    for (let i = 0; i < 120; i++) p = easeChromePresence(presences, 'a', false, 1 / 60);
-    expect(p).toBe(0);
-    expect(presences.has('a')).toBe(false);
   });
 });
 

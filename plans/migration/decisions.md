@@ -1431,3 +1431,24 @@ alone, as v2 leaves its spinner: an animated edge's light, the drag line's dashe
 box's march, the caret blink, and the progress ring's chase, which is tuned to how often a handler
 reports. The success hold is a dwell, not a motion. The magnet is a live spring rather than a clock,
 and stiffening it by 1/0.36 at its 30Hz step cap would ring.
+
+### Addendum, 2026-10-14 — v2 has no motion, so the GL controls have none
+
+Kookie UI v2 removed motion: its stylesheet (`0.0.0-flow.2`) declares no `--motion-*`,
+`--press-*` or `--floating-fall` token and no transition. The GL controls follow. Every widget
+state is drawn where it is: colour steps change at once, a checkbox fills with its tick drawn, a
+switch's thumb sits on its side, a segmented thumb sits under its part, the focus ring is on or off
+at 2px. Nothing squashes, stretches or turns on a press, and v2's select chevron does not turn. A
+select or colour panel appears with no entrance, and media chrome shows and hides on hover with no
+fade.
+
+Removed rather than zeroed: `MOTION`, `MOTION_SPEED`, `PRESS_SQUASH`, `PRESS_SCALE`,
+`FOCUS_RING.land`, the transition tracker (`gl/motion.ts`), the easing kit (`gl/ease.ts`), the
+reduced-motion hook (nothing is left for it to reduce), the widget shader's clock and transition
+attributes, the popover's `openedAt`, and the media chrome fade. A state change is now one buffer
+write and no frames after it. `gl/material.test.ts` holds both halves to the installed stylesheet:
+v2 declares no motion, and the GL kit exports no clock.
+
+Content motion stays, as v2 keeps its spinner: an animated edge's light, the drag line's dashes, the
+selection box's march, the caret blink, the progress ring's chase and the magnet. This supersedes
+the 2026-09-14 addendum and the D20 motion notes.

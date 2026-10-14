@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MOTION } from './material';
+import * as kit from './index';
 
 declare global {
   interface ImportMeta {
@@ -11,9 +11,10 @@ declare global {
 }
 
 /**
- * A shader cannot read a custom property, so the GL controls keep their own copy of v2's clocks. A
- * copy drifts the day v2 retunes them — it did on 2026-09-14, to 0.6 of every duration — so the copy
- * is held to the stylesheet this package is installed against. `exhaustive`, because a glob skips
+ * v2 removed motion, so the GL controls have none either. A shader cannot read a custom property,
+ * so the controls used to keep their own copy of v2's clocks, and that copy drifted the day v2
+ * dropped them. This holds both halves to the stylesheet this package is installed against: v2
+ * declares no motion, and the GL kit exports none. `exhaustive`, because a glob skips
  * node_modules without it.
  */
 const SHEETS = Object.values(
@@ -25,27 +26,29 @@ const SHEETS = Object.values(
   })
 );
 
-/** A duration token in seconds, whether the minifier wrote `48ms` or `.33s`. */
-function token(name: string): number {
+function sheet(): string {
   if (SHEETS.length !== 1)
     throw new Error(`expected v2's stylesheet once, read ${SHEETS.length} files`);
-  const match = new RegExp(`--${name}:\\s*([\\d.]+)(ms|s)\\b`).exec(SHEETS[0]);
-  if (!match) throw new Error(`v2's stylesheet declares no --${name}`);
-  return match[2] === 'ms' ? Number(match[1]) / 1000 : Number(match[1]);
+  return SHEETS[0];
 }
 
-describe('MOTION', () => {
-  it.each([
-    ['hoverIn', 'motion-hover-in'],
-    ['hoverOut', 'motion-hover-out'],
-    ['press', 'motion-press'],
-    ['rise', 'motion-rise'],
-    ['mark', 'motion-mark'],
-    ['ring', 'motion-ring'],
-    ['floatingFall', 'floating-fall'],
-    ['travelLead', 'motion-travel-lead'],
-    ['travelTrail', 'motion-travel-trail'],
-  ] as const)("%s is v2's --%s", (key, name) => {
-    expect(MOTION[key]).toBeCloseTo(token(name), 6);
+describe('motion', () => {
+  it('v2 declares no motion tokens', () => {
+    expect(sheet().match(/--(motion|press|floating-fall)[\w-]*\s*:/g) ?? []).toEqual([]);
+  });
+
+  it('v2 declares no transitions', () => {
+    expect(sheet().match(/transition(-[a-z]+)?\s*:/g) ?? []).toEqual([]);
+  });
+
+  it('the GL kit exports no motion clock', () => {
+    const names = Object.keys(kit).filter((name) =>
+      /motion|press|ease|spring|transition|settled/i.test(name)
+    );
+    expect(names).toEqual([]);
+  });
+
+  it('the focus ring has no landing travel', () => {
+    expect(Object.keys(kit.FOCUS_RING).sort()).toEqual(['offset', 'width']);
   });
 });

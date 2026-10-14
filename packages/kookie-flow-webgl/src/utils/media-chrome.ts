@@ -10,8 +10,6 @@
  * shader, and the two agree because both take their numbers from the constants below.
  */
 
-import { MOTION_SPEED } from '../gl/index';
-
 /** How tall a video's control bar is, in world pixels. */
 export const CONTROL_BAR_HEIGHT = 28;
 /** The inset from the media's edges to the bar. */
@@ -30,35 +28,6 @@ export const CONTROL_TRACK_END_PAD = 14;
  * so the one control a person can count on is always in the same place.
  */
 export const EXPAND_BUTTON_SIZE = 28;
-
-/**
- * How fast chrome fades in and out, as a share of the remaining distance per second. Fast enough
- * to feel attached to the pointer, slow enough not to flicker when it crosses a corner. Judged at
- * 12 and run on v2's clock: a rate is a duration upside down, so it divides by the speed.
- */
-export const CHROME_FADE_RATE = 12 / MOTION_SPEED;
-
-/**
- * Move a fade toward where it should be and return where it now is.
- *
- * Frame-rate independent: the same share of what is left is covered per second at any refresh
- * rate. The last sliver snaps, so a fade actually ends and the pass can stop running for it.
- */
-export function easeChromePresence(
-  presences: Map<string, number>,
-  id: string,
-  wanted: boolean,
-  delta: number
-): number {
-  const target = wanted ? 1 : 0;
-  const from = presences.get(id) ?? 0;
-  const alpha = 1 - Math.exp(-Math.max(0, delta) * CHROME_FADE_RATE);
-  const next = from + (target - from) * alpha;
-  const settled = Math.abs(target - next) < 0.004 ? target : next;
-  if (settled === 0) presences.delete(id);
-  else presences.set(id, settled);
-  return settled;
-}
 
 /** Whether media this size can carry the expand button. Smaller than a bar needs: it is one square. */
 export function fitsExpand(width: number, height: number): boolean {

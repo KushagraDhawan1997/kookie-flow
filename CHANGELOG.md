@@ -5,6 +5,18 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### GL controls follow UI v2's motion removal !
+
+- Kookie UI v2 (`0.0.0-flow.2`) has no motion, so the GL controls have none: widget states, the
+  focus ring, checkbox ticks, switch and segmented thumbs land at once; nothing squashes or turns on
+  a press. Select and colour panels appear with no entrance; media chrome shows and hides on hover
+  with no fade. Content loops (edge light, drag dashes, selection march, caret, progress ring) stay.
+- Remove `MOTION`, `MOTION_SPEED`, `PRESS_SQUASH`, `PRESS_SCALE` and `FOCUS_RING.land` from the GL
+  kit, and the `internal/gl/motion`, `internal/gl/ease` and
+  `internal/hooks/usePrefersReducedMotion` entry points. `WidgetPopover.openedAt` is gone.
+- `gl/material.test.ts` now asserts v2 declares no motion tokens or transitions and the GL kit
+  exports no clock, replacing the clock-parity test that failed against the new stylesheet.
+
 ### Package split (0.2.0 candidate) !
 
 - Extract graph logic into `@kushagradhawan/kookie-flow-core`, rendering and interaction into
