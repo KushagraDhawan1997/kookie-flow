@@ -29,8 +29,13 @@ export async function generateMetadata({
   const { slug } = await params;
   const chapter = BY_SLUG.get(slug.join("/"));
   if (!chapter) return {};
-  // The title alone: the root layout's template appends the site name.
-  return { title: chapter.title, description: chapter.blurb };
+  // The title alone: the root layout's template appends the site name. The canonical is the
+  // chapter's own path; without it every chapter inherits the root's, which is the homepage.
+  return {
+    title: chapter.title,
+    description: chapter.blurb,
+    alternates: { canonical: `/${chapter.slug}` },
+  };
 }
 
 /**
