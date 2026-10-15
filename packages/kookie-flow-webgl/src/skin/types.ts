@@ -13,6 +13,7 @@
 import type { ThemeTokens } from '../hooks/useThemeTokens';
 import type { ColorTokenRef } from '../core/theme-colors';
 import type { EntityRadius, EntitySize, EntityVariant } from '../types/index';
+import type { IUniform } from 'three';
 import type { Material } from './glass/material';
 
 export interface SizeConfig {
@@ -102,6 +103,54 @@ export interface SkinColors {
   };
 }
 
+/** What a skin's uniform builder is given. Called at material build, never per frame. */
+export interface SkinShaderContext {
+  tokens: ThemeTokens;
+  colors: SkinColors;
+}
+
+/**
+ * A skin's part of one shader: GLSL declaring its private uniforms and defining the paint
+ * functions the renderer calls, plus the values of those uniforms.
+ *
+ * The renderer includes `SDF_GLSL` and `COMPOSITE_GLSL` before `glsl`, so a skin may use the
+ * shapes and `over`/`overC`. Skin uniform names must not collide with the renderer's own.
+ */
+export interface SkinShader {
+  readonly glsl: string;
+  uniforms(ctx: SkinShaderContext): Record<string, IUniform>;
+}
+
+export interface SkinShaders {
+  /**
+   * Inline controls (fields, marks, sliders, switches, segmented). `glsl` defines:
+   *
+   * - `vec4 paintField(vec4 acc, vec2 p, vec2 halfSize, float r, float d, float inside, float aa, vec3 fill, vec2 px)`
+   *   the field body: fill, depth, edge. `d` is the box distance, `px` the fragment coordinate.
+   * - `vec4 paintLight(vec4 acc, float cover, float t, float strength)` the light on a filled
+   *   mark, swatch or thumb; `t` runs 0 at the top to 1 at the bottom.
+   * - `vec4 paintGripCast(vec4 acc, vec2 gp, vec2 gb, float gr, float gd, float circle, float alpha)`
+   *   the shadow under a slider grip (`circle` 1), switch thumb or segment thumb.
+   * - `vec4 controlEdge()` the hairline colour for a mark's edge and separators.
+   * - `float controlInkAlpha()` the alpha of a chevron or glyph drawn in the control's ink.
+   */
+  controls: SkinShader;
+  /**
+   * The floating list and colour picker. Also given `BACKDROP_GLSL` and the renderer's `uBlur`.
+   * `glsl` defines:
+   *
+   * - `float floatingRadius(float radius)` the corner the panel is drawn with.
+   * - `float floatingShape(vec2 p, vec2 hs, float r)` the panel's signed distance.
+   * - `vec4 paintFloatingBody(vec4 acc, vec2 p, vec2 hs, float r, float d, float inside, float aa, vec2 uv)`
+   *   shadow and fill; `uv` is panel-local, 0..1 from the top-left.
+   * - `vec4 paintFloatingEdge(vec4 acc, vec2 p, float d, float aa)` the outermost edge.
+   * - `vec4 floatingRow()`, `float floatingRowSolid()` the lit row's colour, and 1 when it hides
+   *   what is under it.
+   * - `vec4 floatingBorder()` the hairline around the picker's controls.
+   */
+  floating: SkinShader;
+}
+
 export interface FlowSkin {
   readonly name: string;
   readonly colors: SkinColors;
@@ -111,6 +160,8 @@ export interface FlowSkin {
    * consumes them moves into the skin in a later step, and then this becomes skin-private.
    */
   readonly material: Record<'light' | 'dark', Material>;
+  /** The skin's part of each surface shader. */
+  readonly shaders: SkinShaders;
   /** Tokens used before the page's theme can be read, and when it cannot. */
   readonly fallbackTokens: ThemeTokens;
   /** Read every token slot from the theme root's computed style. Called on theme change only. */

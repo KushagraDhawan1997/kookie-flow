@@ -25,7 +25,7 @@
  */
 
 import * as THREE from 'three';
-import { SDF_GLSL, GLASS_GLSL, LENS_GLSL } from '../gl/index';
+import { SDF_GLSL, COMPOSITE_GLSL, GLASS_GLSL, LENS_GLSL } from '../gl/index';
 import { squircleBoxSDF, CORNER_K } from './corner-shader';
 import {
   CONTROL_BAR_HEIGHT,
@@ -123,6 +123,7 @@ uniform vec3 uGlint;
 
 ${squircleBoxSDF}
 ${SDF_GLSL}
+${COMPOSITE_GLSL}
 ${GLASS_GLSL}
 ${LENS_GLSL}
 

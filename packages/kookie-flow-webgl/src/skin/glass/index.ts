@@ -1,5 +1,7 @@
 import type { FlowSkin } from '../types';
 import { GLASS_COLORS } from './colors';
+import { glassControls } from './controls';
+import { glassFloating } from './floating';
 import { GLASS_METRICS } from './metrics';
 import { MATERIAL } from './material';
 import { GLASS_FALLBACK_TOKENS, readGlassTokens } from './tokens';
@@ -10,6 +12,7 @@ export const glassSkin: FlowSkin = {
   colors: GLASS_COLORS,
   metrics: GLASS_METRICS,
   material: MATERIAL,
+  shaders: { controls: glassControls, floating: glassFloating },
   fallbackTokens: GLASS_FALLBACK_TOKENS,
   readTokens: readGlassTokens,
 };

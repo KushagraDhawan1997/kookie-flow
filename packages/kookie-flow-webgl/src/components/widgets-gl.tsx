@@ -67,7 +67,7 @@ import {
   DEFAULT_ENTITY_WIDTH,
   SOCKET_LABEL_WIDTH,
 } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
-import { SDF_GLSL, GLASS_GLSL, FOCUS_RING, type RGBA, type CastLayer } from '../gl/index';
+import { SDF_GLSL, COMPOSITE_GLSL, FOCUS_RING } from '../gl/index';
 import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types/index';
 
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -262,8 +262,8 @@ const vertexShader = /* glsl */ `
 `;
 
 /**
- * The control shader: KookieUI v2's controls, from `gl/glass.ts` and the numbers in
- * `gl/material.ts`.
+ * The control shader. The geometry and state of each control kind are here; how a field, a lit
+ * mark and a grip's shadow are painted comes from the skin (`skin.shaders.controls`).
  *
  * NO MOTION, AS v2 HAS NONE. Every state is drawn where it is, with no clock:
  *  - COLOUR (`vHover`: 0 rest, 1 hover or open, 2 pressed) picks v2's fill step.
@@ -271,7 +271,7 @@ const vertexShader = /* glsl */ `
  *  - A checked mark is filled with its tick drawn, a switch's thumb sits on its side, and a
  *    segmented control's thumb sits under the chosen part. Nothing squashes, turns or travels.
  */
-const fragmentShader = /* glsl */ `
+const fragmentShader = (skinGlsl: string) => /* glsl */ `
   precision highp float;
 
   uniform vec3 uFill;
@@ -280,7 +280,6 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uMarkFill;
   uniform vec3 uMarkFillHover;
   uniform vec3 uMarkFillActive;
-  uniform vec4 uMarkEdge;
   uniform vec3 uTrack;
   uniform vec3 uActive;
   uniform vec3 uActiveHover;
@@ -293,19 +292,6 @@ const fragmentShader = /* glsl */ `
   uniform float uMarkSize;
   uniform float uMarkRadius;
   uniform float uTrackHeight;
-
-  // The material (gl/material.ts).
-  uniform float uControlAlpha;
-  uniform vec4 uRingTop;
-  uniform vec4 uRingUpper;
-  uniform vec4 uRingSide;
-  uniform vec4 uRingBottom;
-  uniform float uPoolAlpha;
-  uniform float uMarkLight;
-  uniform float uChevronAlpha;
-  uniform vec4 uGripCast[2];
-  uniform vec4 uGripCastColor[2];
-  uniform float uGrain;
   uniform vec2 uFocusRing;
 
   varying vec2 vUv;
@@ -318,7 +304,8 @@ const fragmentShader = /* glsl */ `
   varying float vRing;
 
   ${SDF_GLSL}
-  ${GLASS_GLSL}
+  ${COMPOSITE_GLSL}
+  ${skinGlsl}
 
   // The focus ring: 2px wide at a 2px offset.
   vec4 focusRing(vec4 acc, float d, float aa, float on) {
@@ -351,9 +338,9 @@ const fragmentShader = /* glsl */ `
       vec3 rest = mix(mix(uMarkFill, uMarkFillHover, hov), uMarkFillActive, act);
       vec3 checkedFill = mix(mix(uActive, uActiveHover, hov), uActivePressed, act);
       acc = over(acc, mix(rest, checkedFill, on), inside);
-      acc = glassLight(acc, inside * on, (b.y - cp.y) / side, uMarkLight);
+      acc = paintLight(acc, inside * on, (b.y - cp.y) / side, 1.0);
       // Checked, the edge melts into the fill.
-      vec4 edge = mix(uMarkEdge, vec4(checkedFill, 1.0), on);
+      vec4 edge = mix(controlEdge(), vec4(checkedFill, 1.0), on);
       acc = overC(acc, edge, ringSDF(d, 1.0, aa));
 
       if (on > 0.5) {
@@ -376,10 +363,7 @@ const fragmentShader = /* glsl */ `
       float gx = clamp(fillEdge, -halfSize.x + gr, halfSize.x - gr);
       vec2 gp = p - vec2(gx, 0.0);
       float gd = sdCircle(gp, gr);
-      for (int i = 0; i < 2; i++) {
-        float dc = sdCircle(gp - vec2(0.0, -uGripCast[i].x), gr + uGripCast[i].z);
-        acc = glassCast(acc, dc, gd, uGripCast[i].y, uGripCastColor[i]);
-      }
+      acc = paintGripCast(acc, gp, vec2(gr), gr, gd, 1.0, 1.0);
       acc = over(acc, uThumb, fillSDF(gd, aa));
       // The ring sits on the grip.
       acc = focusRing(acc, gd, aa, ringOn);
@@ -394,17 +378,14 @@ const fragmentShader = /* glsl */ `
       vec3 rest = mix(mix(uMarkFill, uMarkFillHover, hov), uMarkFillActive, act);
       vec3 onFill = mix(mix(uActive, uActiveHover, hov), uActivePressed, act);
       acc = over(acc, mix(rest, onFill, on), inside);
-      acc = overC(acc, mix(uMarkEdge, vec4(onFill, 1.0), on), ringSDF(td, 1.0, aa));
+      acc = overC(acc, mix(controlEdge(), vec4(onFill, 1.0), on), ringSDF(td, 1.0, aa));
       // The thumb, 2 in from the track, on the side the switch is on.
       float gr = th * 0.5 - 2.0;
       float span = tw * 0.5 - th * 0.5;
       vec2 gp = tp - vec2(mix(-span, span, on), 0.0);
       vec2 gb = vec2(gr);
       float gd = sdRoundedBox(gp, gb, gr);
-      for (int i = 0; i < 2; i++) {
-        float dc = sdRoundedBox(gp - vec2(0.0, -uGripCast[i].x), gb + uGripCast[i].z, gr + uGripCast[i].z);
-        acc = glassCast(acc, dc, gd, uGripCast[i].y, uGripCastColor[i]);
-      }
+      acc = paintGripCast(acc, gp, gb, gr, gd, 0.0, 1.0);
       acc = over(acc, uThumb, fillSDF(gd, aa));
       acc = focusRing(acc, td, aa, ringOn);
     } else {
@@ -414,12 +395,7 @@ const fragmentShader = /* glsl */ `
       float inside = fillSDF(d, aa);
 
       vec3 fill = mix(mix(uFill, uFillHover, hov), uFillActive, act);
-      acc = over(acc, fill, uControlAlpha * inside);
-      // inset 0 -6px 12px -10px: the hole is the box moved up 6 and grown by 10.
-      float dHole = sdRoundedBox(p - vec2(0.0, 6.0), halfSize + 10.0, r + 10.0);
-      acc = glassInset(acc, inside, dHole, 12.0, uPoolAlpha);
-      acc = glassGrain(acc, inside, px, uGrain);
-      acc = glassRing(acc, d + 1.0, aa, 1.0, p, uRingTop, uRingUpper, uRingSide, uRingBottom, 1.0);
+      acc = paintField(acc, p, halfSize, r, d, inside, aa, fill, px);
 
       if (vKind > 4.5 && vKind < 5.5) {
         // A leading swatch, not a bar: the colour is the loudest thing a card can hold, so it gets
@@ -433,15 +409,15 @@ const fragmentShader = /* glsl */ `
         float ds = sdRoundedBox(sp, vec2(side * 0.5), sr);
         float sw = fillSDF(ds, aa);
         acc = over(acc, vTint, sw);
-        acc = glassLight(acc, sw, (side * 0.5 - sp.y) / max(side, 1.0), uMarkLight);
-        acc = overC(acc, uMarkEdge, ringSDF(ds, 1.0, aa) * 0.6);
+        acc = paintLight(acc, sw, (side * 0.5 - sp.y) / max(side, 1.0), 1.0);
+        acc = overC(acc, controlEdge(), ringSDF(ds, 1.0, aa) * 0.6);
       }
 
       if (vKind > 3.5 && vKind < 4.5) {
         // v2's chevron: 7 by 3.5, a 1.17px stroke, muted ink, centred 18px in.
         vec2 c = p - vec2(halfSize.x - 18.0, 0.0);
         float dc = sdChevron(c, 7.0, 3.5, 0.58, 0.0);
-        acc = over(acc, uChevron, fillSDF(dc, aa) * inside * uChevronAlpha);
+        acc = over(acc, uChevron, fillSDF(dc, aa) * inside * controlInkAlpha());
       }
 
       if (vKind > 7.5 && vKind < 8.5) {
@@ -459,15 +435,12 @@ const fragmentShader = /* glsl */ `
           vec2 sb = vec2(max(segW * (edgeR - edgeL) * 0.5 - 3.0, 0.0), halfSize.y - 3.0);
           float sr = min(max(r - 3.0, 0.0), min(sb.x, sb.y));
           float sd = sdRoundedBox(sp, sb, sr);
-          for (int i = 0; i < 2; i++) {
-            float dc = sdRoundedBox(sp - vec2(0.0, -uGripCast[i].x), sb + uGripCast[i].z, sr + uGripCast[i].z);
-            acc = glassCast(acc, dc, sd, uGripCast[i].y, uGripCastColor[i] * vec4(1.0, 1.0, 1.0, 0.6));
-          }
+          acc = paintGripCast(acc, sp, sb, sr, sd, 0.0, 0.6);
           float thumb = fillSDF(sd, aa);
           acc = over(acc, uSegmentThumb, thumb);
           // No hairline: the cast already lifts the thumb, and a ring 2px inside the field's own
           // edge read as a doubled outline.
-          acc = glassLight(acc, thumb, (sb.y - sp.y) / max(sb.y * 2.0, 1.0), uMarkLight * 0.5);
+          acc = paintLight(acc, thumb, (sb.y - sp.y) / max(sb.y * 2.0, 1.0), 0.5);
         }
         // Hairlines between parts, faded beside the thumb so it reads as one raised piece.
         for (int k = 1; k < 8; k++) {
@@ -479,7 +452,7 @@ const fragmentShader = /* glsl */ `
           float gap = max(max(edgeL - fk, fk - edgeR), 0.0);
           float fade = chosen >= 0.0 ? smoothstep(0.0, 0.6, gap) : 1.0;
           float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.45);
-          acc = overC(acc, uMarkEdge, line * fade * inside);
+          acc = overC(acc, controlEdge(), line * fade * inside);
         }
       }
 
@@ -492,7 +465,7 @@ const fragmentShader = /* glsl */ `
           if (fk >= count) break;
           float lx = -halfSize.x + segW * fk;
           float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.5);
-          acc = overC(acc, uMarkEdge, line * inside);
+          acc = overC(acc, controlEdge(), line * inside);
         }
       }
 
@@ -501,14 +474,14 @@ const fragmentShader = /* glsl */ `
         float bw = min(vSize.y, vSize.x * 0.5);
         float lx = halfSize.x - bw;
         float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.5);
-        acc = overC(acc, uMarkEdge, line * inside);
+        acc = overC(acc, controlEdge(), line * inside);
         vec2 dp = p - vec2(halfSize.x - bw * 0.5, 0.0);
         float face = ringSDF(sdRoundedBox(dp, vec2(6.0), 2.5), 1.2, aa);
         float pips = fillSDF(
           min(min(sdCircle(dp - vec2(-2.7, 2.7), 1.2), sdCircle(dp, 1.2)), sdCircle(dp - vec2(2.7, -2.7), 1.2)),
           aa
         );
-        acc = over(acc, uChevron, max(face, pips) * inside * uChevronAlpha);
+        acc = over(acc, uChevron, max(face, pips) * inside * controlInkAlpha());
       }
 
       // A field rings whenever it has the caret; a trigger rings for the keyboard.
@@ -583,7 +556,7 @@ export function WidgetsGL({
   defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
   socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: WidgetsGLProps) {
-  const { colors, material: skinMaterial } = useSkin();
+  const { colors, shaders } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -624,10 +597,6 @@ export function WidgetsGL({
       const v = resolveColor(key, tokens);
       return new THREE.Color(v[0], v[1], v[2]);
     };
-    const m = skinMaterial[tokens.appearance];
-    const rgba = (v: RGBA) => new THREE.Vector4(v[0], v[1], v[2], v[3]);
-    const cast = (l: CastLayer) => new THREE.Vector4(l.y, l.blur, l.spread, 0);
-    const castColor = (l: CastLayer) => rgba(l.color);
     const highContrast = tokens.contrast === 'high';
     // v2's solid hover and active steps (#0094fc, #0088e8, #007cd4): the same accent, darker. A
     // press darkens the colour; it is never a brightness filter.
@@ -641,7 +610,6 @@ export function WidgetsGL({
         uMarkFill: { value: rgb(c.markFill) },
         uMarkFillHover: { value: rgb(c.markFillHover) },
         uMarkFillActive: { value: rgb(c.markFillActive) },
-        uMarkEdge: { value: rgba(highContrast ? m.markEdgeHighContrast : m.markEdge) },
         uTrack: { value: rgb(highContrast ? c.trackHighContrast : c.track) },
         uActive: { value: rgb(c.active) },
         uActiveHover: { value: shade(0.92) },
@@ -654,28 +622,18 @@ export function WidgetsGL({
         uMarkSize: { value: socketLayout.markSize },
         uMarkRadius: { value: resolvedStyle.markRadius },
         uTrackHeight: { value: socketLayout.trackHeight },
-        uControlAlpha: { value: m.controlAlpha },
-        uRingTop: { value: rgba(m.controlRing.top) },
-        uRingUpper: { value: rgba(m.controlRing.upper) },
-        uRingSide: { value: rgba(m.controlRing.side) },
-        uRingBottom: { value: rgba(m.controlRing.bottom) },
-        uPoolAlpha: { value: m.poolAlpha },
-        uMarkLight: { value: m.markLight },
-        uChevronAlpha: { value: m.chevronAlpha },
-        uGripCast: { value: m.gripCast.map(cast) },
-        uGripCastColor: { value: m.gripCast.map(castColor) },
-        uGrain: { value: m.grain },
         uFocusRing: { value: new THREE.Vector2(FOCUS_RING.width, FOCUS_RING.offset) },
+        ...shaders.controls.uniforms({ tokens, colors }),
       },
       vertexShader,
-      fragmentShader,
+      fragmentShader: fragmentShader(shaders.controls.glsl),
       transparent: true,
       // Tests against the bodies (which write depth) so a node in front covers a widget behind;
       // writes nothing, so a track's soft edge cannot punch a hole in what is under it.
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, c, skinMaterial, resolvedStyle.markRadius]);
+  }, [tokens, c, colors, shaders, resolvedStyle.markRadius]);
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(
     () => () => {
