@@ -4,7 +4,13 @@
  * keeps them; runtime outputs are never in here.
  */
 
-import type { Edge, Entity, FlowObject, Viewport, XYPosition } from '@kushagradhawan/kookie-flow';
+import type {
+  Edge,
+  Entity,
+  FlowObject,
+  Viewport,
+  XYPosition,
+} from '@kushagradhawan/kookie-flow-react';
 import type { NodeRegistry } from './registry';
 import { isMediaRef } from './values';
 
@@ -23,7 +29,12 @@ export const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
 export const FORBIDDEN_IDS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function isUsableId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 200 && !FORBIDDEN_IDS.has(value);
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    !FORBIDDEN_IDS.has(value)
+  );
 }
 
 export function emptyDocument(): GraphDocument {
@@ -162,7 +173,8 @@ function canonicalJson(value: unknown): string {
     const record = value as Record<string, unknown>;
     const fields: string[] = [];
     for (const key of Object.keys(record).sort()) {
-      if (record[key] !== undefined) fields.push(`${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+      if (record[key] !== undefined)
+        fields.push(`${JSON.stringify(key)}:${canonicalJson(record[key])}`);
     }
     return `{${fields.join(',')}}`;
   }
@@ -228,7 +240,10 @@ export function describeGraph(
   // stored value that reads as though the input were empty.
   const wired = new Map<string, string>();
   for (const edge of doc.edges) {
-    wired.set(`${edge.target}.${edge.targetSocket ?? 'in'}`, `${edge.source}.${edge.sourceSocket ?? 'out'}`);
+    wired.set(
+      `${edge.target}.${edge.targetSocket ?? 'in'}`,
+      `${edge.source}.${edge.sourceSocket ?? 'out'}`
+    );
   }
   for (const entity of doc.entities) {
     const def = registry.get(entity.type);
@@ -241,7 +256,8 @@ export function describeGraph(
         const value = values[id];
         const isDefault = value === undefined || value === spec.default;
         const from = wired.get(`${entity.id}.${id}`);
-        if (focused.has(entity.id)) parts.push(from ? `${id}<-${from}` : `${id}=${short(value ?? spec.default)}`);
+        if (focused.has(entity.id))
+          parts.push(from ? `${id}<-${from}` : `${id}=${short(value ?? spec.default)}`);
         else if (!isDefault) parts.push(`${id}=${short(value)}`);
       }
     } else {
@@ -250,7 +266,9 @@ export function describeGraph(
     lines.push(parts.join(' '));
   }
   for (const edge of doc.edges) {
-    lines.push(`${edge.source}.${edge.sourceSocket ?? 'out'} -> ${edge.target}.${edge.targetSocket ?? 'in'}`);
+    lines.push(
+      `${edge.source}.${edge.sourceSocket ?? 'out'} -> ${edge.target}.${edge.targetSocket ?? 'in'}`
+    );
   }
   return lines.length ? lines.join('\n') : '(empty graph)';
 }

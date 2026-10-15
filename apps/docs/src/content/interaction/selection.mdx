@@ -127,7 +127,8 @@ This inspector shows the node you last clicked and closes when you click empty c
 'use client';
 
 import { useState } from 'react';
-import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -137,7 +138,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   return (
     <div style={{ display: 'flex', height: 480 }}>
       <div style={{ flex: 1 }}>
-        <KookieFlow
+        <KookieFlow skin={glassSkin}
           entities={entities}
           edges={edges}
           onEntitiesChange={onEntitiesChange}
@@ -185,7 +186,7 @@ store does.
 This button, rendered inside the canvas, selects every image on the board.
 
 ```tsx title="select-images.tsx"
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 
 export function SelectImages() {
   const store = useFlowStoreApi();

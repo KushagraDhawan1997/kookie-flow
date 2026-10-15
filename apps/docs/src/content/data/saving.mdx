@@ -20,7 +20,7 @@ write, so give that socket its component again when you load the save.
 'use client';
 
 import type { RefObject } from 'react';
-import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 
 export function SaveButton({ flowRef, boardId }: { flowRef: RefObject<KookieFlowInstance | null>; boardId: string }) {
   const save = async () => {
@@ -45,7 +45,8 @@ Give the saved entities and edges to `useGraph` as its starting graph, and the s
 ```tsx title="board.tsx"
 'use client';
 
-import { KookieFlow, useGraph, type FlowObject } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type FlowObject } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Board({ saved }: { saved: FlowObject }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -54,7 +55,7 @@ export function Board({ saved }: { saved: FlowObject }) {
   });
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       defaultViewport={saved.viewport}
@@ -141,7 +142,7 @@ To capture the whole graph, fit the view first. The camera moves to the new view
 frame, so capture inside `requestAnimationFrame`.
 
 ```tsx title="export-png.ts"
-import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 
 export function exportPng(flow: KookieFlowInstance) {
   const view = { ...flow.getViewport() };

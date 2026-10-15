@@ -7,7 +7,7 @@
  * editor does not re-render while the agent works and the canvas keeps its frame rate.
  */
 
-import type { Edge, Entity, KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity, KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 import {
   compileOps,
   describeGraph,
@@ -19,7 +19,13 @@ import {
   type GraphOp,
   type MediaRef,
 } from 'studio-core';
-import type { ApplyOpsOutput, EstimateOutput, InspectOutput, PendingAsk, RunOutput } from '@/shared/agent';
+import type {
+  ApplyOpsOutput,
+  EstimateOutput,
+  InspectOutput,
+  PendingAsk,
+  RunOutput,
+} from '@/shared/agent';
 import type { EditorBus } from '../editor-bus';
 import { quoteNode } from '../quote';
 
@@ -55,7 +61,8 @@ function labelOf(entity: Entity): string {
 
 function short(value: unknown): string {
   if (isMediaRef(value)) return `<${value.kind} ${value.width}x${value.height}>`;
-  if (typeof value === 'string') return JSON.stringify(value.length > 60 ? `${value.slice(0, 57)}...` : value);
+  if (typeof value === 'string')
+    return JSON.stringify(value.length > 60 ? `${value.slice(0, 57)}...` : value);
   return JSON.stringify(value) ?? String(value);
 }
 
@@ -85,7 +92,11 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
   const hasOutput = (entity: Entity): boolean => {
     const def = registry.get(entity.type);
     const f = flow();
-    return Boolean(def && f && Object.keys(def.outputs).some((id) => f.getSocketValue(entity.id, id) !== undefined));
+    return Boolean(
+      def &&
+      f &&
+      Object.keys(def.outputs).some((id) => f.getSocketValue(entity.id, id) !== undefined)
+    );
   };
 
   const statusOf = (entity: Entity): string => {
@@ -95,7 +106,11 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
     return status === 'idle' && hasOutput(entity) ? 'done' : status;
   };
 
-  const settle = async (ids: readonly string[], limitMs: number, until: (status: string) => boolean) => {
+  const settle = async (
+    ids: readonly string[],
+    limitMs: number,
+    until: (status: string) => boolean
+  ) => {
     const started = Date.now();
     while (Date.now() - started < limitMs) {
       const byId = new Map(graph().entities.map((e) => [e.id, e]));
@@ -126,7 +141,9 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
         }
         const message = bus.message(entity.id);
         if (status === 'idle' && parts.length === 0) continue;
-        runs.push(`${entity.id} ${status}${parts.length ? ` ${parts.join(' ')}` : ''}${message ? ` (${message})` : ''}`);
+        runs.push(
+          `${entity.id} ${status}${parts.length ? ` ${parts.join(' ')}` : ''}${message ? ` (${message})` : ''}`
+        );
       }
       if (runs.length) lines.push('', 'Runs:', ...runs);
       if (bus.selected.length) lines.push('', `Selected: ${bus.selected.join(', ')}`);
@@ -137,9 +154,14 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
       const placed = layoutCluster(graph(), ops, registry);
       // All or nothing. Applied in part, a batch leaves later ops naming nodes that never landed and a
       // half-built cluster the model then patches around (the first real run: 5 nodes in, 8 refused).
-      const check = compileOps(graph(), placed, registry, { sizeOf: (e) => flow()?.getEntityBounds(e.id) ?? null });
+      const check = compileOps(graph(), placed, registry, {
+        sizeOf: (e) => flow()?.getEntityBounds(e.id) ?? null,
+      });
       if (check.errors.length) {
-        return { created: [], errors: check.errors.map((e) => ({ index: e.index, message: e.message })) };
+        return {
+          created: [],
+          errors: check.errors.map((e) => ({ index: e.index, message: e.message })),
+        };
       }
       const result = applyOps(placed);
       // Bring what was made into view, as a person adding a node would see it land. After two frames:
@@ -150,10 +172,15 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
       if (result.created.length || arranged) {
         const entities = arranged ? undefined : result.created;
         requestAnimationFrame(() =>
-          requestAnimationFrame(() => flow()?.fitView({ entities, padding: 160, duration: 300, maxZoom: 1 }))
+          requestAnimationFrame(() =>
+            flow()?.fitView({ entities, padding: 160, duration: 300, maxZoom: 1 })
+          )
         );
       }
-      return { created: result.created, errors: result.errors.map((e) => ({ index: e.index, message: e.message })) };
+      return {
+        created: result.created,
+        errors: result.errors.map((e) => ({ index: e.index, message: e.message })),
+      };
     },
 
     estimate(nodes) {
@@ -191,7 +218,9 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
       let pending = paid;
       while (pending.length) {
         const waiting = new Set(pending);
-        const wave = pending.filter((id) => ![...upstreamOf(edges, [id])].some((u) => waiting.has(u)));
+        const wave = pending.filter(
+          (id) => ![...upstreamOf(edges, [id])].some((u) => waiting.has(u))
+        );
         // What feeds this wave settles first: a pick just set is still passing its picture on.
         const upstream = [...upstreamOf(edges, wave)].filter((id) => !waiting.has(id));
         await settle(upstream, UPSTREAM_WAIT_MS, (s) => s !== 'running');
@@ -225,9 +254,19 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
           const status = statusOf(entity);
           const error = bus.message(id);
           if (status === 'dirty') {
-            out.push({ id, label: labelOf(entity), status: 'stopped', error: 'its inputs changed while it ran; run it again' });
+            out.push({
+              id,
+              label: labelOf(entity),
+              status: 'stopped',
+              error: 'its inputs changed while it ran; run it again',
+            });
           } else {
-            out.push({ id, label: labelOf(entity), status: status === 'idle' ? 'done' : status, ...(status === 'error' && error ? { error } : {}) });
+            out.push({
+              id,
+              label: labelOf(entity),
+              status: status === 'idle' ? 'done' : status,
+              ...(status === 'error' && error ? { error } : {}),
+            });
           }
         }
         pending = pending.filter((id) => !wave.includes(id));
@@ -241,7 +280,12 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
         if (!entity) continue;
         const status = statusOf(entity);
         const error = bus.message(id);
-        out.push({ id, label: labelOf(entity), status: status === 'idle' ? 'done' : status, ...(status === 'error' && error ? { error } : {}) });
+        out.push({
+          id,
+          label: labelOf(entity),
+          status: status === 'idle' ? 'done' : status,
+          ...(status === 'error' && error ? { error } : {}),
+        });
       }
       return { nodes: out };
     },
@@ -252,11 +296,15 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
       const f = flow();
       if (!entity || !def || !f) return { node, error: `There is no node ${node}.` };
       const socketId =
-        socket ?? Object.entries(def.outputs).find(([, spec]) => spec.type === 'image' || spec.type === 'mask')?.[0];
+        socket ??
+        Object.entries(def.outputs).find(
+          ([, spec]) => spec.type === 'image' || spec.type === 'mask'
+        )?.[0];
       if (!socketId) return { node, error: `${node} makes no picture.` };
       const value = f.getSocketValue(node, socketId);
       if (!isMediaRef(value)) return { node, error: `${node} has not made anything yet.` };
-      if (value.kind === 'video') return { node, error: 'Clips cannot be looked at yet, only pictures.' };
+      if (value.kind === 'video')
+        return { node, error: 'Clips cannot be looked at yet, only pictures.' };
       return {
         node,
         socket: socketId,
@@ -273,7 +321,9 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
       let quiet = 0;
       while (Date.now() - started < UPSTREAM_WAIT_MS) {
         const f = flow();
-        const busy = !f || graph().entities.some((e) => ['running', 'dirty'].includes(f.getEvaluationStatus(e.id)));
+        const busy =
+          !f ||
+          graph().entities.some((e) => ['running', 'dirty'].includes(f.getEvaluationStatus(e.id)));
         quiet = busy ? 0 : quiet + POLL_MS;
         if (quiet >= 500) return;
         await sleep(POLL_MS);
@@ -283,8 +333,21 @@ export function createAgentHost({ graph, flow, bus, applyOps }: AgentHostDeps): 
     addPictures(pictures) {
       if (pictures.length === 0) return [];
       const ops: GraphOp[] = pictures.map((p, i) => {
-        const image: MediaRef = { kind: 'image', hash: p.hash, width: p.width, height: p.height, url: p.url, preview: p.url, mime: p.mime };
-        return { op: 'add_node', type: 'source/image', label: pictures.length > 1 ? `Picture ${i + 1}` : 'Picture', values: { image } };
+        const image: MediaRef = {
+          kind: 'image',
+          hash: p.hash,
+          width: p.width,
+          height: p.height,
+          url: p.url,
+          preview: p.url,
+          mime: p.mime,
+        };
+        return {
+          op: 'add_node',
+          type: 'source/image',
+          label: pictures.length > 1 ? `Picture ${i + 1}` : 'Picture',
+          values: { image },
+        };
       });
       return this.applyOps(ops).created;
     },

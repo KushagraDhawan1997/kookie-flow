@@ -100,7 +100,7 @@ edge of the body:
   `accentHeader` line on that node.
 
 ```tsx title="pipeline.tsx"
-import type { Entity } from "@kushagradhawan/kookie-flow";
+import type { Entity } from "@kushagradhawan/kookie-flow-react";
 
 const entities: Entity[] = [
   {
@@ -151,7 +151,7 @@ and resolves it again whenever the theme changes, so the override follows light 
 A hex value stays the same in both modes.
 
 ```tsx title="board.tsx"
-<KookieFlow
+<KookieFlow skin={glassSkin}
   entities={entities}
   edges={edges}
   onEntitiesChange={onEntitiesChange}

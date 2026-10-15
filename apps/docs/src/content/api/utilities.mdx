@@ -25,7 +25,8 @@ import {
   useGraph,
   type Entity,
   type XYPosition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const initialEntities: Entity[] = [
   { id: 'moodboard', type: 'frame', position: { x: 0, y: 0 }, width: 720, height: 480, data: { label: 'Moodboard' } },
@@ -53,7 +54,7 @@ export function Moodboard() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -90,9 +91,10 @@ import {
   useFlowStoreApi,
   useSocketLayout,
   type XYPosition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
-// Call from a component rendered inside <KookieFlow>.
+// Call from a component rendered inside <KookieFlow skin={glassSkin}>.
 export function useEntityAt() {
   const store = useFlowStoreApi();
   const layout = useSocketLayout();
@@ -183,7 +185,7 @@ import {
   type Edge,
   type FlowState,
   type ResolvedSocketLayout,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 export function placeBadge(el: HTMLElement, edge: Edge, state: FlowState, layout: ResolvedSocketLayout) {
   const mid = getEdgePointAtT(edge, state.entityMap, 0.5, 'bezier', undefined, layout);
@@ -204,7 +206,7 @@ The key is the entity id, the socket id and `input` or `output`, joined by colon
 holds the socket's position in its `inputs` or `outputs` array, and the socket itself.
 
 ```ts title="socket-index.ts"
-import type { Entity, SocketIndexMap } from '@kushagradhawan/kookie-flow';
+import type { Entity, SocketIndexMap } from '@kushagradhawan/kookie-flow-react';
 
 export function buildSocketIndex(entities: Entity[]): SocketIndexMap {
   const map: SocketIndexMap = new Map();
@@ -319,7 +321,7 @@ A 2D canvas can't read CSS variables. This function turns any CSS colour, variab
 a string a 2D canvas accepts:
 
 ```ts title="canvas-color.ts"
-import { parseColorToRGBA } from '@kushagradhawan/kookie-flow';
+import { parseColorToRGBA } from '@kushagradhawan/kookie-flow-react';
 
 export function canvasColor(css: string): string {
   const [r, g, b, a] = parseColorToRGBA(css);
@@ -371,14 +373,15 @@ import {
   resolveSocketTypes,
   useTheme,
   type SocketType,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export const socketTypes: Record<string, SocketType> = {
   audio: { name: 'Audio', color: '--crimson-10' },
   prompt: { name: 'Prompt', color: '#7c3aed' },
 };
 
-// Render inside <KookieFlow socketTypes={socketTypes}>, where useTheme reads the flow's theme.
+// Render inside <KookieFlow skin={glassSkin} socketTypes={socketTypes}>, where useTheme reads the flow's theme.
 export function SocketLegend() {
   const tokens = useTheme();
   const resolved = useMemo(
@@ -435,5 +438,5 @@ documented with that feature.
 | `layoutGraph`, `rankNodes` | [Layout and alignment](/data/arrange) |
 | `buildAdjacencyIndex`, `getIncomers`, `getOutgoers`, `walkUpstream`, `wouldCreateGraphCycle`, `validateGraph` and the other graph functions | [Graph queries](/data/graph-queries) |
 | `SUCCESS_HOLD_MS` | [Evaluation](/data/evaluation) |
-| `THEME_COLORS`, `resolveColor`, `FALLBACK_TOKENS` | [Theming](/styling/theming) |
+| `useSkin`, `resolveColor`, `FALLBACK_TOKENS` | [Theming](/styling/theming) |
 | `MINIMAP_DEFAULTS` | [Minimap](/styling/minimap) |

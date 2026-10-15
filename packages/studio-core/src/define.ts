@@ -11,21 +11,12 @@ import type {
   EvaluationMode,
   SocketLayoutMode,
   WidgetType,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 import type { MediaRef } from './values';
 import type { RunContext } from './ports';
 
 export type StudioSocketType =
-  | 'image'
-  | 'video'
-  | 'mask'
-  | 'text'
-  | 'float'
-  | 'int'
-  | 'bool'
-  | 'color'
-  | 'seed'
-  | 'any';
+  'image' | 'video' | 'mask' | 'text' | 'float' | 'int' | 'bool' | 'color' | 'seed' | 'any';
 
 export type ValueOf<T extends StudioSocketType> = T extends 'image' | 'video' | 'mask'
   ? MediaRef
@@ -73,15 +64,7 @@ export type Values<S extends SocketSpecs> = { [K in keyof S]: ValueOf<S[K]['type
 export type Where = 'inline' | 'gpu' | 'media' | 'server';
 
 export type Category =
-  | 'source'
-  | 'text'
-  | 'math'
-  | 'list'
-  | 'logic'
-  | 'image'
-  | 'video'
-  | 'ai'
-  | 'output';
+  'source' | 'text' | 'math' | 'list' | 'logic' | 'image' | 'video' | 'ai' | 'output';
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   source: 'Sources',
@@ -102,7 +85,10 @@ export interface Estimate {
   seconds: number;
 }
 
-export interface NodeDefinition<I extends SocketSpecs = SocketSpecs, O extends SocketSpecs = SocketSpecs> {
+export interface NodeDefinition<
+  I extends SocketSpecs = SocketSpecs,
+  O extends SocketSpecs = SocketSpecs,
+> {
   /** `category/name`, stable forever: saved graphs name it. */
   type: string;
   label: string;

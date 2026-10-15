@@ -8,7 +8,8 @@ every prop it takes, with its type and default, and link each one to the chapter
 'use client';
 
 import { useRef } from 'react';
-import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor() {
   const flowRef = useRef<KookieFlowInstance>(null);
@@ -16,7 +17,7 @@ export function Editor() {
 
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}
@@ -158,7 +159,7 @@ This button shows the zoom level and resets the view when clicked:
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 
 export function ZoomButton() {
   const store = useFlowStoreApi();
@@ -198,7 +199,7 @@ export function ZoomButton() {
 ```
 
 ```tsx
-<KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
   <ZoomButton />
 </KookieFlow>
 ```
@@ -246,7 +247,8 @@ Define these outside your component, or wrap them in `useMemo`:
 ```tsx title="editor.tsx"
 'use client';
 
-import { KookieFlow, useGraph, type SocketType } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type SocketType } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 // Module scope: one object for the life of the app, however often Editor renders.
 const socketTypes: Record<string, SocketType> = {
@@ -259,7 +261,7 @@ export function Editor() {
 
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -282,7 +284,7 @@ the [Minimap](/styling/minimap#read-colours-from-the-theme) chapter explains.
 Set `showStats` to show a frame-rate panel while you work on a graph's performance:
 
 ```tsx
-<KookieFlow entities={entities} edges={edges} showStats={process.env.NODE_ENV === 'development'} />
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} showStats={process.env.NODE_ENV === 'development'} />
 ```
 
 The panel is fixed to the top-left corner of the page, not of the canvas, and sits above the rest
@@ -321,7 +323,7 @@ nearest positioned ancestor, so give the wrapper a position:
 'use client';
 
 import { Canvas } from '@react-three/fiber';
-import { CanvasErrorBoundary } from '@kushagradhawan/kookie-flow';
+import { CanvasErrorBoundary } from '@kushagradhawan/kookie-flow-react';
 
 export function ModelPreview({ onCrash }: { onCrash: (error: Error) => void }) {
   return (

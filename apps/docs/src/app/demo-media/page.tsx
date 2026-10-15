@@ -21,7 +21,8 @@ import {
   type EntityTypeDefinition,
   type KookieFlowInstance,
   type OnEvaluate,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -68,19 +69,35 @@ const socketTypes = {
 
 const initialEntities: Entity[] = [
   {
-    id: 'image', type: 'image', position: { x: 0, y: ROW_MEDIA }, width: 320, height: 214,
+    id: 'image',
+    type: 'image',
+    position: { x: 0, y: ROW_MEDIA },
+    width: 320,
+    height: 214,
     data: { src: '/image-1.jpg', objectFit: 'cover' },
   },
   {
-    id: 'video', type: 'video', position: { x: 360, y: ROW_MEDIA }, width: 400, height: 225,
+    id: 'video',
+    type: 'video',
+    position: { x: 360, y: ROW_MEDIA },
+    width: 400,
+    height: 225,
     data: { src: '/video.mp4', autoplay: true, objectFit: 'cover' },
   },
   {
-    id: 'model', type: 'mesh', position: { x: 800, y: ROW_MEDIA }, width: 280, height: 280,
+    id: 'model',
+    type: 'mesh',
+    position: { x: 800, y: ROW_MEDIA },
+    width: 280,
+    height: 280,
     data: { src: '/model.glb' },
   },
   {
-    id: 'decoration', type: 'video', position: { x: 1120, y: ROW_MEDIA }, width: 320, height: 180,
+    id: 'decoration',
+    type: 'video',
+    position: { x: 1120, y: ROW_MEDIA },
+    width: 320,
+    height: 180,
     data: { src: '/video.mp4', autoplay: true, objectFit: 'cover', controls: false },
   },
   { id: 'generate', type: 'ai/generate', position: { x: 0, y: ROW_NODES }, data: {} },
@@ -90,13 +107,26 @@ const initialEntities: Entity[] = [
 ];
 
 const initialEdges: Edge[] = [
-  { id: 'generate-photo', source: 'generate', sourceSocket: 'image', target: 'photo', targetSocket: 'in' },
+  {
+    id: 'generate-photo',
+    source: 'generate',
+    sourceSocket: 'image',
+    target: 'photo',
+    targetSocket: 'in',
+  },
 ];
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); }, { once: true });
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new Error('aborted'));
+      },
+      { once: true }
+    );
   });
 
 /** Generate waits and reports progress, then answers with a picture; Photo passes it on. */
@@ -142,12 +172,13 @@ export default function MediaDemoPage() {
       }
       footer={
         <Text size="2" emphasis="medium">
-          Hover a picture, clip or model. The corner button opens the viewer. Drag a model to turn it. The last clip
-          on the top row has its controls off.
+          Hover a picture, clip or model. The corner button opens the viewer. Drag a model to turn
+          it. The last clip on the top row has its controls off.
         </Text>
       }
     >
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

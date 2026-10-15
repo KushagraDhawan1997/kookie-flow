@@ -15,7 +15,8 @@ import {
   useGraph,
   type Entity,
   type EntityTypeDefinition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   'math/number': {
@@ -49,7 +50,7 @@ export function MathEditor() {
 
   return (
     <div style={{ height: 400 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={entities}
         edges={edges}
         entityTypes={entityTypes}
@@ -135,10 +136,10 @@ again and rebuilds its hit-testing indexes each time your component renders.
 
 ```tsx
 // Wrong: new entries on every render.
-<KookieFlow entityTypes={{ 'math/add': { type: 'math/add', label: 'Add' } }} {...props} />
+<KookieFlow skin={glassSkin} entityTypes={{ 'math/add': { type: 'math/add', label: 'Add' } }} {...props} />
 
 // Right: the same entries on every render.
-<KookieFlow entityTypes={entityTypes} {...props} />
+<KookieFlow skin={glassSkin} entityTypes={entityTypes} {...props} />
 ```
 
 ## Run a type only when you ask
@@ -174,14 +175,15 @@ If you change a type from `'manual'` to `'reactive'`, the entities that were wai
 child of `KookieFlow`, then set `toolbar` on the types that should have one:
 
 ```tsx
-import { KookieFlow, Toolbar, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, Toolbar, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   text: { type: 'text', toolbar: true },
   image: { type: 'image', toolbar: ['objectFit', 'aspectLock'] },
 };
 
-<KookieFlow entities={entities} edges={edges} entityTypes={entityTypes}>
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} entityTypes={entityTypes}>
   <Toolbar />
 </KookieFlow>;
 ```

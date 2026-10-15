@@ -2,26 +2,63 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Button, Flex, Stack, Text } from '@kushagradhawan/kookie-ui-react';
-import { KookieFlow, useGraph, type Edge, type Entity, type EntityTypeDefinition, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Edge,
+  type Entity,
+  type EntityTypeDefinition,
+  type KookieFlowInstance,
+  type OnEvaluate,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const float = (id: string, name: string) => ({ id, name, type: 'float', min: 0, max: 10, step: 1 });
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
-  number: { type: 'number', label: 'Number', inputs: [float('value', 'Value')], outputs: [float('out', 'Out')] },
-  add: { type: 'add', label: 'Add', inputs: [float('a', 'A'), float('b', 'B')], outputs: [float('sum', 'Sum')] },
+  number: {
+    type: 'number',
+    label: 'Number',
+    inputs: [float('value', 'Value')],
+    outputs: [float('out', 'Out')],
+  },
+  add: {
+    type: 'add',
+    label: 'Add',
+    inputs: [float('a', 'A'), float('b', 'B')],
+    outputs: [float('sum', 'Sum')],
+  },
   // Manual: a change upstream marks it stale, and it waits to be run.
-  render: { type: 'render', label: 'Render', evaluation: 'manual', inputs: [float('in', 'In')], outputs: [float('out', 'Out')] },
+  render: {
+    type: 'render',
+    label: 'Render',
+    evaluation: 'manual',
+    inputs: [float('in', 'In')],
+    outputs: [float('out', 'Out')],
+  },
 };
 
-const node = (id: string, type: string, x: number, y: number, value?: number): Entity =>
-  ({ id, type, position: { x, y }, data: value === undefined ? {} : { values: { value } } });
-const wire = (source: string, sourceSocket: string, target: string, targetSocket: string): Edge =>
-  ({ id: `${source}-${target}`, source, sourceSocket, target, targetSocket });
-
-const wait = (ms: number, signal: AbortSignal) => new Promise((resolve, reject) => {
-  const timer = setTimeout(resolve, ms);
-  signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); });
+const node = (id: string, type: string, x: number, y: number, value?: number): Entity => ({
+  id,
+  type,
+  position: { x, y },
+  data: value === undefined ? {} : { values: { value } },
 });
+const wire = (
+  source: string,
+  sourceSocket: string,
+  target: string,
+  targetSocket: string
+): Edge => ({ id: `${source}-${target}`, source, sourceSocket, target, targetSocket });
+
+const wait = (ms: number, signal: AbortSignal) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    });
+  });
 
 const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
   const n = (key: string) => Number(inputs[key] ?? 0);
@@ -38,8 +75,17 @@ const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
 
 export default function EvaluationExample() {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
-    initialEntities: [node('a', 'number', 0, 0, 2), node('b', 'number', 0, 160, 3), node('add', 'add', 300, 80), node('render', 'render', 600, 80)],
-    initialEdges: [wire('a', 'out', 'add', 'a'), wire('b', 'out', 'add', 'b'), wire('add', 'sum', 'render', 'in')],
+    initialEntities: [
+      node('a', 'number', 0, 0, 2),
+      node('b', 'number', 0, 160, 3),
+      node('add', 'add', 300, 80),
+      node('render', 'render', 600, 80),
+    ],
+    initialEdges: [
+      wire('a', 'out', 'add', 'a'),
+      wire('b', 'out', 'add', 'b'),
+      wire('add', 'sum', 'render', 'in'),
+    ],
   });
   const flowRef = useRef<KookieFlowInstance>(null);
   const readoutRef = useRef<HTMLSpanElement>(null);
@@ -68,11 +114,16 @@ export default function EvaluationExample() {
   return (
     <Stack gap="3">
       <Flex gap="3" align="center">
-        <Button size="2" emphasis="loud" onClick={() => flowRef.current?.evaluate('render')}>Run Render</Button>
-        <Text size="2" ref={readoutRef}>Sum – · Render –</Text>
+        <Button size="2" emphasis="loud" onClick={() => flowRef.current?.evaluate('render')}>
+          Run Render
+        </Button>
+        <Text size="2" ref={readoutRef}>
+          Sum – · Render –
+        </Text>
       </Flex>
       <div style={{ width: '100%', height: 360 }}>
         <KookieFlow
+          skin={glassSkin}
           ref={flowRef}
           entities={entities}
           edges={edges}

@@ -7,8 +7,7 @@ theme and the controls. It needs React 19 and a browser with WebGL 2.
 `@kushagradhawan/kookie-flow-react` is the normal React entry. The renderer lives in
 `@kushagradhawan/kookie-flow-webgl`; graph logic lives in `@kushagradhawan/kookie-flow-core`.
 How the canvas looks comes from a skin: `@kushagradhawan/kookie-flow-skin-glass` is KookieUI v2's
-glass, and you pass it to every `KookieFlow` as `skin={glassSkin}`. The old
-`@kushagradhawan/kookie-flow` import forwards to the new packages and defaults to glass.
+glass, and you pass it to every `KookieFlow` as `skin={glassSkin}`.
 
 These 0.2.0 candidates are not published. Build all sibling packages and pack them with pnpm:
 
@@ -19,7 +18,7 @@ pnpm test:packages
 pnpm --filter '@kushagradhawan/kookie-flow*' -r pack --pack-destination ./artifacts
 ```
 
-Install all five archives in your app, together with
+Install all four archives in your app, together with
 `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz`. This UI archive preserves the tested Flow
 appearance. Current UI v2 source is a separate upgrade and is not interchangeable with it.
 

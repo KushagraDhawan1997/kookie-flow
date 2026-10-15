@@ -16,7 +16,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@kushagradhawan/kookie-flow": "workspace:*"
+    "@kushagradhawan/kookie-flow-react": "workspace:*",
+    "@kushagradhawan/kookie-flow-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

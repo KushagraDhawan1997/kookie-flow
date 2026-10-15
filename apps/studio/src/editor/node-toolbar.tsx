@@ -2,7 +2,11 @@
 
 import * as React from 'react';
 import { ToolbarButton } from '@kushagradhawan/kookie-ui-react';
-import type { EntityTypeDefinition, KookieFlowInstance, ToolbarRenderFn } from '@kushagradhawan/kookie-flow';
+import type {
+  EntityTypeDefinition,
+  KookieFlowInstance,
+  ToolbarRenderFn,
+} from '@kushagradhawan/kookie-flow-react';
 
 import { RunIcon } from '@/app/icons';
 import type { EditorBus } from './editor-bus';
@@ -51,7 +55,13 @@ function RunButton({ id, flowRef, bus }: { id: string; flowRef: FlowRef; bus: Ed
   };
 
   return (
-    <ToolbarButton emphasis="loud" tone="accent" leading={<RunIcon />} loading={running} onClick={run}>
+    <ToolbarButton
+      emphasis="loud"
+      tone="accent"
+      leading={<RunIcon />}
+      loading={running}
+      onClick={run}
+    >
       Run
     </ToolbarButton>
   );

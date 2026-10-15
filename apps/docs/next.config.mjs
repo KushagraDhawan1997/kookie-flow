@@ -2,7 +2,7 @@ import nextMDX from '@next/mdx';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const packageJson = require('../../packages/kookie-flow/package.json');
+const packageJson = require('../../packages/kookie-flow-react/package.json');
 
 const securityHeaders = [
   {
@@ -104,7 +104,7 @@ const MOVED_CHAPTERS = [
  * twin; the `/docs` pages never did.
  */
 const MOVED_TWINS = MOVED_CHAPTERS.filter(([source]) => !source.startsWith('/docs/')).map(
-  ([source, destination]) => [`${source}.md`, `${destination}.md`],
+  ([source, destination]) => [`${source}.md`, `${destination}.md`]
 );
 
 /** @type {import('next').NextConfig} */
@@ -129,7 +129,12 @@ const nextConfig = {
      app's own compiler is the only step. Through `dist` a stalled `tsup --watch` left the docs
      showing a ten-hour-old library while the studio showed the current one. The built package is
      still exercised as a consumer gets it by the harness, which builds it. */
-  transpilePackages: ['@kushagradhawan/kookie-flow'],
+  transpilePackages: [
+    '@kushagradhawan/kookie-flow-core',
+    '@kushagradhawan/kookie-flow-webgl',
+    '@kushagradhawan/kookie-flow-skin-glass',
+    '@kushagradhawan/kookie-flow-react',
+  ],
   trailingSlash: false,
   /* Old chapter URLs live in issues, READMEs and search indexes, and a moved page that 404s
      punishes exactly the person who shared it. Permanent, because the old names are not coming

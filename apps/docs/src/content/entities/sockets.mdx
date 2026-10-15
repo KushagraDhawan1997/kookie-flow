@@ -14,7 +14,7 @@ List sockets in an entity's `inputs` and `outputs`. Each socket needs an `id`, a
 `type`:
 
 ```tsx
-import type { Entity } from '@kushagradhawan/kookie-flow';
+import type { Entity } from '@kushagradhawan/kookie-flow-react';
 
 const resize: Entity = {
   id: 'resize-1',
@@ -60,7 +60,8 @@ A socket type gives every socket of that type a colour, a default widget and a r
 connects to. Pass your types to `KookieFlow` as `socketTypes`:
 
 ```tsx
-import { KookieFlow, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 // Declared outside the component, so the object is the same on every render.
 const socketTypes: Record<string, SocketType> = {
@@ -71,7 +72,7 @@ const socketTypes: Record<string, SocketType> = {
 };
 
 export function Synth({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
-  return <KookieFlow entities={entities} edges={edges} socketTypes={socketTypes} />;
+  return <KookieFlow skin={glassSkin} entities={entities} edges={edges} socketTypes={socketTypes} />;
 }
 ```
 
@@ -162,7 +163,7 @@ after a gutter of `socketLabelWidth`, which defaults to `96` (`SOCKET_LABEL_WIDT
 shortens a socket name that doesn't fit the gutter. Widen the gutter when your names are long:
 
 ```tsx
-<KookieFlow entities={entities} edges={edges} socketLabelWidth={140} />
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} socketLabelWidth={140} />
 ```
 
 A stacked row puts the name above the widget and gives the widget the full width of the body. Use
@@ -198,7 +199,8 @@ socket's `defaultValue`. Write each change back there:
 'use client';
 
 import { useCallback } from 'react';
-import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, setEntities, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -219,7 +221,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   );
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}

@@ -1,4 +1,4 @@
-import type { EvaluationStatus } from '@kushagradhawan/kookie-flow';
+import type { EvaluationStatus } from '@kushagradhawan/kookie-flow-react';
 
 /**
  * What the panes need to know about the canvas that is not graph data: which nodes are selected,
@@ -21,7 +21,11 @@ export class EditorBus {
   selected: readonly string[] = [];
 
   /** The engine's `onStatusChange`. Cheap: two map writes and, rarely, one RAF request. */
-  readonly onStatusChange = (entityId: string, status: EvaluationStatus, message?: string): void => {
+  readonly onStatusChange = (
+    entityId: string,
+    status: EvaluationStatus,
+    message?: string
+  ): void => {
     const hadStatus = this.statuses.get(entityId);
     const hadMessage = this.messages.get(entityId);
     this.statuses.set(entityId, status);
@@ -35,7 +39,8 @@ export class EditorBus {
   /** The store's selection, from the bridge inside the canvas. */
   setSelection(ids: Iterable<string>): void {
     const next = [...ids];
-    if (next.length === this.selected.length && next.every((id, i) => id === this.selected[i])) return;
+    if (next.length === this.selected.length && next.every((id, i) => id === this.selected[i]))
+      return;
     this.selected = next;
     this.schedule();
   }

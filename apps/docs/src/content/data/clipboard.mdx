@@ -15,8 +15,9 @@ else.
 ```tsx title="flow-editor.tsx"
 'use client';
 
-import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
-import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 const entities: Entity[] = [
   {
@@ -52,7 +53,7 @@ function ClipboardShortcuts() {
 export function FlowEditor() {
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow entities={entities} edges={edges}>
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
         <ClipboardShortcuts />
       </KookieFlow>
     </div>
@@ -130,7 +131,7 @@ export function FlowEditor() {
 
   return (
     <div ref={setContainer} style={{ height: 480 }}>
-      <KookieFlow entities={entities} edges={edges}>
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
         <ClipboardShortcuts container={container} />
       </KookieFlow>
     </div>
@@ -256,7 +257,7 @@ the edges inside the selection and the edges feeding into it, and leaves out the
 it, so nothing downstream gains a second input:
 
 ```ts title="duplicate-selection.ts"
-import type { FlowStore } from '@kushagradhawan/kookie-flow';
+import type { FlowStore } from '@kushagradhawan/kookie-flow-react';
 
 export function duplicateSelection(store: FlowStore) {
   const state = store.getState();
@@ -299,7 +300,7 @@ frame was copied too. A child copied without its frame stays in the original fra
 ### Clone options
 
 `cloneElements` takes `CloneElementsOptions`. This type, `CloneElementsResult`, `InternalClipboard`
-and `PasteFromInternalOptions` are exported from `@kushagradhawan/kookie-flow`.
+and `PasteFromInternalOptions` are exported from `@kushagradhawan/kookie-flow-react`.
 
 | Name | Type | Default | What it does |
 |---|---|---|---|
@@ -328,7 +329,7 @@ it. To copy between them, write the selection to the system clipboard as JSON, a
 it comes back:
 
 ```ts title="system-clipboard.ts"
-import type { Edge, Entity, FlowStore } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity, FlowStore } from '@kushagradhawan/kookie-flow-react';
 
 const FORMAT = 'my-app/graph';
 
@@ -411,8 +412,9 @@ import {
   useGraph,
   type EdgeChange,
   type EntityChange,
-} from '@kushagradhawan/kookie-flow';
-import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 import { initialEntities } from './initial-graph';
 
 interface ClipboardShortcutsProps {
@@ -459,7 +461,7 @@ export function FlowEditor() {
 
   return (
     <div ref={setContainer} style={{ height: 480 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={graph.entities}
         edges={graph.edges}
         onEntitiesChange={graph.onEntitiesChange}

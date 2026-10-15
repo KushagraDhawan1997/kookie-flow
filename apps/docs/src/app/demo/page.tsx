@@ -9,9 +9,17 @@ import {
   type Edge,
   type KookieFlowInstance,
   type ConnectionEndState,
-} from '@kushagradhawan/kookie-flow';
-import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
-import { Code, Flex, Switch, Text, ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
+import {
+  Code,
+  Flex,
+  Switch,
+  Text,
+  ToolbarButton,
+  ToolbarGroup,
+} from '@kushagradhawan/kookie-ui-react';
 
 import { DemoFrame } from '../demo-frame';
 import { MinusIcon, PlusIcon } from '../icons';
@@ -176,7 +184,8 @@ const groupingDemoNodes: Entity[] = [
     width: 340,
     height: 96,
     data: {
-      content: 'The wire from Input to Preview bends through a reroute. Drag the dot to route it somewhere else.',
+      content:
+        'The wire from Input to Preview bends through a reroute. Drag the dot to route it somewhere else.',
       color: 'violet',
     },
   },
@@ -766,7 +775,7 @@ type ClipboardApi = {
 };
 
 /**
- * The clipboard lives on the flow's store, so this has to sit inside `<KookieFlow>`; the buttons
+ * The clipboard lives on the flow's store, so this has to sit inside `<KookieFlow skin={glassSkin}>`; the buttons
  * that drive it sit in the band outside. It hands its actions out through a ref and reports how
  * many entities are held, and registers the shortcuts.
  */
@@ -842,10 +851,11 @@ export default function DemoPage() {
   const pendingValuesRef = useRef<Record<string, Record<string, unknown>>>({});
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect, addEntity, addEdge } = useGraph({
-    initialEntities,
-    initialEdges,
-  });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect, addEntity, addEdge } =
+    useGraph({
+      initialEntities,
+      initialEdges,
+    });
 
   // The latest graph, readable from inside a timeout without re-creating the handler.
   const entitiesRef = useRef(entities);
@@ -954,7 +964,8 @@ export default function DemoPage() {
 
   const fitSelection = useCallback(() => {
     const selected = flowRef.current?.getSelectedEntities().map((n) => n.id);
-    if (selected && selected.length > 0) flowRef.current?.fitView({ entities: selected, padding: 100 });
+    if (selected && selected.length > 0)
+      flowRef.current?.fitView({ entities: selected, padding: 100 });
   }, []);
 
   return (
@@ -965,12 +976,19 @@ export default function DemoPage() {
           <ToolbarGroup>
             <ToolbarButton onClick={() => clipboardRef.current?.copy()}>Copy</ToolbarButton>
             <ToolbarButton onClick={() => clipboardRef.current?.cut()}>Cut</ToolbarButton>
-            <ToolbarButton disabled={clipboardSize === 0} onClick={() => clipboardRef.current?.paste()}>
+            <ToolbarButton
+              disabled={clipboardSize === 0}
+              onClick={() => clipboardRef.current?.paste()}
+            >
               Paste{clipboardSize > 0 ? ` ${clipboardSize}` : ''}
             </ToolbarButton>
           </ToolbarGroup>
           <ToolbarGroup>
-            <ToolbarButton iconOnly aria-label="Zoom out" onClick={() => flowRef.current?.zoomOut()}>
+            <ToolbarButton
+              iconOnly
+              aria-label="Zoom out"
+              onClick={() => flowRef.current?.zoomOut()}
+            >
               <MinusIcon />
             </ToolbarButton>
             <ToolbarButton iconOnly aria-label="Zoom in" onClick={() => flowRef.current?.zoomIn()}>
@@ -991,13 +1009,17 @@ export default function DemoPage() {
             <Code ref={widgetReadoutRef}>Change a widget</Code>
           </Flex>
           <label style={switchLabelStyle}>
-            <Switch checked={preserveExternal} onCheckedChange={(checked) => setPreserveExternal(checked)} />
+            <Switch
+              checked={preserveExternal}
+              onCheckedChange={(checked) => setPreserveExternal(checked)}
+            />
             <Text size="2">Paste keeps external connections</Text>
           </label>
         </>
       }
     >
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}
@@ -1019,10 +1041,19 @@ export default function DemoPage() {
         onWidgetChange={handleWidgetChange}
         // Per-node accent color support for widgets
       >
-        <ClipboardBridge apiRef={clipboardRef} preserveExternal={preserveExternal} onSize={setClipboardSize} />
+        <ClipboardBridge
+          apiRef={clipboardRef}
+          preserveExternal={preserveExternal}
+          onSize={setClipboardSize}
+        />
       </KookieFlow>
     </DemoFrame>
   );
 }
 
-const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };
+const switchLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+  cursor: 'pointer',
+};

@@ -7,7 +7,7 @@
  * memory instead of paying twice.
  */
 
-import type { EvaluationContext, OnEvaluate } from '@kushagradhawan/kookie-flow';
+import type { EvaluationContext, OnEvaluate } from '@kushagradhawan/kookie-flow-react';
 import { cacheKey, LruCache } from './cache';
 import type { AnyNodeDefinition, SocketSpec } from './define';
 import type { Ports, RunContext } from './ports';

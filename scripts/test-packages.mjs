@@ -38,8 +38,8 @@ try {
   cpSync(join(root, '.pnpmfile.mjs'), join(stagingRoot, '.pnpmfile.mjs'));
   json(join(stagingRoot, 'package.json'), { private: true, packageManager: 'pnpm@12.4.1' });
   write(join(stagingRoot, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
-  for (const part of ['core', 'webgl', 'skin-glass', 'react', 'legacy']) {
-    const folder = part === 'legacy' ? 'kookie-flow' : 'kookie-flow-' + part;
+  for (const part of ['core', 'webgl', 'skin-glass', 'react']) {
+    const folder = 'kookie-flow-' + part;
     const source = join(root, 'packages', folder);
     const stage = join(stagingRoot, 'packages', folder);
     mkdirSync(stage, { recursive: true });
@@ -52,8 +52,8 @@ try {
       if (existsSync(join(source, file))) cpSync(join(source, file), join(stage, file));
     if (part === 'webgl') cpSync(join(source, 'fonts'), join(stage, 'fonts'), { recursive: true });
   }
-  for (const part of ['core', 'webgl', 'skin-glass', 'react', 'legacy']) {
-    const folder = part === 'legacy' ? 'kookie-flow' : 'kookie-flow-' + part;
+  for (const part of ['core', 'webgl', 'skin-glass', 'react']) {
+    const folder = 'kookie-flow-' + part;
     const stage = join(stagingRoot, 'packages', folder);
     const manifest = JSON.parse(readFileSync(join(stage, 'package.json'), 'utf8'));
     for (const [name, range] of Object.entries({
@@ -155,8 +155,8 @@ try {
   );
   const app = join(temp, 'react-consumer');
   mkdirSync(app);
-  const legacyDev = JSON.parse(
-    readFileSync(join(root, 'packages/kookie-flow/package.json'))
+  const harnessDev = JSON.parse(
+    readFileSync(join(root, 'packages/kookie-flow-harness/package.json'))
   ).devDependencies;
   const dependencies = {
     ...tarballs,
@@ -167,30 +167,27 @@ try {
     ...manifests.webgl.peerDependencies,
     ...manifests['skin-glass'].peerDependencies,
   }))
-    if (!(peer in dependencies)) dependencies[peer] = legacyDev[peer].replace(/^[~^]/, '');
-  dependencies['@types/react'] = legacyDev['@types/react'].replace(/^[~^]/, '');
-  dependencies['@types/three'] = legacyDev['@types/three'].replace(/^[~^]/, '');
+    if (!(peer in dependencies)) dependencies[peer] = harnessDev[peer].replace(/^[~^]/, '');
+  dependencies['@types/react'] = harnessDev['@types/react'].replace(/^[~^]/, '');
+  dependencies['@types/three'] = harnessDev['@types/three'].replace(/^[~^]/, '');
   json(join(app, 'package.json'), { private: true, type: 'module', dependencies });
   run(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], app);
   for (const mode of ['mjs', 'cjs']) {
     const load =
       mode === 'mjs'
-        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as old from '@kushagradhawan/kookie-flow'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as glass from '@kushagradhawan/kookie-flow-skin-glass'; import * as plugins from '@kushagradhawan/kookie-flow/plugins';`
-        : `const flow=require('@kushagradhawan/kookie-flow-react'),old=require('@kushagradhawan/kookie-flow'),gl=require('@kushagradhawan/kookie-flow-webgl'),glass=require('@kushagradhawan/kookie-flow-skin-glass'),plugins=require('@kushagradhawan/kookie-flow/plugins');`;
+        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as glass from '@kushagradhawan/kookie-flow-skin-glass'; import * as plugins from '@kushagradhawan/kookie-flow-react/plugins';`
+        : `const flow=require('@kushagradhawan/kookie-flow-react'),gl=require('@kushagradhawan/kookie-flow-webgl'),glass=require('@kushagradhawan/kookie-flow-skin-glass'),plugins=require('@kushagradhawan/kookie-flow-react/plugins');`;
     write(
       join(app, 'smoke.' + mode),
-      // The legacy KookieFlow is a wrapper that defaults the skin to glass; everything under it is
-      // the one implementation.
-      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || old.FlowProvider !== gl.FlowProvider || old.glassSkin !== glass.glassSkin) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !glass.glassSkin.shaders.card.glsl) throw Error('Missing exports');`
+      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || flow.FlowProvider !== gl.FlowProvider) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !glass.glassSkin.shaders.card.glsl) throw Error('Missing exports');`
     );
     run(process.execPath, ['smoke.' + mode], app);
   }
   const source = `import {KookieFlow,useGraph,type Entity,type FlowSkin} from '@kushagradhawan/kookie-flow-react';
     import {glassSkin} from '@kushagradhawan/kookie-flow-skin-glass';
-    import {KookieFlow as Legacy} from '@kushagradhawan/kookie-flow';
     const skin: FlowSkin = glassSkin;
     import {layoutGraph} from '@kushagradhawan/kookie-flow-core/layout';
-    const entities: Entity[] = []; export {KookieFlow,Legacy,useGraph,layoutGraph,entities,skin};`;
+    const entities: Entity[] = []; export {KookieFlow,useGraph,layoutGraph,entities,skin};`;
   for (const ext of ['mts', 'cts']) write(join(app, 'consumer.' + ext), source);
   json(join(app, 'tsconfig.json'), {
     compilerOptions: {
@@ -210,7 +207,7 @@ try {
     app
   );
   const { build } = await import(
-    join(root, 'packages/kookie-flow/node_modules/esbuild/lib/main.js')
+    join(root, 'packages/kookie-flow-harness/node_modules/esbuild/lib/main.js')
   );
   await build({
     absWorkingDir: app,

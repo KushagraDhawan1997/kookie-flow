@@ -8,7 +8,8 @@ Pass `history: true` to `useGraph`.
 ```tsx title="board.tsx"
 'use client';
 
-import { KookieFlow, useGraph, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Board({ initialEntities, initialEdges }: { initialEntities: Entity[]; initialEdges: Edge[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -18,7 +19,7 @@ export function Board({ initialEntities, initialEdges }: { initialEntities: Enti
   });
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -87,7 +88,8 @@ change instead:
 'use client';
 
 import { useCallback } from 'react';
-import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, getEntity, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -105,7 +107,7 @@ export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   );
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -154,8 +156,9 @@ the whole page except while a text field has focus:
 ```tsx title="board.tsx"
 'use client';
 
-import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
-import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   const { undo, redo, entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -168,7 +171,7 @@ export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   });
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -191,7 +194,7 @@ This small history follows the same rules as `useGraph` for selection and for De
 batches. `read` returns the graph from your store, and `write` puts one back.
 
 ```ts title="graph-history.ts"
-import type { Edge, EdgeChange, Entity, EntityChange } from '@kushagradhawan/kookie-flow';
+import type { Edge, EdgeChange, Entity, EntityChange } from '@kushagradhawan/kookie-flow-react';
 
 type Graph = { entities: Entity[]; edges: Edge[] };
 

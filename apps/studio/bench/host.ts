@@ -18,7 +18,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Edge, Entity } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity } from '@kushagradhawan/kookie-flow-react';
 import {
   applyOpsToDocument,
   describeGraph,
@@ -68,11 +68,17 @@ export interface BenchHostOptions {
   approve?: (run: { nodes: string[]; micros: number; index: number }) => boolean;
 }
 
-const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+const EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 function pictureOf(state: HostState, entity: Entity, socket: string): MediaRef | null {
   const held = state.outputs.get(entity.id)?.[socket];
-  return held !== null && typeof held === 'object' && 'hash' in (held as object) ? (held as MediaRef) : null;
+  return held !== null && typeof held === 'object' && 'hash' in (held as object)
+    ? (held as MediaRef)
+    : null;
 }
 
 /** Every node feeding these, however far up — the same walk the editor's host makes before a run. */
@@ -129,7 +135,9 @@ export class BenchHost {
     const values = valueBag(entity);
     const out: Record<string, unknown> = {};
     for (const [id, spec] of Object.entries(def.inputs)) {
-      const edge = this.state.doc.edges.find((e) => e.target === entity.id && e.targetSocket === id);
+      const edge = this.state.doc.edges.find(
+        (e) => e.target === entity.id && e.targetSocket === id
+      );
       out[id] = edge?.sourceSocket
         ? this.state.outputs.get(edge.source)?.[edge.sourceSocket]
         : (values[id] ?? spec.default);
@@ -178,7 +186,10 @@ export class BenchHost {
     const applied = applyOpsToDocument(this.state.doc, ops, registry);
     if (applied.errors.length) {
       for (const error of applied.errors) this.state.refusals.push(error.message);
-      return { created: [], errors: applied.errors.map((e) => ({ index: e.index, message: e.message })) };
+      return {
+        created: [],
+        errors: applied.errors.map((e) => ({ index: e.index, message: e.message })),
+      };
     }
     this.state.doc = applied.doc;
     return { created: applied.created, errors: [] };
@@ -208,7 +219,13 @@ export class BenchHost {
     const rows = nodes.map((id) => {
       const entity = this.entity(id);
       if (!entity) return { id, label: id, status: 'error', error: `no node "${id}"` };
-      if (blocked) return { id, label: this.label(entity), status: 'blocked', error: `waiting on the pick at ${blocked}` };
+      if (blocked)
+        return {
+          id,
+          label: this.label(entity),
+          status: 'blocked',
+          error: `waiting on the pick at ${blocked}`,
+        };
       const def = registry.get(entity.type);
       const held: Record<string, unknown> = {};
       for (const [socket, spec] of Object.entries(def?.outputs ?? {})) {
@@ -236,11 +253,21 @@ export class BenchHost {
     if (!entity) return { node, error: `no node "${node}"` };
     const def = registry.get(entity.type);
     const which =
-      socket ?? Object.entries(def?.outputs ?? {}).find(([, s]) => s.type === 'image' || s.type === 'mask')?.[0];
+      socket ??
+      Object.entries(def?.outputs ?? {}).find(
+        ([, s]) => s.type === 'image' || s.type === 'mask'
+      )?.[0];
     if (!which) return { node, error: 'that node makes no picture' };
     const picture = pictureOf(this.state, entity, which);
     if (!picture) return { node, error: 'nothing has been made there yet' };
-    return { node, socket: which, hash: picture.hash, mime: picture.mime, width: picture.width, height: picture.height };
+    return {
+      node,
+      socket: which,
+      hash: picture.hash,
+      mime: picture.mime,
+      width: picture.width,
+      height: picture.height,
+    };
   }
 
   /** The bytes behind an inspected picture, for the model. */

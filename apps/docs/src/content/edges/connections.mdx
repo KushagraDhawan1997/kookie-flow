@@ -58,7 +58,8 @@ plugged into the input, and reports the change through `onEdgesChange` so `useGr
 as one undo step when history is on:
 
 ```tsx title="editor.tsx"
-import { KookieFlow, useGraph, type Connection, type EdgeChange, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Connection, type EdgeChange, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
@@ -75,7 +76,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   }
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -134,7 +135,8 @@ import {
   useGraph,
   type Entity,
   type IsValidConnectionFn,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -147,7 +149,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   };
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -185,7 +187,7 @@ A `SocketHandle` names one socket:
 has to run in order, such as a processing pipeline, where a loop has no first step.
 
 ```tsx
-<KookieFlow entities={entities} edges={edges} onConnect={onConnect} allowCycles={false} />
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} onConnect={onConnect} allowCycles={false} />
 ```
 
 With `allowCycles={false}`, the canvas rejects a wire when its target entity already leads
@@ -218,7 +220,8 @@ A common use is to create a node where a wire is dropped, already connected to t
 drag started from:
 
 ```tsx title="editor.tsx"
-import { KookieFlow, useGraph, type ConnectionEndState, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type ConnectionEndState, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -244,7 +247,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   }
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -277,7 +280,7 @@ entity up directly instead of searching the array.
 This checks a wire before a button adds it:
 
 ```tsx
-import { validateConnection, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow';
+import { validateConnection, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow-react';
 
 export function connectIfAllowed(
   entities: Entity[],

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 
 export type FlowStoreApi = ReturnType<typeof useFlowStoreApi>;
 

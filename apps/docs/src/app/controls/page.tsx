@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 import { Code, Text } from '@kushagradhawan/kookie-ui-react';
 
 import { DemoFrame } from '../demo-frame';
@@ -32,7 +38,13 @@ const initialEntities: Entity[] = [
         rows: 3,
         placeholder: 'A lighthouse in fog',
       },
-      { id: 'fit', name: 'Fit', type: 'enum', widget: 'segmented', options: ['Fit', 'Fill', 'Crop'] },
+      {
+        id: 'fit',
+        name: 'Fit',
+        type: 'enum',
+        widget: 'segmented',
+        options: ['Fit', 'Fill', 'Crop'],
+      },
       { id: 'size', name: 'Size', type: 'vec2', step: 1, min: 64, max: 4096 },
       { id: 'steps', name: 'Steps', type: 'int' },
       { id: 'guidance', name: 'Guidance', type: 'float' },
@@ -48,7 +60,13 @@ const initialEntities: Entity[] = [
     width: 420,
     data: {
       label: 'Transform',
-      values: { position: [0, 1.5, -2], rotation: [0, 45, 0], scale: [1, 1, 1], pivot: [0.5, 0.5], tint: [1, 1, 1, 1] },
+      values: {
+        position: [0, 1.5, -2],
+        rotation: [0, 45, 0],
+        scale: [1, 1, 1],
+        pivot: [0.5, 0.5],
+        tint: [1, 1, 1, 1],
+      },
     },
     inputs: [
       { id: 'position', name: 'Position', type: 'vec3', step: 0.1 },
@@ -68,11 +86,25 @@ const initialEntities: Entity[] = [
     width: 300,
     data: {
       label: 'Transform (stacked)',
-      values: { position: [0, 1.5, -2], rotation: [0, 45, 0], scale: [1, 1, 1], pivot: [0.5, 0.5], blend: 'Add' },
+      values: {
+        position: [0, 1.5, -2],
+        rotation: [0, 45, 0],
+        scale: [1, 1, 1],
+        pivot: [0.5, 0.5],
+        blend: 'Add',
+      },
     },
     inputs: [
       { id: 'position', name: 'Position', type: 'vec3', step: 0.1, layout: 'stacked' },
-      { id: 'rotation', name: 'Rotation', type: 'vec3', step: 1, min: -360, max: 360, layout: 'stacked' },
+      {
+        id: 'rotation',
+        name: 'Rotation',
+        type: 'vec3',
+        step: 1,
+        min: -360,
+        max: 360,
+        layout: 'stacked',
+      },
       { id: 'scale', name: 'Scale', type: 'vec3', step: 0.01, min: 0, layout: 'stacked' },
       { id: 'pivot', name: 'Pivot', type: 'vec2', step: 0.01, min: 0, max: 1, layout: 'stacked' },
       {
@@ -93,12 +125,25 @@ const initialEntities: Entity[] = [
     width: 340,
     data: {
       label: 'Output',
-      values: { live: true, preview: false, blend: 'Normal', format: 'PNG', background: '#3e63dd', name: 'render-01' },
+      values: {
+        live: true,
+        preview: false,
+        blend: 'Normal',
+        format: 'PNG',
+        background: '#3e63dd',
+        name: 'render-01',
+      },
     },
     inputs: [
       { id: 'live', name: 'Live', type: 'boolean', widget: 'switch' },
       { id: 'preview', name: 'Preview', type: 'boolean' },
-      { id: 'blend', name: 'Blend', type: 'enum', widget: 'segmented', options: ['Normal', 'Add', 'Multiply'] },
+      {
+        id: 'blend',
+        name: 'Blend',
+        type: 'enum',
+        widget: 'segmented',
+        options: ['Normal', 'Add', 'Multiply'],
+      },
       { id: 'format', name: 'Format', type: 'enum', options: ['PNG', 'JPEG', 'WebP', 'AVIF'] },
       { id: 'background', name: 'Background', type: 'color' },
       { id: 'name', name: 'Name', type: 'string' },
@@ -108,7 +153,9 @@ const initialEntities: Entity[] = [
 ];
 
 export default function ControlsPage() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
   const flowRef = useRef<KookieFlowInstance>(null);
   const readoutRef = useRef<HTMLSpanElement>(null);
 
@@ -135,7 +182,8 @@ export default function ControlsPage() {
    */
   const handleWidgetChange = useCallback(
     (entityId: string, socketId: string, value: unknown) => {
-      if (readoutRef.current) readoutRef.current.textContent = `${entityId}.${socketId} = ${JSON.stringify(value)}`;
+      if (readoutRef.current)
+        readoutRef.current.textContent = `${entityId}.${socketId} = ${JSON.stringify(value)}`;
       (pendingRef.current[entityId] ??= {})[socketId] = value;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
@@ -146,7 +194,9 @@ export default function ControlsPage() {
           const touched = pending[entity.id];
           if (!touched) return [];
           const current = (entity.data as { values?: Record<string, unknown> }).values ?? {};
-          return [{ type: 'data' as const, id: entity.id, data: { values: { ...current, ...touched } } }];
+          return [
+            { type: 'data' as const, id: entity.id, data: { values: { ...current, ...touched } } },
+          ];
         });
         if (changes.length > 0) onEntitiesChange(changes);
       }, 150);
@@ -167,6 +217,7 @@ export default function ControlsPage() {
       }
     >
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

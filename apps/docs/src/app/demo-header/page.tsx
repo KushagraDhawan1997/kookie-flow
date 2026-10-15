@@ -21,7 +21,8 @@ import {
   type Entity,
   type HeaderPosition,
   type KookieFlowInstance,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -60,7 +61,15 @@ const POSITIONS: { position: HeaderPosition; note: string }[] = [
 ];
 
 /** One canvas, one header position. Its own graph, so dragging in one board leaves the others put. */
-function Board({ position, note, accentHeader }: { position: HeaderPosition; note: string; accentHeader: boolean }) {
+function Board({
+  position,
+  note,
+  accentHeader,
+}: {
+  position: HeaderPosition;
+  note: string;
+  accentHeader: boolean;
+}) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
     initialEntities,
     initialEdges,
@@ -75,6 +84,7 @@ function Board({ position, note, accentHeader }: { position: HeaderPosition; not
   return (
     <section style={columnStyle}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}
@@ -83,7 +93,8 @@ function Board({ position, note, accentHeader }: { position: HeaderPosition; not
         onConnect={onConnect}
         onWidgetChange={(entityId, socketId, value) => {
           const entity = entities.find((e) => e.id === entityId);
-          const prev = (entity?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
+          const prev =
+            (entity?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
           onEntitiesChange([
             {
               type: 'data',
@@ -149,4 +160,9 @@ const captionStyle: React.CSSProperties = {
   pointerEvents: 'none',
 };
 
-const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };
+const switchLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+  cursor: 'pointer',
+};

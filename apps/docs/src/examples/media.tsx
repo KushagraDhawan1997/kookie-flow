@@ -1,17 +1,30 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const initialEntities: Entity[] = [
   // An image entity: the picture is the whole entity.
   {
-    id: 'photo', type: 'image', position: { x: 0, y: 0 }, width: 300, height: 200,
+    id: 'photo',
+    type: 'image',
+    position: { x: 0, y: 0 },
+    width: 300,
+    height: 200,
     data: { src: '/image-1.jpg', objectFit: 'cover' },
   },
   // A node with a preview band that shows whatever its `image` output holds.
   {
-    id: 'render', type: 'default', position: { x: 360, y: 0 }, width: 240,
+    id: 'render',
+    type: 'default',
+    position: { x: 360, y: 0 },
+    width: 240,
     data: { label: 'Render' },
     outputs: [{ id: 'image', name: 'Image', type: 'image' }],
     preview: { socket: 'image', height: 140 },
@@ -19,7 +32,9 @@ const initialEntities: Entity[] = [
 ];
 
 export default function MediaExample() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
 
   const flowRef = useRef<KookieFlowInstance>(null);
   useEffect(() => {
@@ -33,6 +48,7 @@ export default function MediaExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

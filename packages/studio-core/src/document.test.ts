@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Viewport, XYPosition } from '@kushagradhawan/kookie-flow';
+import type { Viewport, XYPosition } from '@kushagradhawan/kookie-flow-react';
 import { documentFingerprint, emptyDocument, parseDocument, type GraphDocument } from './document';
 
-function graph(changes: { position?: XYPosition; value?: number; viewport?: Viewport } = {}): GraphDocument {
+function graph(
+  changes: { position?: XYPosition; value?: number; viewport?: Viewport } = {}
+): GraphDocument {
   return {
     version: 1,
     entities: [
@@ -52,7 +54,10 @@ describe('documentFingerprint', () => {
 
   it('skips a field that is undefined, as the JSON a save sends does', () => {
     const base = graph();
-    const withUndefined = { ...base, entities: base.entities.map((e) => ({ ...e, parentId: undefined })) };
+    const withUndefined = {
+      ...base,
+      entities: base.entities.map((e) => ({ ...e, parentId: undefined })),
+    };
     expect(documentFingerprint(withUndefined)).toBe(documentFingerprint(base));
   });
 });

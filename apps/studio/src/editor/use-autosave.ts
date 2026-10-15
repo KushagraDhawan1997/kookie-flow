@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Edge, Entity, KookieFlowInstance, Viewport } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity, KookieFlowInstance, Viewport } from '@kushagradhawan/kookie-flow-react';
 import {
   DEFAULT_VIEWPORT,
   documentFingerprint,
@@ -89,7 +89,11 @@ export function useAutosave(
     (doc: { entities: Entity[]; edges: Edge[]; viewport: Viewport }, graphName: string) =>
       JSON.stringify({
         name: graphName,
-        doc: { version: 1, ...stripResolved(doc.entities, doc.edges, registry), viewport: doc.viewport },
+        doc: {
+          version: 1,
+          ...stripResolved(doc.entities, doc.edges, registry),
+          viewport: doc.viewport,
+        },
       }),
     []
   );
@@ -122,7 +126,10 @@ export function useAutosave(
   // mount — first, doubled by strict mode, or repeated by Fast Refresh — writes nothing. Serialised
   // once: a ref's argument is evaluated on every render, and this one walks the whole graph.
   const [seed] = React.useState(() =>
-    serialise({ entities: initial.entities, edges: initial.edges, viewport: initial.viewport }, name)
+    serialise(
+      { entities: initial.entities, edges: initial.edges, viewport: initial.viewport },
+      name
+    )
   );
   const savedJson = React.useRef(seed);
   const pendingJson = React.useRef<string | null>(null);
@@ -174,7 +181,11 @@ export function useAutosave(
     (json: string) => {
       if (inFlightJson.current !== null) remember(inFlightJson.current);
       remember(json);
-      writeHandover(id, { revision: revision.current, body: json, unconfirmed: unconfirmed.current });
+      writeHandover(id, {
+        revision: revision.current,
+        body: json,
+        unconfirmed: unconfirmed.current,
+      });
       handedOver.current = true;
     },
     [id, remember]
@@ -378,7 +389,8 @@ function readHandover(id: string): Handover | null {
     const value: unknown = JSON.parse(raw);
     if (typeof value !== 'object' || value === null) return null;
     const { revision, body, unconfirmed } = value as Partial<Handover>;
-    if (typeof revision !== 'number' || typeof body !== 'string' || !Array.isArray(unconfirmed)) return null;
+    if (typeof revision !== 'number' || typeof body !== 'string' || !Array.isArray(unconfirmed))
+      return null;
     return { revision, body, unconfirmed: unconfirmed.filter((f) => typeof f === 'string') };
   } catch (error) {
     // Storage switched off, or a handover this version cannot read: the page opens on its render.

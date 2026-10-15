@@ -3,8 +3,7 @@
 ## Ownership
 
 The dependency direction is `react → webgl → core`, and a skin depends on `webgl` (`skin-glass →
-webgl`); `webgl` and `react` never import a skin. The compatibility package forwards to `react`,
-`skin-glass` and `core/layout`. Core does not import React, Three, R3F, KookieUI or browser globals.
+webgl`); `webgl` and `react` never import a skin. Core does not import React, Three, R3F, KookieUI or browser globals.
 Its TypeScript configuration excludes DOM libraries. `pnpm check:boundaries` checks the source
 imports; `pnpm test:packages` installs the tarballs in consumers outside this repository.
 
@@ -28,8 +27,9 @@ imports and new imports share the store and React contexts.
 
 For a React editor, import from `@kushagradhawan/kookie-flow-react` and its `/plugins` subpath, and
 pass `skin={glassSkin}` from `@kushagradhawan/kookie-flow-skin-glass`. For the glass skin, import
-`@kushagradhawan/kookie-ui-react/styles.css` once and wrap the app in its `Theme`. The compatibility
-package `@kushagradhawan/kookie-flow` defaults the skin to glass.
+`@kushagradhawan/kookie-ui-react/styles.css` once and wrap the app in its `Theme`. `layoutGraph`
+for non-React use is at `@kushagradhawan/kookie-flow-core/layout`. The old all-in-one
+`@kushagradhawan/kookie-flow` package is gone.
 For nonvisual work:
 
 ```ts
@@ -62,7 +62,7 @@ Use Node 24 and pnpm 12.4.1. On a clean build checkout:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm --filter @kushagradhawan/kookie-flow... run build
+pnpm --filter kookie-flow-harness... run build
 pnpm test:packages
 pnpm --filter '@kushagradhawan/kookie-flow*' -r pack --pack-destination ./artifacts
 ```
@@ -72,7 +72,7 @@ Use `pnpm pack` rather than `npm pack`: pnpm expands workspace dependencies and 
 and real packing path. Built JS and both ESM/CJS declarations, licenses and WebGL font assets
 must exist in the archives. Do not publish development source export conditions.
 
-Install all five Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz` in a
+Install all four Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz` in a
 consumer, with the peers listed in `packages/kookie-flow-webgl/package.json` and
 `packages/kookie-flow-skin-glass/package.json`. The UI
 archive is the previously tested Flow snapshot with only its package name and version changed.

@@ -27,14 +27,14 @@ jobs:
       - name: Package boundaries
         run: pnpm check:boundaries
       - name: Types and unit/DOM regressions
-        run: pnpm --filter @kushagradhawan/kookie-flow run lint && pnpm --filter @kushagradhawan/kookie-flow run test
+        run: pnpm --filter kookie-flow-harness run lint && pnpm --filter kookie-flow-harness run test
       - name: Bounded spatial stress
-        run: pnpm --filter @kushagradhawan/kookie-flow run test:spatial-stress
+        run: pnpm --filter kookie-flow-harness run test:spatial-stress
       - name: Build and isolated packed consumer
-        run: pnpm --filter @kushagradhawan/kookie-flow... run build && pnpm --filter @kushagradhawan/kookie-flow run test:package
+        run: pnpm --filter kookie-flow-harness... run build && pnpm --filter kookie-flow-harness run test:package
       - name: Install real browser
-        run: pnpm --dir packages/kookie-flow exec playwright-core install --with-deps chromium
+        run: pnpm --dir packages/kookie-flow-harness exec playwright-core install --with-deps chromium
       - name: Full browser behavior suite
-        run: pnpm --filter @kushagradhawan/kookie-flow run test:browser
+        run: pnpm --filter kookie-flow-harness run test:browser
       - name: Production dependency advisories
         run: pnpm audit --prod --audit-level high

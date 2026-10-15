@@ -1,8 +1,9 @@
 'use client';
 
-import type { EdgeChange, EntityChange } from '@kushagradhawan/kookie-flow';
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
-import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import type { EdgeChange, EntityChange } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
+import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 import { registry, stripResolved } from 'studio-core';
 
 interface CanvasShortcutsProps {
@@ -13,10 +14,11 @@ interface CanvasShortcutsProps {
 }
 
 /** Is the keyboard in the graph, rather than in the inspector or the header? */
-const canvasHasFocus = () => Boolean(document.activeElement?.closest('[data-kookie-flow-container]'));
+const canvasHasFocus = () =>
+  Boolean(document.activeElement?.closest('[data-kookie-flow-container]'));
 
 /**
- * Copy, paste, duplicate, undo and redo for the canvas. Rendered inside `<KookieFlow>` because
+ * Copy, paste, duplicate, undo and redo for the canvas. Rendered inside `<KookieFlow skin={glassSkin}>` because
  * the clipboard lives in the flow store. Delete and select-all are the library's own.
  *
  * NOTHING IS CANCELLED PAGE-WIDE. These keys are bound on the document, so cancelling them up
@@ -27,7 +29,12 @@ const canvasHasFocus = () => Boolean(document.activeElement?.closest('[data-kook
  * A PASTE LANDS IN THE STORE FIRST, and the controlled owner must be told or the next prop sync
  * takes it straight back out — the same two-step the library's own add paths make.
  */
-export function CanvasShortcuts({ onEntitiesChange, onEdgesChange, onUndo, onRedo }: CanvasShortcutsProps) {
+export function CanvasShortcuts({
+  onEntitiesChange,
+  onEdgesChange,
+  onUndo,
+  onRedo,
+}: CanvasShortcutsProps) {
   const store = useFlowStoreApi();
   const { copy, paste } = useClipboard({ offset: { x: 40, y: 40 } });
 
@@ -67,9 +74,30 @@ export function CanvasShortcuts({ onEntitiesChange, onEdgesChange, onUndo, onRed
       },
       // Undo is the editor's, so the canvas's pending widget values are folded in first. The
       // plugin already declines every key typed into a field, so the inspector keeps its own.
-      { key: 'mod+z', preventDefault: false, handler: (e) => { e.preventDefault(); onUndo(); } },
-      { key: 'mod+shift+z', preventDefault: false, handler: (e) => { e.preventDefault(); onRedo(); } },
-      { key: 'mod+y', preventDefault: false, handler: (e) => { e.preventDefault(); onRedo(); } },
+      {
+        key: 'mod+z',
+        preventDefault: false,
+        handler: (e) => {
+          e.preventDefault();
+          onUndo();
+        },
+      },
+      {
+        key: 'mod+shift+z',
+        preventDefault: false,
+        handler: (e) => {
+          e.preventDefault();
+          onRedo();
+        },
+      },
+      {
+        key: 'mod+y',
+        preventDefault: false,
+        handler: (e) => {
+          e.preventDefault();
+          onRedo();
+        },
+      },
     ],
   });
   return null;

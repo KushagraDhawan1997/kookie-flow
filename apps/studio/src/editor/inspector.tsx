@@ -21,8 +21,21 @@ import {
   TextArea,
   TextField,
 } from '@kushagradhawan/kookie-ui-react';
-import type { Edge, Entity, EvaluationStatus, KookieFlowInstance, WidgetType } from '@kushagradhawan/kookie-flow';
-import { formatUsd, isMediaRef, registry, SOCKET_TYPES, valueBag, type SocketSpec } from 'studio-core';
+import type {
+  Edge,
+  Entity,
+  EvaluationStatus,
+  KookieFlowInstance,
+  WidgetType,
+} from '@kushagradhawan/kookie-flow-react';
+import {
+  formatUsd,
+  isMediaRef,
+  registry,
+  SOCKET_TYPES,
+  valueBag,
+  type SocketSpec,
+} from 'studio-core';
 
 import { EmptyState } from '@/app/empty-state';
 import { RunIcon, TrashIcon } from '@/app/icons';
@@ -52,7 +65,15 @@ const STATUS_WORDS: Record<EvaluationStatus, string> = {
   error: 'Failed',
 };
 
-export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, onRemove }: InspectorProps) {
+export function Inspector({
+  entities,
+  edges,
+  flowRef,
+  bus,
+  onValues,
+  onLabel,
+  onRemove,
+}: InspectorProps) {
   // Selection, status and outputs live in the store and the engine, not in React. The bus taps
   // once per animation frame when the selected node's own state moves, and only this pane
   // re-renders for it.
@@ -78,14 +99,19 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
     return entities.length === 0 ? (
       <EmptyState title="No nodes yet" description="Press + beside the canvas to add one." />
     ) : (
-      <EmptyState title="Nothing selected" description="Click a node on the canvas to see its settings." />
+      <EmptyState
+        title="Nothing selected"
+        description="Click a node on the canvas to see its settings."
+      />
     );
   }
 
   const def = registry.get(entity.type);
   const flow = flowRef.current;
   const engineStatus = flow?.getEvaluationStatus(entity.id) ?? 'idle';
-  const outputs = def ? Object.keys(def.outputs).map((id) => [id, flow?.getSocketValue(entity.id, id)] as const) : [];
+  const outputs = def
+    ? Object.keys(def.outputs).map((id) => [id, flow?.getSocketValue(entity.id, id)] as const)
+    : [];
   // The engine returns a settled node to `idle` a moment after it succeeds, so `idle` alone
   // cannot tell "never run" from "ran a second ago". Having produced a value is what tells them
   // apart, and it is what the reader actually wants to know.
@@ -127,7 +153,9 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
                 if (edge) {
                   return (
                     <Stack key={id} gap="1">
-                      <Text size="2" weight="medium">{label}</Text>
+                      <Text size="2" weight="medium">
+                        {label}
+                      </Text>
                       <Text size="1" emphasis="medium">
                         from {edge.source}.{edge.sourceSocket}
                       </Text>
@@ -167,7 +195,11 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
       </ShellScroll>
       <ShellPaneFooter>
         {quote && (
-          <Text size="1" emphasis="medium" style={{ display: 'block', marginBlockEnd: 'var(--space-2)' }}>
+          <Text
+            size="1"
+            emphasis="medium"
+            style={{ display: 'block', marginBlockEnd: 'var(--space-2)' }}
+          >
             About {formatUsd(quote.total)} to run
           </Text>
         )}
@@ -180,7 +212,13 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
           >
             Run
           </Button>
-          <Button iconOnly emphasis="quiet" tone="destructive" aria-label="Delete node" onClick={() => onRemove(entity.id)}>
+          <Button
+            iconOnly
+            emphasis="quiet"
+            tone="destructive"
+            aria-label="Delete node"
+            onClick={() => onRemove(entity.id)}
+          >
             <TrashIcon />
           </Button>
         </Flex>
@@ -191,7 +229,12 @@ export function Inspector({ entities, edges, flowRef, bus, onValues, onLabel, on
 
 function OutputRow({ id, value }: { id: string; value: unknown }) {
   let shown: React.ReactNode;
-  if (value === undefined) shown = <Text size="1" emphasis="quiet">–</Text>;
+  if (value === undefined)
+    shown = (
+      <Text size="1" emphasis="quiet">
+        –
+      </Text>
+    );
   else if (isMediaRef(value) && value.url) {
     shown = (
       // `--radius-surface-1`, not `--radius-2`: the radius scale is split by role, and at the
@@ -252,7 +295,8 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
   switch (widget) {
     case 'slider': {
       const type = SOCKET_TYPES[spec.type];
-      const live = typeof draft === 'number' ? draft : typeof value === 'number' ? value : Number(value ?? 0);
+      const live =
+        typeof draft === 'number' ? draft : typeof value === 'number' ? value : Number(value ?? 0);
       const step = spec.step ?? type.step ?? 0.01;
       control = (
         <Flex gap="3" align="center">
@@ -266,7 +310,9 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
             onValueCommitted={(v) => commit(Array.isArray(v) ? (v[0] ?? 0) : v)}
             style={{ flexGrow: 1 }}
           />
-          <Code size="1">{Number.isFinite(live) ? (step >= 1 ? live.toFixed(0) : live.toFixed(3)) : '–'}</Code>
+          <Code size="1">
+            {Number.isFinite(live) ? (step >= 1 ? live.toFixed(0) : live.toFixed(3)) : '–'}
+          </Code>
         </Flex>
       );
       break;
@@ -274,7 +320,8 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
     case 'number': {
       // The socket type's range belongs to the slider, not here: a float field inheriting 0..1
       // refused every larger number, and inheriting step 0.01 refused every other one.
-      const shown = draft !== null ? String(draft) : value === undefined || value === null ? '' : String(value);
+      const shown =
+        draft !== null ? String(draft) : value === undefined || value === null ? '' : String(value);
       const commitText = (text: string) => {
         const n = Number(text);
         if (text.trim() === '' || !Number.isFinite(n)) setDraft(null);
@@ -298,7 +345,9 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
       break;
     }
     case 'checkbox':
-      control = <Switch checked={Boolean(value)} onCheckedChange={(checked) => onChange(checked)} />;
+      control = (
+        <Switch checked={Boolean(value)} onCheckedChange={(checked) => onChange(checked)} />
+      );
       break;
     case 'select':
       control = (
@@ -334,7 +383,15 @@ function ParamControl({ label, spec, widget, value, onChange }: ParamControlProp
     default:
       control = (
         <TextField
-          value={draft !== null ? String(draft) : typeof value === 'string' ? value : value === undefined ? '' : String(value)}
+          value={
+            draft !== null
+              ? String(draft)
+              : typeof value === 'string'
+                ? value
+                : value === undefined
+                  ? ''
+                  : String(value)
+          }
           placeholder={spec.placeholder}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={(e) => commit(e.target.value)}

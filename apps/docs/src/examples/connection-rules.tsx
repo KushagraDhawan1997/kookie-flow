@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 // A float output, an image output, and one node that takes one of each.
 const initialEntities: Entity[] = [
@@ -45,6 +51,7 @@ export default function ConnectionRulesExample() {
     <div style={{ width: '100%', height: 360 }}>
       {/* Strict: a wire only connects sockets whose types are compatible. */}
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

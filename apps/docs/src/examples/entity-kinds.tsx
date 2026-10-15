@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const initialEntities: Entity[] = [
   {
@@ -12,7 +18,14 @@ const initialEntities: Entity[] = [
     outputs: [{ id: 'image', name: 'Image', type: 'image' }],
   },
   // The frame comes before the node inside it, so the node draws on top.
-  { id: 'stage', type: 'frame', position: { x: 300, y: 0 }, width: 300, height: 200, data: { label: 'Clean up' } },
+  {
+    id: 'stage',
+    type: 'frame',
+    position: { x: 300, y: 0 },
+    width: 300,
+    height: 200,
+    data: { label: 'Clean up' },
+  },
   {
     id: 'blur',
     type: 'image/blur',
@@ -41,7 +54,9 @@ const initialEntities: Entity[] = [
 ];
 
 export default function EntityKindsExample() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
 
   const flowRef = useRef<KookieFlowInstance>(null);
   useEffect(() => {
@@ -51,6 +66,7 @@ export default function EntityKindsExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

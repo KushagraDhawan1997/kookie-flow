@@ -10,7 +10,8 @@ import {
   type Edge,
   type XYPosition,
   type EntityTypeDefinition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -377,6 +378,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
 
   return (
     <KookieFlow
+      skin={glassSkin}
       entities={entities}
       edges={edges}
       entityTypes={entityTypes}
@@ -399,7 +401,9 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
   );
 }
 
-const NODE_COUNT_ITEMS = Object.fromEntries(NODE_COUNT_OPTIONS.map((n) => [String(n), `${n.toLocaleString()} nodes`]));
+const NODE_COUNT_ITEMS = Object.fromEntries(
+  NODE_COUNT_OPTIONS.map((n) => [String(n), `${n.toLocaleString()} nodes`])
+);
 
 export default function DemoWebGLPage() {
   const [nodeCount, setNodeCount] = useState<number>(100);

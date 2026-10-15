@@ -10,7 +10,8 @@ Give the entity `type: 'text'` and put the words in `data.content`. Give it a `w
 ```tsx title="board.tsx"
 'use client';
 
-import { KookieFlow, resizableForSizingMode, useGraph, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, resizableForSizingMode, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const initialEntities: Entity[] = [
   {
@@ -29,7 +30,7 @@ export function Board() {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange} />
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange} />
     </div>
   );
 }
@@ -137,7 +138,7 @@ where `data` leaves a field out. Use it when you draw the same text somewhere el
 list of notes beside the canvas.
 
 ```tsx title="note-preview.tsx"
-import { resolveTextStyle, type TextEntity } from '@kushagradhawan/kookie-flow';
+import { resolveTextStyle, type TextEntity } from '@kushagradhawan/kookie-flow-react';
 
 export function NotePreview({ entity }: { entity: TextEntity }) {
   // Pass the colour your page uses, because the canvas's default comes from its theme.
