@@ -187,7 +187,7 @@ const fragmentShader = (skinGlsl: string) => /* glsl */ `
 const SCREEN_ORIGIN = new THREE.Vector2();
 
 export function WidgetPopoverGL() {
-  const { colors, material: skinMaterial, shaders } = useSkin();
+  const { colors, shaders } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -214,7 +214,11 @@ export function WidgetPopoverGL() {
     [geometry, textGeometry]
   );
 
-  const appearance = tokens.appearance;
+  /** The ground's blur under the panel, in CSS px of sigma; 0 when the skin samples no ground. */
+  const backdropBlur = useMemo(
+    () => shaders.floating.backdropBlur({ tokens, colors }),
+    [shaders, tokens, colors]
+  );
   const material = useMemo(() => {
     const rgb = (v: readonly number[]) => new THREE.Color(v[0], v[1], v[2]);
     const canvasBg = resolveColor(colors.canvas.background, tokens);
@@ -225,7 +229,7 @@ export function WidgetPopoverGL() {
         uRowRadius: { value: 8 },
         uShadowPad: { value: POPOVER_SHADOW_PAD },
         uKind: { value: 0 },
-        uBlur: { value: skinMaterial[appearance].surfaceBlur * BLUR_RADIUS_PER_SIGMA },
+        uBlur: { value: backdropBlur * BLUR_RADIUS_PER_SIGMA },
         uInk: { value: rgb(resolveColor(colors.text.primary, tokens)) },
         // The selected row's tick: v2's `--accent-glyph`, not the solid accent.
         uAccent: { value: rgb(resolveColor(colors.widget.glyph, tokens)) },
@@ -251,7 +255,7 @@ export function WidgetPopoverGL() {
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, appearance, colors, skinMaterial, shaders]);
+  }, [tokens, colors, shaders, backdropBlur]);
   useEffect(
     () => () => {
       material.dispose();
@@ -335,12 +339,13 @@ export function WidgetPopoverGL() {
 
   /**
    * The copy of the ground, taken right before the panel draws — see gl/backdrop.ts. Bound as
-   * `onBeforeRender` so it reads the frame with everything under the panel already in it.
+   * `onBeforeRender` so it reads the frame with everything under the panel already in it. Skipped
+   * entirely when the skin samples no ground.
    */
   const capture = useMemo(
     () => () => {
       const layout = layoutRef.current;
-      if (!layout) return;
+      if (!layout || backdropBlur <= 0) return;
       const { viewport } = store.getState();
       const dpr = gl.getPixelRatio();
       const pad = POPOVER_SHADOW_PAD;
@@ -354,10 +359,9 @@ export function WidgetPopoverGL() {
       material.uniforms.uBackdrop.value = tex;
       (material.uniforms.uBackdropOrigin.value as THREE.Vector2).set(snapshot.x, snapshot.y);
       (material.uniforms.uBackdropSize.value as THREE.Vector2).set(snapshot.width, snapshot.height);
-      material.uniforms.uBlur.value =
-        skinMaterial[appearance].surfaceBlur * BLUR_RADIUS_PER_SIGMA * dpr;
+      material.uniforms.uBlur.value = backdropBlur * BLUR_RADIUS_PER_SIGMA * dpr;
     },
-    [gl, material, snapshot, store, skinMaterial]
+    [gl, material, snapshot, store, backdropBlur]
   );
 
   useFrame(() => {

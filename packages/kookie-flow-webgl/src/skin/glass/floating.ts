@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { SkinShader } from '../types';
+import type { FloatingShader } from '../types';
 import { resolveColor } from '../../core/theme-colors';
 import { GLASS_GLSL } from './glass';
 import { CORNER_K_FLOATING_ROWS, MATERIAL, type RGBA } from './material';
@@ -9,7 +9,7 @@ import { CORNER_K_FLOATING_ROWS, MATERIAL, type RGBA } from './material';
  * ground, with a wash, a pooled inner shade, a dark-only top line, grain, a three-layer cast and
  * the conic ring at 60% as its only edge.
  */
-export const glassFloating: SkinShader = {
+export const glassFloating: FloatingShader = {
   glsl: /* glsl */ `
   uniform float uCornerK;
   uniform vec3 uTint;
@@ -119,5 +119,9 @@ export const glassFloating: SkinShader = {
       },
       uRowSolid: { value: highContrast ? 1 : 0 },
     };
+  },
+  // v2's `--material-regular-filter` blur under a floating surface.
+  backdropBlur({ tokens }) {
+    return MATERIAL[tokens.appearance].surfaceBlur;
   },
 };

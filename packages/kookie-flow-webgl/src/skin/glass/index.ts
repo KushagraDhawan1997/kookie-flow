@@ -5,8 +5,8 @@ import { glassControls } from './controls';
 import { CORNER_K, squircleBoxSDF } from './corner';
 import { glassFloating } from './floating';
 import { glassMedia } from './media';
+import { glassUI } from './ui';
 import { GLASS_METRICS } from './metrics';
-import { MATERIAL } from './material';
 import { GLASS_FALLBACK_TOKENS, readGlassTokens } from './tokens';
 
 /** KookieUI v2's glass: translucent material, conic rings, aura and grain. */
@@ -14,8 +14,8 @@ export const glassSkin: FlowSkin = {
   name: 'glass',
   colors: GLASS_COLORS,
   metrics: GLASS_METRICS,
-  material: MATERIAL,
   shape: { glsl: squircleBoxSDF, cornerScale: CORNER_K },
+  ui: glassUI,
   shaders: {
     card: glassCard,
     controls: glassControls,
