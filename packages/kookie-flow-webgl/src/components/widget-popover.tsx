@@ -329,7 +329,7 @@ export function WidgetPopoverGL() {
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, appearance]);
+  }, [tokens, appearance, colors, skinMaterial]);
   useEffect(
     () => () => {
       material.dispose();

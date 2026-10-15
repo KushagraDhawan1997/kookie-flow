@@ -675,7 +675,7 @@ export function WidgetsGL({
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, c, resolvedStyle.markRadius]);
+  }, [tokens, c, skinMaterial, resolvedStyle.markRadius]);
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(
     () => () => {
