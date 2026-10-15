@@ -8,6 +8,7 @@ import { TooltipProvider } from "@kushagradhawan/kookie-ui-react";
 import { appearanceScript } from "./appearance-script";
 import { DevOutlineGate } from "./dev-outline";
 import { DocsTheme } from "./theme-store";
+import { SITE_URL } from "./site";
 
 /**
  * THE SITE'S FACE, AND THE CANVAS'S.
@@ -38,7 +39,7 @@ const siteConfig = {
   name: "Kookie Flow",
   description:
     "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
-  url: "https://kookie-flow.vercel.app",
+  url: SITE_URL,
   author: {
     name: "Kushagra Dhawan",
     url: "https://github.com/KushagraDhawan1997",

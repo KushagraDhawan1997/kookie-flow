@@ -1,8 +1,8 @@
 import type { MetadataRoute } from 'next';
 
-export default function robots(): MetadataRoute.Robots {
-  const baseUrl = 'https://kookie-flow.vercel.app';
+import { SITE_URL } from './site';
 
+export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
@@ -11,6 +11,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/_next/'],
       },
     ],
-    sitemap: `${baseUrl}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }
