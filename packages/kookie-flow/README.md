@@ -80,7 +80,7 @@ TypeScript project.
 
 ## Documentation
 
-The documentation lives at [kookie-flow.vercel.app](https://kookie-flow.vercel.app). It covers
+The documentation lives at [flow.kookie.design](https://flow.kookie.design). It covers
 entities and sockets, edges and connections, evaluation, saving, undo and layout, interaction,
 styling, and a reference for every prop, ref method and hook.
 
