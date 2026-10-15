@@ -5,6 +5,18 @@ export { FlowProvider, useFlowStore, useFlowStoreApi } from './components/contex
 export { Minimap } from './components/minimap';
 export { Toolbar, type ToolbarProps } from './components/toolbar';
 
+// Skin
+export {
+  SkinProvider,
+  useSkin,
+  glassSkin,
+  type FlowSkin,
+  type SkinColors,
+  type SkinMetrics,
+  type SizeConfig,
+  type VariantConfig,
+} from './skin/index';
+
 // Hooks
 export {
   useThemeTokens,

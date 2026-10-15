@@ -1,11 +1,12 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useSkin } from '../skin/context';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts/index';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
 import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
 import {
@@ -56,6 +57,7 @@ const HANDLE_DOT_RADIUS_PX = 3;
  *    is their affordance. Hidden during drag/connect/box-select operations.
  */
 export function EntitySelection() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const resolvedStyle = useResolvedStyle();
   const socketLayout = useSocketLayout();
@@ -90,8 +92,8 @@ export function EntitySelection() {
   );
 
   // Resolve theme colors
-  const selectedColor = tokens[THEME_COLORS.entitySelection.selected];
-  const hoverColor = tokens[THEME_COLORS.entitySelection.hover];
+  const selectedColor = resolveColor(colors.entitySelection.selected, tokens);
+  const hoverColor = resolveColor(colors.entitySelection.hover, tokens);
 
   const glowAlpha = SELECTION_GLOW_ALPHA[tokens.appearance];
 
@@ -275,12 +277,12 @@ export function EntitySelection() {
   // Memoised on the tokens: resolveColor returns a fresh tuple, and as bare render-time calls
   // these defeated the material memo below — a shader compile and a mesh rebuild per render.
   const handleFillColor = useMemo(
-    () => resolveColor(THEME_COLORS.entitySelection.handleFill, tokens),
-    [tokens]
+    () => resolveColor(colors.entitySelection.handleFill, tokens),
+    [tokens, colors]
   );
   const handleBorderColor = useMemo(
-    () => resolveColor(THEME_COLORS.entitySelection.handleBorder, tokens),
-    [tokens]
+    () => resolveColor(colors.entitySelection.handleBorder, tokens),
+    [tokens, colors]
   );
 
   const handleMaterial = useMemo(() => {
@@ -420,7 +422,7 @@ export function EntitySelection() {
       unsubConnection();
       unsubSelectionBox();
     };
-  }, [store]);
+  }, [store, colors]);
 
   // ============================================================================
   // useFrame — update both meshes

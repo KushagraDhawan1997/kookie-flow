@@ -42,6 +42,7 @@ import { entitySocketKey } from '@kushagradhawan/kookie-flow-core/internal/utils
  * children — so the one ring GL draws is the whole focus model.
  */
 
+import { useSkin } from '../skin/context';
 import {
   useEffect,
   useInsertionEffect,
@@ -54,7 +55,7 @@ import {
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
-import { THEME_COLORS, resolveColor, type ColorTokenRef } from '../core/theme-colors';
+import { resolveColor, type ColorTokenRef } from '../core/theme-colors';
 import { themeRoot } from '../utils/theme-root';
 
 import { VECTOR_LABEL_INSET, VECTOR_LABEL_WIDTH } from '../utils/widget-geometry';
@@ -145,6 +146,7 @@ function inputTypeFor(type: string): 'text' | 'number' | 'textarea' {
 }
 
 export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -300,8 +302,8 @@ export function WidgetEditOverlay({ hit, onChange, onClose }: WidgetEditOverlayP
       : hit.config.type === 'number' || hit.config.type === 'seed'
         ? 'center'
         : 'left') as CSSProperties['textAlign'],
-    color: rgb(THEME_COLORS.text.primary),
-    caretColor: rgb(THEME_COLORS.widget.active),
+    color: rgb(colors.text.primary),
+    caretColor: rgb(colors.widget.active),
     resize: 'none',
     appearance: 'none',
     WebkitAppearance: 'none',

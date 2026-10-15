@@ -6,12 +6,13 @@
  * They render as small circles (similar to sockets) and can be dragged.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 
 const tempMatrix = new THREE.Matrix4();
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -27,6 +28,7 @@ const REROUTE_RADIUS = 6; // Radius in world space
 const REROUTE_SEGMENTS = 12; // Circle segments
 
 export function RerouteNodes() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -47,20 +49,20 @@ export function RerouteNodes() {
 
   // Derive colors from theme
   const rerouteColor = useMemo(() => {
-    const c = tokens[THEME_COLORS.edge.default];
+    const c = resolveColor(colors.edge.default, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
 
   const selectedColor = useMemo(() => {
-    const c = tokens[THEME_COLORS.edge.selected];
+    const c = resolveColor(colors.edge.selected, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
 
   // The punch ring prints canvas colour, so it has to be the canvas the DOM paints (a pair token).
   const canvasColor = useMemo(() => {
-    const c = resolveColor(THEME_COLORS.canvas.background, tokens);
+    const c = resolveColor(colors.canvas.background, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
 
   // Track canvas size for resize detection
   const lastSizeRef = useRef({ width: 0, height: 0 });

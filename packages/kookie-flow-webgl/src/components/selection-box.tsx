@@ -1,22 +1,24 @@
 import { useMemo, useRef, useEffect } from 'react';
+import { useSkin } from '../skin/context';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 
 /**
  * Selection box rendered during box selection.
  * Uses a shader for dashed border effect.
  */
 export function SelectionBox() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const meshRef = useRef<THREE.Mesh>(null);
   const dirtyRef = useRef(true);
 
   // Derive accent color from semantic theme config
-  const accentColor = tokens[THEME_COLORS.selectionBox.fill];
+  const accentColor = resolveColor(colors.selectionBox.fill, tokens);
 
   // Simple plane geometry
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);

@@ -17,6 +17,7 @@
  * - Load-complete callback: no per-frame polling for texture readiness
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
@@ -24,7 +25,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts/index';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import { rgbToHex } from '../utils/color';
 import {
@@ -102,6 +103,8 @@ interface ImageEntitiesProps {
 }
 
 export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEntitiesProps) {
+  const skin = useSkin();
+  const { colors } = skin;
   const store = useFlowStoreApi();
   const tokens = useTheme();
   // A media entity is a surface, so it takes the theme's surface corner like a node body does.
@@ -152,11 +155,12 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const glass = useMemo(
     () =>
       buildMediaGlass(
+        skin,
         tokens,
-        resolveColor(THEME_COLORS.canvas.background, tokens),
+        resolveColor(colors.canvas.background, tokens),
         resolvedStyle.widgetRadius
       ),
-    [tokens, resolvedStyle.widgetRadius]
+    [tokens, resolvedStyle.widgetRadius, colors, skin]
   );
   const glassRef = useRef(glass);
   glassRef.current = glass;
@@ -174,8 +178,8 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   }, [maxImageTextureSize]);
 
   // Placeholder color from theme (muted text color for subtle placeholder)
-  const surfaceColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
-  const errorColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
+  const surfaceColor = rgbToHex(resolveColor(colors.text.secondary, tokens));
+  const errorColor = rgbToHex(resolveColor(colors.edge.invalid, tokens));
 
   // Placeholder material (shared for unloaded images)
   // Disposed on theme change via useEffect cleanup, not just unmount

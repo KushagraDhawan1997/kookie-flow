@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { useThemeTokens, FALLBACK_TOKENS, type ThemeTokens } from '../hooks/useThemeTokens';
-const ThemeContext = createContext<ThemeTokens>(FALLBACK_TOKENS);
+import { useThemeTokens, type ThemeTokens } from '../hooks/useThemeTokens';
+import { useSkin } from '../skin/context';
+import { GLASS_FALLBACK_TOKENS } from '../skin/glass/tokens';
+const ThemeContext = createContext<ThemeTokens>(GLASS_FALLBACK_TOKENS);
 const ThemeScopeContext = createContext<Element | null>(null);
 export interface ThemeProviderProps {
   children: ReactNode;
@@ -8,7 +10,8 @@ export interface ThemeProviderProps {
 /** One invisible scope anchor per editor, independent of the number of graph entities. */
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const [scope, setScope] = useState<HTMLDivElement | null>(null);
-  const tokens = useThemeTokens(scope);
+  const skin = useSkin();
+  const tokens = useThemeTokens(scope, skin);
   return (
     <div ref={setScope} style={{ display: 'contents' }} data-kookie-flow-theme="">
       <ThemeScopeContext.Provider value={scope}>

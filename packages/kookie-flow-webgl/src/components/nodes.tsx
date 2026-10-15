@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useSkin } from '../skin/context';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -6,13 +7,13 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/index';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
 import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
-import { MATERIAL, AURA_GLSL } from '../gl/index';
+import { AURA_GLSL } from '../gl/index';
 import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
 import type { AccentColor, EntityStatus } from '../types/index';
 import type { RGBColor } from '../utils/color';
 import { isSelfDrawn } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-kind';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { SUCCESS_HOLD_MS } from '@kushagradhawan/kookie-flow-core/internal/core/evaluation';
 import { entityDepth } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
 import { easeProgress, progressEaseAlpha } from '../utils/progress-ease';
@@ -158,6 +159,7 @@ function markBuffersForUpload(bufs: InstanceBuffers, count: number) {
  * - Dirty flag to skip unnecessary updates
  */
 export function Entities() {
+  const { colors, material: skinMaterial } = useSkin();
   const store = useFlowStoreApi();
   const bgMeshRef = useRef<THREE.InstancedMesh>(null);
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -240,7 +242,7 @@ export function Entities() {
      * gl/material.ts already carries it read off v2's own stylesheet. The popover has drawn it
      * correctly all along; the node body was the one surface that never moved over.
      */
-    const cast = MATERIAL[tokens.appearance].floatingCast;
+    const cast = skinMaterial[tokens.appearance].floatingCast;
     // A layer reaches `y + spread + blur` past the shape, and the quad has to hold all three.
     const castPad = cast.reduce((m, l) => Math.max(m, Math.abs(l.y) + l.spread + l.blur), 0);
     return new THREE.ShaderMaterial({
@@ -261,19 +263,21 @@ export function Entities() {
         uCastColor: { value: cast.map((l) => new THREE.Vector4(...l.color)) },
         uShadowPad: { value: castPad },
         uTopLight: { value: resolvedStyle.topLightAlpha },
-        uAuraAlpha: { value: MATERIAL[tokens.appearance].auraAlpha },
-        uAuraGrain: { value: MATERIAL[tokens.appearance].auraGrain },
-        uRimLight: { value: MATERIAL[tokens.appearance].rimLight },
+        uAuraAlpha: { value: skinMaterial[tokens.appearance].auraAlpha },
+        uAuraGrain: { value: skinMaterial[tokens.appearance].auraGrain },
+        uRimLight: { value: skinMaterial[tokens.appearance].rimLight },
         // Status rendering
         // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
         // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
         // the graph's own invalid red. Warning is the consumer's and keeps amber.
-        uAccentColor: { value: new THREE.Color(...tokens[THEME_COLORS.node.borderSelected]) },
+        uAccentColor: {
+          value: new THREE.Color(...resolveColor(colors.node.borderSelected, tokens)),
+        },
         // What a stale card fades TOWARD. The body writes depth, so it cannot fade by alpha.
         uCanvasColor: {
-          value: new THREE.Color(...resolveColor(THEME_COLORS.canvas.background, tokens)),
+          value: new THREE.Color(...resolveColor(colors.canvas.background, tokens)),
         },
-        uStatusErrorColor: { value: new THREE.Color(...tokens[THEME_COLORS.edge.invalid]) },
+        uStatusErrorColor: { value: new THREE.Color(...resolveColor(colors.edge.invalid, tokens)) },
         uStatusWarningColor: { value: new THREE.Color(1.0, 0.64, 0.0) },
         uStatusSuccessColor: { value: new THREE.Color(0.19, 0.64, 0.33) },
       },
@@ -567,7 +571,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle, tokens]);
+  }, [resolvedStyle, tokens, colors, skinMaterial]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(

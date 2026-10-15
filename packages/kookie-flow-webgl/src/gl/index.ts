@@ -18,7 +18,7 @@ export {
   type Ring,
   type CastLayer,
   type RGBA,
-} from './material';
+} from '../skin/glass/material';
 export {
   Magnet,
   MAGNET_STAGE,

@@ -14,7 +14,8 @@ import type {
   HeaderPosition,
 } from '../types/index';
 import { WIDGET_RADIUS, PAD } from '../utils/widget-text';
-import { FALLBACK_TOKENS } from '../hooks/useThemeTokens';
+import { useSkin } from '../skin/context';
+import { GLASS_FALLBACK_TOKENS } from '../skin/glass/tokens';
 
 /**
  * Style configuration props passed to KookieFlow.
@@ -83,7 +84,7 @@ const DEFAULT_CONTEXT: StyleContextValue = {
   },
   // ONE source, not a second copy. These literals were the object eight unit fixtures were copied
   // from, so every one of them drifted the moment the real resolver moved.
-  socketLayout: resolveSocketLayout(true, '2', FALLBACK_TOKENS),
+  socketLayout: resolveSocketLayout(true, '2', GLASS_FALLBACK_TOKENS),
   config: DEFAULT_CONFIG,
 };
 
@@ -137,6 +138,7 @@ export function StyleProvider({
   entityStyle,
 }: StyleProviderProps) {
   const tokens = useTheme();
+  const { metrics } = useSkin();
 
   /**
    * `entityStyle` stabilised by VALUE.
@@ -163,12 +165,13 @@ export function StyleProvider({
       header,
       accentHeader,
       tokens,
-      stableStyle
+      stableStyle,
+      metrics
     );
     // `none` means NO TITLE — not "a title with nothing behind it", which is what it used to be
     // once the header's colour block was deleted and it became indistinguishable from `inside`.
     // Only `inside` reserves a band in the body.
-    const socketLayout = resolveSocketLayout(header === 'inside', size, tokens);
+    const socketLayout = resolveSocketLayout(header === 'inside', size, tokens, metrics);
     const config: StyleConfig = {
       size,
       variant,
@@ -178,7 +181,7 @@ export function StyleProvider({
       entityStyle: stableStyle,
     };
     return { resolved, socketLayout, config };
-  }, [size, variant, radius, header, accentHeader, stableStyle, tokens]);
+  }, [size, variant, radius, header, accentHeader, stableStyle, tokens, metrics]);
 
   return <StyleContext.Provider value={value}>{children}</StyleContext.Provider>;
 }

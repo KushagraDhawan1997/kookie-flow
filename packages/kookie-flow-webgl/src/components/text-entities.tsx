@@ -13,6 +13,7 @@
  * - No position shift between WebGL and DOM overlay
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
@@ -21,7 +22,7 @@ import { useFlowStoreApi } from './context';
 import { useTheme, useThemeScope } from '../contexts/ThemeContext';
 import { commentPaint } from '../utils/comment-paint';
 import { useFont, type LoadedFontWeight } from '../contexts/FontContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import type { TextEntityData, EntityChange } from '../types/index';
@@ -280,6 +281,7 @@ interface TextEntitiesProps {
 const TEXT_CULL_PADDING = 100;
 
 export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const scope = useThemeScope();
@@ -316,7 +318,7 @@ export function TextEntities({ onEntitiesChange }: TextEntitiesProps) {
   const [hasSemiboldEntries, setHasSemiboldEntries] = useState(false);
 
   // Derive text color from theme tokens — raw RGB, no color pipeline issues
-  const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
+  const primaryTextColor = rgbToHex(resolveColor(colors.text.primary, tokens));
 
   // Subscribe to relevant store slices for dirty flagging.
   // We subscribe to the full `entities` array (not just `entities.length`) to catch

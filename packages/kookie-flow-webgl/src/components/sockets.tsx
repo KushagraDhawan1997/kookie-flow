@@ -1,4 +1,5 @@
 import { connectedSocketKey } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-key';
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { ViewportCuller } from '../utils/viewport-culler';
@@ -19,7 +20,7 @@ import {
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
 import { areTypesCompatible } from '@kushagradhawan/kookie-flow-core/internal/utils/connections';
 import type { Magnet } from '../gl/index';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import type { Edge, Entity, SocketType } from '../types/index';
 import { rgbToHex } from '../utils/color';
 import {
@@ -292,6 +293,7 @@ interface SocketsProps {
 }
 
 export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -337,13 +339,16 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
   const entitySocketRangesRef = useRef<Map<string, { start: number; count: number }>>(new Map());
 
   // Derive colors from semantic theme config
-  const invalidColor = tokens[THEME_COLORS.socket.invalid];
-  const validTargetColor = tokens[THEME_COLORS.socket.validTarget];
-  const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
+  const invalidColor = resolveColor(colors.socket.invalid, tokens);
+  const validTargetColor = resolveColor(colors.socket.validTarget, tokens);
+  const fallbackSocketColor = rgbToHex(resolveColor(colors.socket.fallback, tokens));
   // The punch ring paints the canvas back over whatever the dot sits on, so it needs the canvas's
   // own colour — a pair token, resolved per appearance at material build. Memoised on `tokens`
   // because `resolveColor` returns a fresh tuple, and the materials memoise on this value.
-  const canvasColor = useMemo(() => resolveColor(THEME_COLORS.canvas.background, tokens), [tokens]);
+  const canvasColor = useMemo(
+    () => resolveColor(colors.canvas.background, tokens),
+    [tokens, colors]
+  );
 
   /**
    * Which sockets have an edge on them, indexed by entity and split by direction.

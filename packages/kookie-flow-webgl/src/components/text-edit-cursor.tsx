@@ -9,13 +9,14 @@
  * - Selection: InstancedMesh (one quad per selected line, max 50)
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useFont, resolveFontForWeight } from '../contexts/FontContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import {
   DEFAULT_TEXT_WIDTH,
   DEFAULT_TEXT_HEIGHT,
@@ -77,6 +78,7 @@ const cursorFragmentShader = /* glsl */ `
 `;
 
 export function TextEditCursor() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const fontContext = useFont();
@@ -96,8 +98,8 @@ export function TextEditCursor() {
   const matrixTmpRef = useRef(new THREE.Matrix4());
 
   // Theme colors
-  const accentColor = tokens[THEME_COLORS.entitySelection.selected];
-  const primaryTextColor = tokens[THEME_COLORS.text.primary];
+  const accentColor = resolveColor(colors.entitySelection.selected, tokens);
+  const primaryTextColor = resolveColor(colors.text.primary, tokens);
 
   // Cursor material (single mesh, not instanced)
   const cursorMaterial = useMemo(() => {

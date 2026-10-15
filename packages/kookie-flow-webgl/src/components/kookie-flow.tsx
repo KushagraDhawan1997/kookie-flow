@@ -1,4 +1,6 @@
 import { CommentEntities } from './comment-entities';
+import { SkinProvider } from '../skin/context';
+import { glassSkin } from '../skin/glass/index';
 import { createEdgeValidityResolver } from '../utils/edge-validity';
 import { entitySocketKey } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-key';
 import { bindHistoryOwner } from '../hooks/history-owner';
@@ -297,6 +299,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
   {
     entities,
     edges,
+    skin = glassSkin,
     entityTypes = NO_ENTITY_TYPES,
     socketTypes = NO_SOCKET_TYPES,
     onEntitiesChange,
@@ -357,64 +360,66 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
   );
 
   return (
-    <ThemeProvider>
-      <StyleProvider
-        size={size}
-        variant={variant}
-        radius={radius}
-        header={header}
-        accentHeader={accentHeader}
-        entityStyle={entityStyle}
-      >
-        <FontProvider font={font}>
-          <ThemedFlowContainer
-            ref={ref}
-            entities={entities}
-            edges={edges}
-            defaultViewport={defaultViewport}
-            className={className}
-            ariaLabel={ariaLabel}
-            minZoom={minZoom}
-            maxZoom={maxZoom}
-            snapToGrid={snapToGrid}
-            snapGrid={snapGrid}
-            socketTypes={resolvedSocketTypes}
-            connectionMode={connectionMode}
-            isValidConnection={isValidConnection}
-            allowCycles={allowCycles}
-            defaultEdgeType={defaultEdgeType}
-            edgesSelectable={edgesSelectable}
-            onEntityClick={onEntityClick}
-            onEdgeClick={onEdgeClick}
-            onPaneClick={onPaneClick}
-            onConnect={onConnect}
-            onConnectStart={onConnectStart}
-            onConnectEnd={onConnectEnd}
-            onEntitiesChange={onEntitiesChange}
-            onEdgesChange={onEdgesChange}
-            onFileDrop={onFileDrop}
-            showGrid={showGrid}
-            showStats={showStats}
-            showSocketLabels={showSocketLabels}
-            showEdgeLabels={showEdgeLabels}
-            entityTypes={entityTypes}
-            onEvaluate={onEvaluate}
-            onStatusChange={onStatusChange}
-            showMinimap={showMinimap}
-            minimapProps={minimapProps}
-            onWidgetChange={onWidgetChange}
-            showWidgets={showWidgets}
-            defaultEntityWidth={defaultEntityWidth}
-            socketLabelWidth={socketLabelWidth}
-            helperLines={helperLines}
-            penStyle={penStyle}
-            maxImageTextureSize={maxImageTextureSize}
-          >
-            {children}
-          </ThemedFlowContainer>
-        </FontProvider>
-      </StyleProvider>
-    </ThemeProvider>
+    <SkinProvider value={skin}>
+      <ThemeProvider>
+        <StyleProvider
+          size={size}
+          variant={variant}
+          radius={radius}
+          header={header}
+          accentHeader={accentHeader}
+          entityStyle={entityStyle}
+        >
+          <FontProvider font={font}>
+            <ThemedFlowContainer
+              ref={ref}
+              entities={entities}
+              edges={edges}
+              defaultViewport={defaultViewport}
+              className={className}
+              ariaLabel={ariaLabel}
+              minZoom={minZoom}
+              maxZoom={maxZoom}
+              snapToGrid={snapToGrid}
+              snapGrid={snapGrid}
+              socketTypes={resolvedSocketTypes}
+              connectionMode={connectionMode}
+              isValidConnection={isValidConnection}
+              allowCycles={allowCycles}
+              defaultEdgeType={defaultEdgeType}
+              edgesSelectable={edgesSelectable}
+              onEntityClick={onEntityClick}
+              onEdgeClick={onEdgeClick}
+              onPaneClick={onPaneClick}
+              onConnect={onConnect}
+              onConnectStart={onConnectStart}
+              onConnectEnd={onConnectEnd}
+              onEntitiesChange={onEntitiesChange}
+              onEdgesChange={onEdgesChange}
+              onFileDrop={onFileDrop}
+              showGrid={showGrid}
+              showStats={showStats}
+              showSocketLabels={showSocketLabels}
+              showEdgeLabels={showEdgeLabels}
+              entityTypes={entityTypes}
+              onEvaluate={onEvaluate}
+              onStatusChange={onStatusChange}
+              showMinimap={showMinimap}
+              minimapProps={minimapProps}
+              onWidgetChange={onWidgetChange}
+              showWidgets={showWidgets}
+              defaultEntityWidth={defaultEntityWidth}
+              socketLabelWidth={socketLabelWidth}
+              helperLines={helperLines}
+              penStyle={penStyle}
+              maxImageTextureSize={maxImageTextureSize}
+            >
+              {children}
+            </ThemedFlowContainer>
+          </FontProvider>
+        </StyleProvider>
+      </ThemeProvider>
+    </SkinProvider>
   );
 });
 
@@ -548,7 +553,7 @@ const ThemedFlowContainer = forwardRef<KookieFlowInstance, ThemedFlowContainerPr
       // because an un-themed page is a light page; a consumer wanting dark states a theme.
       //
       //
-      // This is the LIGHT half of THEME_COLORS.canvas.background and it is deliberately the only
+      // This is the LIGHT half of the glass skin's canvas.background and it is deliberately the only
       // half rendered here: the token reader detects the appearance from the DOM in a state
       // initialiser, so the server (which has no DOM) says one thing and the client another, and
       // an appearance-dependent style attribute is a hydration mismatch on every dark page. The

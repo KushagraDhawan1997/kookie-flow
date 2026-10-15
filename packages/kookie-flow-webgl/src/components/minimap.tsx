@@ -6,10 +6,11 @@ import {
   useMemo,
   type CSSProperties,
 } from 'react';
+import { useSkin } from '../skin/context';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocketLayout } from '../contexts/StyleContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import type { MinimapProps, Entity } from '../types/index';
 import {
@@ -132,6 +133,7 @@ export function Minimap({
   className,
   style,
 }: MinimapProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -139,11 +141,11 @@ export function Minimap({
   // Derive colors from theme with prop overrides
   const { backgroundColor, entityColor, selectedEntityColor, viewportColor, viewportBorderColor } =
     useMemo(() => {
-      const bgRgb = tokens[THEME_COLORS.minimap.background];
-      const entityRgb = tokens[THEME_COLORS.minimap.node];
-      const selectedRgb = tokens[THEME_COLORS.minimap.nodeSelected];
-      const viewportRgb = tokens[THEME_COLORS.minimap.viewport];
-      const viewportBorderRgb = tokens[THEME_COLORS.minimap.viewportBorder];
+      const bgRgb = resolveColor(colors.minimap.background, tokens);
+      const entityRgb = resolveColor(colors.minimap.node, tokens);
+      const selectedRgb = resolveColor(colors.minimap.nodeSelected, tokens);
+      const viewportRgb = resolveColor(colors.minimap.viewport, tokens);
+      const viewportBorderRgb = resolveColor(colors.minimap.viewportBorder, tokens);
 
       return {
         backgroundColor:
@@ -163,6 +165,7 @@ export function Minimap({
       selectedEntityColorProp,
       viewportColorProp,
       viewportBorderColorProp,
+      colors,
     ]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);

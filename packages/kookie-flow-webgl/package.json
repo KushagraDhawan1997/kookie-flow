@@ -531,17 +531,6 @@
         "default": "./dist/gl/lens.cjs"
       }
     },
-    "./internal/gl/material": {
-      "kookie-flow-source": "./src/gl/material.ts",
-      "import": {
-        "types": "./dist/gl/material.d.ts",
-        "default": "./dist/gl/material.js"
-      },
-      "require": {
-        "types": "./dist/gl/material.d.cts",
-        "default": "./dist/gl/material.cjs"
-      }
-    },
     "./internal/gl/sdf": {
       "kookie-flow-source": "./src/gl/sdf.ts",
       "import": {
@@ -639,6 +628,94 @@
       "require": {
         "types": "./dist/plugins/useKeyboardShortcuts.d.cts",
         "default": "./dist/plugins/useKeyboardShortcuts.cjs"
+      }
+    },
+    "./internal/skin/context": {
+      "kookie-flow-source": "./src/skin/context.tsx",
+      "import": {
+        "types": "./dist/skin/context.d.ts",
+        "default": "./dist/skin/context.js"
+      },
+      "require": {
+        "types": "./dist/skin/context.d.cts",
+        "default": "./dist/skin/context.cjs"
+      }
+    },
+    "./internal/skin/glass/colors": {
+      "kookie-flow-source": "./src/skin/glass/colors.ts",
+      "import": {
+        "types": "./dist/skin/glass/colors.d.ts",
+        "default": "./dist/skin/glass/colors.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/colors.d.cts",
+        "default": "./dist/skin/glass/colors.cjs"
+      }
+    },
+    "./internal/skin/glass/index": {
+      "kookie-flow-source": "./src/skin/glass/index.ts",
+      "import": {
+        "types": "./dist/skin/glass/index.d.ts",
+        "default": "./dist/skin/glass/index.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/index.d.cts",
+        "default": "./dist/skin/glass/index.cjs"
+      }
+    },
+    "./internal/skin/glass/material": {
+      "kookie-flow-source": "./src/skin/glass/material.ts",
+      "import": {
+        "types": "./dist/skin/glass/material.d.ts",
+        "default": "./dist/skin/glass/material.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/material.d.cts",
+        "default": "./dist/skin/glass/material.cjs"
+      }
+    },
+    "./internal/skin/glass/metrics": {
+      "kookie-flow-source": "./src/skin/glass/metrics.ts",
+      "import": {
+        "types": "./dist/skin/glass/metrics.d.ts",
+        "default": "./dist/skin/glass/metrics.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/metrics.d.cts",
+        "default": "./dist/skin/glass/metrics.cjs"
+      }
+    },
+    "./internal/skin/glass/tokens": {
+      "kookie-flow-source": "./src/skin/glass/tokens.ts",
+      "import": {
+        "types": "./dist/skin/glass/tokens.d.ts",
+        "default": "./dist/skin/glass/tokens.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/tokens.d.cts",
+        "default": "./dist/skin/glass/tokens.cjs"
+      }
+    },
+    "./internal/skin/index": {
+      "kookie-flow-source": "./src/skin/index.ts",
+      "import": {
+        "types": "./dist/skin/index.d.ts",
+        "default": "./dist/skin/index.js"
+      },
+      "require": {
+        "types": "./dist/skin/index.d.cts",
+        "default": "./dist/skin/index.cjs"
+      }
+    },
+    "./internal/skin/types": {
+      "kookie-flow-source": "./src/skin/types.ts",
+      "import": {
+        "types": "./dist/skin/types.d.ts",
+        "default": "./dist/skin/types.js"
+      },
+      "require": {
+        "types": "./dist/skin/types.d.cts",
+        "default": "./dist/skin/types.cjs"
       }
     },
     "./internal/types/index": {

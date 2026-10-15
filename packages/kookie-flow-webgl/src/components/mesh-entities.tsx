@@ -22,6 +22,7 @@
  * quads themselves, and an entity that opts into rotation pays for itself alone.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
@@ -29,7 +30,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts/index';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import { rgbToHex } from '../utils/color';
 import {
@@ -46,12 +47,7 @@ import {
   setMediaBox,
   setMediaChrome,
 } from '../utils/media-quad';
-import {
-  fitsDownload,
-  fitsExpand,
-  isMeshDragStrip,
-  orbitDirection,
-} from '../utils/media-chrome';
+import { fitsDownload, fitsExpand, isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, subscribeOrbit } from '../utils/media-runtime';
 
 const RENDER_ORDER_BG = 1;
@@ -115,6 +111,8 @@ interface MeshEntitiesProps {
 }
 
 export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
+  const skin = useSkin();
+  const { colors } = skin;
   const store = useFlowStoreApi();
   const tokens = useTheme();
   // A media entity is a surface, so it takes the theme's surface corner like a node body does.
@@ -145,11 +143,12 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
   const glass = useMemo(
     () =>
       buildMediaGlass(
+        skin,
         tokens,
-        resolveColor(THEME_COLORS.canvas.background, tokens),
+        resolveColor(colors.canvas.background, tokens),
         resolvedStyle.widgetRadius
       ),
-    [tokens, resolvedStyle.widgetRadius]
+    [tokens, resolvedStyle.widgetRadius, colors, skin]
   );
   const glassRef = useRef(glass);
   glassRef.current = glass;
@@ -184,8 +183,8 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
     []
   );
 
-  const placeholderColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
-  const errorColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
+  const placeholderColor = rgbToHex(resolveColor(colors.text.secondary, tokens));
+  const errorColor = rgbToHex(resolveColor(colors.edge.invalid, tokens));
   const placeholderMat = useMemo(
     () => createPlaceholderMaterial(placeholderColor),
     [placeholderColor]

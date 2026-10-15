@@ -10,12 +10,13 @@
  * them, not thousands — so a mesh apiece is the honest trade.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { buildStrokeRibbon, strokeIndices } from '../utils/stroke-geometry';
 import { entityDepth } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
@@ -42,6 +43,7 @@ interface StrokeMesh {
 }
 
 export function DrawEntities() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const groupRef = useRef<THREE.Group>(null);
@@ -49,7 +51,7 @@ export function DrawEntities() {
   const seenRef = useRef<Set<string>>(new Set());
   const dirtyRef = useRef(true);
 
-  const defaultColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
+  const defaultColor = rgbToHex(resolveColor(colors.text.primary, tokens));
   // Ink with no colour of its own takes the theme's text colour, so a theme flip repaints it. The
   // layer is otherwise idle, and nothing in the store changes when the theme does.
   useEffect(() => {
