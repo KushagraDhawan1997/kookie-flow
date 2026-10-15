@@ -281,7 +281,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
           }
         } else {
           meshRefs.current.delete(id);
@@ -538,7 +538,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
 
       const mat = materialRefs.current.get(entity.id);
       if (mat) {
-        setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+        setMediaBox(mat, w, h, resolvedStyle.borderRadius, skin.shape.cornerScale);
         // A framebuffer's rows are bottom-up, and the shared quad's V runs top-down for image
         // uploads. Sampled with V flipped back, or every model draws upside down. `flipY` cannot do
         // this: nothing is uploaded from an image into a render target.

@@ -6,8 +6,7 @@ import { useFlowStoreApi } from './context';
 import { useResolvedStyle, useSocketLayout } from '../contexts/index';
 import { useTheme } from '../contexts/ThemeContext';
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
-import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
-import { AURA_GLSL } from '../gl/index';
+import { COMPOSITE_GLSL } from '../gl/index';
 import { resolveAccentColorRGB, NO_OVERRIDE_SENTINEL } from '../utils/accent-colors';
 import { DEFAULT_ENTITY_WIDTH } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
 import type { AccentColor, EntityStatus } from '../types/index';
@@ -159,7 +158,7 @@ function markBuffersForUpload(bufs: InstanceBuffers, count: number) {
  * - Dirty flag to skip unnecessary updates
  */
 export function Entities() {
-  const { colors, material: skinMaterial } = useSkin();
+  const { colors, shape, shaders } = useSkin();
   const store = useFlowStoreApi();
   const bgMeshRef = useRef<THREE.InstancedMesh>(null);
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -232,40 +231,23 @@ export function Entities() {
 
   // Create material with resolved style (shared between both meshes)
   const material = useMemo(() => {
-    /**
-     * THE CARD'S FLOAT IS `--shadow-3`, and it is the token rather than an impression of it.
-     *
-     * This used to be a hand-rolled `NODE_SHADOW` — one layer, blur 20, offset 8 — justified by
-     * the claim that the `--shadow-N` tokens "top out at blur 16". That was only ever true of
-     * useThemeTokens' FALLBACK table, which invents single-layer stand-ins because "CSS shadows
-     * are too complex to parse reliably". v2's real `--shadow-3` is three layers reaching 48, and
-     * gl/material.ts already carries it read off v2's own stylesheet. The popover has drawn it
-     * correctly all along; the node body was the one surface that never moved over.
-     */
-    const cast = skinMaterial[tokens.appearance].floatingCast;
-    // A layer reaches `y + spread + blur` past the shape, and the quad has to hold all three.
-    const castPad = cast.reduce((m, l) => Math.max(m, Math.abs(l.y) + l.spread + l.blur), 0);
+    const skinCtx = { tokens, colors };
+    // The quad is grown by the skin's shadow reach on every side so the float fits in it.
+    const castPad = shaders.card.shadowReach(skinCtx);
     return new THREE.ShaderMaterial({
       uniforms: {
         // 1 = the body (writes depth, discards outside the shape); 0 = the shadow halo only.
         uPass: { value: 1 },
         uBackgroundColor: { value: new THREE.Color(...resolvedStyle.background) },
         uBorderColor: { value: new THREE.Color(...resolvedStyle.borderColor) },
-        uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
+        uCornerRadius: { value: resolvedStyle.borderRadius * shape.cornerScale },
         uBorderWidth: { value: resolvedStyle.borderWidth },
         uBackgroundAlpha: { value: resolvedStyle.backgroundAlpha },
         // The global accent band hue (r < 0 = none). A Vector3 rather than a Color so the
         // resolver's negative sentinel is not a colour.
         uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
-        // The card's float: v2's `--shadow-3`, three layers, per appearance. The colours are the
-        // token's own, so the appearance pair is the material's and not a light/dark opacity.
-        uCast: { value: cast.map((l) => new THREE.Vector4(l.y, l.blur, l.spread, 0)) },
-        uCastColor: { value: cast.map((l) => new THREE.Vector4(...l.color)) },
         uShadowPad: { value: castPad },
-        uTopLight: { value: resolvedStyle.topLightAlpha },
-        uAuraAlpha: { value: skinMaterial[tokens.appearance].auraAlpha },
-        uAuraGrain: { value: skinMaterial[tokens.appearance].auraGrain },
-        uRimLight: { value: skinMaterial[tokens.appearance].rimLight },
+        ...shaders.card.uniforms(skinCtx),
         // Status rendering
         // Status speaks in ONE hue, the theme's accent, at three intensities: stale is a quiet
         // tint, running is the ring sweeping to full, done is the full ring for a moment. Error is
@@ -325,13 +307,6 @@ export function Entities() {
         // Header uniforms
         uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
         uniform float uPass;
-        // The float: shadow-3 as (y, blur, spread) and a colour, three layers.
-        uniform vec4 uCast[3];
-        uniform vec4 uCastColor[3];
-        uniform float uTopLight;
-        uniform float uAuraAlpha;
-        uniform float uAuraGrain;
-        uniform float uRimLight;
         // Status uniforms
         uniform vec3 uAccentColor;
         uniform vec3 uCanvasColor;
@@ -346,20 +321,9 @@ export function Entities() {
         varying float vStatus; // 0=none, 1=error, 2=warning, 3=running, 4=success, 5=dirty
         varying float vProgress;
 
-        ${squircleBoxSDF}
-        ${AURA_GLSL}
-
-        // Straight-alpha "over", as gl/glass.ts defines it. Inlined rather than pulling GLASS_GLSL
-        // in whole: this shader needs two of its fifteen functions and runs on every node.
-        vec4 over(vec4 dst, vec3 c, float a) {
-          a = clamp(a, 0.0, 1.0);
-          float outA = a + dst.a * (1.0 - a);
-          vec3 outC = (c * a + dst.rgb * dst.a * (1.0 - a)) / max(outA, 1e-5);
-          return vec4(outC, outA);
-        }
-        vec4 overC(vec4 dst, vec4 c, float a) {
-          return over(dst, c.rgb, c.a * a);
-        }
+        ${shape.glsl}
+        ${COMPOSITE_GLSL}
+        ${shaders.card.glsl}
 
         /**
          * Where a point on the border sits along the perimeter: 0 at top-centre, rising clockwise
@@ -401,20 +365,11 @@ export function Entities() {
 
           float d = roundedBoxSDF(p, b, uCornerRadius);
 
-          // The float, priced only in the shadow pass — the body pass used to run this whole ring
-          // before dying at the final alpha test, and a 240x100 card paid ~1.9x its fragments for
-          // nothing. Each layer is the shape moved DOWN by y, grown by its spread, and blurred;
-          // the CSS blur radius is two sigma, so the ramp runs -blur..blur. Exactly glassCast().
-          // "cast" is a reserved word in GLSL ES 1.00, hence the name.
+          // The float, priced only in the shadow pass — the body pass used to run it whole before
+          // dying at the final alpha test, and a 240x100 card paid ~1.9x its fragments for nothing.
           vec4 castAcc = vec4(0.0);
           if (uPass < 0.5) {
-            for (int i = 0; i < 3; i++) {
-              float cy = uCast[i].x;
-              float cb = uCast[i].y;
-              float cs = uCast[i].z;
-              float dc = roundedBoxSDF(p + vec2(0.0, cy), b + cs, uCornerRadius + cs);
-              castAcc = overC(castAcc, uCastColor[i], 1.0 - smoothstep(-cb, cb, dc));
-            }
+            castAcc = paintCardShadow(p, b, uCornerRadius);
           }
 
           // Body pass: anything past the hairline is not the body. Shadow pass: the halo alone,
@@ -500,16 +455,11 @@ export function Entities() {
             }
           }
 
-          // The accent (per-entity, else the global accentHeader) is light, not trim: the rim glows
-          // (below) and this is its reflection in the glass, diffusing down from top-centre. Its
-          // reach is capped in world units so a tall card does not wash to the middle.
+          // The accent: per-entity, else the global accentHeader. How it shows is the skin's.
           bool accented = vAccentColor.r >= 0.0;
-          bool globalAccent = uHeaderColor.r >= 0.0;
-          if (accented || globalAccent) {
-            vec3 hue = accented ? vAccentColor : uHeaderColor;
-            vec4 aura = glassAura(vec2(p.x + b.x, b.y - p.y), vSize, min(vSize.y * 0.45, 140.0), hue, gl_FragCoord.xy, uAuraGrain);
-            bgColor = mix(bgColor, aura.rgb, aura.a * uAuraAlpha);
-          }
+          float accent = (accented || uHeaderColor.r >= 0.0) ? 1.0 : 0.0;
+          vec3 hue = accented ? vAccentColor : uHeaderColor;
+          bgColor = paintCardFill(bgColor, p, b, vSize, hue, accent);
 
           // Stale fades the fill toward the canvas, never by alpha: the body writes depth, and a
           // see-through body that has written depth shows the floor THROUGH the node behind it (or
@@ -530,29 +480,7 @@ export function Entities() {
           vec3 color = mix(bgColor, borderColor, borderMask);
           float alpha = max(bgAlpha, borderMask * fillMask);
 
-          // Top light: the 1.5px just inside the shape, weighted to the top edge, dying through
-          // the corners. White on every card, accented or not — the glass's own rim; the accent
-          // lives in the aura above.
-          // d runs negative inward: the band is d in [-1.5, 0], softened over the next 1.5px so
-          // it reads as light and not as a second hairline. (Written the other way round, this
-          // lit the whole top-radius zone of every card: a 12px accent bar, not a 1.5px line.)
-          float rim = smoothstep(-3.0, -1.5, d) * fillMask;
-          // Clamped to the shape the way roundedBoxSDF clamps it: radius="full" is 9999, and
-          // unclamped that put up at ~1 around the whole perimeter — a full accent ring on
-          // every pill. max(): smoothstep is undefined when its edges coincide, and radius="none"
-          // is legal.
-          float cr = min(uCornerRadius, min(b.x, b.y));
-          float up = smoothstep(b.y - max(cr, 1.0), b.y, p.y);
-          if (accented || globalAccent) {
-            // The accented card's rim glows in the accent, brightest at top-centre, drifting to the
-            // aura's neighbour hue toward the shoulders so the edge and its reflection agree.
-            vec3 rimHue = accented ? vAccentColor : uHeaderColor;
-            vec2 lit = glassRimLight(p, b, d, 1.5, aa, cr);
-            vec3 rimColor = mix(rimHue, auraHueTurn(rimHue, -0.4), smoothstep(0.2, 0.9, lit.y) * 0.6);
-            color = mix(color, rimColor, lit.x * uRimLight);
-          } else {
-            color = mix(color, vec3(1.0), rim * up * uTopLight);
-          }
+          color = paintCardEdgeLight(color, p, b, uCornerRadius, d, aa, fillMask, hue, accent);
 
           // For transparent backgrounds, only show border
           if (uBackgroundAlpha < 0.01) {
@@ -571,7 +499,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle, tokens, colors, skinMaterial]);
+  }, [resolvedStyle, tokens, colors, shape, shaders]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(

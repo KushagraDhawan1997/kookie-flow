@@ -520,17 +520,6 @@
         "default": "./dist/gl/index.cjs"
       }
     },
-    "./internal/gl/lens": {
-      "kookie-flow-source": "./src/gl/lens.ts",
-      "import": {
-        "types": "./dist/gl/lens.d.ts",
-        "default": "./dist/gl/lens.js"
-      },
-      "require": {
-        "types": "./dist/gl/lens.d.cts",
-        "default": "./dist/gl/lens.cjs"
-      }
-    },
     "./internal/gl/sdf": {
       "kookie-flow-source": "./src/gl/sdf.ts",
       "import": {
@@ -641,6 +630,17 @@
         "default": "./dist/skin/context.cjs"
       }
     },
+    "./internal/skin/glass/card": {
+      "kookie-flow-source": "./src/skin/glass/card.ts",
+      "import": {
+        "types": "./dist/skin/glass/card.d.ts",
+        "default": "./dist/skin/glass/card.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/card.d.cts",
+        "default": "./dist/skin/glass/card.cjs"
+      }
+    },
     "./internal/skin/glass/colors": {
       "kookie-flow-source": "./src/skin/glass/colors.ts",
       "import": {
@@ -661,6 +661,17 @@
       "require": {
         "types": "./dist/skin/glass/controls.d.cts",
         "default": "./dist/skin/glass/controls.cjs"
+      }
+    },
+    "./internal/skin/glass/corner": {
+      "kookie-flow-source": "./src/skin/glass/corner.ts",
+      "import": {
+        "types": "./dist/skin/glass/corner.d.ts",
+        "default": "./dist/skin/glass/corner.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/corner.d.cts",
+        "default": "./dist/skin/glass/corner.cjs"
       }
     },
     "./internal/skin/glass/floating": {
@@ -696,6 +707,17 @@
         "default": "./dist/skin/glass/index.cjs"
       }
     },
+    "./internal/skin/glass/lens": {
+      "kookie-flow-source": "./src/skin/glass/lens.ts",
+      "import": {
+        "types": "./dist/skin/glass/lens.d.ts",
+        "default": "./dist/skin/glass/lens.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/lens.d.cts",
+        "default": "./dist/skin/glass/lens.cjs"
+      }
+    },
     "./internal/skin/glass/material": {
       "kookie-flow-source": "./src/skin/glass/material.ts",
       "import": {
@@ -705,6 +727,17 @@
       "require": {
         "types": "./dist/skin/glass/material.d.cts",
         "default": "./dist/skin/glass/material.cjs"
+      }
+    },
+    "./internal/skin/glass/media": {
+      "kookie-flow-source": "./src/skin/glass/media.ts",
+      "import": {
+        "types": "./dist/skin/glass/media.d.ts",
+        "default": "./dist/skin/glass/media.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/media.d.cts",
+        "default": "./dist/skin/glass/media.cjs"
       }
     },
     "./internal/skin/glass/metrics": {
@@ -804,17 +837,6 @@
       "require": {
         "types": "./dist/utils/comment-paint.d.cts",
         "default": "./dist/utils/comment-paint.cjs"
-      }
-    },
-    "./internal/utils/corner-shader": {
-      "kookie-flow-source": "./src/utils/corner-shader.ts",
-      "import": {
-        "types": "./dist/utils/corner-shader.d.ts",
-        "default": "./dist/utils/corner-shader.js"
-      },
-      "require": {
-        "types": "./dist/utils/corner-shader.d.cts",
-        "default": "./dist/utils/corner-shader.cjs"
       }
     },
     "./internal/utils/download-media": {

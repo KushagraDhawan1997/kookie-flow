@@ -14,7 +14,7 @@
  * VideoTexture defaults to true and arrives upside down without it.
  *
  * THE CORNER. A media entity is a SURFACE, the same as a node body, so it takes the same squircle
- * profile from corner-shader.ts rather than being the one hard-cornered rectangle on a board of
+ * profile from the skin's shape rather than being the one hard-cornered rectangle on a board of
  * rounded cards. It was exactly that until someone looked at a board and noticed. The mask is
  * applied to alpha rather than by discarding, so the curve is antialiased by fwidth the way every
  * other edge in this renderer is; a hard discard would leave a stair-stepped arc at the one place
@@ -25,8 +25,8 @@
  */
 
 import * as THREE from 'three';
-import { SDF_GLSL, COMPOSITE_GLSL, GLASS_GLSL, LENS_GLSL } from '../gl/index';
-import { squircleBoxSDF, CORNER_K } from './corner-shader';
+import { SDF_GLSL, COMPOSITE_GLSL } from '../gl/index';
+import type { FlowSkin } from '../skin/types';
 import {
   CONTROL_BAR_HEIGHT,
   CONTROL_BAR_INSET,
@@ -72,7 +72,7 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-export const MEDIA_FRAGMENT_SHADER = /* glsl */ `
+export const mediaFragmentShader = (shapeGlsl: string, mediaGlsl: string) => /* glsl */ `
 uniform sampler2D map;
 uniform float opacity;
 uniform vec2 uvOffset;
@@ -96,36 +96,15 @@ uniform float uExpand;
 /** How present the download button is, 0..1. Separate from uExpand: a decoded bitmap has no file. */
 uniform float uDownload;
 
-// The glass (utils/media-glass.ts).
+// What the controls draw on and in (utils/media-glass.ts); how they are painted is the skin's.
 uniform vec3 uGround;
-uniform vec3 uGlassTint;
-uniform float uGlassTintA;
-uniform vec2 uGlassFilter;
-uniform float uGlassBlur;
-uniform vec4 uRingTop;
-uniform vec4 uRingUpper;
-uniform vec4 uRingSide;
-uniform vec4 uRingBottom;
-uniform vec2 uGlassWash;
-uniform float uGlassPool;
-uniform float uGlassTopLine;
-uniform float uGlassGrain;
-uniform vec4 uGlassCast[2];
-uniform vec4 uGlassCastColor[2];
 uniform vec3 uInk;
 uniform vec3 uAccent;
 uniform float uControlRadius;
-// The lens (gl/lens.ts): bezel, thickness, ior, boost; the channel split; the glint's peak,
-// falloff and band.
-uniform vec4 uLens;
-uniform float uLensFringe;
-uniform vec3 uGlint;
 
-${squircleBoxSDF}
+${shapeGlsl}
 ${SDF_GLSL}
 ${COMPOSITE_GLSL}
-${GLASS_GLSL}
-${LENS_GLSL}
 
 /**
  * The screen-space rate of change of the media UV, taken ONCE at the top of main.
@@ -162,78 +141,8 @@ vec3 mediaAt(vec2 q) {
   return mix(uGround, t.rgb, t.a);
 }
 
-// A light blur over the media under a control: a golden-angle disc rotated per pixel so the taps do
-// not print as a lattice. px is top-left media pixels.
-vec3 blurredGround(vec2 px) {
-  float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  float spin = noise * 6.2831853;
-  vec3 sum = vec3(0.0);
-  for (int i = 0; i < 10; i++) {
-    float fi = float(i) + 0.5;
-    float rr = sqrt(fi / 10.0) * uGlassBlur;
-    float ang = fi * 2.39996323 + spin;
-    sum += mediaAt((px + vec2(cos(ang), sin(ang)) * rr) / uSize);
-  }
-  return sum / 10.0;
-}
-
-// What a control shows at this fragment. The body is near-clear glass: the media, lightly blurred.
-// The rim BENDS it — v2's lens: Snell's law across a curved bezel, hardest at the lip, each channel
-// bent a little differently so the edge splits light. n is the outward normal in top-left px.
-//
-// INWARD, AND KEPT ON THE PICTURE. A convex rim pulls what is under the body out toward the lip, so
-// the bend samples along -n. Bent outward it reached past the media's own edge — a control sits 8px
-// in and the lip bends up to twice that — sampled the flat ground there, and drew a white band that
-// the channel split then printed orange. The clamp holds every bent tap on the picture.
-vec3 lensGround(vec2 px, vec2 n, float inside) {
-  if (inside >= uLens.x) return blurredGround(px);
-  float bend = lensBend(clamp(inside / uLens.x, 0.0, 1.0), uLens.x, uLens.y, uLens.z) * uLens.w;
-  vec2 lo = vec2(uGlassBlur + 1.0);
-  vec2 hi = uSize - lo;
-  return vec3(
-    blurredGround(clamp(px - n * bend * (1.0 + uLensFringe), lo, hi)).r,
-    blurredGround(clamp(px - n * bend, lo, hi)).g,
-    blurredGround(clamp(px - n * bend * (1.0 - uLensFringe), lo, hi)).b
-  );
-}
-
-// One glass control: the chrome cast, the lensed ground under a light tint, the wash, the pool, the
-// top light, the grain, the glint along the rim, and the ring. px is top-left media pixels; p is the
-// same point centred on the control with y up. Controls are round, never squircles — D13.
-vec4 glassControl(vec2 px, vec2 p, vec2 hs, float aa) {
-  vec4 ui = vec4(0.0);
-  float r = uControlRadius;
-  float d = sdRoundedBox(p, hs, r);
-  for (int i = 0; i < 2; i++) {
-    float dc = sdRoundedBox(p - vec2(0.0, -uGlassCast[i].x), hs + uGlassCast[i].z, r + uGlassCast[i].z);
-    ui = glassCast(ui, dc, d, uGlassCast[i].y, uGlassCastColor[i]);
-  }
-  // Outside the control only its cast shows, and the lens and the blur are never paid for.
-  if (d > aa) return ui;
-
-  float inside = -d;
-  // The outward normal, from the field itself rather than from screen derivatives, so it holds at
-  // every zoom: y up for the light, top-left px for the bend.
-  vec2 g = vec2(
-    sdRoundedBox(p + vec2(0.5, 0.0), hs, r) - sdRoundedBox(p - vec2(0.5, 0.0), hs, r),
-    sdRoundedBox(p + vec2(0.0, 0.5), hs, r) - sdRoundedBox(p - vec2(0.0, 0.5), hs, r)
-  );
-  vec2 nUp = g / max(length(g), 1e-5);
-
-  float cover = fillSDF(d, aa);
-  vec3 gnd = filterGround(lensGround(px, vec2(nUp.x, -nUp.y), inside), uGlassFilter.x, uGlassFilter.y);
-  ui = over(ui, mix(gnd, uGlassTint, uGlassTintA), cover);
-  ui = glassWash(ui, cover, (vec2(p.x, -p.y) + hs) / (2.0 * hs), uGlassWash.x, uGlassWash.y);
-  ui = glassInset(ui, cover, sdRoundedBox(p - vec2(0.0, 6.0), hs + 10.0, r + 10.0), 12.0, uGlassPool);
-  ui = over(ui, vec3(1.0), cover * uGlassTopLine * (1.0 - fillSDF(sdRoundedBox(p + vec2(0.0, 1.0), hs, r), aa)));
-  ui = glassGrain(ui, cover, gl_FragCoord.xy, uGlassGrain);
-  // The glint, brightest where the rim faces the light at the top-left and its reflection at the
-  // bottom-right — the two catches that make a liquid-glass edge read as a solid with thickness.
-  float facing = mix(0.35, 1.0, abs(dot(nUp, vec2(-0.70710678, 0.70710678))));
-  ui = over(ui, vec3(1.0), cover * lensGlint(inside, uLens.x * uGlint.z, uGlint.y) * uGlint.x * facing);
-  // The ring, quieter than a panel's: the glint is the edge now, and the ring's dark sides only fog it.
-  return glassRing(ui, d, aa, 1.0, p, uRingTop, uRingUpper, uRingSide, uRingBottom, 0.35);
-}
+// The skin's media controls. It may read the media through mediaAt() and uSize.
+${mediaGlsl}
 
 bool near(vec2 p, vec2 hs, float reach) {
   return abs(p.x) < hs.x + reach && abs(p.y) < hs.y + reach;
@@ -256,8 +165,7 @@ void main() {
     // is v = 0; flipping it again drew the play bar along the top, opposite the hit test.
     vec2 px = vUv * uSize;
     float aa = fwidth(px.x) * 0.75 + 1e-5;
-    // How far past a control its cast can reach, so the blur runs only where glass can be.
-    float reach = 24.0;
+    float reach = mediaControlReach();
 
     float eh = ${f(EXPAND_BUTTON_SIZE / 2)};
     vec2 ec = vec2(uSize.x - ${f(CONTROL_BAR_INSET)} - eh, ${f(CONTROL_BAR_INSET)} + eh);
@@ -285,13 +193,13 @@ void main() {
       vec4 ui = vec4(0.0);
 
       if (nearG) {
-        vec4 g = glassControl(px, gp, gh, aa);
+        vec4 g = paintMediaControl(px, gp, gh, uControlRadius, aa);
         g = over(g, uInk, fillSDF(sdSegment(gp, vec2(-8.0, 0.0), vec2(8.0, 0.0), 0.75), aa) * 0.7);
         ui = overC(ui, g, uChrome.w);
       }
 
       if (nearB) {
-        vec4 bar = glassControl(px, bp, bh, aa);
+        vec4 bar = paintMediaControl(px, bp, bh, uControlRadius, aa);
         float inBar = fillSDF(sdRoundedBox(bp, bh, uControlRadius), aa);
 
         // The play glyph, centred in the button's hit square.
@@ -319,7 +227,7 @@ void main() {
       }
 
       if (nearE) {
-        vec4 e = glassControl(px, ep, vec2(eh), aa);
+        vec4 e = paintMediaControl(px, ep, vec2(eh), uControlRadius, aa);
         // Four corner brackets pointing outward, with round caps.
         vec2 m = abs(ep);
         float da = min(sdSegment(m, vec2(2.5, 5.0), vec2(5.0, 5.0), 0.75), sdSegment(m, vec2(5.0, 2.5), vec2(5.0, 5.0), 0.75));
@@ -328,7 +236,7 @@ void main() {
       }
 
       if (nearD) {
-        vec4 dl = glassControl(px, dp, vec2(eh), aa);
+        vec4 dl = paintMediaControl(px, dp, vec2(eh), uControlRadius, aa);
         // An arrow down onto a tray, in the same stroke as the brackets.
         float dd = min(
           min(sdSegment(dp, vec2(0.0, 5.0), vec2(0.0, -2.0), 0.75), sdSegment(vec2(abs(dp.x), dp.y), vec2(3.0, 1.0), vec2(0.0, -2.0), 0.75)),
@@ -418,11 +326,11 @@ export function applyObjectFitUV(
  * difference between an image, a clip and a model that are supposed to be the same rectangle.
  *
  * `uSize` and `uCornerRadius` are written per frame by the caller, because both depend on the box
- * the user resized. The radius arrives pre-multiplied by CORNER_K — v2's compensation for a
- * squircle reading tighter than a circular arc at the same number. The glass is the renderer's
- * shared record, bound by reference.
+ * the user resized; the radius is multiplied by the skin's `shape.cornerScale`. The chrome uniforms
+ * are the renderer's shared record, bound by reference. The skin's GLSL is fixed when the material
+ * is created.
  */
-export function createMediaMaterial(glass: MediaGlass): THREE.ShaderMaterial {
+export function createMediaMaterial(glass: MediaGlass, skin: FlowSkin): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: null },
@@ -442,7 +350,7 @@ export function createMediaMaterial(glass: MediaGlass): THREE.ShaderMaterial {
       ...glass,
     },
     vertexShader: MEDIA_VERTEX_SHADER,
-    fragmentShader: MEDIA_FRAGMENT_SHADER,
+    fragmentShader: mediaFragmentShader(skin.shape.glsl, skin.shaders.media.glsl),
     transparent: true,
     depthWrite: true,
     depthTest: true,
@@ -497,8 +405,9 @@ export function setMediaBox(
   material: THREE.ShaderMaterial,
   width: number,
   height: number,
-  borderRadius: number
+  borderRadius: number,
+  cornerScale: number
 ): void {
   (material.uniforms.uSize.value as THREE.Vector2).set(width, height);
-  material.uniforms.uCornerRadius.value = borderRadius * CORNER_K;
+  material.uniforms.uCornerRadius.value = borderRadius * cornerScale;
 }

@@ -75,12 +75,12 @@ export interface Material {
   /** `--material-regular-rim`: fractal-noise white at 4.5% over every material. */
   grain: number;
   /**
-   * An accented card's aura (gl/glass.ts AURA_GLSL): its peak strength, and how hard the grain
+   * An accented card's aura (skin/glass/glass.ts AURA_GLSL): its peak strength, and how hard the grain
    * breaks it up. Not a v2 token — v2 has no per-surface accent — so these are set by eye.
    */
   auraAlpha: number;
   auraGrain: number;
-  /** The accented card's lit rim at top-centre, in the accent (gl/glass.ts glassRimLight). */
+  /** The accented card's lit rim at top-centre, in the accent (skin/glass/glass.ts glassRimLight). */
   rimLight: number;
   /** `--material-row-wash`: a lit row. */
   rowWash: RGBA;

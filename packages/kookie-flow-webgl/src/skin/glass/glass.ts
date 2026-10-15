@@ -30,7 +30,7 @@ export const GLASS_GLSL = /* glsl */ `
   }
 
   // A rounded box with a squircle corner — v2's corner-shape on surfaces. The L4 norm outside the
-  // corner centre; computed without pow (see utils/corner-shader.ts for the derivation).
+  // corner centre; computed without pow (see skin/glass/corner.ts for the derivation).
   float sdSquircleBox(vec2 p, vec2 b, float r) {
     r = min(r, min(b.x, b.y));
     vec2 q = abs(p) - b + r;

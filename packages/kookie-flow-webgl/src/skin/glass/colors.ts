@@ -90,7 +90,7 @@ export const GLASS_COLORS = {
     /**
      * The field dress, from v2: `--dress-field-fill` is neutral-3 in both appearances, one step up
      * on hover and one more when active. The material draws it at a partial alpha over the card
-     * (gl/material.ts), so it is a well the card shows through rather than a punched hole.
+     * (skin/glass/material.ts), so it is a well the card shows through rather than a punched hole.
      */
     fill: '--neutral-3',
     fillHover: '--neutral-4',

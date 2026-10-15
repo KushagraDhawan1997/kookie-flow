@@ -121,7 +121,44 @@ export interface SkinShader {
   uniforms(ctx: SkinShaderContext): Record<string, IUniform>;
 }
 
+/**
+ * The card's outline, shared by every shader that draws or follows a card: the body, its
+ * selection outline, comments and media. `glsl` defines `float roundedBoxSDF(vec2 p, vec2 b, float r)`;
+ * the renderer multiplies a card's corner radius by `cornerScale` before passing it in.
+ */
+export interface SkinShape {
+  readonly glsl: string;
+  readonly cornerScale: number;
+}
+
+/**
+ * A node card's look. The renderer includes `shape.glsl` and `COMPOSITE_GLSL` before `glsl`.
+ * `r` is the scaled corner radius, `b` the card's half-size, `p` centred with y up. Defines:
+ *
+ * - `vec4 paintCardShadow(vec2 p, vec2 b, float r)` the card's float, as a straight-alpha colour.
+ *   Only evaluated in the shadow pass, outside the body.
+ * - `vec3 paintCardFill(vec3 fill, vec2 p, vec2 b, vec2 size, vec3 hue, float accent)` the body
+ *   fill with an accent (`accent` 1) in `hue`; returns `fill` unchanged when `accent` is 0.
+ * - `vec3 paintCardEdgeLight(vec3 color, vec2 p, vec2 b, float r, float d, float aa, float fillMask, vec3 hue, float accent)`
+ *   light along the card's top edge.
+ */
+export interface CardShader extends SkinShader {
+  /** How far the shadow reaches past the card, in world px, so the quad can hold it. */
+  shadowReach(ctx: SkinShaderContext): number;
+}
+
 export interface SkinShaders {
+  card: CardShader;
+  /**
+   * The controls drawn on a picture, a clip or a model: play bar, grip, expand and download. The
+   * renderer provides `vec3 mediaAt(vec2 q)` (the media at a 0..1 quad UV, over its ground) and
+   * `uniform vec2 uSize` before `glsl`, which defines:
+   *
+   * - `float mediaControlReach()` how far past a control its paint reaches, in media px.
+   * - `vec4 paintMediaControl(vec2 px, vec2 p, vec2 hs, float r, float aa)` one control's body:
+   *   `px` top-left media px, `p` centred on the control with y up, `hs` its half-size, `r` its corner.
+   */
+  media: SkinShader;
   /**
    * Inline controls (fields, marks, sliders, switches, segmented). `glsl` defines:
    *
@@ -160,6 +197,7 @@ export interface FlowSkin {
    * consumes them moves into the skin in a later step, and then this becomes skin-private.
    */
   readonly material: Record<'light' | 'dark', Material>;
+  readonly shape: SkinShape;
   /** The skin's part of each surface shader. */
   readonly shaders: SkinShaders;
   /** Tokens used before the page's theme can be read, and when it cannot. */

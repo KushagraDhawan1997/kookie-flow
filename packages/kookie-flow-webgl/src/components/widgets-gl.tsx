@@ -27,7 +27,7 @@
  * `widget-popover.tsx`, drawn in GL over everything. And nothing here handles a keystroke — a
  * text edit borrows a real DOM input for its caret and IME, which is `widget-edit-overlay.tsx`.
  *
- * THE LOOK IS GLASS, from `gl/glass.ts`: a well is the card showing through a tint, lit along
+ * THE LOOK IS THE SKIN'S (glass by default, `skin/glass/controls.ts`): a well is the card showing through a tint, lit along
  * its top edge, with a hairline; a checked box and a slider's fill are the accent under the same
  * light. Every state lands at once, as v2's controls have no motion: a state change is one buffer
  * write and nothing on the frames after it.
