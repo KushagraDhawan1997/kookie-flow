@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import { PageFrame } from "./page-frame";
+import { WipNotice } from "./wip-notice";
 import { SECTIONS, chaptersIn } from "./chapters";
 
 /**
@@ -66,6 +67,8 @@ export default function Home() {
           title="Kookie Flow"
           description="A node graph library for React that renders on the GPU. It keeps React Flow's ergonomics — entities, edges and a hook to hold them — and draws 50,000 nodes at 60fps with zero React re-renders while you pan, zoom and drag."
         />
+
+        <WipNotice />
 
         {/* NO HEADING OVER THIS. The grid is the whole page, and a heading over the only thing
             on a page is a second title for it.
