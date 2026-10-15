@@ -15,6 +15,7 @@ import { connectedSocketKey } from '@kushagradhawan/kookie-flow-core/internal/ut
  * - LOD: hide text below zoom thresholds
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, use } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -24,7 +25,7 @@ import { useEntityStyle, useSocketLayout } from '../contexts/StyleContext';
 import { useFont, type LoadedFontWeight } from '../contexts/FontContext';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import { rgbToHex } from '../utils/color';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import {
   type FontMetrics,
   type TextEntry,
@@ -457,6 +458,7 @@ export function MultiWeightTextRenderer({
   defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
   socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: MultiWeightTextRendererProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const { resolved: style, config } = useEntityStyle();
@@ -479,10 +481,10 @@ export function MultiWeightTextRenderer({
   const semiboldFont = semiboldFontProp ?? fontContext.semibold;
 
   // Derive text colors from theme tokens
-  const primaryTextColor = rgbToHex(tokens[THEME_COLORS.text.primary]);
-  const secondaryTextColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
+  const primaryTextColor = rgbToHex(resolveColor(colors.text.primary, tokens));
+  const secondaryTextColor = rgbToHex(resolveColor(colors.text.secondary, tokens));
   // The same red an invalid edge draws in: one hue for "this is wrong" across the graph.
-  const errorTextColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
+  const errorTextColor = rgbToHex(resolveColor(colors.edge.invalid, tokens));
 
   // Glyph/kerning maps from FontContext (shared, built once)
   const regularGlyphMap = regularFont?.glyphMap ?? emptyGlyphMap;

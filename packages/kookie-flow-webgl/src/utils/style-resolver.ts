@@ -5,6 +5,8 @@
 
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
 import { pickToken, type ColorTokenRef } from '../core/theme-colors';
+import type { SkinMetrics } from '../skin/types';
+import { GLASS_METRICS } from '../skin/glass/metrics';
 import type {
   EntitySize,
   EntityVariant,
@@ -25,38 +27,11 @@ const HEADER_POSITION_MAP: Record<HeaderPosition, 0 | 1 | 2> = {
   outside: 2,
 };
 
-// ============================================================================
-// Size Map (matches Kookie UI Card)
-// ============================================================================
-
-interface SizeConfig {
-  /** CSS variable name for padding */
-  padding: keyof ThemeTokens;
-  /** CSS variable name for border radius */
-  borderRadius: keyof ThemeTokens;
-  /** CSS variable name for font size */
-  fontSize: keyof ThemeTokens;
-  /** Socket radius in pixels */
-  socketSize: number;
-}
-
-/**
- * @deprecated The row height is derived (see `resolveSocketLayout`), not read from one token.
- * Kept because it is exported from the package index.
- */
-export const SOCKET_ROW_HEIGHT_TOKEN: keyof ThemeTokens = '--space-7';
-
 /**
  * The title's line box at its 12px size — the height the text layer gives one line of the node's
  * name. Declared here because the band that holds it is resolved here, and the two must agree.
  */
 export const TITLE_LINE_BOX = 14;
-
-/**
- * @deprecated The widget height is the row minus its own block inset (see `resolveSocketLayout`).
- * Kept because it is exported from the package index.
- */
-export const WIDGET_HEIGHT_TOKEN: keyof ThemeTokens = '--space-6';
 
 /**
  * Which v2 index a node's interior reads from, one step BELOW the host's page default.
@@ -90,189 +65,6 @@ function atIndex(family: string, size: EntitySize): keyof ThemeTokens {
  * number that was chosen against a page button.
  */
 export const SOCKET_MIN_CLEAR = 12;
-
-export const SIZE_MAP: Record<EntitySize, SizeConfig> = {
-  '1': {
-    padding: '--surface-p-1',
-    borderRadius: '--radius-surface-1',
-    fontSize: '--font-size-1',
-    socketSize: 8,
-  },
-  '2': {
-    padding: '--surface-p-1',
-    borderRadius: '--radius-surface-1',
-    fontSize: '--font-size-1',
-    socketSize: 10,
-  },
-  '3': {
-    padding: '--surface-p-2',
-    borderRadius: '--radius-surface-2',
-    fontSize: '--font-size-2',
-    socketSize: 10,
-  },
-  '4': {
-    padding: '--surface-p-3',
-    borderRadius: '--radius-surface-3',
-    fontSize: '--font-size-3',
-    socketSize: 12,
-  },
-  '5': {
-    padding: '--surface-p-4',
-    borderRadius: '--radius-surface-4',
-    fontSize: '--font-size-4',
-    socketSize: 12,
-  },
-};
-
-// ============================================================================
-// Variant Map (matches Kookie UI Card)
-// ============================================================================
-
-interface VariantConfig {
-  /** Background color token or 'transparent' */
-  background: ColorTokenRef | 'transparent';
-  /** Background color on hover */
-  backgroundHover: ColorTokenRef;
-  /** Border color token or 'transparent' */
-  borderColor: ColorTokenRef | 'transparent';
-  /** Border color on hover */
-  borderColorHover: ColorTokenRef | 'transparent';
-  /** Border width in pixels */
-  borderWidth: number;
-  /** Shadow token, 'none', or 'node' — the card's own float (NODE_SHADOW) */
-  shadow: keyof ThemeTokens | 'none' | 'node';
-}
-
-/**
- * The card body is a PAIR because the canvas is: dark puts the card one step above the floor
- * (`--neutral-1` canvas, `--neutral-3` body), light puts it one step below (`--neutral-2` canvas,
- * `--neutral-1` body). Same language, inverted. The hairline is the one token that reads on both.
- */
-export const VARIANT_MAP: Record<EntityVariant, VariantConfig> = {
-  surface: {
-    background: { light: '--neutral-1', dark: '--neutral-3' },
-    backgroundHover: '--neutral-2',
-    borderColor: '--neutral-5',
-    borderColorHover: '--neutral-6',
-    borderWidth: 1,
-    shadow: 'node',
-  },
-  outline: {
-    background: 'transparent',
-    backgroundHover: '--neutral-2',
-    borderColor: '--neutral-5',
-    borderColorHover: '--neutral-6',
-    borderWidth: 1,
-    shadow: 'none',
-  },
-  soft: {
-    background: { light: '--neutral-2', dark: '--neutral-3' },
-    backgroundHover: '--neutral-3',
-    borderColor: 'transparent',
-    borderColorHover: 'transparent',
-    borderWidth: 0,
-    shadow: 'node',
-  },
-  classic: {
-    background: '--color-surface',
-    backgroundHover: '--neutral-2',
-    borderColor: 'transparent',
-    borderColorHover: 'transparent',
-    borderWidth: 0,
-    shadow: '--shadow-2',
-  },
-  ghost: {
-    background: 'transparent',
-    backgroundHover: '--neutral-3',
-    borderColor: 'transparent',
-    borderColorHover: 'transparent',
-    borderWidth: 0,
-    shadow: 'none',
-  },
-};
-
-/**
- * The card's float. Not a --shadow-N token: those top out at blur 16 and are tuned for DOM cards
- * sitting on a page, where the shadow is read against white. A node sits on the canvas floor in
- * both appearances, so the opacity is a pair and the tail (quadratic, in the shader) is long.
- */
-export const NODE_SHADOW = {
-  blur: 20,
-  offsetY: 8,
-  opacity: { dark: 0.4, light: 0.1 },
-} as const;
-
-/**
- * A 1.5px lighter band just inside the top edge. Light is where the card is lit from; in the light
- * appearance the card is already the brightest thing on the canvas and the band would read as a
- * second hairline, so it is off there.
- */
-export const NODE_TOP_LIGHT = { dark: 0.07, light: 0.0 } as const;
-
-// ============================================================================
-// Radius Map
-// ============================================================================
-
-/**
- * A NODE BODY IS A SURFACE, and that is the whole of this table.
- *
- * KookieUI v2 partitions the radius scale by role rather than by magnitude: `--radius-1..5` are
- * the control family and `--radius-6..10` the surface family, and the theme's `data-radius` level
- * scales each on its own terms. At the `full` level the control family goes to 9999px — a pill,
- * bounded by the control's own height — while the surface family stays at 24/32/40/48, exactly
- * where `large` leaves it. A `.kui-surface[data-size=N]` reads `--radius-surface-N`, and there is
- * no level at which a surface becomes a capsule.
- *
- * This table used to mix the two: `--radius-2`, `--radius-4` and `--radius-6` for the first three
- * levels and `--radius-full` for the last. Under v2 that reads three control tokens and a pill for
- * a thing that is a card — so `radius="full"` handed the shader 9999, every SDF site clamped the
- * corner to half the shorter side, and a node became a stadium with its title and its first socket
- * row outside the shape. Worse quietly: v2's DEFAULT level (`:root`, no `data-radius`) resolves
- * `--radius-1..5` to 9999 as well, so `radius="medium"` did the same thing to an app that simply
- * never set a level.
- *
- * Every entry is a surface index now, so every level is bounded by the theme's own scale.
- */
-export const RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
-  none: 0,
-  small: '--radius-surface-1',
-  medium: '--radius-surface-2',
-  large: '--radius-surface-3',
-  full: '--radius-surface-4',
-};
-
-/**
- * A WIDGET IS A CONTROL, so it reads the other half of the scale.
- *
- * The same five levels, climbing `--radius-1..3` and ending at `--radius-full` — which is what v2
- * means by a control at the `full` level: `calc(control-height / 2)`, a true pill. The shader
- * clamps to half the widget's own box, so 9999 resolves to exactly that and can never reach past
- * the control it rounds.
- *
- * Widgets were a fixed 8px before this, so the `radius` prop stopped at the node body and never
- * reached the controls on it.
- */
-/**
- * `--radius-mark-1..4` at each level, from v2's stylesheet: square at `none`, and `full` is `large`
- * because a checkbox never becomes a circle. Used when the flow names a radius itself; otherwise the
- * theme's own tokens answer.
- */
-export const MARK_RADIUS_BY_LEVEL: Record<EntityRadius, readonly [number, number, number, number]> =
-  {
-    none: [0, 0, 0, 0],
-    small: [2, 2, 3, 3],
-    medium: [4, 4, 6, 6],
-    large: [6, 6, 8, 8],
-    full: [6, 6, 8, 8],
-  };
-
-export const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
-  none: 0,
-  small: '--radius-1',
-  medium: '--radius-2',
-  large: '--radius-3',
-  full: '--radius-full',
-};
 
 // ============================================================================
 // Resolved Style (WebGL-ready)
@@ -416,10 +208,11 @@ export function resolveEntityStyle(
   header: HeaderPosition = 'none',
   accentHeader: boolean = false,
   tokens: ThemeTokens,
-  overrides?: Partial<EntityStyleOverrides>
+  overrides?: Partial<EntityStyleOverrides>,
+  metrics: SkinMetrics = GLASS_METRICS
 ): ResolvedEntityStyle {
-  const sizeConfig = SIZE_MAP[size];
-  const variantConfig = VARIANT_MAP[variant];
+  const sizeConfig = metrics.sizes[size];
+  const variantConfig = metrics.variants[variant];
 
   // Resolve padding from size
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
@@ -429,7 +222,7 @@ export function resolveEntityStyle(
   if (overrides?.borderRadius !== undefined) {
     borderRadius = overrides.borderRadius;
   } else if (radius !== undefined) {
-    borderRadius = resolveTokenPx(RADIUS_MAP[radius], tokens);
+    borderRadius = resolveTokenPx(metrics.radii[radius], tokens);
   } else {
     borderRadius = resolveTokenPx(sizeConfig.borderRadius, tokens);
   }
@@ -457,14 +250,14 @@ export function resolveEntityStyle(
   const controlIsPill = controlRadius >= controlHeightForRadius / 2;
   const widgetRadius =
     radius !== undefined
-      ? resolveTokenPx(WIDGET_RADIUS_MAP[radius], tokens)
+      ? resolveTokenPx(metrics.widgetRadii[radius], tokens)
       : controlIsPill
         ? resolveTokenPx('--radius-full', tokens)
         : controlRadius;
   const widgetPad = resolveTokenPx(atIndex('--control-px-pill', size), tokens);
   const markRadius =
     radius !== undefined
-      ? MARK_RADIUS_BY_LEVEL[radius][Math.min(4, Math.max(1, Number(size))) - 1]
+      ? metrics.markRadii[radius][Math.min(4, Math.max(1, Number(size))) - 1]
       : resolveTokenPx(atIndex('--radius-mark', size), tokens);
   const widgetFontSize = resolveTokenPx(atIndex('--font-size', size), tokens);
 
@@ -498,9 +291,9 @@ export function resolveEntityStyle(
     }
   } else if (variantConfig.shadow === 'node') {
     shadow = {
-      blur: NODE_SHADOW.blur,
-      offsetY: NODE_SHADOW.offsetY,
-      opacity: NODE_SHADOW.opacity[tokens.appearance],
+      blur: metrics.nodeShadow.blur,
+      offsetY: metrics.nodeShadow.offsetY,
+      opacity: metrics.nodeShadow.opacity[tokens.appearance],
     };
   } else {
     shadow = resolveTokenShadow(variantConfig.shadow, tokens);
@@ -518,7 +311,7 @@ export function resolveEntityStyle(
 
   // Header height uses fixed row height token (--space-7 = 40px)
   // This ensures header aligns with socket rows for widget layout
-  const headerHeight = resolveTokenPx(SOCKET_ROW_HEIGHT_TOKEN, tokens);
+  const headerHeight = resolveTokenPx(metrics.socketRowHeightToken, tokens);
 
   // Resolve font size from token
   const fontSize = resolveTokenPx(sizeConfig.fontSize, tokens);
@@ -543,7 +336,7 @@ export function resolveEntityStyle(
     shadowBlur: shadow.blur,
     shadowOffsetY: shadow.offsetY,
     shadowOpacity: shadow.opacity,
-    topLightAlpha: NODE_TOP_LIGHT[tokens.appearance],
+    topLightAlpha: metrics.nodeTopLight[tokens.appearance],
     selectedBorderColor,
     fontSize,
     socketSize: sizeConfig.socketSize,
@@ -564,9 +357,10 @@ import type { ResolvedSocketLayout } from '@kushagradhawan/kookie-flow-core/inte
 export function resolveSocketLayout(
   hasTitleBand: boolean,
   size: EntitySize = '2',
-  tokens: ThemeTokens
+  tokens: ThemeTokens,
+  metrics: SkinMetrics = GLASS_METRICS
 ): ResolvedSocketLayout {
-  const sizeConfig = SIZE_MAP[size];
+  const sizeConfig = metrics.sizes[size];
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
   const borderWidth = 1;
 
@@ -646,3 +440,16 @@ export function calculateMinEntityHeight(
   const rows = Math.max(1, totalRows);
   return layout.marginTop + rows * layout.rowHeight + layout.padding;
 }
+
+/** @deprecated The glass skin's metrics. Use `skin.metrics`. */
+export {
+  SIZE_MAP,
+  VARIANT_MAP,
+  RADIUS_MAP,
+  WIDGET_RADIUS_MAP,
+  MARK_RADIUS_BY_LEVEL,
+  NODE_SHADOW,
+  NODE_TOP_LIGHT,
+  SOCKET_ROW_HEIGHT_TOKEN,
+  WIDGET_HEIGHT_TOKEN,
+} from '../skin/glass/metrics';

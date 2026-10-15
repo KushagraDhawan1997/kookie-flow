@@ -24,6 +24,7 @@
  * its dirty flag, the same way every other GL layer here works.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -31,7 +32,7 @@ import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { useFont } from '../contexts/FontContext';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import {
@@ -55,7 +56,6 @@ import {
   GLASS_GLSL,
   BACKDROP_GLSL,
   BackdropSnapshot,
-  MATERIAL,
   CORNER_K_FLOATING_ROWS,
   type RGBA,
 } from '../gl/index';
@@ -232,6 +232,7 @@ const fragmentShader = /* glsl */ `
 const SCREEN_ORIGIN = new THREE.Vector2();
 
 export function WidgetPopoverGL() {
+  const { colors, material: skinMaterial } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -260,14 +261,14 @@ export function WidgetPopoverGL() {
 
   const appearance = tokens.appearance;
   const material = useMemo(() => {
-    const m = MATERIAL[appearance];
+    const m = skinMaterial[appearance];
     const rgb = (v: readonly number[]) => new THREE.Color(v[0], v[1], v[2]);
     const rgba = (v: RGBA) => new THREE.Vector4(v[0], v[1], v[2], v[3]);
     const highContrast = tokens.contrast === 'high';
-    const canvasBg = resolveColor(THEME_COLORS.canvas.background, tokens);
+    const canvasBg = resolveColor(colors.canvas.background, tokens);
     // The floating fill: v2's `--color-surface` in light, and in dark that surface mixed twelve
     // percent toward white — a floating panel sits a step above the card it floats over.
-    const surface = resolveColor(THEME_COLORS.widget.thumb, tokens);
+    const surface = resolveColor(colors.widget.thumb, tokens);
     const tint =
       appearance === 'dark'
         ? resolveColor({ light: '--neutral-1', dark: '--neutral-2' }, tokens).map(
@@ -300,14 +301,14 @@ export function WidgetPopoverGL() {
         uCastColor: { value: m.floatingCast.map((l) => rgba(l.color)) },
         uRow: {
           value: highContrast
-            ? new THREE.Vector4(...resolveColor(THEME_COLORS.widget.active, tokens), 1)
+            ? new THREE.Vector4(...resolveColor(colors.widget.active, tokens), 1)
             : rgba(m.rowWash),
         },
-        uInk: { value: rgb(resolveColor(THEME_COLORS.text.primary, tokens)) },
+        uInk: { value: rgb(resolveColor(colors.text.primary, tokens)) },
         // The selected row's tick: v2's `--accent-glyph`, not the solid accent.
-        uAccent: { value: rgb(resolveColor(THEME_COLORS.widget.glyph, tokens)) },
+        uAccent: { value: rgb(resolveColor(colors.widget.glyph, tokens)) },
         // High contrast turns the lit row into a solid fill with contrast ink under it.
-        uRowInk: { value: rgb(resolveColor(THEME_COLORS.widget.activeContrast, tokens)) },
+        uRowInk: { value: rgb(resolveColor(colors.widget.activeContrast, tokens)) },
         uRowSolid: { value: highContrast ? 1 : 0 },
         uRowHeight: { value: 28 },
         uPad: { value: POPOVER_PAD },
@@ -406,8 +407,8 @@ export function WidgetPopoverGL() {
     dirtyRef.current = true;
   }, [size.width, size.height, material, font]);
 
-  const inkHex = rgbToHex(resolveColor(THEME_COLORS.text.primary, tokens));
-  const rowInkHex = rgbToHex(resolveColor(THEME_COLORS.widget.activeContrast, tokens));
+  const inkHex = rgbToHex(resolveColor(colors.text.primary, tokens));
+  const rowInkHex = rgbToHex(resolveColor(colors.widget.activeContrast, tokens));
   const highContrast = tokens.contrast === 'high';
 
   /**
@@ -432,9 +433,9 @@ export function WidgetPopoverGL() {
       (material.uniforms.uBackdropOrigin.value as THREE.Vector2).set(snapshot.x, snapshot.y);
       (material.uniforms.uBackdropSize.value as THREE.Vector2).set(snapshot.width, snapshot.height);
       material.uniforms.uBlur.value =
-        MATERIAL[appearance].surfaceBlur * BLUR_RADIUS_PER_SIGMA * dpr;
+        skinMaterial[appearance].surfaceBlur * BLUR_RADIUS_PER_SIGMA * dpr;
     },
-    [gl, material, snapshot, store]
+    [gl, material, snapshot, store, skinMaterial]
   );
 
   useFrame(() => {

@@ -1,10 +1,11 @@
 import { useMemo, useRef, useEffect } from 'react';
+import { useSkin } from '../skin/context';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { DEFAULT_GRID_SIZE } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 
 export interface GridProps {
@@ -37,6 +38,7 @@ const GRID_DOT_ALPHA = { dark: 0.5, light: 1 } as const;
  * - Reuses geometry and material
  */
 export function Grid({ size = DEFAULT_GRID_SIZE, color }: GridProps) {
+  const { colors } = useSkin();
   const { camera } = useThree();
   // The display's pixel ratio: the dot is sized in CSS px, and a window dragged to another screen
   // changes it. Read as state, so the material is rebuilt on that rare change and never per frame.
@@ -57,7 +59,7 @@ export function Grid({ size = DEFAULT_GRID_SIZE, color }: GridProps) {
   const lastRef = useRef({ left: 0, right: 0, top: 0, bottom: 0, zoom: 0 });
 
   // Use semantic theme colors
-  const gridColor = color ?? rgbToHex(tokens[THEME_COLORS.grid.lines]);
+  const gridColor = color ?? rgbToHex(resolveColor(colors.grid.lines, tokens));
   const gridAlpha = GRID_DOT_ALPHA[tokens.appearance];
 
   const gridMaterial = useMemo(() => {

@@ -11,12 +11,13 @@
  * there rather than as a measurement of things that are.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 
 /** Above the nodes: a guide that a node could cover would be pointing at nothing. */
 const RENDER_ORDER = 12;
@@ -24,13 +25,14 @@ const RENDER_ORDER = 12;
 const CAPACITY = 12;
 
 export function HelperLines() {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dirtyRef = useRef(true);
 
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const color = tokens[THEME_COLORS.selectionBox.fill];
+  const color = resolveColor(colors.selectionBox.fill, tokens);
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({

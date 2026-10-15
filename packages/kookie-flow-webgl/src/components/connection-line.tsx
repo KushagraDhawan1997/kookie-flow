@@ -1,4 +1,5 @@
 import { connectedSocketKey } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-key';
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -10,7 +11,7 @@ import {
   getSocketWorldX,
   getSocketYOffset,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/geometry';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { SDF_GLSL } from '../gl/index';
 import { SOCKET_RADIUS } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
 import {
@@ -153,6 +154,7 @@ const bridgeVertexShader = /* glsl */ `
  * Hidden when no connection draft is active.
  */
 export function ConnectionLine({ socketTypes = DEFAULT_SOCKET_TYPES }: ConnectionLineProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -161,9 +163,9 @@ export function ConnectionLine({ socketTypes = DEFAULT_SOCKET_TYPES }: Connectio
   const initializedRef = useRef(false);
 
   // Derive colors from semantic theme config
-  const defaultLineColor = rgbToHex(tokens[THEME_COLORS.connectionLine.default]);
-  const invalidColor = rgbToHex(tokens[THEME_COLORS.connectionLine.invalid]);
-  const fallbackSocketColor = rgbToHex(tokens[THEME_COLORS.socket.fallback]);
+  const defaultLineColor = rgbToHex(resolveColor(colors.connectionLine.default, tokens));
+  const invalidColor = rgbToHex(resolveColor(colors.connectionLine.invalid, tokens));
+  const fallbackSocketColor = rgbToHex(resolveColor(colors.socket.fallback, tokens));
 
   // Pre-allocated buffers
   const buffersRef = useRef<{

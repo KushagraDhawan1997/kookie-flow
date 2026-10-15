@@ -11,6 +11,7 @@
  * - Viewport collision detection for auto-flip
  */
 
+import { useSkin } from '../skin/context';
 import {
   useRef,
   useCallback,
@@ -61,7 +62,7 @@ import type {
 } from '../types/index';
 import { useFont, resolveFontForWeight } from '../contexts/FontContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { restroke } from '../utils/stroke-geometry';
 import { DEFAULT_STROKE_WIDTH } from './draw-entities';
@@ -979,6 +980,7 @@ function BuiltInWidget({
   align: (edge: AlignEdge) => void;
   distribute: (axis: DistributeAxis) => void;
 }) {
+  const { colors } = useSkin();
   // Display values from first entity; updates apply to all selected
   const data = entities[0].data as Record<string, unknown>;
 
@@ -986,7 +988,7 @@ function BuiltInWidget({
   const fontContext = useFont();
   // Ink with no colour of its own is drawn in the theme's text colour, so that is what its swatch shows.
   const tokens = useTheme();
-  const inkDefault = rgbToHex(tokens[THEME_COLORS.text.primary]);
+  const inkDefault = rgbToHex(resolveColor(colors.text.primary, tokens));
 
   let content: ReactNode;
 

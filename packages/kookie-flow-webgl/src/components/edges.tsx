@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo } from 'react';
+import { useSkin } from '../skin/context';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
 import * as THREE from 'three';
@@ -16,7 +17,7 @@ import {
   bezierControlOffset,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/edge-curve';
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import type { Entity, EdgeType, SocketType, EdgeMarker, EdgeMarkerType } from '../types/index';
 
 // Buffer sizing
@@ -479,6 +480,7 @@ export function Edges({
   defaultEdgeType = 'bezier',
   socketTypes = DEFAULT_SOCKET_TYPES,
 }: EdgesProps) {
+  const { colors } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -597,17 +599,17 @@ export function Edges({
 
   // Pre-computed colors from semantic theme config
   const defaultColor = useMemo(() => {
-    const c = tokens[THEME_COLORS.edge.default];
+    const c = resolveColor(colors.edge.default, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
   const selectedColor = useMemo(() => {
-    const c = tokens[THEME_COLORS.edge.selected];
+    const c = resolveColor(colors.edge.selected, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
   const invalidColor = useMemo(() => {
-    const c = tokens[THEME_COLORS.edge.invalid];
+    const c = resolveColor(colors.edge.invalid, tokens);
     return new THREE.Color(c[0], c[1], c[2]);
-  }, [tokens]);
+  }, [tokens, colors]);
   /**
    * Socket-type colours parsed once per socketTypes identity, not once per edge per frame.
    *

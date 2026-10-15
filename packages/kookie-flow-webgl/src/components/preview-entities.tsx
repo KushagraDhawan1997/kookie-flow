@@ -24,6 +24,7 @@
  * state, so the band has to look for the pointer itself, and it looks in one place.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CameraGate } from '../utils/viewport-cull';
@@ -31,7 +32,7 @@ import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResolvedStyle, useSocketLayout } from '../contexts/index';
-import { THEME_COLORS } from '../core/theme-colors';
+import { resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
 import { ImageTextureManager } from '../utils/image-loader';
 import { VideoTextureManager } from '../utils/video-loader';
@@ -114,6 +115,8 @@ interface PreviewHold {
 }
 
 export function PreviewEntities() {
+  const skin = useSkin();
+  const { colors } = skin;
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const resolvedStyle = useResolvedStyle();
@@ -163,8 +166,8 @@ export function PreviewEntities() {
 
   // The controls' glass. A band's ground is the card it sits in, not the canvas.
   const glass = useMemo(
-    () => buildMediaGlass(tokens, resolvedStyle.background, resolvedStyle.widgetRadius),
-    [tokens, resolvedStyle.background, resolvedStyle.widgetRadius]
+    () => buildMediaGlass(skin, tokens, resolvedStyle.background, resolvedStyle.widgetRadius),
+    [tokens, resolvedStyle.background, resolvedStyle.widgetRadius, skin]
   );
   const glassRef = useRef(glass);
   glassRef.current = glass;
@@ -177,8 +180,8 @@ export function PreviewEntities() {
   const videoManager = useMemo(() => new VideoTextureManager(markFullDirty), [markFullDirty]);
   const sceneManager = useMemo(() => new MeshSceneManager(markFullDirty), [markFullDirty]);
 
-  const placeholderColor = rgbToHex(tokens[THEME_COLORS.text.secondary]);
-  const errorColor = rgbToHex(tokens[THEME_COLORS.edge.invalid]);
+  const placeholderColor = rgbToHex(resolveColor(colors.text.secondary, tokens));
+  const errorColor = rgbToHex(resolveColor(colors.edge.invalid, tokens));
   const placeholderMat = useMemo(
     () => createPlaceholderMaterial(placeholderColor),
     [placeholderColor]

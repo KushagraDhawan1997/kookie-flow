@@ -33,6 +33,7 @@ import type {
 } from '@kushagradhawan/kookie-flow-core';
 import type { LayoutOptions } from '@kushagradhawan/kookie-flow-core/layout';
 import type { CaptureOptions } from '../utils/canvas-runtime';
+import type { FlowSkin } from '../skin/types';
 export * from '@kushagradhawan/kookie-flow-core/types';
 /** Props passed to toolbar render functions */
 export interface ToolbarRenderProps {
@@ -238,6 +239,8 @@ export interface KookieFlowProps {
   // Styling Props (Milestone 2 - matches Kookie UI Card)
   // ============================================================================
 
+  /** How the editor looks: colour roles, sizes, material and token reading. Default: glass. */
+  skin?: FlowSkin;
   /** Entity size scale. Default: '2' */
   size?: EntitySize;
   /** Entity visual variant. Default: 'surface' */

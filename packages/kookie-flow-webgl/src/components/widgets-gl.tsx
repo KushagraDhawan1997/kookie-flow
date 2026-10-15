@@ -33,6 +33,7 @@
  * write and nothing on the frames after it.
  */
 
+import { useSkin } from '../skin/context';
 import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { ViewportCuller } from '../utils/viewport-culler';
@@ -61,12 +62,12 @@ import {
   entityDepth,
   DEPTH_LAYER,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { resolveColor, type ColorTokenRef } from '../core/theme-colors';
 import {
   DEFAULT_ENTITY_WIDTH,
   SOCKET_LABEL_WIDTH,
 } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
-import { SDF_GLSL, GLASS_GLSL, MATERIAL, FOCUS_RING, type RGBA, type CastLayer } from '../gl/index';
+import { SDF_GLSL, GLASS_GLSL, FOCUS_RING, type RGBA, type CastLayer } from '../gl/index';
 import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types/index';
 
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -582,6 +583,7 @@ export function WidgetsGL({
   defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
   socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: WidgetsGLProps) {
+  const { colors, material: skinMaterial } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -613,16 +615,16 @@ export function WidgetsGL({
   const connectedOutputsRef = useRef<Map<string, Set<string>>>(new Map());
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
 
-  const c = THEME_COLORS.widget;
+  const c = colors.widget;
   const material = useMemo(() => {
     // `resolveColor` rather than `resolveTokenColor`: several of these are appearance PAIRS
     // (the well is punched through to the canvas in dark and a step below the card in light),
     // and the pair collapses to one token here, at material build, never per frame.
-    const rgb = (key: (typeof THEME_COLORS)['widget'][keyof (typeof THEME_COLORS)['widget']]) => {
+    const rgb = (key: ColorTokenRef) => {
       const v = resolveColor(key, tokens);
       return new THREE.Color(v[0], v[1], v[2]);
     };
-    const m = MATERIAL[tokens.appearance];
+    const m = skinMaterial[tokens.appearance];
     const rgba = (v: RGBA) => new THREE.Vector4(v[0], v[1], v[2], v[3]);
     const cast = (l: CastLayer) => new THREE.Vector4(l.y, l.blur, l.spread, 0);
     const castColor = (l: CastLayer) => rgba(l.color);

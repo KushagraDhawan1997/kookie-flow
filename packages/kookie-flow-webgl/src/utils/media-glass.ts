@@ -16,8 +16,9 @@
  */
 
 import * as THREE from 'three';
-import { GLINT, LENS, MATERIAL, type RGBA } from '../gl/index';
-import { THEME_COLORS, resolveColor } from '../core/theme-colors';
+import { GLINT, LENS, type RGBA } from '../gl/index';
+import type { FlowSkin } from '../skin/types';
+import { resolveColor } from '../core/theme-colors';
 
 type ThemeTokens = Parameters<typeof resolveColor>[1];
 
@@ -58,17 +59,20 @@ const GLINT_PEAK = { light: 0.75, dark: 0.5 } as const;
 export type MediaGlass = Record<string, THREE.IUniform>;
 
 /**
+ * @param skin Supplies the colour roles and the material numbers.
  * @param ground What shows where the media has no pixels — a letterbox, a model's transparent
  *   background: the canvas for a media entity, the card for a node's band.
  * @param controlRadius The theme's control corner. A pill sentinel is clamped by the shader to half
  *   of each control's own height, as v2 does.
  */
 export function buildMediaGlass(
+  skin: FlowSkin,
   tokens: ThemeTokens,
   ground: readonly number[],
   controlRadius: number
 ): MediaGlass {
-  const m = MATERIAL[tokens.appearance];
+  const m = skin.material[tokens.appearance];
+  const { colors } = skin;
   const rgb = (v: readonly number[]) => new THREE.Color(v[0], v[1], v[2]);
   const rgba = (v: RGBA) => new THREE.Vector4(v[0], v[1], v[2], v[3]);
   // The floating fill, as the popover computes it: the surface in light, and in dark that surface
@@ -78,7 +82,7 @@ export function buildMediaGlass(
       ? resolveColor({ light: '--neutral-1', dark: '--neutral-2' }, tokens).map(
           (v) => v * 0.88 + 0.12
         )
-      : resolveColor(THEME_COLORS.widget.thumb, tokens);
+      : resolveColor(colors.widget.thumb, tokens);
 
   return {
     uGround: { value: rgb(ground) },
@@ -111,8 +115,8 @@ export function buildMediaGlass(
     uGlassGrain: { value: m.grain },
     uGlassCast: { value: m.controlChrome.map((l) => new THREE.Vector4(l.y, l.blur, l.spread, 0)) },
     uGlassCastColor: { value: m.controlChrome.map((l) => rgba(l.color)) },
-    uInk: { value: rgb(resolveColor(THEME_COLORS.text.primary, tokens)) },
-    uAccent: { value: rgb(resolveColor(THEME_COLORS.widget.active, tokens)) },
+    uInk: { value: rgb(resolveColor(colors.text.primary, tokens)) },
+    uAccent: { value: rgb(resolveColor(colors.widget.active, tokens)) },
     uControlRadius: { value: controlRadius },
   };
 }
