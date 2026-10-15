@@ -8,7 +8,7 @@ An edge names two entities and one socket on each. `sourceSocket` is the `id` of
 the source entity, and `targetSocket` is the `id` of an input on the target entity.
 
 ```tsx title="graph.ts"
-import type { Edge, Entity } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity } from '@kushagradhawan/kookie-flow-react';
 
 export const entities: Entity[] = [
   {
@@ -72,7 +72,8 @@ choose the shape for every edge, and set `type` on one edge when you want a diff
 | `smoothstep` | A curve like `bezier`, but its bends stay within 100 world units of each socket, so a long edge runs almost straight between them. |
 
 ```tsx
-import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const edges: Edge[] = [
   // Drawn as a step, because defaultEdgeType says so.
@@ -82,7 +83,7 @@ const edges: Edge[] = [
 ];
 
 export function Pipeline({ entities }: { entities: Entity[] }) {
-  return <KookieFlow entities={entities} edges={edges} defaultEdgeType="step" />;
+  return <KookieFlow skin={glassSkin} entities={entities} edges={edges} defaultEdgeType="step" />;
 }
 ```
 
@@ -182,7 +183,7 @@ With `width` and `height` set to `0` and each socket at `position: 0.5`, both so
 with the dot, one on each side of it.
 
 ```tsx
-import type { Edge, RerouteEntity } from '@kushagradhawan/kookie-flow';
+import type { Edge, RerouteEntity } from '@kushagradhawan/kookie-flow-react';
 
 const bend: RerouteEntity = {
   id: 'bend',

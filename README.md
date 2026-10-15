@@ -14,14 +14,13 @@ nodes pans and zooms without React re-rendering.
 | `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin. |
 | `@kushagradhawan/kookie-flow-skin-glass` | KookieUI v2's glass look: colour roles, sizes, shaders and toolbar controls. |
 | `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
-| `@kushagradhawan/kookie-flow` | Compatibility entry forwarding to those packages, glass by default. |
 
-These 0.2.0 candidates are unpublished. Use the workspace or pack all five packages with pnpm.
+These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
 The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
 Fiber 9.7+, drei 10.7+, and WebGL 2. The core only depends on Zustand's vanilla store.
 
 See [package migration and two-way sync](docs/PACKAGES.md) for installation, API changes and the
-planned Womp copy. [Production qualification](packages/kookie-flow/PRODUCTION.md) describes the
+planned Womp copy. [Production qualification](packages/kookie-flow-harness/PRODUCTION.md) describes the
 release gate and remaining product acceptance checks.
 
 ## An example
@@ -121,7 +120,12 @@ against the package's last build.
 ## Repository layout
 
 ```text
-packages/kookie-flow   the library, its vitest tests, and the Playwright harness in harness/
+packages/kookie-flow-core        graph data, store, evaluation, history, layout (no React)
+packages/kookie-flow-webgl       the renderer: drawing, interaction, text, accessibility
+packages/kookie-flow-skin-glass  KookieUI v2's glass look
+packages/kookie-flow-react       the React entry: KookieFlow, useGraph, plugins
+packages/kookie-flow-harness     private: the Playwright behaviour suite and release gate
+packages/studio-core             shared logic for the studio app
 apps/docs              the documentation site and the demos
 plans/                 design notes; they can lag behind the source
 docs/handovers         handover notes from past working sessions
@@ -144,10 +148,10 @@ Run these from the repository root. They need pnpm 12 and Node 24 or later; `.nv
 | `pnpm build` | builds the package and the docs site |
 
 The bundled Inter MSDF atlas is generated from the Inter font files in
-`packages/kookie-flow/fonts`. Regenerate it with:
+`packages/kookie-flow-webgl/fonts`. Regenerate it with:
 
 ```bash
-pnpm --filter @kushagradhawan/kookie-flow generate:fonts
+pnpm --filter @kushagradhawan/kookie-flow-webgl generate:fonts
 ```
 
 ## Changelog

@@ -8,9 +8,15 @@
  * undo for free.
  */
 
-import type { Edge, EdgeChange, Entity, EntityChange, XYPosition } from '@kushagradhawan/kookie-flow';
+import type {
+  Edge,
+  EdgeChange,
+  Entity,
+  EntityChange,
+  XYPosition,
+} from '@kushagradhawan/kookie-flow-react';
 // The layout alone, not the library: this package runs on the server, with no React and no canvas.
-import { layoutGraph } from '@kushagradhawan/kookie-flow/layout';
+import { layoutGraph } from '@kushagradhawan/kookie-flow-core/layout';
 import { estimateNodeSize } from './node-size';
 import type { NodeRegistry } from './registry';
 import { typesCompatible } from './sockets';
@@ -68,7 +74,12 @@ export interface CompileOptions {
 const ARRANGE_RANK_GAP = 120;
 const ARRANGE_NODE_GAP = 60;
 
-export function edgeId(source: string, sourceSocket: string, target: string, targetSocket: string): string {
+export function edgeId(
+  source: string,
+  sourceSocket: string,
+  target: string,
+  targetSocket: string
+): string {
   return `${source}-${sourceSocket}-${target}-${targetSocket}`;
 }
 
@@ -85,7 +96,9 @@ export function replacedWires(
   targetSocket: string | null | undefined
 ): string[] {
   if (!target || !targetSocket) return [];
-  return edges.filter((e) => e.target === target && e.targetSocket === targetSocket).map((e) => e.id);
+  return edges
+    .filter((e) => e.target === target && e.targetSocket === targetSocket)
+    .map((e) => e.id);
 }
 
 function parseRef(ref: string): { id: string; socket: string } | null {
@@ -134,7 +147,11 @@ export function compileOps(
     errors.push({ index, op, message });
   };
 
-  const socketType = (entity: Entity, socketId: string, direction: 'inputs' | 'outputs'): string | null => {
+  const socketType = (
+    entity: Entity,
+    socketId: string,
+    direction: 'inputs' | 'outputs'
+  ): string | null => {
     const own = entity[direction]?.find((s) => s.id === socketId);
     if (own) return own.type;
     const fromType = types[entity.type]?.[direction]?.find((s) => s.id === socketId);
@@ -150,7 +167,9 @@ export function compileOps(
 
   /** The sockets a node has, for an error that names the right ones instead of only the wrong one. */
   const socketNames = (entity: Entity, direction: 'inputs' | 'outputs'): string => {
-    const ids = (entity[direction] ?? types[entity.type]?.[direction] ?? []).map((s) => `"${s.id}"`);
+    const ids = (entity[direction] ?? types[entity.type]?.[direction] ?? []).map(
+      (s) => `"${s.id}"`
+    );
     return ids.length ? ids.join(', ') : 'none';
   };
 
@@ -170,10 +189,22 @@ export function compileOps(
         if (entities.has(id)) return fail(index, op, `node "${id}" already exists`);
         const unknownKeys = unknownInputs(op.type, op.values);
         if (unknownKeys.length) {
-          const inputs = Object.keys(registry.get(op.type)?.inputs ?? {}).map((k) => `"${k}"`).join(', ') || 'none';
-          return fail(index, op, `"${op.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${inputs}`);
+          const inputs =
+            Object.keys(registry.get(op.type)?.inputs ?? {})
+              .map((k) => `"${k}"`)
+              .join(', ') || 'none';
+          return fail(
+            index,
+            op,
+            `"${op.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${inputs}`
+          );
         }
-        const entity = registry.create(op.type, id, op.position ?? placeAt(created.length), op.values);
+        const entity = registry.create(
+          op.type,
+          id,
+          op.position ?? placeAt(created.length),
+          op.values
+        );
         if (op.label && op.label.trim()) entity.data.label = op.label;
         entities.set(id, entity);
         entityChanges.push({ type: 'add', entity });
@@ -182,7 +213,8 @@ export function compileOps(
       }
       case 'remove_node': {
         if (!entities.has(op.id)) return fail(index, op, `no node "${op.id}"`);
-        for (const edge of edges.filter((e) => e.source === op.id || e.target === op.id)) removeEdge(edge);
+        for (const edge of edges.filter((e) => e.source === op.id || e.target === op.id))
+          removeEdge(edge);
         entities.delete(op.id);
         entityChanges.push({ type: 'remove', id: op.id });
         return;
@@ -197,17 +229,34 @@ export function compileOps(
         if (!target) return fail(index, op, `no node "${to.id}"`);
         const sourceType = socketType(source, from.socket, 'outputs');
         const targetType = socketType(target, to.socket, 'inputs');
-        if (!sourceType) return fail(index, op, `"${from.id}" has no output "${from.socket}"; its outputs are ${socketNames(source, 'outputs')}`);
-        if (!targetType) return fail(index, op, `"${to.id}" has no input "${to.socket}"; its inputs are ${socketNames(target, 'inputs')}`);
+        if (!sourceType)
+          return fail(
+            index,
+            op,
+            `"${from.id}" has no output "${from.socket}"; its outputs are ${socketNames(source, 'outputs')}`
+          );
+        if (!targetType)
+          return fail(
+            index,
+            op,
+            `"${to.id}" has no input "${to.socket}"; its inputs are ${socketNames(target, 'inputs')}`
+          );
         if (!typesCompatible(sourceType, targetType)) {
           return fail(index, op, `cannot connect ${sourceType} to ${targetType}`);
         }
         const id = edgeId(from.id, from.socket, to.id, to.socket);
         if (edges.some((e) => e.id === id)) return; // already wired exactly so; not an error
-        if (wouldCycle(edges, from.id, to.id)) return fail(index, op, 'that wire would make a loop');
+        if (wouldCycle(edges, from.id, to.id))
+          return fail(index, op, 'that wire would make a loop');
         const replaced = new Set(replacedWires(edges, to.id, to.socket));
         for (const edge of edges.filter((e) => replaced.has(e.id))) removeEdge(edge);
-        const edge: Edge = { id, source: from.id, sourceSocket: from.socket, target: to.id, targetSocket: to.socket };
+        const edge: Edge = {
+          id,
+          source: from.id,
+          sourceSocket: from.socket,
+          target: to.id,
+          targetSocket: to.socket,
+        };
         edges.push(edge);
         edgeChanges.push({ type: 'add', edge });
         return;
@@ -225,7 +274,11 @@ export function compileOps(
         if (!entity) return fail(index, op, `no node "${op.id}"`);
         const unknownKeys = unknownInputs(entity.type, op.values);
         if (unknownKeys.length) {
-          return fail(index, op, `"${entity.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${socketNames(entity, 'inputs')}`);
+          return fail(
+            index,
+            op,
+            `"${entity.type}" has no input ${unknownKeys.map((k) => `"${k}"`).join(', ')}; its inputs are ${socketNames(entity, 'inputs')}`
+          );
         }
         // The store merges `data` one level deep, so the whole bag goes back or the rest is lost.
         const values = { ...valueBag(entity), ...op.values };
@@ -253,18 +306,28 @@ export function compileOps(
       }
       case 'arrange': {
         const missing = (op.ids ?? []).filter((id) => !entities.has(id));
-        if (missing.length) return fail(index, op, `no node ${missing.map((id) => `"${id}"`).join(', ')}`);
+        if (missing.length)
+          return fail(index, op, `no node ${missing.map((id) => `"${id}"`).join(', ')}`);
         const wanted = op.ids ? new Set(op.ids) : null;
         // A frame places its own children, so only what sits on the board itself is laid out.
-        const targets = [...entities.values()].filter((e) => e.parentId === undefined && (!wanted || wanted.has(e.id)));
+        const targets = [...entities.values()].filter(
+          (e) => e.parentId === undefined && (!wanted || wanted.has(e.id))
+        );
         if (targets.length === 0) return;
 
         const nodes = targets.map((e) => {
           const real = options.sizeOf?.(e);
           const guess = estimateNodeSize(registry, e.type);
-          return { id: e.id, width: real?.width ?? e.width ?? guess.w, height: real?.height ?? e.height ?? guess.h };
+          return {
+            id: e.id,
+            width: real?.width ?? e.width ?? guess.w,
+            height: real?.height ?? e.height ?? guess.h,
+          };
         });
-        const { positions } = layoutGraph(nodes, edges, { rankGap: ARRANGE_RANK_GAP, nodeGap: ARRANGE_NODE_GAP });
+        const { positions } = layoutGraph(nodes, edges, {
+          rankGap: ARRANGE_RANK_GAP,
+          nodeGap: ARRANGE_NODE_GAP,
+        });
 
         // THE BLOCK STAYS PUT. The layout is worked out around the origin, then slid so its top left
         // is where the top left of these nodes was. Nodes this batch just added were placed by a
@@ -287,7 +350,9 @@ export function compileOps(
           const moved = { ...entity, position };
           entities.set(entity.id, moved);
           // A node this batch added lands where it belongs, rather than landing and then moving.
-          const added = entityChanges.findIndex((c) => c.type === 'add' && c.entity.id === entity.id);
+          const added = entityChanges.findIndex(
+            (c) => c.type === 'add' && c.entity.id === entity.id
+          );
           if (added >= 0) entityChanges[added] = { type: 'add', entity: moved };
           else entityChanges.push({ type: 'position', id: entity.id, position });
         }

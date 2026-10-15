@@ -27,7 +27,7 @@ import {
   type EntityChange,
   type KookieFlowInstance,
   type XYPosition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 import {
   compileOps,
   createOnEvaluate,
@@ -132,15 +132,23 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     let x = 0;
     let y = 0;
     if (flow && el) {
-      const centre = screenToWorld({ x: el.clientWidth / 2, y: el.clientHeight / 2 }, flow.getViewport());
+      const centre = screenToWorld(
+        { x: el.clientWidth / 2, y: el.clientHeight / 2 },
+        flow.getViewport()
+      );
       x = Math.round(centre.x - NODE_W / 2);
       y = Math.round(centre.y - NODE_H / 2);
     }
     const overlaps = (px: number, py: number) => {
       const hit = (ox: number, oy: number, ow: number, oh: number) =>
-        px < ox + ow + NODE_GAP && px + NODE_W + NODE_GAP > ox && py < oy + oh + NODE_GAP && py + NODE_H + NODE_GAP > oy;
+        px < ox + ow + NODE_GAP &&
+        px + NODE_W + NODE_GAP > ox &&
+        py < oy + oh + NODE_GAP &&
+        py + NODE_H + NODE_GAP > oy;
       if (taken.some((p) => hit(p.x, p.y, NODE_W, NODE_H))) return true;
-      return graphRef.current.entities.some((e) => hit(e.position.x, e.position.y, e.width ?? NODE_W, e.height ?? NODE_H));
+      return graphRef.current.entities.some((e) =>
+        hit(e.position.x, e.position.y, e.width ?? NODE_W, e.height ?? NODE_H)
+      );
     };
     for (let col = 0; col < 8; col++) {
       for (let row = 0; row < 8; row++) {
@@ -172,7 +180,8 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
       if (result.edgeChanges.length) onEdgesChange(result.edgeChanges);
       const removed = result.entityChanges.flatMap((c) => (c.type === 'remove' ? [c.id] : []));
       if (removed.length) bus.forget(removed);
-      for (const error of result.errors) console.warn('[studio] op refused:', error.message, error.op);
+      for (const error of result.errors)
+        console.warn('[studio] op refused:', error.message, error.op);
       return result;
     },
     [bus, onEntitiesChange, onEdgesChange, placeAt]
@@ -182,8 +191,13 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   const onConnect = React.useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
-      const held = replacedWires(graphRef.current.edges, connection.target, connection.targetSocket);
-      if (held.length) onEdgesChange(held.map((edgeId) => ({ type: 'remove' as const, id: edgeId })));
+      const held = replacedWires(
+        graphRef.current.edges,
+        connection.target,
+        connection.targetSocket
+      );
+      if (held.length)
+        onEdgesChange(held.map((edgeId) => ({ type: 'remove' as const, id: edgeId })));
       connectEdge(connection);
     },
     [connectEdge, onEdgesChange]
@@ -277,7 +291,8 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
     // After mount, not at first render: the server rendered the default width.
     try {
       const stored = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
-      if (Number.isFinite(stored) && stored >= PANE_MIN && stored <= PANE_MAX) setPaneWidthState(stored);
+      if (Number.isFinite(stored) && stored >= PANE_MIN && stored <= PANE_MAX)
+        setPaneWidthState(stored);
     } catch {
       // Storage refused: the default width is fine.
     }
@@ -310,7 +325,8 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   }, [flushWidgetValues, redo]);
 
   const onValues = React.useCallback(
-    (nodeId: string, values: Record<string, unknown>) => applyOps([{ op: 'set_values', id: nodeId, values }]),
+    (nodeId: string, values: Record<string, unknown>) =>
+      applyOps([{ op: 'set_values', id: nodeId, values }]),
     [applyOps]
   );
   const onLabel = React.useCallback(
@@ -319,9 +335,14 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
   );
   const onArrange = React.useCallback(() => {
     applyOps([{ op: 'arrange' }]);
-    requestAnimationFrame(() => flowRef.current?.fitView({ padding: 160, duration: 300, maxZoom: 1 }));
+    requestAnimationFrame(() =>
+      flowRef.current?.fitView({ padding: 160, duration: 300, maxZoom: 1 })
+    );
   }, [applyOps]);
-  const onRemove = React.useCallback((nodeId: string) => applyOps([{ op: 'remove_node', id: nodeId }]), [applyOps]);
+  const onRemove = React.useCallback(
+    (nodeId: string) => applyOps([{ op: 'remove_node', id: nodeId }]),
+    [applyOps]
+  );
   /** Without a position, a node lands where `placeAt` puts it; the canvas's menu passes the click's. */
   const onAdd = React.useCallback(
     (type: string, position?: XYPosition) => applyOps([{ op: 'add_node', type, position }]),
@@ -347,7 +368,11 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
             <Toolbar size="3" backdrop>
               {/* The mark is the way home, as the docs site's is. The link carries the name: the
                   word inside it is a picture of the name and hidden from assistive tech. */}
-              <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
+              <NextLink
+                href="/"
+                aria-label="Studio, home"
+                style={{ color: 'inherit', textDecoration: 'none' }}
+              >
                 <Logo height="var(--line-height-7)" />
               </NextLink>
               {/* NO SEPARATORS, as the docs band has none: each control is its own capsule and the
@@ -369,7 +394,9 @@ export function Editor({ id, name: initialName, initial, revision }: EditorProps
                   leading={<RunIcon />}
                   onClick={() => void flowRef.current?.evaluateDirty()}
                   menuLabel="More run options"
-                  menu={<MenuItem onClick={() => void flowRef.current?.evaluateAll()}>Run all</MenuItem>}
+                  menu={
+                    <MenuItem onClick={() => void flowRef.current?.evaluateAll()}>Run all</MenuItem>
+                  }
                 >
                   Run
                 </SplitButton>

@@ -44,7 +44,7 @@ import {
   isVideoEntity,
   type DrawEntity,
   type Entity,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 function isDrawEntity(entity: Entity): entity is DrawEntity {
   return entity.type === 'draw';
@@ -87,7 +87,7 @@ the two coordinate systems.
 the size a person leaves an entity at when they finish a resize:
 
 ```ts title="save-sizes.ts"
-import type { Dimensions, EntityChange } from '@kushagradhawan/kookie-flow';
+import type { Dimensions, EntityChange } from '@kushagradhawan/kookie-flow-react';
 
 export function saveSizes(changes: EntityChange[], save: (id: string, size: Dimensions) => void) {
   for (const change of changes) {
@@ -101,7 +101,7 @@ Call it from your `onEntitiesChange` handler. The
 
 ## Type index
 
-Import every type in these tables from `@kushagradhawan/kookie-flow`, except the types in
+Import every type in these tables from `@kushagradhawan/kookie-flow-react`, except the types in
 [Types from the plugins subpath](#types-from-the-plugins-subpath).
 
 ### Getting started
@@ -253,7 +253,7 @@ Import every type in these tables from `@kushagradhawan/kookie-flow`, except the
 
 ### Types from the plugins subpath
 
-Import these from `@kushagradhawan/kookie-flow/plugins`, the same path as the hooks they belong to.
+Import these from `@kushagradhawan/kookie-flow-react/plugins`, the same path as the hooks they belong to.
 
 | Type | Chapter |
 | --- | --- |

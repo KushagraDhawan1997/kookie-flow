@@ -11,12 +11,19 @@ import {
   type KookieFlowInstance,
   type TextEntityData,
   type TextSizingMode,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 // `toolbar: true` shows the sizing, font, and colour controls when text is selected.
 const entityTypes: Record<string, EntityTypeDefinition> = { text: { type: 'text', toolbar: true } };
 
-function text(id: string, x: number, y: number, sizingMode: TextSizingMode, data: Partial<TextEntityData>): Entity {
+function text(
+  id: string,
+  x: number,
+  y: number,
+  sizingMode: TextSizingMode,
+  data: Partial<TextEntityData>
+): Entity {
   return {
     id,
     type: 'text',
@@ -31,10 +38,19 @@ function text(id: string, x: number, y: number, sizingMode: TextSizingMode, data
 
 const initialEntities: Entity[] = [
   text('title', 0, 0, 'auto-width', { content: 'Release notes', fontSize: 28, fontWeight: 600 }),
-  text('body', 0, 120, 'auto-height', { content: 'Auto height wraps at the width you drag, and grows downward as you type.' }),
-  text('box', 260, 120, 'fixed', { content: 'Fixed keeps both sides where you put them, and clips anything that overflows.', textColor: '#8a8f98' }),
+  text('body', 0, 120, 'auto-height', {
+    content: 'Auto height wraps at the width you drag, and grows downward as you type.',
+  }),
+  text('box', 260, 120, 'fixed', {
+    content: 'Fixed keeps both sides where you put them, and clips anything that overflows.',
+    textColor: '#8a8f98',
+  }),
   {
-    id: 'note', type: 'comment', position: { x: 520, y: 0 }, width: 200, height: 140,
+    id: 'note',
+    type: 'comment',
+    position: { x: 520, y: 0 },
+    width: 200,
+    height: 140,
     data: { content: 'Double-click a text block to edit it. Press Escape to finish.' },
   },
 ];
@@ -50,6 +66,7 @@ export default function TextEntitiesExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

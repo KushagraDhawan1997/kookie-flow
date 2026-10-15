@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Edge } from '@kushagradhawan/kookie-flow';
+import type { Edge } from '@kushagradhawan/kookie-flow-react';
 import { compileOps, replacedWires } from './ops';
 import { registry } from './nodes';
 import { emptyDocument, describeGraph, nextNodeId } from './document';
@@ -62,7 +62,9 @@ describe('compileOps', () => {
     ]);
     expect(r.errors).toEqual([]);
     const data = r.entityChanges.find((c) => c.type === 'data');
-    expect(data && data.type === 'data' ? data.data : null).toEqual({ values: { inMax: 10, outMax: 5 } });
+    expect(data && data.type === 'data' ? data.data : null).toEqual({
+      values: { inMax: 10, outMax: 5 },
+    });
     expect(r.edgeChanges.map((c) => c.type)).toEqual(['add', 'remove']);
     expect(r.entityChanges.at(-1)).toEqual({ type: 'remove', id: 'n2' });
   });
@@ -77,7 +79,11 @@ describe('arrange', () => {
     { op: 'connect', from: 'n3.out', to: 'n1.b' },
   ];
   const placedAt = (r: ReturnType<typeof compileOps>) =>
-    new Map(r.entityChanges.flatMap((c) => (c.type === 'add' ? [[c.entity.id, c.entity.position] as const] : [])));
+    new Map(
+      r.entityChanges.flatMap((c) =>
+        c.type === 'add' ? [[c.entity.id, c.entity.position] as const] : []
+      )
+    );
 
   it('puts a node one column right of what feeds it, with nothing overlapping', () => {
     const r = apply([...chain, { op: 'arrange' }]);
@@ -93,7 +99,9 @@ describe('arrange', () => {
   });
 
   it('gives the same graph the same picture wherever its nodes started', () => {
-    const scattered = chain.map((op) => (op.op === 'add_node' ? { ...op, position: { x: 0, y: 0 } } : op));
+    const scattered = chain.map((op) =>
+      op.op === 'add_node' ? { ...op, position: { x: 0, y: 0 } } : op
+    );
     const one = placedAt(apply([...chain, { op: 'arrange' }]));
     const two = placedAt(apply([...scattered, { op: 'arrange' }]));
     const shape = (at: ReturnType<typeof placedAt>) => {
@@ -106,7 +114,11 @@ describe('arrange', () => {
 
   it('keeps the block where it was, moves only the ids asked for, and uses real sizes when given', () => {
     const built = apply(chain);
-    const doc = { ...emptyDocument(), entities: built.entityChanges.flatMap((c) => (c.type === 'add' ? [c.entity] : [])), edges: built.edgeChanges.flatMap((c) => (c.type === 'add' ? [c.edge] : [])) };
+    const doc = {
+      ...emptyDocument(),
+      entities: built.entityChanges.flatMap((c) => (c.type === 'add' ? [c.entity] : [])),
+      edges: built.edgeChanges.flatMap((c) => (c.type === 'add' ? [c.edge] : [])),
+    };
 
     const whole = compileOps(doc, [{ op: 'arrange' }], registry);
     const moved = new Map(doc.entities.map((e) => [e.id, e.position]));
@@ -117,8 +129,12 @@ describe('arrange', () => {
     const some = compileOps(doc, [{ op: 'arrange', ids: ['n2', 'n3'] }], registry);
     expect(some.entityChanges.every((c) => c.type === 'position' && c.id !== 'n1')).toBe(true);
 
-    const tall = compileOps(doc, [{ op: 'arrange' }], registry, { sizeOf: () => ({ width: 300, height: 1000 }) });
-    const ys = tall.entityChanges.flatMap((c) => (c.type === 'position' && c.id !== 'n1' ? [c.position.y] : []));
+    const tall = compileOps(doc, [{ op: 'arrange' }], registry, {
+      sizeOf: () => ({ width: 300, height: 1000 }),
+    });
+    const ys = tall.entityChanges.flatMap((c) =>
+      c.type === 'position' && c.id !== 'n1' ? [c.position.y] : []
+    );
     expect(Math.abs((ys[0] ?? 0) - (ys[1] ?? 0))).toBeGreaterThanOrEqual(1000);
 
     expect(compileOps(doc, [{ op: 'arrange', ids: ['nope'] }], registry).errors).toHaveLength(1);
@@ -148,22 +164,33 @@ describe('replacedWires', () => {
 describe('document', () => {
   it('numbers ids past the highest existing one', () => {
     expect(nextNodeId([])).toBe('n1');
-    expect(nextNodeId([{ id: 'n4', type: 'x', position: { x: 0, y: 0 }, data: {} }, { id: 'abc', type: 'x', position: { x: 0, y: 0 }, data: {} }])).toBe('n5');
+    expect(
+      nextNodeId([
+        { id: 'n4', type: 'x', position: { x: 0, y: 0 }, data: {} },
+        { id: 'abc', type: 'x', position: { x: 0, y: 0 }, data: {} },
+      ])
+    ).toBe('n5');
   });
 
   it('describes a graph compactly, defaults left out unless focused', () => {
     const doc = emptyDocument();
-    const r = compileOps(doc, [
-      { op: 'add_node', type: 'source/number', values: { value: 2 }, label: 'Width' },
-      { op: 'add_node', type: 'math/add' },
-      { op: 'connect', from: 'n1.out', to: 'n2.a' },
-    ], registry);
+    const r = compileOps(
+      doc,
+      [
+        { op: 'add_node', type: 'source/number', values: { value: 2 }, label: 'Width' },
+        { op: 'add_node', type: 'math/add' },
+        { op: 'connect', from: 'n1.out', to: 'n2.a' },
+      ],
+      registry
+    );
     const entities = r.entityChanges.flatMap((c) => (c.type === 'add' ? [c.entity] : []));
     const edges = r.edgeChanges.flatMap((c) => (c.type === 'add' ? [c.edge] : []));
     expect(describeGraph({ entities, edges }, registry)).toBe(
       'n1 source/number "Width" value=2\nn2 math/add\nn1.out -> n2.a'
     );
     // A wired input names its wire rather than a stored value it does not use.
-    expect(describeGraph({ entities, edges }, registry, ['n2'])).toContain('n2 math/add a<-n1.out b=0');
+    expect(describeGraph({ entities, edges }, registry, ['n2'])).toContain(
+      'n2 math/add a<-n1.out b=0'
+    );
   });
 });

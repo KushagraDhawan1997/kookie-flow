@@ -9,7 +9,7 @@ Give the frame `type: 'frame'`, a `width` and a `height`. Then set `parentId` on
 belongs inside it.
 
 ```tsx title="pipeline.tsx"
-import type { Entity } from '@kushagradhawan/kookie-flow';
+import type { Entity } from '@kushagradhawan/kookie-flow-react';
 
 const entities: Entity[] = [
   // The frame comes first, so it paints behind the entities it holds.
@@ -70,7 +70,7 @@ frame. To fit the frame around its children, measure them with `getGroupBounds` 
 [ref](/api/instance), and pass the result to `onEntitiesChange` as a move and a resize.
 
 ```tsx title="fit-frame.ts"
-import type { EntityChange, KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import type { EntityChange, KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 
 // Room above the children for the frame's title.
 const TITLE_ROOM = 40;
@@ -173,7 +173,7 @@ import {
   computeCollapseToSubgraph,
   type Edge,
   type KookieFlowInstance,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 type PortMapping = Parameters<KookieFlowInstance['expandSubgraph']>[3];
 export type Fold = { groupId: string; internalEdges: Edge[]; portMapping: PortMapping };

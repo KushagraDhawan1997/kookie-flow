@@ -7,7 +7,7 @@
  * place that knows node sizes, so the model is asked to leave positions out.
  */
 
-import type { Entity, XYPosition } from '@kushagradhawan/kookie-flow';
+import type { Entity, XYPosition } from '@kushagradhawan/kookie-flow-react';
 import type { GraphOp } from '../ops';
 import { estimateNodeSize } from '../node-size';
 import type { NodeRegistry } from '../registry';

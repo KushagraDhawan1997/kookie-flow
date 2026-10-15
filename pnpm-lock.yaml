@@ -190,9 +190,12 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.2.8)
-      '@kushagradhawan/kookie-flow':
+      '@kushagradhawan/kookie-flow-react':
         specifier: workspace:*
-        version: link:../../packages/kookie-flow
+        version: link:../../packages/kookie-flow-react
+      '@kushagradhawan/kookie-flow-skin-glass':
+        specifier: workspace:*
+        version: link:../../packages/kookie-flow-skin-glass
       '@kushagradhawan/kookie-ui-react':
         specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
         version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -263,9 +266,15 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.2.8)
-      '@kushagradhawan/kookie-flow':
+      '@kushagradhawan/kookie-flow-core':
         specifier: workspace:*
-        version: link:../../packages/kookie-flow
+        version: link:../../packages/kookie-flow-core
+      '@kushagradhawan/kookie-flow-react':
+        specifier: workspace:*
+        version: link:../../packages/kookie-flow-react
+      '@kushagradhawan/kookie-flow-skin-glass':
+        specifier: workspace:*
+        version: link:../../packages/kookie-flow-skin-glass
       '@kushagradhawan/kookie-ui-react':
         specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz
         version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -331,8 +340,27 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
 
-  packages/kookie-flow:
+  packages/kookie-flow-core:
     dependencies:
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13))
+
+  packages/kookie-flow-harness:
+    devDependencies:
       '@kushagradhawan/kookie-flow-core':
         specifier: workspace:*
         version: link:../kookie-flow-core
@@ -342,7 +370,6 @@ importers:
       '@kushagradhawan/kookie-flow-skin-glass':
         specifier: workspace:*
         version: link:../kookie-flow-skin-glass
-    devDependencies:
       '@kushagradhawan/kookie-flow-webgl':
         specifier: workspace:*
         version: link:../kookie-flow-webgl
@@ -388,34 +415,12 @@ importers:
       three:
         specifier: ^0.186.0
         version: 0.186.0
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
       vite:
         specifier: ^8.3.0
-        version: 8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
-      vitest:
-        specifier: ^5.0.0
-        version: 5.0.0(@types/node@22.19.7)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
-
-  packages/kookie-flow-core:
-    dependencies:
-      zustand:
-        specifier: ^5.0.15
-        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-    devDependencies:
-      '@types/node':
-        specifier: ^26.5.1
-        version: 26.5.1
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13)(typescript@6.0.3)
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
+        version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
@@ -569,9 +574,12 @@ importers:
 
   packages/studio-core:
     dependencies:
-      '@kushagradhawan/kookie-flow':
+      '@kushagradhawan/kookie-flow-core':
         specifier: workspace:*
-        version: link:../kookie-flow
+        version: link:../kookie-flow-core
+      '@kushagradhawan/kookie-flow-react':
+        specifier: workspace:*
+        version: link:../kookie-flow-react
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -630,10 +638,6 @@ packages:
 
   '@babel/helper-validator-identifier@7.29.7':
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
-    engines: {node: '>=6.9.0'}
-
-  '@babel/runtime@7.28.6':
-    resolution: {integrity: sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==}
     engines: {node: '>=6.9.0'}
 
   '@babel/runtime@7.29.7':
@@ -3710,11 +3714,6 @@ packages:
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
-  semver@7.7.3:
-    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
-    engines: {node: '>=10'}
-    hasBin: true
-
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
@@ -4409,8 +4408,6 @@ snapshots:
       picocolors: 1.1.1
 
   '@babel/helper-validator-identifier@7.29.7': {}
-
-  '@babel/runtime@7.28.6': {}
 
   '@babel/runtime@7.29.7': {}
 
@@ -5494,7 +5491,7 @@ snapshots:
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       '@testing-library/dom': 10.4.1
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -5622,6 +5619,15 @@ snapshots:
       magic-string: 1.3.1
     optionalDependencies:
       vite: 8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
+
+  '@vitest/mocker@5.0.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13))':
+    dependencies:
+      '@jridgewell/trace-mapping': 0.3.31
+      '@vitest/spy': 5.0.0
+      estree-walker: 3.0.3
+      magic-string: 1.3.1
+    optionalDependencies:
+      vite: 8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13)
 
   '@vitest/mocker@5.0.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))':
     dependencies:
@@ -7076,7 +7082,7 @@ snapshots:
       ky: 1.14.2
       registry-auth-token: 5.1.1
       registry-url: 6.0.1
-      semver: 7.7.3
+      semver: 7.8.5
 
   pako@1.0.11: {}
 
@@ -7405,10 +7411,7 @@ snapshots:
 
   scheduler@0.27.0: {}
 
-  semver@7.7.3: {}
-
-  semver@7.8.5:
-    optional: true
+  semver@7.8.5: {}
 
   set-cookie-parser@3.1.2: {}
 
@@ -7793,7 +7796,7 @@ snapshots:
       is-npm: 6.1.0
       latest-version: 9.0.0
       pupa: 3.3.0
-      semver: 7.7.3
+      semver: 7.8.5
       xdg-basedir: 5.1.0
 
   use-sync-external-store@1.6.0(react@19.2.8):
@@ -7826,6 +7829,20 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.19.7
       esbuild: 0.28.2
+      fsevents: 2.3.3
+      jiti: 2.6.1
+      tsx: 4.23.13
+
+  vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rolldown: 1.2.8
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 26.5.1
+      esbuild: 0.27.2
       fsevents: 2.3.3
       jiti: 2.6.1
       tsx: 4.23.13
@@ -7866,28 +7883,6 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@5.0.0(@types/node@22.19.7)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)):
-    dependencies:
-      '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.0(vite@8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13))
-      chai: 6.2.2
-      es-module-lexer: 2.3.2
-      expect-type: 1.4.0
-      magic-string: 1.3.1
-      obug: 2.2.1
-      picomatch: 4.0.7
-      std-env: 4.2.0
-      tinybench: 6.1.4
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      vite: 8.3.0(@types/node@22.19.7)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 22.19.7
-      jsdom: 30.0.1(@noble/hashes@2.4.0)
-    transitivePeerDependencies:
-      - msw
-
   vitest@5.0.0(@types/node@26.5.1)(jsdom@25.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)):
     dependencies:
       '@types/chai': 5.2.3
@@ -7907,6 +7902,28 @@ snapshots:
     optionalDependencies:
       '@types/node': 26.5.1
       jsdom: 25.0.1
+    transitivePeerDependencies:
+      - msw
+
+  vitest@5.0.0(@types/node@26.5.1)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13)):
+    dependencies:
+      '@types/chai': 5.2.3
+      '@vitest/mocker': 5.0.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13))
+      chai: 6.2.2
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 1.3.1
+      obug: 2.2.1
+      picomatch: 4.0.7
+      std-env: 4.2.0
+      tinybench: 6.1.4
+      tinyexec: 1.3.0
+      tinyglobby: 0.2.17
+      vite: 8.3.0(@types/node@26.5.1)(esbuild@0.27.2)(jiti@2.6.1)(tsx@4.23.13)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 26.5.1
+      jsdom: 30.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - msw
 

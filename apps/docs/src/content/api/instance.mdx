@@ -11,7 +11,8 @@ downloads a picture of the graph from buttons outside the canvas:
 'use client';
 
 import { useRef } from 'react';
-import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Editor() {
   const flowRef = useRef<KookieFlowInstance>(null);
@@ -31,7 +32,7 @@ export function Editor() {
       <button type="button" onClick={() => flowRef.current?.fitView()}>Fit</button>
       <button type="button" onClick={download}>Download PNG</button>
       <div style={{ height: 600 }}>
-        <KookieFlow
+        <KookieFlow skin={glassSkin}
           ref={flowRef}
           entities={entities}
           edges={edges}

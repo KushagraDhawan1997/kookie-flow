@@ -12,7 +12,8 @@ outputs as an object keyed by output socket id. The function can be synchronous 
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type FlowObject, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type FlowObject, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const onEvaluate: OnEvaluate = async (id, type, inputs) => {
   switch (type) {
@@ -38,7 +39,7 @@ export function Board({ graph }: { graph: FlowObject }) {
   }, []);
 
   return (
-    <KookieFlow
+    <KookieFlow skin={glassSkin}
       ref={flowRef}
       entities={entities}
       edges={edges}
@@ -135,7 +136,7 @@ manual entity dirty, but it doesn't run, and everything downstream of it stays d
 type is `EvaluationMode`, and its other value, `'reactive'`, is the default.
 
 ```tsx
-import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow-react';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   blur: {
@@ -189,7 +190,7 @@ it anyway when the work is expensive, so nobody pays for a result that will neve
 to `fetch`, or check `signal.aborted` inside a loop.
 
 ```tsx
-import type { OnEvaluate } from '@kushagradhawan/kookie-flow';
+import type { OnEvaluate } from '@kushagradhawan/kookie-flow-react';
 
 const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
   if (type === 'weather') {
@@ -212,7 +213,7 @@ smoothly, so reporting every tenth still reads as one continuous motion. A run t
 shows a short arc travelling round the outline instead.
 
 ```tsx
-import type { OnEvaluate } from '@kushagradhawan/kookie-flow';
+import type { OnEvaluate } from '@kushagradhawan/kookie-flow-react';
 
 const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
   if (type === 'translate') {
@@ -276,7 +277,7 @@ text under the node. The type of `data.status` is `EntityStatus`: `'dirty'`, `'e
 a job on your server.
 
 ```tsx
-import type { Entity } from '@kushagradhawan/kookie-flow';
+import type { Entity } from '@kushagradhawan/kookie-flow-react';
 
 const training: Entity = {
   id: 'train',
@@ -321,7 +322,7 @@ covers previews.
 'use client';
 
 import { useState, type RefObject } from 'react';
-import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 
 export function RunStaleButton({ flowRef }: { flowRef: RefObject<KookieFlowInstance | null> }) {
   const [running, setRunning] = useState(false);

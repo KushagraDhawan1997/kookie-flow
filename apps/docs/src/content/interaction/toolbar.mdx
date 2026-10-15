@@ -30,7 +30,7 @@ capsules separates them. The row tells its controls that the canvas passes behin
 show your theme's glass material. The whole row is one tab stop, and the arrow keys move inside it.
 
 ```tsx
-<KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+<KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
   <Toolbar size="2" />
 </KookieFlow>
 ```
@@ -123,7 +123,7 @@ with `backdrop`, so they share one glass capsule like the built-in controls.
 
 ```tsx
 import { ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
-import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow';
+import type { EntityTypeDefinition } from '@kushagradhawan/kookie-flow-react';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   step: {
@@ -194,14 +194,15 @@ from `entities` what to show. Return `null` to show nothing.
 'use client';
 
 import { ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
-import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Board() {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph();
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange}>
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange}>
         <Toolbar>
           {({ entities: selected, align }) =>
             selected.length < 2 ? null : (

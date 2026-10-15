@@ -11,7 +11,8 @@ A hook that needs the flow has to run in a component you pass to `KookieFlow` as
 ```tsx title="editor.tsx"
 'use client';
 
-import { KookieFlow, useFlowStore, useGraph } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useFlowStore, useGraph } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 function SelectionCount() {
   // Inside the flow, so the hook reads this flow's store.
@@ -26,7 +27,7 @@ export function Editor() {
   // useFlowStore here would throw: Editor is outside the flow it renders.
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -49,18 +50,18 @@ your flow's.
 
 | Hook | Import from | Outside `KookieFlow` | Chapter |
 | --- | --- | --- | --- |
-| `useGraph` | `@kushagradhawan/kookie-flow` | Works | [State](/start/state) |
-| `useFlowStore` | `@kushagradhawan/kookie-flow` | Throws | [The flow store](/data/store) |
-| `useFlowStoreApi` | `@kushagradhawan/kookie-flow` | Throws | [The flow store](/data/store) |
-| `useClipboard` | `@kushagradhawan/kookie-flow/plugins` | Throws | [Clipboard](/data/clipboard) |
-| `useKeyboardShortcuts` | `@kushagradhawan/kookie-flow/plugins` | Works | [Keyboard](/interaction/keyboard) |
-| `useContextMenu` | `@kushagradhawan/kookie-flow/plugins` | Works | [Context menus](/interaction/context-menu) |
-| `useThemeTokens` | `@kushagradhawan/kookie-flow` | Works | [Theming](/styling/theming) |
-| `useTheme` | `@kushagradhawan/kookie-flow` | Returns `FALLBACK_TOKENS` | [Theming](/styling/theming) |
-| `useEntityStyle` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
-| `useResolvedStyle` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
-| `useSocketLayout` | `@kushagradhawan/kookie-flow` | Returns defaults | [This page](#style-and-layout-hooks) |
-| `useFont` | `@kushagradhawan/kookie-flow` | Returns no font | [This page](#font-hook) |
+| `useGraph` | `@kushagradhawan/kookie-flow-react` | Works | [State](/start/state) |
+| `useFlowStore` | `@kushagradhawan/kookie-flow-react` | Throws | [The flow store](/data/store) |
+| `useFlowStoreApi` | `@kushagradhawan/kookie-flow-react` | Throws | [The flow store](/data/store) |
+| `useClipboard` | `@kushagradhawan/kookie-flow-react/plugins` | Throws | [Clipboard](/data/clipboard) |
+| `useKeyboardShortcuts` | `@kushagradhawan/kookie-flow-react/plugins` | Works | [Keyboard](/interaction/keyboard) |
+| `useContextMenu` | `@kushagradhawan/kookie-flow-react/plugins` | Works | [Context menus](/interaction/context-menu) |
+| `useThemeTokens` | `@kushagradhawan/kookie-flow-react` | Works | [Theming](/styling/theming) |
+| `useTheme` | `@kushagradhawan/kookie-flow-react` | Returns `FALLBACK_TOKENS` | [Theming](/styling/theming) |
+| `useEntityStyle` | `@kushagradhawan/kookie-flow-react` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useResolvedStyle` | `@kushagradhawan/kookie-flow-react` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useSocketLayout` | `@kushagradhawan/kookie-flow-react` | Returns defaults | [This page](#style-and-layout-hooks) |
+| `useFont` | `@kushagradhawan/kookie-flow-react` | Returns no font | [This page](#font-hook) |
 
 ## Graph and plugin hooks
 
@@ -197,7 +198,7 @@ import {
   useFlowStoreApi,
   useSocketLayout,
   worldToScreen,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 type SocketLabelProps = { entityId: string; socketId: string; text: string };
 
@@ -274,7 +275,7 @@ between each pair, as the canvas does:
 
 ```ts title="use-text-width.ts"
 import { useMemo } from 'react';
-import { useFont } from '@kushagradhawan/kookie-flow';
+import { useFont } from '@kushagradhawan/kookie-flow-react';
 
 export function useTextWidth(text: string, fontSize: number): number | null {
   const { regular } = useFont();

@@ -20,7 +20,7 @@
     "@hugeicons/core-free-icons": "^4.3.2",
     "@hugeicons/react": "^1.1.10",
     "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz",
-    "@kushagradhawan/kookie-flow": "workspace:*",
+    "@kushagradhawan/kookie-flow-react": "workspace:*",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "ai": "7.0.107",
@@ -33,7 +33,9 @@
     "stripe": "22.6.2",
     "studio-core": "workspace:*",
     "three": "^0.186.0",
-    "zod": "^4.6.2"
+    "zod": "^4.6.2",
+    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*",
+    "@kushagradhawan/kookie-flow-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

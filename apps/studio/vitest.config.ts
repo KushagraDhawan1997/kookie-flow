@@ -6,7 +6,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@kushagradhawan/kookie-flow/layout': fileURLToPath(new URL('../../packages/kookie-flow-core/src/core/layout.ts', import.meta.url)),
+      '@kushagradhawan/kookie-flow-core/layout': fileURLToPath(
+        new URL('../../packages/kookie-flow-core/src/core/layout.ts', import.meta.url)
+      ),
     },
   },
   test: {

@@ -3,7 +3,12 @@
  * agent's search all come out of the same table.
  */
 
-import type { Entity, EntityTypeDefinition, Socket, XYPosition } from '@kushagradhawan/kookie-flow';
+import type {
+  Entity,
+  EntityTypeDefinition,
+  Socket,
+  XYPosition,
+} from '@kushagradhawan/kookie-flow-react';
 import {
   CATEGORY_LABELS,
   titleCase,
@@ -143,7 +148,12 @@ export class NodeRegistry {
   }
 
   /** A new entity of a type. Sockets come from the type table, so none are copied here. */
-  create(type: string, id: string, position: XYPosition, values: Record<string, unknown> = {}): Entity {
+  create(
+    type: string,
+    id: string,
+    position: XYPosition,
+    values: Record<string, unknown> = {}
+  ): Entity {
     const def = this.defs.get(type);
     if (!def) throw new Error(`unknown node type: ${type}`);
     const entity: Entity = { id, type, position, data: { values: { ...values } } };

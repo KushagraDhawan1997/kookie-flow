@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EvaluationContext } from '@kushagradhawan/kookie-flow';
+import type { EvaluationContext } from '@kushagradhawan/kookie-flow-react';
 import { createOnEvaluate } from './evaluate';
 import { NodeRegistry } from './registry';
 import { defineNode, socket, type Where } from './define';
@@ -8,8 +8,15 @@ import { evaluateExpression } from './nodes/math';
 import { canonicalJson, hashString, LruCache } from './cache';
 
 const ports: Ports = {
-  gpu: { run: () => Promise.reject(new NotAvailableError('gpu')), load: () => Promise.reject(new NotAvailableError('gpu')) },
-  media: { notYet: () => { throw new NotAvailableError('media'); } },
+  gpu: {
+    run: () => Promise.reject(new NotAvailableError('gpu')),
+    load: () => Promise.reject(new NotAvailableError('gpu')),
+  },
+  media: {
+    notYet: () => {
+      throw new NotAvailableError('media');
+    },
+  },
   jobs: { run: () => Promise.reject(new NotAvailableError('jobs')) },
   assets: { put: () => Promise.reject(new NotAvailableError('assets')) },
 };
@@ -45,7 +52,9 @@ describe('createOnEvaluate', () => {
     expect(await onEvaluate('n1', 't/double', { a: '4', n: 2.4 }, ctx())).toEqual({ out: 10 });
     expect(await onEvaluate('n1', 't/double', { a: 4, n: 2 }, ctx())).toEqual({ out: 10 });
     expect(run).toHaveBeenCalledTimes(1);
-    expect(await onEvaluate('n1', 't/double', { a: undefined, n: undefined }, ctx())).toEqual({ out: 2 });
+    expect(await onEvaluate('n1', 't/double', { a: undefined, n: undefined }, ctx())).toEqual({
+      out: 2,
+    });
   });
 
   it('does not spend a cache lookup on an inline node', async () => {
@@ -130,7 +139,9 @@ describe('evaluateExpression', () => {
     expect(() => evaluateExpression('constructor(1)', {})).toThrow('unknown function constructor');
     expect(() => evaluateExpression('toString', {})).toThrow('unknown name toString');
     expect(() => evaluateExpression('__proto__', {})).toThrow('unknown name __proto__');
-    expect(() => evaluateExpression('hasOwnProperty(1)', { a: 1 })).toThrow('unknown function hasOwnProperty');
+    expect(() => evaluateExpression('hasOwnProperty(1)', { a: 1 })).toThrow(
+      'unknown function hasOwnProperty'
+    );
   });
 
   it('refuses a call with the wrong number of arguments instead of answering NaN', () => {

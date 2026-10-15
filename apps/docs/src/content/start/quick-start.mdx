@@ -9,7 +9,7 @@ Everything on the canvas is an entity: a plain object with an `id`, a `type`, a 
 and some `data`. Nodes are entities, and so are frames, comments, pictures and text.
 
 ```tsx
-import type { Entity } from "@kushagradhawan/kookie-flow";
+import type { Entity } from "@kushagradhawan/kookie-flow-react";
 
 const initialEntities: Entity[] = [
   { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" } },
@@ -70,7 +70,7 @@ const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph
 });
 
 return (
-  <KookieFlow
+  <KookieFlow skin={glassSkin}
     entities={entities}
     edges={edges}
     onEntitiesChange={onEntitiesChange}

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useFlowStoreApi, type Viewport } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi, type Viewport } from '@kushagradhawan/kookie-flow-react';
 
 /** How long the view must hold still before it counts as somewhere the reader meant to be. */
 const SETTLE_MS = 400;

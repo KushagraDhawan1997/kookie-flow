@@ -14,7 +14,8 @@ are drawn in a layer over the canvas.
 ```tsx title="flow.tsx"
 'use client';
 
-import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 import { SelectionPanel } from './selection-panel';
 
 export function Flow() {
@@ -22,7 +23,7 @@ export function Flow() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -60,7 +61,7 @@ render, so it's the right call inside a click handler.
 ```tsx title="selection-panel.tsx"
 'use client';
 
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 
 export function SelectionPanel() {
   const store = useFlowStoreApi();
@@ -111,7 +112,7 @@ per frame. This readout follows the zoom while someone zooms, without rendering 
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useFlowStoreApi } from '@kushagradhawan/kookie-flow';
+import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 
 export function ZoomReadout() {
   const store = useFlowStoreApi();
@@ -145,7 +146,7 @@ When a value changes only when someone clicks, a render is fine. `useFlowStore(s
 re-renders your component whenever the selected value changes:
 
 ```tsx
-import { useFlowStore } from '@kushagradhawan/kookie-flow';
+import { useFlowStore } from '@kushagradhawan/kookie-flow-react';
 
 export function SelectionCount() {
   const count = useFlowStore((state) => state.selectedEntityIds.size);
@@ -253,7 +254,7 @@ import {
   useFlowStoreApi,
   type Entity,
   type EntityChange,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 export function AddNodeButton({ onEntitiesChange }: { onEntitiesChange: (changes: EntityChange[]) => void }) {
   const store = useFlowStoreApi();

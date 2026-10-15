@@ -6,7 +6,8 @@ import {
   useGraph,
   type Entity,
   type KookieFlowInstance,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 // Two nodes: one with a float output, one with a float input.
 const initialEntities: Entity[] = [
@@ -40,6 +41,7 @@ export default function QuickStartExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

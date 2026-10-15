@@ -59,7 +59,7 @@ import {
   layoutGraph,
   type Edge,
   type Entity,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
 
 export function withLayout(entities: Entity[], edges: Edge[]): Entity[] {
   const nodes = entities
@@ -81,7 +81,7 @@ Pass the result to `useGraph({ initialEntities: withLayout(imported, edges), ini
 Your `Edge` objects already have the `source` and `target` that `layoutGraph()` reads, so you can
 pass them as they are.
 
-On a server, import it from `@kushagradhawan/kookie-flow/layout` instead. That entry holds only the
+On a server, import it from `@kushagradhawan/kookie-flow-core/layout` instead. That entry holds only the
 layout, so it loads without React or three.
 
 Without a canvas, nothing knows how tall a node is drawn. `DEFAULT_ENTITY_HEIGHT` is 100, and a

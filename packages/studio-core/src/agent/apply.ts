@@ -4,7 +4,7 @@
  * ops are applied here, through the same compiler, and the document is saved as it stands.
  */
 
-import type { Edge, Entity } from '@kushagradhawan/kookie-flow';
+import type { Edge, Entity } from '@kushagradhawan/kookie-flow-react';
 import type { GraphDocument } from '../document';
 import { compileOps, type OpError, type GraphOp } from '../ops';
 import type { NodeRegistry } from '../registry';
@@ -16,7 +16,11 @@ export interface AppliedDocument {
   errors: OpError[];
 }
 
-export function applyOpsToDocument(doc: GraphDocument, ops: readonly GraphOp[], registry: NodeRegistry): AppliedDocument {
+export function applyOpsToDocument(
+  doc: GraphDocument,
+  ops: readonly GraphOp[],
+  registry: NodeRegistry
+): AppliedDocument {
   const placed = layoutCluster(doc, ops, registry);
   const compiled = compileOps(doc, placed, registry);
   // All or nothing, as in the editor: half a batch leaves ops that name nodes which never landed.
@@ -33,7 +37,8 @@ export function applyOpsToDocument(doc: GraphDocument, ops: readonly GraphOp[], 
         break;
       case 'data': {
         const entity = entities.get(change.id);
-        if (entity) entities.set(change.id, { ...entity, data: { ...entity.data, ...change.data } });
+        if (entity)
+          entities.set(change.id, { ...entity, data: { ...entity.data, ...change.data } });
         break;
       }
       case 'position': {

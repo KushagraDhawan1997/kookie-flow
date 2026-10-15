@@ -5,7 +5,7 @@ that state.
 
 ## Open a menu on right-click
 
-Import `useContextMenu` from `@kushagradhawan/kookie-flow/plugins`, and put an `onContextMenu`
+Import `useContextMenu` from `@kushagradhawan/kookie-flow-react/plugins`, and put an `onContextMenu`
 handler on a `div` around `KookieFlow`. The canvas doesn't cancel the browser's `contextmenu`
 event, so a right-click on the graph bubbles up to your `div`.
 
@@ -59,7 +59,7 @@ inside `KookieFlow`, so render a small child that copies the layout into a ref y
 
 ```tsx title="share-layout.tsx"
 import { useEffect, type RefObject } from 'react';
-import { useSocketLayout, type ResolvedSocketLayout } from '@kushagradhawan/kookie-flow';
+import { useSocketLayout, type ResolvedSocketLayout } from '@kushagradhawan/kookie-flow-react';
 
 export function ShareLayout({ into }: { into: RefObject<ResolvedSocketLayout | undefined> }) {
   const layout = useSocketLayout();
@@ -153,7 +153,7 @@ straight through.
   onTouchMove={longPressProps.onTouchMove}
   onTouchEnd={longPressProps.onTouchEnd}
 >
-  <KookieFlow ref={flowRef} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+  <KookieFlow skin={glassSkin} ref={flowRef} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
     <ShareLayout into={layoutRef} />
   </KookieFlow>
 </div>

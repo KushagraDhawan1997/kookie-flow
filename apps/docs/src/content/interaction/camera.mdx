@@ -31,7 +31,7 @@ that edge until you move back.
 in pixels from the canvas's top-left corner, and `zoom` is the scale.
 
 ```tsx
-<KookieFlow
+<KookieFlow skin={glassSkin}
   entities={entities}
   edges={edges}
   // The world origin 120px right and 80px down, at 75%.
@@ -104,7 +104,8 @@ zoom. It sits outside `<KookieFlow>`, so it reaches the camera through the ref.
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -128,7 +129,7 @@ export function Board({ initialEntities }: { initialEntities: Entity[] }) {
         <button onClick={() => flowRef.current?.zoomOut()}>Zoom out</button>
       </div>
       <div style={{ height: 480 }}>
-        <KookieFlow
+        <KookieFlow skin={glassSkin}
           ref={flowRef}
           entities={entities}
           edges={edges}
@@ -166,7 +167,7 @@ This function zooms by a factor around the middle of the canvas. It finds the wo
 at the centre, then puts that point back in the centre at the new zoom.
 
 ```tsx title="zoom-by.ts"
-import { screenToWorld, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import { screenToWorld, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
 
 export function zoomBy(flow: KookieFlowInstance, canvas: HTMLElement, factor: number) {
   const { width, height } = canvas.getBoundingClientRect();

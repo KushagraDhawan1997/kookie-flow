@@ -28,7 +28,8 @@ import {
   type EvaluationStatus,
   type KookieFlowInstance,
   type OnEvaluate,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -105,7 +106,13 @@ const initialEntities: Entity[] = [
 const initialEdges: Edge[] = [
   { id: 'e1', source: 'number', sourceSocket: 'out', target: 'add', targetSocket: 'a' },
   { id: 'e2', source: 'add', sourceSocket: 'sum', target: 'multiply', targetSocket: 'a' },
-  { id: 'e3', source: 'multiply', sourceSocket: 'product', target: 'generate', targetSocket: 'seed' },
+  {
+    id: 'e3',
+    source: 'multiply',
+    sourceSocket: 'product',
+    target: 'generate',
+    targetSocket: 'seed',
+  },
   { id: 'e4', source: 'generate', sourceSocket: 'image', target: 'upscale', targetSocket: 'image' },
 ];
 
@@ -117,13 +124,23 @@ const num = (v: unknown) => (typeof v === 'number' ? v : Number(v) || 0);
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); }, { once: true });
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t);
+        reject(new Error('aborted'));
+      },
+      { once: true }
+    );
   });
 
 type LogRow = { id: string; status: EvaluationStatus; message?: string; at: number };
 
 export default function DemoEvaluationPage() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities, initialEdges });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+    initialEdges,
+  });
   const flowRef = useRef<KookieFlowInstance>(null);
   const [failGenerate, setFailGenerate] = useState(false);
   const failRef = useRef(false);
@@ -191,11 +208,20 @@ export default function DemoEvaluationPage() {
       actions={
         <>
           <label style={switchLabelStyle}>
-            <Switch checked={failGenerate} onCheckedChange={(checked) => setFailGenerate(checked)} />
+            <Switch
+              checked={failGenerate}
+              onCheckedChange={(checked) => setFailGenerate(checked)}
+            />
             <Text size="2">Generate fails</Text>
           </label>
-          <ToolbarButton onClick={() => flowRef.current?.evaluateDirty()}>Run all stale</ToolbarButton>
-          <ToolbarButton emphasis="loud" tone="accent" onClick={() => flowRef.current?.evaluate('generate')}>
+          <ToolbarButton onClick={() => flowRef.current?.evaluateDirty()}>
+            Run all stale
+          </ToolbarButton>
+          <ToolbarButton
+            emphasis="loud"
+            tone="accent"
+            onClick={() => flowRef.current?.evaluate('generate')}
+          >
             Run Generate
           </ToolbarButton>
         </>
@@ -219,6 +245,7 @@ export default function DemoEvaluationPage() {
       }
     >
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}
@@ -232,7 +259,11 @@ export default function DemoEvaluationPage() {
           const e = entities.find((x) => x.id === entityId);
           const prev = (e?.data as { values?: Record<string, unknown> } | undefined)?.values ?? {};
           onEntitiesChange([
-            { type: 'data', id: entityId, data: { ...(e?.data ?? {}), values: { ...prev, [socketId]: value } } },
+            {
+              type: 'data',
+              id: entityId,
+              data: { ...(e?.data ?? {}), values: { ...prev, [socketId]: value } },
+            },
           ]);
         }}
         showWidgets
@@ -245,4 +276,9 @@ export default function DemoEvaluationPage() {
   );
 }
 
-const switchLabelStyle: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' };
+const switchLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+  cursor: 'pointer',
+};

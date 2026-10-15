@@ -9,7 +9,8 @@ import {
   type EntityTypeDefinition,
   type KookieFlowInstance,
   type OnEvaluate,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 /**
  * Three nodes, three kinds of band. Each names one of its own output sockets, and the canvas
@@ -59,7 +60,14 @@ const initialEntities: Entity[] = [
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); }, { once: true });
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new Error('aborted'));
+      },
+      { once: true }
+    );
   });
 
 /**
@@ -76,7 +84,9 @@ const onEvaluate: OnEvaluate = async (id, type, inputs, ctx) => {
 };
 
 export default function PreviewBandExample() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
   const flowRef = useRef<KookieFlowInstance>(null);
 
   const generate = useCallback(() => flowRef.current?.evaluate('generate'), []);
@@ -94,11 +104,14 @@ export default function PreviewBandExample() {
   return (
     <Stack gap="3">
       <Flex gap="3" align="center">
-        <Button size="2" emphasis="loud" onClick={generate}>Generate</Button>
+        <Button size="2" emphasis="loud" onClick={generate}>
+          Generate
+        </Button>
         <Text size="2">The picture lands in the node's own band when the run finishes.</Text>
       </Flex>
       <div style={{ width: '100%', height: 400 }}>
         <KookieFlow
+          skin={glassSkin}
           ref={flowRef}
           entities={entities}
           edges={edges}

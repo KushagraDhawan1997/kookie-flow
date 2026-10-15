@@ -7,7 +7,7 @@
  * input — so the looseness costs nothing.
  */
 
-import type { SocketType } from '@kushagradhawan/kookie-flow';
+import type { SocketType } from '@kushagradhawan/kookie-flow-react';
 import type { StudioSocketType } from './define';
 
 /**
@@ -29,7 +29,15 @@ export const SOCKET_TYPES: Record<StudioSocketType, SocketType> = {
   video: { name: 'Video', color: '#8e4ec6' },
   mask: { name: 'Mask', color: '#8b8d98' },
   text: { name: 'Text', color: '#30a46c', widget: 'text' },
-  float: { name: 'Number', color: '#e5a336', widget: 'slider', compatibleWith: ['int', 'seed'], min: 0, max: 1, step: 0.01 },
+  float: {
+    name: 'Number',
+    color: '#e5a336',
+    widget: 'slider',
+    compatibleWith: ['int', 'seed'],
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
   int: { name: 'Integer', color: '#f76b15', widget: 'number', compatibleWith: ['seed'], step: 1 },
   bool: { name: 'Boolean', color: '#e54666', widget: 'checkbox' },
   color: { name: 'Color', color: '#d6409f', widget: 'color' },

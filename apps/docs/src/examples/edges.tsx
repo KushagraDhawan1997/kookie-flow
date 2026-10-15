@@ -8,7 +8,8 @@ import {
   type EdgeType,
   type Entity,
   type KookieFlowInstance,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const PATHS: EdgeType[] = ['bezier', 'straight', 'step', 'smoothstep'];
 
@@ -60,6 +61,7 @@ export default function EdgesExample() {
   return (
     <div style={{ width: '100%', height: 400 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

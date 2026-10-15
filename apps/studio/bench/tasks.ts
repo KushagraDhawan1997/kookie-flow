@@ -14,8 +14,14 @@
  * Tiers: 1 one step, 2 a pipeline, 3 judgement.
  */
 
-import type { Entity } from '@kushagradhawan/kookie-flow';
-import { estimateNodeSize, registry, valueBag, type GraphDocument, type MediaRef } from 'studio-core';
+import type { Entity } from '@kushagradhawan/kookie-flow-react';
+import {
+  estimateNodeSize,
+  registry,
+  valueBag,
+  type GraphDocument,
+  type MediaRef,
+} from 'studio-core';
 import type { HostState } from './host';
 import type { ToolTrace } from './tools';
 
@@ -44,7 +50,8 @@ export interface Task {
 
 // Reading the graph ------------------------------------------------------------------------------
 
-const nodes = (t: TaskState, type: string): Entity[] => t.state.doc.entities.filter((e) => e.type === type);
+const nodes = (t: TaskState, type: string): Entity[] =>
+  t.state.doc.entities.filter((e) => e.type === type);
 const all = (t: TaskState): Entity[] => t.state.doc.entities;
 const value = (entity: Entity, socket: string): unknown => valueBag(entity)[socket];
 
@@ -69,11 +76,13 @@ function feeds(t: TaskState, from: string, to: string): boolean {
 const wiredInto = (t: TaskState, id: string, socket: string): boolean =>
   t.state.doc.edges.some((e) => e.target === id && e.targetSocket === socket);
 
-const ranNodes = (t: TaskState): string[] => t.state.runs.filter((r) => r.approved).flatMap((r) => r.nodes);
+const ranNodes = (t: TaskState): string[] =>
+  t.state.runs.filter((r) => r.approved).flatMap((r) => r.nodes);
 const ran = (t: TaskState, id: string): boolean => ranNodes(t).includes(id);
 const calls = (t: TaskState, name: string): ToolTrace[] => t.trace.filter((c) => c.name === name);
 const askedQuestion = (t: TaskState): boolean => t.said.some((s) => s.includes('?'));
-const positioned = (t: TaskState): boolean => calls(t, 'apply_ops').length > 0 && t.state.doc.entities.length > 0;
+const positioned = (t: TaskState): boolean =>
+  calls(t, 'apply_ops').length > 0 && t.state.doc.entities.length > 0;
 
 /** The shape the vision is built on: several cheap drafts, a pick, one dear final. */
 function draftsPickFinal(t: TaskState): string[] {
@@ -81,11 +90,22 @@ function draftsPickFinal(t: TaskState): string[] {
   const picks = nodes(t, 'logic/pick');
   if (picks.length !== 1) return [`wanted one pick node, found ${picks.length}`];
   const pick = picks[0];
-  const drafts = all(t).filter((e) => ['a', 'b', 'c', 'd'].some((s) => t.state.doc.edges.some((edge) => edge.source === e.id && edge.target === pick.id && edge.targetSocket === s)));
-  if (drafts.length < 2) problems.push(`wanted at least two drafts into the pick, found ${drafts.length}`);
+  const drafts = all(t).filter((e) =>
+    ['a', 'b', 'c', 'd'].some((s) =>
+      t.state.doc.edges.some(
+        (edge) => edge.source === e.id && edge.target === pick.id && edge.targetSocket === s
+      )
+    )
+  );
+  if (drafts.length < 2)
+    problems.push(`wanted at least two drafts into the pick, found ${drafts.length}`);
   const finals = all(t).filter((e) => e.id !== pick.id && feeds(t, pick.id, e.id));
   if (finals.length === 0) problems.push('nothing is wired after the pick');
-  const cheap = drafts.every((d) => d.type !== 'ai/gpt-image-2.5' || ['low', 'medium'].includes(String(value(d, 'quality') ?? 'medium')));
+  const cheap = drafts.every(
+    (d) =>
+      d.type !== 'ai/gpt-image-2.5' ||
+      ['low', 'medium'].includes(String(value(d, 'quality') ?? 'medium'))
+  );
   if (!cheap) problems.push('the drafts are not at a cheap quality');
   for (const final of finals) {
     if (ran(t, final.id) && String(value(pick, 'choice') ?? 'none') === 'none') {
@@ -97,7 +117,9 @@ function draftsPickFinal(t: TaskState): string[] {
 }
 
 function noRefusals(t: TaskState): string[] {
-  return t.state.refusals.length ? [`${t.state.refusals.length} ops refused: ${t.state.refusals[0]}`] : [];
+  return t.state.refusals.length
+    ? [`${t.state.refusals.length} ops refused: ${t.state.refusals[0]}`]
+    : [];
 }
 
 function spentNothing(t: TaskState): string[] {
@@ -132,23 +154,45 @@ function doc(entities: Entity[], edges: GraphDocument['edges'] = []): GraphDocum
   return { version: 1, entities, edges, viewport: { x: 0, y: 0, zoom: 1 } };
 }
 
-function node(id: string, type: string, values: Record<string, unknown> = {}, at = { x: 0, y: 0 }, label?: string): Entity {
+function node(
+  id: string,
+  type: string,
+  values: Record<string, unknown> = {},
+  at = { x: 0, y: 0 },
+  label?: string
+): Entity {
   const entity = registry.create(type, id, at, values);
   if (label) entity.data.label = label;
   return entity;
 }
 
-const withPicture = (picture: MediaRef = PICTURE_LANDSCAPE) => () =>
-  doc([node('n1', 'source/image', { image: picture }, { x: 0, y: 0 }, 'Photo')]);
+const withPicture =
+  (picture: MediaRef = PICTURE_LANDSCAPE) =>
+  () =>
+    doc([node('n1', 'source/image', { image: picture }, { x: 0, y: 0 }, 'Photo')]);
 
 /** Work already on the canvas: a prompt into an image, run once. */
 const finishedWork = () =>
   doc(
     [
-      node('n1', 'source/text', { value: 'A brass desk lamp on a walnut table' }, { x: 0, y: 0 }, 'Brief'),
+      node(
+        'n1',
+        'source/text',
+        { value: 'A brass desk lamp on a walnut table' },
+        { x: 0, y: 0 },
+        'Brief'
+      ),
       node('n2', 'ai/gpt-image-2.5', { quality: 'high' }, { x: 420, y: 0 }, 'Final'),
     ],
-    [{ id: 'n1-out-n2-prompt', source: 'n1', sourceSocket: 'out', target: 'n2', targetSocket: 'prompt' }]
+    [
+      {
+        id: 'n1-out-n2-prompt',
+        source: 'n1',
+        sourceSocket: 'out',
+        target: 'n2',
+        targetSocket: 'prompt',
+      },
+    ]
   );
 
 export const TASKS: Task[] = [
@@ -210,8 +254,20 @@ export const TASKS: Task[] = [
           node('n3', 'ai/clarity-upscaler', {}, { x: 500, y: 900 }, 'Sharper'),
         ],
         [
-          { id: 'n1-out-n2-prompt', source: 'n1', sourceSocket: 'out', target: 'n2', targetSocket: 'prompt' },
-          { id: 'n2-image-n3-image', source: 'n2', sourceSocket: 'image', target: 'n3', targetSocket: 'image' },
+          {
+            id: 'n1-out-n2-prompt',
+            source: 'n1',
+            sourceSocket: 'out',
+            target: 'n2',
+            targetSocket: 'prompt',
+          },
+          {
+            id: 'n2-image-n3-image',
+            source: 'n2',
+            sourceSocket: 'image',
+            target: 'n3',
+            targetSocket: 'image',
+          },
         ]
       ),
     expect: (t) => {
@@ -222,7 +278,8 @@ export const TASKS: Task[] = [
       const image = at.get('n2');
       const sharp = at.get('n3');
       if (!brief || !image || !sharp) return [...problems, 'a node went missing'];
-      if (!(brief.x < image.x && image.x < sharp.x)) problems.push('the nodes are not left to right by their wiring');
+      if (!(brief.x < image.x && image.x < sharp.x))
+        problems.push('the nodes are not left to right by their wiring');
       // MIDDLES, NOT TOPS. `layoutGraph` centres a column across the flow, so a short text node and a
       // tall image node in one row share a centre line and not a top edge. Comparing tops failed all
       // twelve trials against a layout that was in fact correct (2026-09-18).
@@ -233,7 +290,8 @@ export const TASKS: Task[] = [
         return entity.position.y + (entity.height ?? size.h) / 2;
       };
       const [briefMid, imageMid, sharpMid] = [middle('n1'), middle('n2'), middle('n3')];
-      if (briefMid === null || imageMid === null || sharpMid === null) return [...problems, 'a node went missing'];
+      if (briefMid === null || imageMid === null || sharpMid === null)
+        return [...problems, 'a node went missing'];
       if (Math.abs(briefMid - imageMid) > 80 || Math.abs(imageMid - sharpMid) > 80) {
         problems.push('the row does not share a centre line');
       }
@@ -245,12 +303,16 @@ export const TASKS: Task[] = [
     tier: 1,
     baselineFor: 'pre-flight (plan step 5)',
     ask: 'Run this.',
-    startDoc: () => doc([node('n1', 'ai/gpt-image-2.5', { quality: 'low' }, { x: 0, y: 0 }, 'Image')]),
+    startDoc: () =>
+      doc([node('n1', 'ai/gpt-image-2.5', { quality: 'low' }, { x: 0, y: 0 }, 'Image')]),
     expect: (t) => {
       const problems: string[] = [];
       // The right answer is to notice the prompt is empty and ask, not to spend on a job that fails.
       if (ran(t, 'n1')) problems.push('ran a node whose prompt is empty');
-      if (!askedQuestion(t) && !String(value(all(t).find((e) => e.id === 'n1') as Entity, 'prompt') ?? '').trim()) {
+      if (
+        !askedQuestion(t) &&
+        !String(value(all(t).find((e) => e.id === 'n1') as Entity, 'prompt') ?? '').trim()
+      ) {
         problems.push('neither asked for a prompt nor set one');
       }
       return problems;
@@ -272,7 +334,8 @@ export const TASKS: Task[] = [
     expect: (t) => {
       const problems = [...noRefusals(t), ...draftsPickFinal(t)];
       const drafts = nodes(t, 'ai/gpt-image-2.5');
-      if (drafts.length && !drafts.some((d) => feeds(t, 'n1', d.id))) problems.push('the product shot feeds nothing');
+      if (drafts.length && !drafts.some((d) => feeds(t, 'n1', d.id)))
+        problems.push('the product shot feeds nothing');
       return problems;
     },
   },
@@ -284,8 +347,10 @@ export const TASKS: Task[] = [
     expect: (t) => {
       const problems = [...noRefusals(t)];
       const edits = nodes(t, 'ai/gpt-image-2.5').filter((e) => feeds(t, 'n1', e.id));
-      if (edits.length < 3) problems.push(`wanted three relights from the photo, found ${edits.length}`);
-      if (edits.length && edits.some((e) => !ran(t, e.id))) problems.push('not every relight was run');
+      if (edits.length < 3)
+        problems.push(`wanted three relights from the photo, found ${edits.length}`);
+      if (edits.length && edits.some((e) => !ran(t, e.id)))
+        problems.push('not every relight was run');
       return problems;
     },
   },
@@ -298,8 +363,10 @@ export const TASKS: Task[] = [
       const clips = nodes(t, 'video/wan-i2v');
       const problems = [...noRefusals(t)];
       if (clips.length === 0) problems.push('no clip node');
-      if (clips[0] && !feeds(t, 'n1', clips[0].id)) problems.push('the clip is not fed by the photo');
-      if (clips[0] && String(value(clips[0], 'resolution') ?? '720p') !== '480p') problems.push('the draft clip is not at 480p');
+      if (clips[0] && !feeds(t, 'n1', clips[0].id))
+        problems.push('the clip is not fed by the photo');
+      if (clips[0] && String(value(clips[0], 'resolution') ?? '720p') !== '480p')
+        problems.push('the draft clip is not at 480p');
       if (clips[0] && !ran(t, clips[0].id)) problems.push('never ran it');
       return problems;
     },
@@ -312,7 +379,8 @@ export const TASKS: Task[] = [
       const problems = [...noRefusals(t)];
       const images = nodes(t, 'ai/gpt-image-2.5');
       if (images.length < 4) problems.push(`wanted four looks, found ${images.length}`);
-      if (images.length && images.filter((e) => ran(t, e.id)).length < 4) problems.push('fewer than four looks were run');
+      if (images.length && images.filter((e) => ran(t, e.id)).length < 4)
+        problems.push('fewer than four looks were run');
       const shared = nodes(t, 'source/text').concat(nodes(t, 'text/template'));
       if (!shared.length) problems.push('the brief is not shared by the looks');
       return problems;
@@ -331,8 +399,10 @@ export const TASKS: Task[] = [
       if (!cut) problems.push('nothing cuts the product out');
       if (!place) problems.push('nothing places it in a room');
       if (!sharp) problems.push('nothing sharpens it');
-      if (cut && place && !feeds(t, cut.id, place.id)) problems.push('the cutout does not feed the placement');
-      if (place && sharp && !feeds(t, place.id, sharp.id)) problems.push('the placement does not feed the sharpening');
+      if (cut && place && !feeds(t, cut.id, place.id))
+        problems.push('the cutout does not feed the placement');
+      if (place && sharp && !feeds(t, place.id, sharp.id))
+        problems.push('the placement does not feed the sharpening');
       if (cut && !feeds(t, 'n1', cut.id)) problems.push('the product does not feed the cutout');
       return problems;
     },
@@ -349,10 +419,15 @@ export const TASKS: Task[] = [
       if (edits.length !== 1) problems.push(`wanted one edit, found ${edits.length}`);
       const up = nodes(t, 'ai/clarity-upscaler')[0];
       if (!up) problems.push('no upscaler');
-      if (up && String(value(up, 'factor') ?? 2) !== '2' && Number(value(up, 'factor') ?? 2) !== 2) {
+      if (
+        up &&
+        String(value(up, 'factor') ?? 2) !== '2' &&
+        Number(value(up, 'factor') ?? 2) !== 2
+      ) {
         problems.push('the upscale is not twice');
       }
-      if (edits[0] && up && !feeds(t, edits[0].id, up.id)) problems.push('the edit does not feed the upscaler');
+      if (edits[0] && up && !feeds(t, edits[0].id, up.id))
+        problems.push('the edit does not feed the upscaler');
       return problems;
     },
   },
@@ -416,10 +491,13 @@ export const TASKS: Task[] = [
       const problems = [...noRefusals(t), ...draftsPickFinal(t)];
       const pick = nodes(t, 'logic/pick')[0];
       if (pick && String(value(pick, 'choice') ?? 'none') !== '2') {
-        problems.push(`the pick is on "${String(value(pick, 'choice') ?? 'none')}" after the person said the second one`);
+        problems.push(
+          `the pick is on "${String(value(pick, 'choice') ?? 'none')}" after the person said the second one`
+        );
       }
       const finals = pick ? all(t).filter((e) => e.id !== pick.id && feeds(t, pick.id, e.id)) : [];
-      if (finals.length && !finals.some((f) => ran(t, f.id))) problems.push('the final was never run after the pick');
+      if (finals.length && !finals.some((f) => ran(t, f.id)))
+        problems.push('the final was never run after the pick');
       return problems;
     },
   },
@@ -432,7 +510,8 @@ export const TASKS: Task[] = [
     expect: (t) => {
       const problems = [...noRefusals(t)];
       if (t.state.runs.some((r) => r.approved)) problems.push('spent after the person declined');
-      if (t.state.runs.length > 2) problems.push(`asked to spend ${t.state.runs.length} times after being told no`);
+      if (t.state.runs.length > 2)
+        problems.push(`asked to spend ${t.state.runs.length} times after being told no`);
       if (!all(t).length) problems.push('built nothing at all');
       return problems;
     },
@@ -447,7 +526,8 @@ export const TASKS: Task[] = [
       const problems: string[] = [];
       const edit = nodes(t, 'ai/gpt-image-2.5')[0];
       // 572 × 1024 is under the model's minimum: the run fails at the provider, after the money is held.
-      if (edit && ran(t, edit.id)) problems.push('ran an edit on a picture below the model\'s minimum size');
+      if (edit && ran(t, edit.id))
+        problems.push("ran an edit on a picture below the model's minimum size");
       if (!askedQuestion(t) && !nodes(t, 'ai/clarity-upscaler').length) {
         problems.push('neither said the picture is too small nor enlarged it first');
       }
@@ -464,7 +544,8 @@ export const TASKS: Task[] = [
       if (!placed) problems.push('built nothing');
       // Positions are the harness's job: the model should not be naming coordinates.
       const moves = t.state.doc.entities.filter((e) => e.position.x === 0 && e.position.y === 0);
-      if (moves.length > 1) problems.push(`${moves.length} nodes sit at the origin, so nothing laid them out`);
+      if (moves.length > 1)
+        problems.push(`${moves.length} nodes sit at the origin, so nothing laid them out`);
       if (!positioned(t)) problems.push('no ops were applied');
       return problems;
     },

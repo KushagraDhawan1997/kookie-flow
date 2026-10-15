@@ -13,7 +13,8 @@ Import the KookieUI stylesheet once, and render `KookieFlow` anywhere inside a `
 
 import "@kushagradhawan/kookie-ui-react/styles.css";
 import { Theme } from "@kushagradhawan/kookie-ui-react";
-import { KookieFlow, useGraph } from "@kushagradhawan/kookie-flow";
+import { KookieFlow, useGraph } from "@kushagradhawan/kookie-flow-react";
+import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
 
 export function App() {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -25,7 +26,7 @@ export function App() {
   return (
     <Theme radius="large">
       <div style={{ height: "100dvh" }}>
-        <KookieFlow
+        <KookieFlow skin={glassSkin}
           entities={entities}
           edges={edges}
           onEntitiesChange={onEntitiesChange}
@@ -154,7 +155,7 @@ back one name at a time, so declare the whole neutral scale together:
 | A ticked checkbox, a slider's fill, a focused widget's ring | `--accent-9`, with the checkbox's tick in `--accent-contrast` |
 | The minimap | `--neutral-1` behind `--neutral-4` nodes, with `--accent-9` for the selection and the viewport |
 
-`THEME_COLORS` holds this mapping as data. Each role is either a token name or a
+The skin holds this mapping as data, in `skin.colors` (the glass skin's is `GLASS_COLORS`). Each role is either a token name or a
 `{ light: ..., dark: ... }` pair, for roles that use a different step in each mode. The node
 body and border come from the variant, which the [Entity styling](/styling/entities) chapter
 covers. The [Minimap](/styling/minimap) chapter shows how to override the minimap's colours.
@@ -172,13 +173,14 @@ set through an entity's `status` are fixed amber and green.
 
 Anything you pass as `children` to `KookieFlow` renders in a DOM layer over the canvas. For DOM
 content, write the token as a CSS variable. The browser resolves it and follows every theme
-change without any JavaScript. Take the token name from `THEME_COLORS` so your overlay uses the
-same role as the canvas:
+change without any JavaScript. Take the token name from the skin's `colors`, read with `useSkin()`,
+so your overlay uses the same role as the canvas:
 
 ```tsx title="wire-legend.tsx"
-import { THEME_COLORS } from "@kushagradhawan/kookie-flow";
+import { useSkin } from "@kushagradhawan/kookie-flow-react";
 
 export function WireLegend() {
+  const { colors } = useSkin();
   const swatch = (token: string) => ({
     display: "inline-block",
     width: 16,
@@ -187,11 +189,11 @@ export function WireLegend() {
 
   return (
     <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", gap: 16 }}>
-      <span style={{ color: `var(${THEME_COLORS.text.secondary})` }}>
-        <span style={swatch(THEME_COLORS.edge.selected)} /> Selected
+      <span style={{ color: `var(${colors.text.secondary})` }}>
+        <span style={swatch(colors.edge.selected)} /> Selected
       </span>
-      <span style={{ color: `var(${THEME_COLORS.text.secondary})` }}>
-        <span style={swatch(THEME_COLORS.edge.invalid)} /> Invalid
+      <span style={{ color: `var(${colors.text.secondary})` }}>
+        <span style={swatch(colors.edge.invalid)} /> Invalid
       </span>
     </div>
   );
@@ -212,18 +214,19 @@ is the type of any token name in `ThemeTokens`.
 
 ```tsx title="canvas-swatch.tsx"
 import { useEffect, useRef } from "react";
-import { THEME_COLORS, resolveColor, rgbToHex, useTheme } from "@kushagradhawan/kookie-flow";
+import { resolveColor, rgbToHex, useSkin, useTheme } from "@kushagradhawan/kookie-flow-react";
 
 export function CanvasSwatch() {
   const tokens = useTheme();
+  const { colors } = useSkin();
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const context = ref.current?.getContext("2d");
     if (!context) return;
-    context.fillStyle = rgbToHex(resolveColor(THEME_COLORS.canvas.background, tokens));
+    context.fillStyle = rgbToHex(resolveColor(colors.canvas.background, tokens));
     context.fillRect(0, 0, 24, 24);
-  }, [tokens]);
+  }, [tokens, colors]);
 
   return <canvas ref={ref} width={24} height={24} />;
 }
@@ -242,12 +245,13 @@ Two entries in `ThemeTokens` don't match the page's token of the same name:
   the page.
 
 Outside a `KookieFlow`, `useTheme()` returns `FALLBACK_TOKENS`. In code that lives outside any
-canvas, call `useThemeTokens()` instead. It does a read of its own and watches the Theme element
+canvas, call `useThemeTokens(element, glassSkin)` instead, with the skin that knows how to read your
+theme. It does a read of its own and watches the Theme element
 itself, while `useTheme()` inside a canvas shares the canvas's read.
 
 KookieUI also exports a hook named `useTheme`, which returns the Theme's settings rather than
 its tokens. If a file needs both, rename one import:
 
 ```tsx lineNumbers=false
-import { useTheme as useFlowTokens } from "@kushagradhawan/kookie-flow";
+import { useTheme as useFlowTokens } from "@kushagradhawan/kookie-flow-react";
 ```

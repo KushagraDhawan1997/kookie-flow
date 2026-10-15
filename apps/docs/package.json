@@ -12,7 +12,7 @@
     "@hugeicons/core-free-icons": "^4.3.2",
     "@hugeicons/react": "^1.1.10",
     "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz",
-    "@kushagradhawan/kookie-flow": "workspace:*",
+    "@kushagradhawan/kookie-flow-react": "workspace:*",
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "^16.3.5",
@@ -24,7 +24,8 @@
     "react-dom": "~19.2.8",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.4.3",
-    "three": "^0.186.0"
+    "three": "^0.186.0",
+    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*"
   },
   "devDependencies": {
     "@types/mdx": "^2.0.14",

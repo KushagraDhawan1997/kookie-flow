@@ -16,10 +16,11 @@ still moving, and a `!` on a heading means something that was there changed shap
   `MATERIAL`, `GLASS_GLSL`, `AURA_GLSL`, `LENS*`, `GLINT`, `FOCUS_RING` and `CORNER_K_*` move to the
   glass skin. `resolveEntityStyle` and `resolveSocketLayout` take the skin's metrics;
   `useThemeTokens(scope, skin)` takes the skin.
-- The compatibility package `@kushagradhawan/kookie-flow` keeps the earlier API: its `KookieFlow`,
-  `resolveEntityStyle`, `resolveSocketLayout`, `useThemeTokens`, `ThemeProvider` and
-  `StyleProvider` default to glass, and it re-exports the moved names. From the react and webgl
-  packages, `ThemeProvider` and `StyleProvider` need a `SkinProvider` above them when used outside
+- Remove the old all-in-one `@kushagradhawan/kookie-flow` package. Import from
+  `@kushagradhawan/kookie-flow-react` (and `/plugins`), take `layoutGraph` from
+  `@kushagradhawan/kookie-flow-core/layout`, and pass `skin={glassSkin}`. The browser harness and
+  release gate move to the private `packages/kookie-flow-harness`. From react and webgl,
+  `ThemeProvider` and `StyleProvider` need a `SkinProvider` above them when used outside
   `KookieFlow`; `useOptionalSkin` reads the skin without throwing.
 - No visual change.
 

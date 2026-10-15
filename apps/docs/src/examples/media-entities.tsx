@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 /**
  * A picture, a clip and a model, each an entity of its own. Move the pointer over one to see its
@@ -9,21 +15,35 @@ import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kus
  */
 const initialEntities: Entity[] = [
   {
-    id: 'picture', type: 'image', position: { x: 0, y: 0 }, width: 280, height: 186,
+    id: 'picture',
+    type: 'image',
+    position: { x: 0, y: 0 },
+    width: 280,
+    height: 186,
     data: { src: '/image-1.jpg', objectFit: 'cover' },
   },
   {
-    id: 'clip', type: 'video', position: { x: 320, y: 0 }, width: 320, height: 180,
+    id: 'clip',
+    type: 'video',
+    position: { x: 320, y: 0 },
+    width: 320,
+    height: 180,
     data: { src: '/video.mp4', autoplay: true, objectFit: 'cover' },
   },
   {
-    id: 'model', type: 'mesh', position: { x: 680, y: 0 }, width: 240, height: 240,
+    id: 'model',
+    type: 'mesh',
+    position: { x: 680, y: 0 },
+    width: 240,
+    height: 240,
     data: { src: '/model.glb' },
   },
 ];
 
 export default function MediaEntitiesExample() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
 
   const flowRef = useRef<KookieFlowInstance>(null);
   useEffect(() => {
@@ -33,6 +53,7 @@ export default function MediaEntitiesExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

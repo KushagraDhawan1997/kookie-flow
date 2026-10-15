@@ -24,7 +24,13 @@ const nextConfig = {
      without this a standalone server starts against a database with no tables. */
   outputFileTracingIncludes: { '/**': ['./drizzle/**'] },
   /* Both are TypeScript source in this workspace, compiled here rather than shipped as dist. */
-  transpilePackages: ['@kushagradhawan/kookie-flow', 'studio-core'],
+  transpilePackages: [
+    '@kushagradhawan/kookie-flow-core',
+    '@kushagradhawan/kookie-flow-webgl',
+    '@kushagradhawan/kookie-flow-skin-glass',
+    '@kushagradhawan/kookie-flow-react',
+    'studio-core',
+  ],
   /* PGlite is WASM loaded from its own package directory at runtime; bundling it breaks that. */
   serverExternalPackages: ['@electric-sql/pglite'],
   /* THE DEV SERVER IS LOOPBACK-ONLY, so this list is empty by default. No route checks who is

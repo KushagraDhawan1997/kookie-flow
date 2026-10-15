@@ -15,7 +15,7 @@ between nodes, Enter reaches the focused node's controls, and Escape comes back.
 Give every graph a name that says what it holds, especially when a page has more than one.
 
 ```tsx
-<KookieFlow ariaLabel="Image pipeline" entities={entities} edges={edges} />
+<KookieFlow skin={glassSkin} ariaLabel="Image pipeline" entities={entities} edges={edges} />
 ```
 
 The canvas is announced as an application, because its arrow keys move between nodes rather
@@ -102,7 +102,7 @@ set to `false` there are no controls to reach. The mirror only contains the focu
 `useKeyboardShortcuts` binds keys to functions. Import it from the plugins subpath.
 
 ```tsx lineNumbers=false
-import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 ```
 
 | Option | Type | Default | Meaning |
@@ -148,8 +148,9 @@ pressed on the canvas reach that element on their way up, and keys pressed elsew
 'use client';
 
 import { useRef, useState } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
-import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow/plugins';
+import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -171,7 +172,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
 
   return (
     <div ref={setBoard} style={{ height: 480 }}>
-      <KookieFlow
+      <KookieFlow skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

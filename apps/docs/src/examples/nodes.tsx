@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow';
+import {
+  KookieFlow,
+  useGraph,
+  type Entity,
+  type KookieFlowInstance,
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 
 const initialEntities: Entity[] = [
   {
@@ -19,7 +25,15 @@ const initialEntities: Entity[] = [
     width: 300,
     data: {
       label: 'Render',
-      values: { steps: 30, mode: 'Cubic', live: true, fit: 'Fill', offset: [0, 1.5, -2], size: [1024, 768], seed: 42 },
+      values: {
+        steps: 30,
+        mode: 'Cubic',
+        live: true,
+        fit: 'Fill',
+        offset: [0, 1.5, -2],
+        size: [1024, 768],
+        seed: 42,
+      },
     },
     inputs: [
       {
@@ -38,7 +52,13 @@ const initialEntities: Entity[] = [
       { id: 'tiled', name: 'Tiled', type: 'boolean' },
       { id: 'tint', name: 'Tint', type: 'color', defaultValue: '#3e63dd' },
       { id: 'live', name: 'Live', type: 'boolean', widget: 'switch' },
-      { id: 'fit', name: 'Fit', type: 'enum', widget: 'segmented', options: ['Fit', 'Fill', 'Crop'] },
+      {
+        id: 'fit',
+        name: 'Fit',
+        type: 'enum',
+        widget: 'segmented',
+        options: ['Fit', 'Fill', 'Crop'],
+      },
       // Drag a component sideways to change it, or click it to type.
       { id: 'offset', name: 'Offset', type: 'vec3', step: 0.1 },
       { id: 'size', name: 'Size', type: 'vec2', step: 1, min: 64, max: 4096 },
@@ -49,7 +69,9 @@ const initialEntities: Entity[] = [
 ];
 
 export default function NodesExample() {
-  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
+  const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
+    initialEntities,
+  });
 
   const flowRef = useRef<KookieFlowInstance>(null);
   useEffect(() => {
@@ -59,6 +81,7 @@ export default function NodesExample() {
   return (
     <div style={{ width: '100%', height: 640 }}>
       <KookieFlow
+        skin={glassSkin}
         ref={flowRef}
         entities={entities}
         edges={edges}

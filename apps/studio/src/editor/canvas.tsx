@@ -16,7 +16,8 @@ import {
   type OnStatusChange,
   type Viewport,
   type XYPosition,
-} from '@kushagradhawan/kookie-flow';
+} from '@kushagradhawan/kookie-flow-react';
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 import { registry, SOCKET_TYPES } from 'studio-core';
 
 import { AddNodeMenu } from './canvas-menu';
@@ -69,7 +70,9 @@ const VISIBLE_PART: React.CSSProperties = {
   pointerEvents: 'none',
 };
 /** The library's own 10px corner, moved past the reach. */
-const MINIMAP_CLEAR: React.CSSProperties = { right: 'calc(10px + var(--kui-shell-inset-inline-end, 0px))' };
+const MINIMAP_CLEAR: React.CSSProperties = {
+  right: 'calc(10px + var(--kui-shell-inset-inline-end, 0px))',
+};
 
 /**
  * The graph itself, behind a memo boundary.
@@ -81,7 +84,10 @@ const MINIMAP_CLEAR: React.CSSProperties = { right: 'calc(10px + var(--kui-shell
  */
 function CanvasImpl(props: CanvasProps) {
   const { flowRef, bus, onAdd, onArrange } = props;
-  const entityTypes = React.useMemo(() => withRunToolbar(registry.entityTypes(), flowRef, bus), [flowRef, bus]);
+  const entityTypes = React.useMemo(
+    () => withRunToolbar(registry.entityTypes(), flowRef, bus),
+    [flowRef, bus]
+  );
   const storeRef = React.useRef<FlowStoreApi | null>(null);
   // Where the last right-click landed, in world space. A ref, so opening the menu renders nothing
   // but the menu.
@@ -101,7 +107,10 @@ function CanvasImpl(props: CanvasProps) {
         event.preventBaseUIHandler?.();
         return;
       }
-      if (target?.closest('button, [role="toolbar"], .kd-minimap') || storeRef.current?.getState().hoveredEntityId) {
+      if (
+        target?.closest('button, [role="toolbar"], .kd-minimap') ||
+        storeRef.current?.getState().hoveredEntityId
+      ) {
         event.preventDefault();
         event.preventBaseUIHandler?.();
         return;
@@ -109,7 +118,10 @@ function CanvasImpl(props: CanvasProps) {
       const flow = flowRef.current;
       const rect = event.currentTarget.getBoundingClientRect();
       const world = flow
-        ? screenToWorld({ x: event.clientX - rect.left, y: event.clientY - rect.top }, flow.getViewport())
+        ? screenToWorld(
+            { x: event.clientX - rect.left, y: event.clientY - rect.top },
+            flow.getViewport()
+          )
         : null;
       pointRef.current = world ? { x: Math.round(world.x), y: Math.round(world.y) } : undefined;
     },
@@ -127,6 +139,7 @@ function CanvasImpl(props: CanvasProps) {
       >
         <Box ref={props.visibleRef} position="absolute" inset="0" style={VISIBLE_PART} />
         <KookieFlow
+          skin={glassSkin}
           ref={flowRef}
           entities={props.entities}
           edges={props.edges}
