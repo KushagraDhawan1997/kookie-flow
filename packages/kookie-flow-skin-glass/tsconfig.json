@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "ignoreDeprecations": "6.0",
+    "customConditions": ["kookie-flow-source"]
+  },
+  "include": ["src"]
+}

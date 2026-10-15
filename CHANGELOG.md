@@ -5,6 +5,22 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### The look moves into a skin !
+
+- `KookieFlow` takes a required `skin: FlowSkin`. The renderer keeps behaviour; the skin supplies
+  colour roles, sizes, the card outline, the shader code for cards, controls, the popover and media
+  chrome, the toolbar's components, and how tokens are read. The new
+  `@kushagradhawan/kookie-flow-skin-glass` package is KookieUI v2's glass: pass `glassSkin`.
+- `@kushagradhawan/kookie-flow-webgl` no longer depends on KookieUI. `THEME_COLORS`, `SIZE_MAP`,
+  `VARIANT_MAP`, `RADIUS_MAP`, `SOCKET_ROW_HEIGHT_TOKEN`, `WIDGET_HEIGHT_TOKEN` and the GL kit's
+  `MATERIAL`, `GLASS_GLSL`, `AURA_GLSL`, `LENS*`, `GLINT`, `FOCUS_RING` and `CORNER_K_*` move to the
+  glass skin. `resolveEntityStyle` and `resolveSocketLayout` take the skin's metrics;
+  `useThemeTokens(scope, skin)` takes the skin.
+- The compatibility package `@kushagradhawan/kookie-flow` keeps the earlier API: its `KookieFlow`,
+  `resolveEntityStyle`, `resolveSocketLayout` and `useThemeTokens` default to glass, and it
+  re-exports the moved names.
+- No visual change.
+
 ### GL controls follow UI v2's motion removal !
 
 - Kookie UI v2 (`0.0.0-flow.2`) has no motion, so the GL controls have none: widget states, the
@@ -140,7 +156,7 @@ still moving, and a `!` on a heading means something that was there changed shap
 - **An edge starts at the socket's rim, not its centre.** It leaves along the socket's own axis —
   an output to the right, an input to the left — for a short straight leader before the curve
   begins, and a connected socket drops the ring of canvas colour that used to separate the two, so
-  the wire and the plug are one shape. Before this an edge ran *through* the dot it named: on a
+  the wire and the plug are one shape. Before this an edge ran _through_ the dot it named: on a
   hollow socket you could see the wire inside the ring's hole, and the punch that hid the crossing
   made the wire look like it stopped a pixel short of its own socket.
 - **A socket leans toward the pointer.** Bring the cursor near one with no drag in progress and the

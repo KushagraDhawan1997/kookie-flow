@@ -7,6 +7,7 @@ import { createFlowStore } from '@kushagradhawan/kookie-flow-core/internal/core/
 import { getSocketYOffset } from '@kushagradhawan/kookie-flow-core/internal/utils/geometry';
 import { resolveSocketLayout } from '../utils/style-resolver';
 import { FALLBACK_TOKENS } from '../hooks/useThemeTokens';
+import { TEST_METRICS } from '../test/metrics';
 import type { Entity, Edge, EntityTypeDefinition } from '../types/index';
 
 type FrameState = { size: { width: number; height: number }; clock: { elapsedTime: number } };
@@ -86,7 +87,7 @@ function fixture(
     entities,
     edges,
     entityTypes,
-    socketLayout: resolveSocketLayout(true, '2', FALLBACK_TOKENS),
+    socketLayout: resolveSocketLayout(true, '2', FALLBACK_TOKENS, TEST_METRICS),
   });
   fakes.store = store;
   const view = render(createElement(Edges));

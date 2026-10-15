@@ -239,8 +239,11 @@ export interface KookieFlowProps {
   // Styling Props (Milestone 2 - matches Kookie UI Card)
   // ============================================================================
 
-  /** How the editor looks: colour roles, sizes, material and token reading. Default: glass. */
-  skin?: FlowSkin;
+  /**
+   * How the editor looks: colour roles, sizes, shaders, DOM chrome and token reading. Required;
+   * `glassSkin` from @kushagradhawan/kookie-flow-skin-glass is KookieUI v2's.
+   */
+  skin: FlowSkin;
   /** Entity size scale. Default: '2' */
   size?: EntitySize;
   /** Entity visual variant. Default: 'surface' */

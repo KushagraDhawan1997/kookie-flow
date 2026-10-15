@@ -1,7 +1,7 @@
 {
   "name": "@kushagradhawan/kookie-flow-webgl",
   "version": "0.2.0",
-  "description": "Kookie Flow WebGL renderer and glass design.",
+  "description": "Kookie Flow WebGL renderer: geometry, interaction, accessibility and text. The look comes from a skin.",
   "author": "Kushagra Dhawan",
   "license": "MIT",
   "repository": {
@@ -630,149 +630,6 @@
         "default": "./dist/skin/context.cjs"
       }
     },
-    "./internal/skin/glass/card": {
-      "kookie-flow-source": "./src/skin/glass/card.ts",
-      "import": {
-        "types": "./dist/skin/glass/card.d.ts",
-        "default": "./dist/skin/glass/card.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/card.d.cts",
-        "default": "./dist/skin/glass/card.cjs"
-      }
-    },
-    "./internal/skin/glass/colors": {
-      "kookie-flow-source": "./src/skin/glass/colors.ts",
-      "import": {
-        "types": "./dist/skin/glass/colors.d.ts",
-        "default": "./dist/skin/glass/colors.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/colors.d.cts",
-        "default": "./dist/skin/glass/colors.cjs"
-      }
-    },
-    "./internal/skin/glass/controls": {
-      "kookie-flow-source": "./src/skin/glass/controls.ts",
-      "import": {
-        "types": "./dist/skin/glass/controls.d.ts",
-        "default": "./dist/skin/glass/controls.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/controls.d.cts",
-        "default": "./dist/skin/glass/controls.cjs"
-      }
-    },
-    "./internal/skin/glass/corner": {
-      "kookie-flow-source": "./src/skin/glass/corner.ts",
-      "import": {
-        "types": "./dist/skin/glass/corner.d.ts",
-        "default": "./dist/skin/glass/corner.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/corner.d.cts",
-        "default": "./dist/skin/glass/corner.cjs"
-      }
-    },
-    "./internal/skin/glass/floating": {
-      "kookie-flow-source": "./src/skin/glass/floating.ts",
-      "import": {
-        "types": "./dist/skin/glass/floating.d.ts",
-        "default": "./dist/skin/glass/floating.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/floating.d.cts",
-        "default": "./dist/skin/glass/floating.cjs"
-      }
-    },
-    "./internal/skin/glass/glass": {
-      "kookie-flow-source": "./src/skin/glass/glass.ts",
-      "import": {
-        "types": "./dist/skin/glass/glass.d.ts",
-        "default": "./dist/skin/glass/glass.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/glass.d.cts",
-        "default": "./dist/skin/glass/glass.cjs"
-      }
-    },
-    "./internal/skin/glass/index": {
-      "kookie-flow-source": "./src/skin/glass/index.ts",
-      "import": {
-        "types": "./dist/skin/glass/index.d.ts",
-        "default": "./dist/skin/glass/index.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/index.d.cts",
-        "default": "./dist/skin/glass/index.cjs"
-      }
-    },
-    "./internal/skin/glass/lens": {
-      "kookie-flow-source": "./src/skin/glass/lens.ts",
-      "import": {
-        "types": "./dist/skin/glass/lens.d.ts",
-        "default": "./dist/skin/glass/lens.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/lens.d.cts",
-        "default": "./dist/skin/glass/lens.cjs"
-      }
-    },
-    "./internal/skin/glass/material": {
-      "kookie-flow-source": "./src/skin/glass/material.ts",
-      "import": {
-        "types": "./dist/skin/glass/material.d.ts",
-        "default": "./dist/skin/glass/material.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/material.d.cts",
-        "default": "./dist/skin/glass/material.cjs"
-      }
-    },
-    "./internal/skin/glass/media": {
-      "kookie-flow-source": "./src/skin/glass/media.ts",
-      "import": {
-        "types": "./dist/skin/glass/media.d.ts",
-        "default": "./dist/skin/glass/media.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/media.d.cts",
-        "default": "./dist/skin/glass/media.cjs"
-      }
-    },
-    "./internal/skin/glass/metrics": {
-      "kookie-flow-source": "./src/skin/glass/metrics.ts",
-      "import": {
-        "types": "./dist/skin/glass/metrics.d.ts",
-        "default": "./dist/skin/glass/metrics.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/metrics.d.cts",
-        "default": "./dist/skin/glass/metrics.cjs"
-      }
-    },
-    "./internal/skin/glass/tokens": {
-      "kookie-flow-source": "./src/skin/glass/tokens.ts",
-      "import": {
-        "types": "./dist/skin/glass/tokens.d.ts",
-        "default": "./dist/skin/glass/tokens.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/tokens.d.cts",
-        "default": "./dist/skin/glass/tokens.cjs"
-      }
-    },
-    "./internal/skin/glass/ui": {
-      "kookie-flow-source": "./src/skin/glass/ui.tsx",
-      "import": {
-        "types": "./dist/skin/glass/ui.d.ts",
-        "default": "./dist/skin/glass/ui.js"
-      },
-      "require": {
-        "types": "./dist/skin/glass/ui.d.cts",
-        "default": "./dist/skin/glass/ui.cjs"
-      }
-    },
     "./internal/skin/index": {
       "kookie-flow-source": "./src/skin/index.ts",
       "import": {
@@ -1237,7 +1094,6 @@
     "tsup": "^8.3.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.0",
-    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz",
     "vite": "^8.3.0",
     "@types/node": "^26.5.1"
   },
@@ -1249,8 +1105,7 @@
     "@react-three/fiber": "^9.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "three": "~0.186.0",
-    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.2"
+    "three": "~0.186.0"
   },
   "publishConfig": {
     "access": "public"

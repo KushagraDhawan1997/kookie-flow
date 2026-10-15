@@ -27,6 +27,5 @@ export default defineConfig({
     'react',
     'react-dom',
     'three',
-    '@kushagradhawan/kookie-ui-react',
   ],
 });

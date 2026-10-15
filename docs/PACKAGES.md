@@ -2,17 +2,21 @@
 
 ## Ownership
 
-The dependency direction is `react → webgl → core`; the compatibility package forwards to
-`react` and `core/layout`. Core does not import React, Three, R3F, KookieUI or browser globals.
+The dependency direction is `react → webgl → core`, and a skin depends on `webgl` (`skin-glass →
+webgl`); `webgl` and `react` never import a skin. The compatibility package forwards to `react`,
+`skin-glass` and `core/layout`. Core does not import React, Three, R3F, KookieUI or browser globals.
 Its TypeScript configuration excludes DOM libraries. `pnpm check:boundaries` checks the source
 imports; `pnpm test:packages` installs the tarballs in consumers outside this repository.
 
-`webgl` owns Kookie Flow's tokens, glass, palette, shaders, font atlases, pointer and keyboard
-interaction, accessibility mirror and native text editing. It uses React and R3F internally.
-It is not a framework-independent WebGL renderer. `react` adds controlled graph state and
-history through `useGraph`, and exposes the normal application API.
+`webgl` owns behaviour: geometry, shapes, hit testing, state, the socket and header palette,
+font atlases, pointer and keyboard interaction, the accessibility mirror and native text editing.
+It uses React and R3F internally and is not a framework-independent WebGL renderer. It has no look
+of its own: `KookieFlow` requires a `skin` (`FlowSkin`, in `webgl/src/skin/types.ts`), which says
+which token plays each colour role, the sizes and radii, the card outline, the GLSL that paints
+cards, controls, the popover and media chrome, the DOM chrome's components, and how tokens are read
+off the page. `skin-glass` is KookieUI v2's glass. `react` adds controlled graph state and history
+through `useGraph`, and exposes the normal application API.
 
-No design-token adapter is introduced. Glass remains a designed material owned by this renderer.
 Core's numeric socket layout contract lets the renderer supply measured geometry without
 making graph logic depend on CSS or on the names of design tokens.
 
@@ -22,8 +26,10 @@ imports and new imports share the store and React contexts.
 
 ## Use the packages
 
-For a React editor, import from `@kushagradhawan/kookie-flow-react` and its `/plugins` subpath.
-Import `@kushagradhawan/kookie-ui-react/styles.css` once and wrap the app in its `Theme`.
+For a React editor, import from `@kushagradhawan/kookie-flow-react` and its `/plugins` subpath, and
+pass `skin={glassSkin}` from `@kushagradhawan/kookie-flow-skin-glass`. For the glass skin, import
+`@kushagradhawan/kookie-ui-react/styles.css` once and wrap the app in its `Theme`. The compatibility
+package `@kushagradhawan/kookie-flow` defaults the skin to glass.
 For nonvisual work:
 
 ```ts
@@ -66,8 +72,9 @@ Use `pnpm pack` rather than `npm pack`: pnpm expands workspace dependencies and 
 and real packing path. Built JS and both ESM/CJS declarations, licenses and WebGL font assets
 must exist in the archives. Do not publish development source export conditions.
 
-Install all four Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz` in a
-consumer, with the renderer peers listed in `packages/kookie-flow-webgl/package.json`. The UI
+Install all five Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz` in a
+consumer, with the peers listed in `packages/kookie-flow-webgl/package.json` and
+`packages/kookie-flow-skin-glass/package.json`. The UI
 archive is the previously tested Flow snapshot with only its package name and version changed.
 Current UI v2 removed motion; upgrading Flow to that source is a separate change, not hidden
 inside this package rename. Ordinary npm-only installation requires published, qualified releases.
@@ -84,7 +91,9 @@ license notices and make a new commit in the receiving repository; do not merge 
 histories. Attribution and repository access are distinct from technical package structure.
 
 Keep graph/store fixes separate from renderer appearance changes. Shared fixes need explicit
-review in both directions; glass-specific changes stay here unless Womp chooses them. If both
+review in both directions. Womp copies `core`, `webgl` and `react` and writes its own skin, so
+look-only changes live in a skin package and never touch the shared files; glass-specific changes
+stay here unless Womp chooses them. If both
 copies change the same behavior, resolve it explicitly and run the regression in both copies.
 A package split makes that comparison easier, but does not synchronize anything automatically.
 

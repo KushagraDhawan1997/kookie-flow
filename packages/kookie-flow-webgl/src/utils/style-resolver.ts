@@ -6,7 +6,6 @@
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
 import { pickToken, type ColorTokenRef } from '../core/theme-colors';
 import type { SkinMetrics } from '../skin/types';
-import { GLASS_METRICS } from '../skin/glass/metrics';
 import type {
   EntitySize,
   EntityVariant,
@@ -208,8 +207,8 @@ export function resolveEntityStyle(
   header: HeaderPosition = 'none',
   accentHeader: boolean = false,
   tokens: ThemeTokens,
-  overrides?: Partial<EntityStyleOverrides>,
-  metrics: SkinMetrics = GLASS_METRICS
+  overrides: Partial<EntityStyleOverrides> | undefined,
+  metrics: SkinMetrics
 ): ResolvedEntityStyle {
   const sizeConfig = metrics.sizes[size];
   const variantConfig = metrics.variants[variant];
@@ -358,7 +357,7 @@ export function resolveSocketLayout(
   hasTitleBand: boolean,
   size: EntitySize = '2',
   tokens: ThemeTokens,
-  metrics: SkinMetrics = GLASS_METRICS
+  metrics: SkinMetrics
 ): ResolvedSocketLayout {
   const sizeConfig = metrics.sizes[size];
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
@@ -440,16 +439,3 @@ export function calculateMinEntityHeight(
   const rows = Math.max(1, totalRows);
   return layout.marginTop + rows * layout.rowHeight + layout.padding;
 }
-
-/** @deprecated The glass skin's metrics. Use `skin.metrics`. */
-export {
-  SIZE_MAP,
-  VARIANT_MAP,
-  RADIUS_MAP,
-  WIDGET_RADIUS_MAP,
-  MARK_RADIUS_BY_LEVEL,
-  NODE_SHADOW,
-  NODE_TOP_LIGHT,
-  SOCKET_ROW_HEIGHT_TOKEN,
-  WIDGET_HEIGHT_TOKEN,
-} from '../skin/glass/metrics';

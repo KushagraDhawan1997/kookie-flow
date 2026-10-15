@@ -2,7 +2,6 @@ import { useState, useLayoutEffect } from 'react';
 import { themeRoot } from '../utils/theme-root';
 import { setProbeHost, type RGBColor } from '../utils/color';
 import type { FlowSkin } from '../skin/types';
-import { glassSkin } from '../skin/glass/index';
 
 /**
  * Simplified shadow for WebGL (single drop shadow, not multi-layer CSS).
@@ -196,6 +195,141 @@ export interface ThemeTokens {
 }
 
 /**
+ * Default tokens for standalone mode (when Kookie UI is not present).
+ * Uses dark mode defaults.
+ */
+export const FALLBACK_TOKENS: ThemeTokens = {
+  // Spacing (assuming scaling = 1)
+  '--space-1': 4,
+  '--space-2': 8,
+  '--space-3': 12,
+  '--space-4': 16,
+  '--space-5': 24,
+  '--space-6': 32,
+  '--space-7': 40,
+
+  // Radius (actual Kookie UI values at scaling=1, radius-factor=1)
+  '--radius-1': 6,
+  '--radius-2': 8,
+  '--radius-3': 10,
+  '--radius-4': 12,
+  '--radius-5': 16,
+  '--radius-6': 20,
+  '--radius-full': 9999,
+  // v1 defines no surface family; these keep a v1 app on the radii it already had, with
+  // `medium` -> surface-2 -> 12px, which is what `--radius-4` gave it.
+  '--radius-surface-1': 8,
+  '--radius-surface-2': 12,
+  '--radius-surface-3': 16,
+  '--radius-surface-4': 20,
+
+  // The layout families at v2's default density and fine pointer, scale 1. v1 publishes none of
+  // these names, so a v1 host lands here — and these are the numbers v1's own components used.
+  '--surface-p-1': 16,
+  '--surface-p-2': 24,
+  '--surface-p-3': 32,
+  '--surface-p-4': 40,
+  '--control-height-1': 28,
+  '--control-height-2': 32,
+  '--control-height-3': 40,
+  '--control-height-4': 48,
+  '--control-px-1': 8,
+  '--control-px-2': 10,
+  '--control-px-3': 13,
+  '--control-px-4': 16,
+  // The non-pill values: v1 has no capsule level to bump for.
+  '--control-px-pill-1': 8,
+  '--control-px-pill-2': 10,
+  '--control-px-pill-3': 13,
+  '--control-px-pill-4': 16,
+  '--control-gap-1': 4,
+  '--control-gap-2': 8,
+  '--control-gap-3': 8,
+  '--control-gap-4': 12,
+  '--row-inset-1': 4,
+  '--row-inset-2': 5,
+  '--row-inset-3': 5,
+  '--row-inset-4': 6,
+  '--line-height-1': 16,
+  '--line-height-2': 20,
+  '--line-height-3': 24,
+  '--line-height-4': 26,
+  '--mark-1': 16,
+  '--mark-2': 20,
+  '--mark-3': 24,
+  '--mark-4': 26,
+  '--radius-control-1': 4,
+  '--radius-control-2': 6,
+  '--radius-control-3': 8,
+  '--radius-control-4': 10,
+  '--radius-mark-1': 6,
+  '--radius-mark-2': 6,
+  '--radius-mark-3': 8,
+  '--radius-mark-4': 8,
+  '--icon-size-1': 16,
+  '--icon-size-2': 16,
+  '--icon-size-3': 20,
+  '--icon-size-4': 24,
+  '--slider-track-1': 4,
+  '--slider-track-2': 5,
+  '--slider-track-3': 6,
+  '--slider-track-4': 7,
+  '--border-width': 1,
+
+  // Typography - Font sizes (assuming scaling = 1)
+  '--font-size-1': 12,
+  '--font-size-2': 14,
+  '--font-size-3': 16,
+  '--font-size-4': 18,
+
+  // Typography - Line heights (assuming scaling = 1)
+
+  // Gray (dark mode defaults)
+  '--neutral-1': [0.067, 0.067, 0.067], // #111111
+  '--neutral-2': [0.098, 0.098, 0.098], // #191919
+  '--neutral-3': [0.133, 0.133, 0.133], // #222222
+  '--neutral-4': [0.165, 0.165, 0.165], // #2a2a2a
+  '--neutral-5': [0.196, 0.196, 0.196], // #323232
+  '--neutral-6': [0.239, 0.239, 0.239], // #3d3d3d
+  '--neutral-7': [0.306, 0.306, 0.306], // #4e4e4e
+  '--neutral-8': [0.392, 0.392, 0.392], // #646464
+  '--neutral-9': [0.545, 0.553, 0.596],
+  '--neutral-10': [0.502, 0.514, 0.553],
+  '--neutral-11': [0.737, 0.737, 0.737], // #bcbcbc
+  '--neutral-12': [0.933, 0.933, 0.933], // #eeeeee
+
+  // Gray alpha (approximate)
+
+  // Accent (indigo defaults)
+  '--accent-3': [0.114, 0.118, 0.208], // Subtle accent background (indigo-3)
+  '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
+  '--accent-11': [0.537, 0.765, 1], // #89c3ff
+  '--accent-glyph': [0.098, 0.6, 1], // #1999ff
+  '--accent-contrast': [1, 1, 1],
+  '--destructive-9': [0.898, 0.282, 0.302], // #e5484d — v1's --red-9
+  '--success-9': [0.188, 0.643, 0.424], // #30a46c — v1's --green-9
+
+  // Radix colors (all 26 AccentColor values at step 9, dark mode defaults)
+
+  // Radix colors step 10 (hovered solid backgrounds, dark mode defaults)
+
+  // Surfaces
+  '--color-surface': [0.098, 0.098, 0.098],
+
+  // Shadows (simplified approximations of CSS multi-layer shadows)
+  '--shadow-1': { offsetY: 1, blur: 2, opacity: 0.1 },
+  '--shadow-2': { offsetY: 2, blur: 4, opacity: 0.15 },
+  '--shadow-3': { offsetY: 4, blur: 8, opacity: 0.2 },
+  '--shadow-4': { offsetY: 6, blur: 12, opacity: 0.25 },
+  '--shadow-5': { offsetY: 8, blur: 16, opacity: 0.3 },
+
+  // Meta
+  '--scale': 1,
+  appearance: 'dark',
+  contrast: 'normal',
+};
+
+/**
  * Read the tokens, then put the probes back where they were.
  *
  * The host is a module-level pointer at whichever element the last read was rooted at, so it has
@@ -241,7 +375,7 @@ function areTokensValid(tokens: ThemeTokens): boolean {
  *
  * @returns Theme tokens with WebGL-compatible values
  */
-export function useThemeTokens(scope?: Element | null, skin: FlowSkin = glassSkin): ThemeTokens {
+export function useThemeTokens(scope: Element | null | undefined, skin: FlowSkin): ThemeTokens {
   // Lazy initializer: try to read tokens synchronously on first render
   // This avoids the dark→light flash from using FALLBACK_TOKENS initially
   const [tokens, setTokens] = useState<ThemeTokens>(() => {
@@ -325,6 +459,3 @@ export function useThemeTokens(scope?: Element | null, skin: FlowSkin = glassSki
 
   return tokens;
 }
-
-/** @deprecated The glass skin's fallback tokens. Use `skin.fallbackTokens`. */
-export { GLASS_FALLBACK_TOKENS as FALLBACK_TOKENS } from '../skin/glass/tokens';

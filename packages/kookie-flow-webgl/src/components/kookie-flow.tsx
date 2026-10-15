@@ -1,6 +1,5 @@
 import { CommentEntities } from './comment-entities';
 import { SkinProvider } from '../skin/context';
-import { glassSkin } from '../skin/glass/index';
 import { createEdgeValidityResolver } from '../utils/edge-validity';
 import { entitySocketKey } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-key';
 import { bindHistoryOwner } from '../hooks/history-owner';
@@ -299,7 +298,7 @@ export const KookieFlow = forwardRef<KookieFlowInstance, KookieFlowProps>(functi
   {
     entities,
     edges,
-    skin = glassSkin,
+    skin,
     entityTypes = NO_ENTITY_TYPES,
     socketTypes = NO_SOCKET_TYPES,
     onEntitiesChange,

@@ -15,7 +15,6 @@ import type {
 } from '../types/index';
 import { WIDGET_RADIUS, PAD } from '../utils/widget-text';
 import { useSkin } from '../skin/context';
-import { GLASS_FALLBACK_TOKENS } from '../skin/glass/tokens';
 
 /**
  * Style configuration props passed to KookieFlow.
@@ -82,9 +81,20 @@ const DEFAULT_CONTEXT: StyleContextValue = {
     fontSize: 14,
     socketSize: 10,
   },
-  // ONE source, not a second copy. These literals were the object eight unit fixtures were copied
-  // from, so every one of them drifted the moment the real resolver moved.
-  socketLayout: resolveSocketLayout(true, '2', GLASS_FALLBACK_TOKENS),
+  // What the glass skin resolves at size '2' over FALLBACK_TOKENS, written out: the renderer has
+  // no metrics of its own to resolve it with. Only read outside a StyleProvider.
+  socketLayout: {
+    rowHeight: 40,
+    widgetHeight: 32,
+    marginTop: 38,
+    titleBand: 22,
+    socketSize: 10,
+    padding: 16,
+    borderWidth: 1,
+    markSize: 16,
+    trackHeight: 4,
+    listRowHeight: 24,
+  },
   config: DEFAULT_CONFIG,
 };
 

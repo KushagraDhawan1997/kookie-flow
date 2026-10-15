@@ -1,10 +1,18 @@
-import type { SkinColors } from '../types';
+import { createElement, type ReactNode } from 'react';
+import { FALLBACK_TOKENS, type ThemeTokens } from '../hooks/useThemeTokens';
+import type { FlowSkin, SkinColors, SkinShader, SkinUI } from '../skin/types';
+import { TEST_METRICS } from './metrics';
 
 /**
- * Which KookieUI v2 token plays each colour role in the glass skin.
- * All values are token keys (e.g., '--neutral-8').
+ * A skin for the DOM tier. jsdom cannot rasterise, so the shader parts are empty and the DOM
+ * chrome is plain elements; what the tests read is the colour roles, the metrics, and the token
+ * reader, which follows `data-appearance` the way a real skin does.
  */
-export const GLASS_COLORS = {
+
+/**
+ * The glass skin's colour roles, copied so a test colours things the way the default editor does.
+ */
+const TEST_COLORS = {
   // ============================================
   // Canvas
   // ============================================
@@ -145,3 +153,48 @@ export const GLASS_COLORS = {
     viewportBorder: '--accent-9',
   },
 } as const satisfies SkinColors;
+
+const noShader: SkinShader = { glsl: '', uniforms: () => ({}) };
+
+const Plain = ({ children }: { children?: ReactNode }) => createElement('div', null, children);
+const PlainButton = ({ children, ...rest }: { children?: ReactNode; 'aria-label': string }) =>
+  createElement('button', { 'aria-label': rest['aria-label'] }, children);
+
+const TEST_UI: SkinUI = {
+  Toolbar: Plain,
+  ToolbarGroup: Plain,
+  ToolbarButton: PlainButton,
+  Button: PlainButton,
+  TextField: (props) => createElement('input', { 'aria-label': props['aria-label'] }),
+  Select: Plain,
+  SelectTrigger: (props) => createElement('button', { 'aria-label': props['aria-label'] }),
+  SelectContent: Plain,
+  SelectItem: Plain,
+  SegmentedControl: Plain,
+  SegmentedItem: Plain,
+  iconStroke: 1.5,
+};
+
+function appearanceOf(root: Element): 'light' | 'dark' {
+  for (let element: Element | null = root; element; element = element.parentElement) {
+    const appearance = element.getAttribute('data-appearance');
+    if (appearance === 'light' || appearance === 'dark') return appearance;
+  }
+  return 'light';
+}
+
+export const TEST_SKIN: FlowSkin = {
+  name: 'test',
+  colors: TEST_COLORS,
+  metrics: TEST_METRICS,
+  shape: { glsl: '', cornerScale: 1 },
+  ui: TEST_UI,
+  shaders: {
+    card: { ...noShader, shadowReach: () => 0 },
+    controls: noShader,
+    floating: { ...noShader, backdropBlur: () => 0 },
+    media: noShader,
+  },
+  fallbackTokens: FALLBACK_TOKENS,
+  readTokens: (root): ThemeTokens => ({ ...FALLBACK_TOKENS, appearance: appearanceOf(root) }),
+};
