@@ -23,7 +23,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, iconStroke } from '@kushagradhawan/kookie-ui-react';
+import { useSkin } from '../skin/context';
 import * as THREE from 'three';
 import { MeshSceneManager, frameCamera } from '../utils/mesh-loader';
 import { orbitDirection, orbitFromDrag, type OrbitAngles } from '../utils/media-chrome';
@@ -88,6 +88,7 @@ export function MediaViewer({ view, onClose }: MediaViewerProps) {
 }
 
 function ViewerDialog({ view, onClose }: { view: MediaView; onClose: () => void }) {
+  const { Button, iconStroke } = useSkin().ui;
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Focus moves in so Escape reaches the dialog, and back to wherever it was when the viewer closes.
@@ -134,7 +135,7 @@ function ViewerDialog({ view, onClose }: { view: MediaView; onClose: () => void 
       {view.kind === 'video' ? <VideoView src={view.src} startTime={view.startTime} /> : null}
       {view.kind === 'bitmap' ? <BitmapView image={view.image} /> : null}
       {view.kind === 'mesh' ? <MeshView src={view.src} orbit={view.orbit} /> : null}
-      <Button iconOnly aria-label="Close" size="3" backdrop style={closeStyle} onClick={onClose}>
+      <Button iconOnly aria-label="Close" size="3" style={closeStyle} onClick={onClose}>
         <svg
           width="16"
           height="16"

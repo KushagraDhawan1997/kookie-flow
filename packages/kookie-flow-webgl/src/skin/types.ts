@@ -3,8 +3,9 @@
  *
  * The renderer owns behaviour: geometry, hit testing, state, interaction, accessibility, text.
  * A skin owns how that looks: which token plays which role, the lengths each size and variant
- * take, the material numbers, and how theme tokens are read off the page. The renderer reads the
- * skin once at material build, never per frame.
+ * take, how each surface is painted (its shader code), the DOM chrome's components, and how theme
+ * tokens are read off the page. The renderer reads the skin once at material build, never per
+ * frame.
  *
  * Token keys (`keyof ThemeTokens`) are the renderer's own vocabulary of slots. A skin built on a
  * different design system fills the same slots from its own CSS through `readTokens`.
@@ -14,7 +15,14 @@ import type { ThemeTokens } from '../hooks/useThemeTokens';
 import type { ColorTokenRef } from '../core/theme-colors';
 import type { EntityRadius, EntitySize, EntityVariant } from '../types/index';
 import type { IUniform } from 'three';
-import type { Material } from './glass/material';
+import type {
+  ChangeEvent,
+  ComponentType,
+  CSSProperties,
+  KeyboardEvent,
+  MouseEvent,
+  ReactNode,
+} from 'react';
 
 export interface SizeConfig {
   /** Token slot for padding */
@@ -147,6 +155,14 @@ export interface CardShader extends SkinShader {
   shadowReach(ctx: SkinShaderContext): number;
 }
 
+export interface FloatingShader extends SkinShader {
+  /**
+   * The blur of the ground under the panel, as a CSS gaussian sigma in px. 0 means the skin never
+   * calls `blurBackdrop`, and the renderer skips copying the frame under the panel.
+   */
+  backdropBlur(ctx: SkinShaderContext): number;
+}
+
 export interface SkinShaders {
   card: CardShader;
   /**
@@ -185,19 +201,72 @@ export interface SkinShaders {
    *   what is under it.
    * - `vec4 floatingBorder()` the hairline around the picker's controls.
    */
-  floating: SkinShader;
+  floating: FloatingShader;
+}
+
+/** A size step for DOM chrome. */
+export type SkinControlSize = '1' | '2' | '3' | '4';
+
+/**
+ * The DOM chrome's components: the selection toolbar and the media viewer's close button. These
+ * are the props the renderer passes; a skin maps them onto its design system's components and
+ * adds whatever that system needs to look right over the canvas.
+ */
+export interface SkinUI {
+  Toolbar: ComponentType<{ size?: SkinControlSize; 'aria-label'?: string; children?: ReactNode }>;
+  ToolbarGroup: ComponentType<{ children?: ReactNode }>;
+  /** Only icon buttons are drawn, so a label is required. */
+  ToolbarButton: ComponentType<{
+    iconOnly: true;
+    'aria-label': string;
+    'aria-pressed'?: boolean;
+    onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+    children?: ReactNode;
+  }>;
+  Button: ComponentType<{
+    iconOnly: true;
+    size?: SkinControlSize;
+    'aria-label': string;
+    style?: CSSProperties;
+    onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+    children?: ReactNode;
+  }>;
+  TextField: ComponentType<{
+    'aria-label'?: string;
+    inputMode?: 'decimal' | 'numeric' | 'text';
+    value?: string;
+    style?: CSSProperties;
+    onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+    onBlur?: () => void;
+    onKeyDown?: (event: KeyboardEvent) => void;
+  }>;
+  Select: ComponentType<{
+    items?: Record<string, ReactNode>;
+    value?: string;
+    onValueChange?: (value: string | null) => void;
+    children?: ReactNode;
+  }>;
+  SelectTrigger: ComponentType<{ 'aria-label'?: string }>;
+  SelectContent: ComponentType<{ children?: ReactNode }>;
+  SelectItem: ComponentType<{ value: string; children?: ReactNode }>;
+  SegmentedControl: ComponentType<{
+    'aria-label'?: string;
+    value?: string;
+    onValueChange?: (value: unknown) => void;
+    children?: ReactNode;
+  }>;
+  SegmentedItem: ComponentType<{ value: string; 'aria-label'?: string; children?: ReactNode }>;
+  /** The stroke width the design system draws 24-grid icons with. */
+  iconStroke: number;
 }
 
 export interface FlowSkin {
   readonly name: string;
   readonly colors: SkinColors;
   readonly metrics: SkinMetrics;
-  /**
-   * The material numbers, one record per appearance. Still glass-shaped: the shader code that
-   * consumes them moves into the skin in a later step, and then this becomes skin-private.
-   */
-  readonly material: Record<'light' | 'dark', Material>;
   readonly shape: SkinShape;
+  /** The DOM chrome's components. */
+  readonly ui: SkinUI;
   /** The skin's part of each surface shader. */
   readonly shaders: SkinShaders;
   /** Tokens used before the page's theme can be read, and when it cannot. */

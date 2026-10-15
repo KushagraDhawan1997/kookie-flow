@@ -762,6 +762,17 @@
         "default": "./dist/skin/glass/tokens.cjs"
       }
     },
+    "./internal/skin/glass/ui": {
+      "kookie-flow-source": "./src/skin/glass/ui.tsx",
+      "import": {
+        "types": "./dist/skin/glass/ui.d.ts",
+        "default": "./dist/skin/glass/ui.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/ui.d.cts",
+        "default": "./dist/skin/glass/ui.cjs"
+      }
+    },
     "./internal/skin/index": {
       "kookie-flow-source": "./src/skin/index.ts",
       "import": {

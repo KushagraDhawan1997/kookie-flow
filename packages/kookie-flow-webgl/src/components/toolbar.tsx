@@ -25,20 +25,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import {
-  TextField,
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SegmentedControl,
-  SegmentedItem,
-  Toolbar as KuiToolbar,
-  ToolbarGroup,
-  ToolbarButton,
-  iconStroke,
-} from '@kushagradhawan/kookie-ui-react';
-import type { ToolbarProps as KuiToolbarProps } from '@kushagradhawan/kookie-ui-react';
+import type { SkinControlSize } from '../skin/types';
 import { NOTE_HUES, noteHue, noteInk } from '../utils/note-ink';
 import { useFlowStoreApi } from './context';
 import { getInteractionMode, observeInteractionMode } from './interaction-state';
@@ -151,12 +138,13 @@ export interface ToolbarProps {
    * v2's own band step, one above an app's rest, because a floating row holds mostly icon-only
    * controls that a pointer has to find over the canvas.
    */
-  size?: KuiToolbarProps['size'];
+  size?: SkinControlSize;
   /** Override toolbar content entirely (ignores entityTypes toolbar config) */
   children?: ToolbarRenderFn;
 }
 
 export function Toolbar({ size = '3', children: renderOverride }: ToolbarProps) {
+  const { Toolbar: KuiToolbar } = useSkin().ui;
   const store = useFlowStoreApi();
   const { entityTypes, onEntitiesChange } = useToolbarContext();
   const socketLayout = useSocketLayout();
@@ -417,13 +405,10 @@ export function Toolbar({ size = '3', children: renderOverride }: ToolbarProps) 
       onPointerDown={(e) => e.stopPropagation()}
     >
       {/*
-        NO CARD. Every control here is glass, and glass holds on any ground — so the canvas is the
-        toolbar's background, and each control or group draws its own capsule, as a v2 toolbar
-        does. A card around them was a second surface under the first, and the dividers it needed
-        were the cost of that. `backdrop` tells every glass-capable control in the row that the
-        canvas passes behind it, once, instead of on each one.
+        NO CARD. The canvas is the toolbar's background, and each control or group draws its own
+        capsule. How they look over the canvas is the skin's (`skin.ui`).
       */}
-      <KuiToolbar size={size} backdrop aria-label="Selection">
+      <KuiToolbar size={size} aria-label="Selection">
         {toolbarContent}
       </KuiToolbar>
     </div>
@@ -541,35 +526,39 @@ function resolveToolbarContent(
 // Inline SVG icons (HugeIcons text-align, stroke-rounded)
 // ============================================================================
 
-const iconProps = {
-  // Decorative: every consumer of these sits inside a control that now carries its own aria-label,
-  // and an unnamed <svg> in the accessibility tree is noise at best. This one line retires all six.
-  'aria-hidden': true,
-  width: 14,
-  height: 14,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  /**
-   * The design system's own stroke, not a number of ours.
-   *
-   * A stroke is stated in VIEWBOX units, so the painted weight is `stroke x box / viewBox` — and
-   * these glyphs are drawn on the same 24 grid `iconGrid` names. At the hardcoded 1.5 they painted
-   * lighter than every glyph beside them in a v2 app, which is exactly the mismatch v2 exports
-   * `iconStroke` to prevent: it ships no icon set, so a consumer's glyphs and the library's have
-   * to be reconciled from the consumer's side or not at all.
-   *
-   * `width`/`height` stay for the same reason they always applied: inside a `.kui-control` the
-   * shared icon-box rule sizes the glyph from the size index, and outside one these are the box.
-   */
-  strokeWidth: iconStroke,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-};
+/** The shared props of the inline icons, with the skin's icon stroke. */
+function useIconProps() {
+  const { iconStroke } = useSkin().ui;
+  return {
+    // Decorative: every consumer of these sits inside a control that now carries its own aria-label,
+    // and an unnamed <svg> in the accessibility tree is noise at best. This one line retires all six.
+    'aria-hidden': true,
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    /**
+     * The design system's own stroke, not a number of ours.
+     *
+     * A stroke is stated in VIEWBOX units, so the painted weight is `stroke x box / viewBox` — and
+     * these glyphs are drawn on the same 24 grid `iconGrid` names. At the hardcoded 1.5 they painted
+     * lighter than every glyph beside them in a v2 app, which is exactly the mismatch v2 exports
+     * `iconStroke` to prevent: it ships no icon set, so a consumer's glyphs and the library's have
+     * to be reconciled from the consumer's side or not at all.
+     *
+     * `width`/`height` stay for the same reason they always applied: inside a `.kui-control` the
+     * shared icon-box rule sizes the glyph from the size index, and outside one these are the box.
+     */
+    strokeWidth: iconStroke,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+}
 
 function AlignEdgeLeftIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3V21" />
       <rect x="7" y="6" width="12" height="4" rx="1" />
       <rect x="7" y="14" width="8" height="4" rx="1" />
@@ -579,7 +568,7 @@ function AlignEdgeLeftIcon() {
 
 function AlignEdgeCenterIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M12 3V21" />
       <rect x="5" y="6" width="14" height="4" rx="1" />
       <rect x="8" y="14" width="8" height="4" rx="1" />
@@ -589,7 +578,7 @@ function AlignEdgeCenterIcon() {
 
 function AlignEdgeRightIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M21 3V21" />
       <rect x="5" y="6" width="12" height="4" rx="1" />
       <rect x="9" y="14" width="8" height="4" rx="1" />
@@ -599,7 +588,7 @@ function AlignEdgeRightIcon() {
 
 function AlignEdgeTopIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3H21" />
       <rect x="6" y="7" width="4" height="12" rx="1" />
       <rect x="14" y="7" width="4" height="8" rx="1" />
@@ -609,7 +598,7 @@ function AlignEdgeTopIcon() {
 
 function AlignEdgeMiddleIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 12H21" />
       <rect x="6" y="5" width="4" height="14" rx="1" />
       <rect x="14" y="8" width="4" height="8" rx="1" />
@@ -619,7 +608,7 @@ function AlignEdgeMiddleIcon() {
 
 function AlignEdgeBottomIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 21H21" />
       <rect x="6" y="5" width="4" height="12" rx="1" />
       <rect x="14" y="9" width="4" height="8" rx="1" />
@@ -629,7 +618,7 @@ function AlignEdgeBottomIcon() {
 
 function DistributeHorizontalIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3V21" />
       <path d="M21 3V21" />
       <rect x="9" y="7" width="6" height="10" rx="1" />
@@ -639,7 +628,7 @@ function DistributeHorizontalIcon() {
 
 function DistributeVerticalIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3H21" />
       <path d="M3 21H21" />
       <rect x="7" y="9" width="10" height="6" rx="1" />
@@ -649,7 +638,7 @@ function DistributeVerticalIcon() {
 
 function AlignLeftIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3H21" />
       <path d="M3 9H11" />
       <path d="M3 15H21" />
@@ -660,7 +649,7 @@ function AlignLeftIcon() {
 
 function AlignCenterIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3H21" />
       <path d="M8 9H16" />
       <path d="M3 15H21" />
@@ -671,7 +660,7 @@ function AlignCenterIcon() {
 
 function AlignRightIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 3H21" />
       <path d="M13 9H21" />
       <path d="M3 15H21" />
@@ -682,7 +671,7 @@ function AlignRightIcon() {
 
 function LockIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <rect x="5" y="11" width="14" height="10" rx="2" />
       <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </svg>
@@ -691,7 +680,7 @@ function LockIcon() {
 
 function UnlockIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <rect x="5" y="11" width="14" height="10" rx="2" />
       <path d="M8 11V7a4 4 0 0 1 7.4-2" />
     </svg>
@@ -700,7 +689,7 @@ function UnlockIcon() {
 
 function AutoWidthIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 7H21" />
       <path d="M3 12H15" />
       <path d="M1 4V20" strokeDasharray="2 2" />
@@ -710,7 +699,7 @@ function AutoWidthIcon() {
 
 function AutoHeightIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <path d="M3 7H21" />
       <path d="M3 12H21" />
       <path d="M3 17H11" />
@@ -721,7 +710,7 @@ function AutoHeightIcon() {
 
 function FixedSizeIcon() {
   return (
-    <svg {...iconProps}>
+    <svg {...useIconProps()}>
       <rect x="3" y="4" width="18" height="16" rx="2" strokeDasharray="3 2" />
       <path d="M7 9H17" />
       <path d="M7 13H13" />
@@ -747,6 +736,7 @@ function ToolbarNumberInput({
   onChange: (v: number) => void;
   width?: number;
 }) {
+  const { TextField } = useSkin().ui;
   const [local, setLocal] = useState(() => String(value));
 
   // Sync from prop when value changes externally
@@ -767,7 +757,6 @@ function ToolbarNumberInput({
   return (
     <TextField
       aria-label={label}
-      backdrop
       inputMode="decimal"
       value={local}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocal(e.target.value)}
@@ -820,6 +809,7 @@ function ToolbarColorInput({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { ToolbarGroup } = useSkin().ui;
   const pendingRef = useRef<string | null>(null);
   const rafRef = useRef(0);
   useSwatchStylesheet();
@@ -851,7 +841,7 @@ function ToolbarColorInput({
 
   // In a group of its own: a bare swatch has no capsule, and on glass every control stands on one.
   return (
-    <ToolbarGroup backdrop>
+    <ToolbarGroup>
       <input
         aria-label={label}
         type="color"
@@ -980,6 +970,16 @@ function BuiltInWidget({
   align: (edge: AlignEdge) => void;
   distribute: (axis: DistributeAxis) => void;
 }) {
+  const {
+    Select,
+    SelectTrigger,
+    SelectContent,
+    SelectItem,
+    SegmentedControl,
+    SegmentedItem,
+    ToolbarGroup,
+    ToolbarButton,
+  } = useSkin().ui;
   const { colors } = useSkin();
   // Display values from first entity; updates apply to all selected
   const data = entities[0].data as Record<string, unknown>;
@@ -997,7 +997,6 @@ function BuiltInWidget({
       const currentMode = (data.sizingMode as string) ?? 'auto-height';
       content = (
         <SegmentedControl
-          backdrop
           aria-label="Sizing mode"
           value={currentMode}
           onValueChange={(newMode: unknown) => {
@@ -1111,7 +1110,7 @@ function BuiltInWidget({
             batchUpdate({ fontWeight: Number(v) });
           }}
         >
-          <SelectTrigger backdrop aria-label="Font weight" />
+          <SelectTrigger aria-label="Font weight" />
           <SelectContent>
             <SelectItem value="400">Regular</SelectItem>
             <SelectItem value="600">Semibold</SelectItem>
@@ -1124,7 +1123,6 @@ function BuiltInWidget({
     case 'textAlign':
       content = (
         <SegmentedControl
-          backdrop
           aria-label="Text alignment"
           value={(data.textAlign as string) ?? 'left'}
           onValueChange={(v: unknown) => batchUpdate({ textAlign: String(v) })}
@@ -1152,7 +1150,7 @@ function BuiltInWidget({
             batchUpdate({ fontFamily: v });
           }}
         >
-          <SelectTrigger backdrop aria-label="Font family" />
+          <SelectTrigger aria-label="Font family" />
           <SelectContent>
             <SelectItem value="system-ui">System</SelectItem>
             <SelectItem value="serif">Serif</SelectItem>
@@ -1190,7 +1188,7 @@ function BuiltInWidget({
             batchUpdate({ color: v, backgroundColor: undefined, textColor: undefined });
           }}
         >
-          <SelectTrigger backdrop aria-label="Note colour" />
+          <SelectTrigger aria-label="Note colour" />
           <SelectContent>
             {NOTE_HUES.map(({ hue: option }) => (
               <SelectItem key={option} value={option}>
@@ -1226,7 +1224,6 @@ function BuiltInWidget({
     case 'objectFit':
       content = (
         <SegmentedControl
-          backdrop
           aria-label="Object fit"
           value={(data.objectFit as string) ?? 'fill'}
           onValueChange={(v: unknown) => batchUpdate({ objectFit: String(v) })}
@@ -1243,7 +1240,7 @@ function BuiltInWidget({
       content = (
         // A ToolbarButton carrying its own pressed state, not a Toggle: a Toggle does not enrol in
         // the toolbar's keyboard, so it was a second tab stop the arrow keys never reached.
-        <ToolbarGroup backdrop>
+        <ToolbarGroup>
           <ToolbarButton
             iconOnly
             aria-pressed={locked}
@@ -1312,7 +1309,7 @@ function BuiltInWidget({
       // Two groups, because they are two meanings: lining edges up, and spacing things out.
       content = (
         <>
-          <ToolbarGroup backdrop>
+          <ToolbarGroup>
             {edges.map(([edge, label, icon]) => (
               <ToolbarButton key={edge} iconOnly aria-label={label} onClick={() => align(edge)}>
                 {icon}
@@ -1320,7 +1317,7 @@ function BuiltInWidget({
             ))}
           </ToolbarGroup>
           {entities.length >= 3 && (
-            <ToolbarGroup backdrop>
+            <ToolbarGroup>
               <ToolbarButton
                 iconOnly
                 aria-label="Distribute horizontally"
