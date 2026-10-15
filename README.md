@@ -58,45 +58,45 @@ Drag from the Constant node's output to the Viewer node's input to connect them.
 
 ## What it does
 
-- [Typed sockets](https://kookie-flow.vercel.app/entities/sockets) with sliders, number fields,
+- [Typed sockets](https://flow.kookie.design/entities/sockets) with sliders, number fields,
   selects and checkboxes drawn on the node.
-- [Evaluation](https://kookie-flow.vercel.app/data/evaluation) through one `onEvaluate`
+- [Evaluation](https://flow.kookie.design/data/evaluation) through one `onEvaluate`
   function, with manual gates, cancellation and progress shown on the node.
-- [Frames](https://kookie-flow.vercel.app/entities/frames),
-  [text and comments](https://kookie-flow.vercel.app/entities/text),
-  [ink](https://kookie-flow.vercel.app/interaction/drawing), and
-  [images, video and models](https://kookie-flow.vercel.app/entities/media), each an entity
+- [Frames](https://flow.kookie.design/entities/frames),
+  [text and comments](https://flow.kookie.design/entities/text),
+  [ink](https://flow.kookie.design/interaction/drawing), and
+  [images, video and models](https://flow.kookie.design/entities/media), each an entity
   you select, move and delete like a node.
-- [Undo](https://kookie-flow.vercel.app/data/history),
-  [saving with `toObject`](https://kookie-flow.vercel.app/data/saving), and
-  [`autoLayout`, align and distribute](https://kookie-flow.vercel.app/data/arrange).
-- A [selection toolbar](https://kookie-flow.vercel.app/interaction/toolbar), a
-  [minimap](https://kookie-flow.vercel.app/styling/minimap), and
-  [keyboard access](https://kookie-flow.vercel.app/interaction/keyboard) to every node.
-- [Theming](https://kookie-flow.vercel.app/styling/theming) from KookieUI v2, in light and dark.
+- [Undo](https://flow.kookie.design/data/history),
+  [saving with `toObject`](https://flow.kookie.design/data/saving), and
+  [`autoLayout`, align and distribute](https://flow.kookie.design/data/arrange).
+- A [selection toolbar](https://flow.kookie.design/interaction/toolbar), a
+  [minimap](https://flow.kookie.design/styling/minimap), and
+  [keyboard access](https://flow.kookie.design/interaction/keyboard) to every node.
+- [Theming](https://flow.kookie.design/styling/theming) from KookieUI v2, in light and dark.
 
 Nodes don't host React components. The canvas draws nodes in depth order, so a node in front
 covers the one behind it, and a DOM element can only sit above the whole canvas or below it. The
 built-in widgets and text editing use DOM only for the length of one edit, and the accessibility
 mirror only for the node the keyboard cursor is on. Nodes, comments and persistent socket widgets
 all draw in WebGL. There is no custom DOM widget escape hatch.
-[Entity types](https://kookie-flow.vercel.app/entities/types) shows what a node can declare
+[Entity types](https://flow.kookie.design/entities/types) shows what a node can declare
 instead.
 
 ## Documentation
 
 The site in `apps/docs` is the documentation, published at
-[kookie-flow.vercel.app](https://kookie-flow.vercel.app).
+[flow.kookie.design](https://flow.kookie.design).
 
 | section | what it covers |
 |---|---|
-| [Getting started](https://kookie-flow.vercel.app/start/installation) | installing, a first graph, and controlled or uncontrolled state |
-| [Entities](https://kookie-flow.vercel.app/entities/model) | nodes, sockets and widgets, entity types, frames, text and media |
-| [Edges and connections](https://kookie-flow.vercel.app/edges/edges) | edge shapes, labels and markers, and which connections are allowed |
-| [Data](https://kookie-flow.vercel.app/data/evaluation) | evaluation, saving, undo, layout, the store, graph queries and the clipboard |
-| [Interaction](https://kookie-flow.vercel.app/interaction/camera) | the camera, selection, keyboard, toolbar, context menus, drawing and dropped files |
-| [Styling](https://kookie-flow.vercel.app/styling/theming) | theming, node styling, fonts and the minimap |
-| [API reference](https://kookie-flow.vercel.app/api/kookie-flow) | every prop, ref method, hook, utility and type |
+| [Getting started](https://flow.kookie.design/start/installation) | installing, a first graph, and controlled or uncontrolled state |
+| [Entities](https://flow.kookie.design/entities/model) | nodes, sockets and widgets, entity types, frames, text and media |
+| [Edges and connections](https://flow.kookie.design/edges/edges) | edge shapes, labels and markers, and which connections are allowed |
+| [Data](https://flow.kookie.design/data/evaluation) | evaluation, saving, undo, layout, the store, graph queries and the clipboard |
+| [Interaction](https://flow.kookie.design/interaction/camera) | the camera, selection, keyboard, toolbar, context menus, drawing and dropped files |
+| [Styling](https://flow.kookie.design/styling/theming) | theming, node styling, fonts and the minimap |
+| [API reference](https://flow.kookie.design/api/kookie-flow) | every prop, ref method, hook, utility and type |
 
 The site also serves these:
 
