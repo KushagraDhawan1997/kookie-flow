@@ -9,7 +9,7 @@
 export { SDF_GLSL } from './sdf';
 export { COMPOSITE_GLSL } from './composite';
 export { GLASS_GLSL, AURA_GLSL } from '../skin/glass/glass';
-export { LENS, LENS_GLSL, GLINT, type LensRung } from './lens';
+export { LENS, LENS_GLSL, GLINT, type LensRung } from '../skin/glass/lens';
 export {
   MATERIAL,
   FOCUS_RING,

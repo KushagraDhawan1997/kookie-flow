@@ -5,7 +5,7 @@ import { useFlowStoreApi } from './context';
 import { useTheme, useThemeScope } from '../contexts/ThemeContext';
 import { useResolvedStyle } from '../contexts/StyleContext';
 import { ViewportCuller } from '../utils/viewport-culler';
-import { CORNER_K, squircleBoxSDF } from '../utils/corner-shader';
+import { useSkin } from '../skin/context';
 import { commentPaint } from '../utils/comment-paint';
 import { entityDepth } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
 
@@ -20,6 +20,7 @@ export function CommentEntities() {
 }
 
 function CommentBatch({ foreground }: { foreground: boolean }) {
+  const { shape } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const scope = useThemeScope();
@@ -74,7 +75,7 @@ function CommentBatch({ foreground }: { foreground: boolean }) {
       varying vec2 vSize;
       varying vec4 vFill;
       varying vec4 vEdge;
-      ${squircleBoxSDF}
+      ${shape.glsl}
       void main() {
         float d = roundedBoxSDF(vLocal, vSize * 0.5, uRadius);
         float aa = max(fwidth(d), 0.0001);
@@ -86,13 +87,13 @@ function CommentBatch({ foreground }: { foreground: boolean }) {
       }
     `,
       }),
-    []
+    [shape.glsl]
   );
   useEffect(() => () => geometry.dispose(), [geometry]);
   useEffect(() => () => material.dispose(), [material]);
   useEffect(() => {
     dirty.current = true;
-  }, [tokens, scope, style, capacity]);
+  }, [tokens, scope, style, capacity, shape]);
   useEffect(() => {
     const mark = () => {
       dirty.current = true;
@@ -130,7 +131,7 @@ function CommentBatch({ foreground }: { foreground: boolean }) {
       100
     );
     if (!changed && !dirty.current) return;
-    material.uniforms.uRadius.value = style.borderRadius * CORNER_K;
+    material.uniforms.uRadius.value = style.borderRadius * shape.cornerScale;
     let count = 0;
     for (let i = 0; i < culler.count; i++) {
       const e = state.entityMap.get(culler.ids[i]);

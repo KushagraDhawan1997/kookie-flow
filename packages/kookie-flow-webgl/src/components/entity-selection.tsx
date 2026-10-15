@@ -8,7 +8,6 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/index';
 import { useTheme } from '../contexts/ThemeContext';
 import { resolveColor } from '../core/theme-colors';
 import { getEntitySocketLayout } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
-import { squircleBoxSDF, CORNER_K } from '../utils/corner-shader';
 import {
   DEFAULT_ENTITY_WIDTH,
   SELECTION_OUTLINE_WIDTH,
@@ -57,7 +56,7 @@ const HANDLE_DOT_RADIUS_PX = 3;
  *    is their affordance. Hidden during drag/connect/box-select operations.
  */
 export function EntitySelection() {
-  const { colors } = useSkin();
+  const { colors, shape } = useSkin();
   const store = useFlowStoreApi();
   const resolvedStyle = useResolvedStyle();
   const socketLayout = useSocketLayout();
@@ -106,7 +105,7 @@ export function EntitySelection() {
         uHoverColor: { value: new THREE.Color(hoverColor[0], hoverColor[1], hoverColor[2]) },
         // The card radius, so the ring and its halo follow the corners. This was left at 0 and
         // never written: every selection and hover outline drew square around a rounded card.
-        uCornerRadius: { value: resolvedStyle.borderRadius * CORNER_K },
+        uCornerRadius: { value: resolvedStyle.borderRadius * shape.cornerScale },
         uZoom: { value: 1.0 },
         // The halo's reach in world units (SELECTION_GLOW_PX / zoom), written beside uZoom.
         uGlow: { value: SELECTION_GLOW_PX },
@@ -164,7 +163,7 @@ export function EntitySelection() {
         varying float vPadding;
         varying vec2 vExpandedSize;
 
-        ${squircleBoxSDF}
+        ${shape.glsl}
 
         void main() {
           // Map UV to expanded coordinate space
@@ -201,7 +200,7 @@ export function EntitySelection() {
       depthWrite: false,
       depthTest: false,
     });
-  }, [selectedColor, hoverColor, glowAlpha, resolvedStyle.borderRadius]);
+  }, [selectedColor, hoverColor, glowAlpha, resolvedStyle.borderRadius, shape]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(

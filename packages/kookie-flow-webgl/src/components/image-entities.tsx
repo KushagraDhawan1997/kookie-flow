@@ -324,7 +324,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
           meshRefs.current.set(id, mesh);
           // Pre-create ShaderMaterial so useFrame only updates uniforms, never allocates
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
           }
         } else {
           meshRefs.current.delete(id);
@@ -473,7 +473,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
         // ShaderMaterial pre-created in ref callback — update uniforms only
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
-          setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+          setMediaBox(mat, w, h, resolvedStyle.borderRadius, skin.shape.cornerScale);
           setMediaChrome(mat, 0, 0, false, 0, presence, fitsDownload(w, h) ? presence : 0);
           const u = mat.uniforms;
           if (u.map.value !== texture) {

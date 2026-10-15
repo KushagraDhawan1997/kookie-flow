@@ -313,7 +313,7 @@ export function PreviewEntities() {
         if (mesh) {
           quadRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id))
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
         } else {
           quadRefs.current.delete(id);
         }
@@ -680,7 +680,7 @@ export function PreviewEntities() {
           target.renderedSrc = source.src;
         }
 
-        setMediaBox(mat, w, h, bandRadius);
+        setMediaBox(mat, w, h, bandRadius, skin.shape.cornerScale);
         // A target is already framed to the band, so object-fit does not apply. Its rows are
         // bottom-up, as every framebuffer's are, while the shared quad's V runs top-down for image
         // uploads; sampled with V flipped back, or every model draws upside down.
@@ -740,7 +740,7 @@ export function PreviewEntities() {
         continue;
       }
 
-      setMediaBox(mat, w, h, bandRadius);
+      setMediaBox(mat, w, h, bandRadius, skin.shape.cornerScale);
       applyObjectFitUV(
         mat.uniforms.uvOffset.value,
         mat.uniforms.uvScale.value,

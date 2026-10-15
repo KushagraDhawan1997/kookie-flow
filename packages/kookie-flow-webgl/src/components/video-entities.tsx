@@ -291,7 +291,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
           }
         } else {
           meshRefs.current.delete(id);
@@ -440,7 +440,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       if (texture) {
         const mat = materialRefs.current.get(entity.id);
         if (mat) {
-          setMediaBox(mat, w, h, resolvedStyle.borderRadius);
+          setMediaBox(mat, w, h, resolvedStyle.borderRadius, skin.shape.cornerScale);
           const element = entry?.element;
           const duration = element?.duration;
           const played =
