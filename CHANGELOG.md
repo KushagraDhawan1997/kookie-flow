@@ -17,8 +17,10 @@ still moving, and a `!` on a heading means something that was there changed shap
   glass skin. `resolveEntityStyle` and `resolveSocketLayout` take the skin's metrics;
   `useThemeTokens(scope, skin)` takes the skin.
 - The compatibility package `@kushagradhawan/kookie-flow` keeps the earlier API: its `KookieFlow`,
-  `resolveEntityStyle`, `resolveSocketLayout` and `useThemeTokens` default to glass, and it
-  re-exports the moved names.
+  `resolveEntityStyle`, `resolveSocketLayout`, `useThemeTokens`, `ThemeProvider` and
+  `StyleProvider` default to glass, and it re-exports the moved names. From the react and webgl
+  packages, `ThemeProvider` and `StyleProvider` need a `SkinProvider` above them when used outside
+  `KookieFlow`; `useOptionalSkin` reads the skin without throwing.
 - No visual change.
 
 ### GL controls follow UI v2's motion removal !

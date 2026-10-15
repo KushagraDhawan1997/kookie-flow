@@ -69,7 +69,7 @@ export const PAD = 8;
  * The corner a widget wears before a StyleProvider has resolved one.
  *
  * The real value is `ResolvedEntityStyle.widgetRadius`, the control half of the entity's radius
- * level (see RADIUS_MAP / WIDGET_RADIUS_MAP in utils/style-resolver.ts). This is only the default
+ * level (see the skin's metrics.radii / metrics.widgetRadii). This is only the default
  * context's stand-in, and it is the number v1's `--radius-2` gave.
  */
 export const WIDGET_RADIUS = 8;

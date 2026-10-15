@@ -6,7 +6,9 @@ theme and the controls. It needs React 19 and a browser with WebGL 2.
 
 `@kushagradhawan/kookie-flow-react` is the normal React entry. The renderer lives in
 `@kushagradhawan/kookie-flow-webgl`; graph logic lives in `@kushagradhawan/kookie-flow-core`.
-The old `@kushagradhawan/kookie-flow` import forwards to the new packages.
+How the canvas looks comes from a skin: `@kushagradhawan/kookie-flow-skin-glass` is KookieUI v2's
+glass, and you pass it to every `KookieFlow` as `skin={glassSkin}`. The old
+`@kushagradhawan/kookie-flow` import forwards to the new packages and defaults to glass.
 
 These 0.2.0 candidates are not published. Build all sibling packages and pack them with pnpm:
 
@@ -17,7 +19,7 @@ pnpm test:packages
 pnpm --filter '@kushagradhawan/kookie-flow*' -r pack --pack-destination ./artifacts
 ```
 
-Install all four archives in your app, together with
+Install all five archives in your app, together with
 `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz`. This UI archive preserves the tested Flow
 appearance. Current UI v2 source is a separate upgrade and is not interchangeable with it.
 
@@ -69,6 +71,7 @@ Give the parent a height, or place it in a layout that hands it one.
 "use client";
 
 import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow-react";
+import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
 
 const entities: Entity[] = [
   { id: "a", type: "note", position: { x: 0, y: 0 }, data: { label: "First node" } },
@@ -79,7 +82,7 @@ export default function EditorPage() {
   return (
     <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100dvh" }}>
       <header>My editor</header>
-      <KookieFlow entities={entities} edges={edges} />
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges} />
     </div>
   );
 }
@@ -107,6 +110,7 @@ child of `KookieFlow`. Called anywhere else, it throws.
 
 ```tsx
 import { KookieFlow, type Edge, type Entity } from "@kushagradhawan/kookie-flow-react";
+import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
 import { useClipboard, useKeyboardShortcuts } from "@kushagradhawan/kookie-flow-react/plugins";
 
 function ClipboardKeys() {
@@ -119,7 +123,7 @@ function ClipboardKeys() {
 
 export function Board({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
   return (
-    <KookieFlow entities={entities} edges={edges}>
+    <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
       <ClipboardKeys />
     </KookieFlow>
   );

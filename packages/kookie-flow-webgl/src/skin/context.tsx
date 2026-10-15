@@ -20,3 +20,8 @@ export function useSkin(): FlowSkin {
   }
   return skin;
 }
+
+/** The skin above this point, or null outside an editor. For wrappers that supply a default. */
+export function useOptionalSkin(): FlowSkin | null {
+  return useContext(SkinContext);
+}

@@ -359,6 +359,18 @@ export function createMediaMaterial(glass: MediaGlass, skin: FlowSkin): THREE.Sh
 }
 
 /**
+ * Point an existing media material at another skin's GLSL. The material keeps its uniforms and
+ * its mesh; three recompiles the program on the next draw. Called on a skin change, never per
+ * frame.
+ */
+export function setMediaSkin(material: THREE.ShaderMaterial, skin: FlowSkin): void {
+  const source = mediaFragmentShader(skin.shape.glsl, skin.shaders.media.glsl);
+  if (material.fragmentShader === source) return;
+  material.fragmentShader = source;
+  material.needsUpdate = true;
+}
+
+/**
  * Tell a media material what chrome to draw. See `uChrome` and `uExpand` in the shader.
  *
  * `presence` is how faded in the bar or grip is, `expand` how faded in the corner button is, and

@@ -37,7 +37,7 @@ Do not infer compatibility with an older three release or a future major from th
 The renderer uses the unpublished `@kushagradhawan/kookie-ui-react@0.0.0-flow.2` archive in
 `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz`. It preserves the old tested UI snapshot;
 only its package identity changed. Current UI v2 is a separate upgrade. See
-[package installation](../../docs/PACKAGES.md) for the four Flow archives and all peers.
+[package installation](../../docs/PACKAGES.md) for the five Flow archives and all peers.
 
 Use `pnpm pack`: its `beforePacking` hook removes workspace-only source export conditions.
 The isolated consumer test packs with pnpm and checks the real tarballs. Core installs alone

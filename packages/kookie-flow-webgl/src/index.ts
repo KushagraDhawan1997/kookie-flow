@@ -9,6 +9,7 @@ export { Toolbar, type ToolbarProps } from './components/toolbar';
 export {
   SkinProvider,
   useSkin,
+  useOptionalSkin,
   type FlowSkin,
   type SkinColors,
   type SkinMetrics,

@@ -118,15 +118,15 @@ export interface MinimapProps {
   width?: number;
   /** Height in pixels. Default: 150 */
   height?: number;
-  /** Background color. Default: from THEME_COLORS.minimap.background with 0.9 alpha */
+  /** Background color. Default: the skin's colors.minimap.background with 0.9 alpha */
   backgroundColor?: string;
-  /** Entity color (or function for per-entity color). Default: from THEME_COLORS.minimap.entity */
+  /** Entity color (or function for per-entity color). Default: the skin's colors.minimap.entity */
   entityColor?: string | ((entity: Entity) => string);
-  /** Selected entity color. Default: from THEME_COLORS.minimap.nodeSelected */
+  /** Selected entity color. Default: the skin's colors.minimap.nodeSelected */
   selectedEntityColor?: string;
-  /** Viewport indicator fill color. Default: from THEME_COLORS.minimap.viewport with 0.3 alpha */
+  /** Viewport indicator fill color. Default: the skin's colors.minimap.viewport with 0.3 alpha */
   viewportColor?: string;
-  /** Viewport indicator border color. Default: from THEME_COLORS.minimap.viewportBorder */
+  /** Viewport indicator border color. Default: the skin's colors.minimap.viewportBorder */
   viewportBorderColor?: string;
   /** Padding around content in minimap pixels. Default: 20 */
   padding?: number;

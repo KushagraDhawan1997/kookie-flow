@@ -1,8 +1,12 @@
 // Compatibility entry point. New applications can import kookie-flow-react directly and pass a
 // skin; this package keeps the earlier API, where the editor was glass without being told.
-import { createElement, forwardRef } from 'react';
+import { createElement, forwardRef, type ComponentProps } from 'react';
 import {
   KookieFlow as FlowWithSkin,
+  ThemeProvider as ThemeProviderWithSkin,
+  StyleProvider as StyleProviderWithSkin,
+  SkinProvider,
+  useOptionalSkin,
   resolveEntityStyle as resolveEntityStyleWithMetrics,
   resolveSocketLayout as resolveSocketLayoutWithMetrics,
   useThemeTokens as useThemeTokensWithSkin,
@@ -78,4 +82,16 @@ export function resolveSocketLayout(
 /** `useThemeTokens` reading tokens the glass skin's way unless another skin is given. */
 export function useThemeTokens(scope?: Element | null, skin: FlowSkin = glassSkin): ThemeTokens {
   return useThemeTokensWithSkin(scope, skin);
+}
+
+/** `ThemeProvider`, glass when no editor above it has set a skin. */
+export function ThemeProvider(props: ComponentProps<typeof ThemeProviderWithSkin>) {
+  const skin = useOptionalSkin() ?? glassSkin;
+  return createElement(SkinProvider, { value: skin }, createElement(ThemeProviderWithSkin, props));
+}
+
+/** `StyleProvider`, glass when no editor above it has set a skin. */
+export function StyleProvider(props: ComponentProps<typeof StyleProviderWithSkin>) {
+  const skin = useOptionalSkin() ?? glassSkin;
+  return createElement(SkinProvider, { value: skin }, createElement(StyleProviderWithSkin, props));
 }

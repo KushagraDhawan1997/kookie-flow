@@ -122,11 +122,11 @@ export interface ResolvedEntityStyle {
   /** 0 for transparent variants (ghost, outline), 1 otherwise */
   backgroundAlpha: number;
 
-  // Shadow: the card's float (NODE_SHADOW) or a --shadow-N token for classic/overrides
+  // Shadow: the card's float (skin metrics.nodeShadow) or a --shadow-N token for classic/overrides
   shadowBlur: number;
   shadowOffsetY: number;
   shadowOpacity: number;
-  /** Alpha of the white band inside the top edge (NODE_TOP_LIGHT), per appearance */
+  /** Alpha of the white band inside the top edge (skin metrics.nodeTopLight), per appearance */
   topLightAlpha: number;
 
   // Selection state (uses accent color)
