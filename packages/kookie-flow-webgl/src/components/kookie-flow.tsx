@@ -167,7 +167,6 @@ import {
 } from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
 import { hsvToHex } from '@kushagradhawan/kookie-flow-core/internal/utils/hsv';
 import { measureText } from '@kushagradhawan/kookie-flow-core/internal/utils/text-layout';
-import { motionNow } from '../gl/index';
 import { stepEntityCursor } from '../utils/entity-cursor';
 import { WidgetEditOverlay } from './widget-edit-overlay';
 import {
@@ -1254,7 +1253,6 @@ function InputHandler({
         labels,
         value: hit.value === undefined || hit.value === null ? '' : String(hit.value),
         widest,
-        openedAt: motionNow(),
       } as const;
       /**
        * The scroll the panel is PLACED for, computed from the same layout that draws it.

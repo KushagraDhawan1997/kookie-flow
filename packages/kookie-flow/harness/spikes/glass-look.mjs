@@ -70,22 +70,18 @@ for (const appearance of ['light', 'dark']) {
   await page.waitForTimeout(200);
   await shot(`${appearance}-rest`);
 
-  // Hover the slider, mid-fade and settled.
+  // Hover the slider.
   const amount = await point('amount');
   await page.mouse.move(amount.x, amount.y);
   await page.waitForTimeout(60);
-  await shot(`${appearance}-hover-mid`);
-  await page.waitForTimeout(300);
   await shot(`${appearance}-hover`);
 
-  // Tick the checkbox, mid-draw and settled.
+  // Tick the checkbox.
   const flag = await point('flag');
   await page.mouse.move(flag.x, flag.y);
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForTimeout(90);
-  await shot(`${appearance}-tick-mid`);
-  await page.waitForTimeout(400);
   await shot(`${appearance}-tick`);
 
   // Open the list.

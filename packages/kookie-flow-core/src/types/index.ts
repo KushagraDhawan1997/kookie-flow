@@ -215,8 +215,6 @@ export interface WidgetPopover {
   value: string;
   /** The widest option, in world px at the row font size, so the list can outgrow its trigger. */
   widest: number;
-  /** Motion-clock time the panel opened, for its entrance. */
-  openedAt: number;
 }
 
 /** Entity status for visual feedback */

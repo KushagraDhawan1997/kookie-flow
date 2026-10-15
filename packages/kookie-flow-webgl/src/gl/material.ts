@@ -234,36 +234,10 @@ export const CORNER_K_SURFACE = 1.613;
 export const CORNER_K_FLOATING_ROWS = 1.75;
 
 /**
- * v2's `motionSpeed`: every duration it emits is the judged one times this (2026-09-14). The
- * springs are drawn over a unit of time, so a curve keeps its shape at any duration. A loop — an
- * animated edge's light, a drag line's dashes — is content and does not read it, as v2's spinner
- * does not.
+ * v2 has no motion, so neither do the GL controls: every state is drawn where it is, with no clock
+ * and no press pose. A loop — an animated edge's light, a drag line's dashes — is content, as v2's
+ * spinner is, and stays. `material.test.ts` holds this to v2's stylesheet.
  */
-export const MOTION_SPEED = 0.6;
 
-/** A judged duration in ms, as the seconds v2 emits: scaled, then rounded to the millisecond. */
-const clock = (judgedMs: number) => Math.round(judgedMs * MOTION_SPEED) / 1000;
-
-/**
- * v2 motion tokens, in seconds. A colour arrives on hover in `hoverIn`, leaves in `hoverOut`, and
- * lands at once on a press. Movement has its own clock: `press` on the stiff spring into a press,
- * `rise` on the lively spring back out of it. `material.test.ts` holds each to v2's stylesheet.
- */
-export const MOTION = {
-  hoverIn: clock(80),
-  hoverOut: clock(220),
-  press: clock(140),
-  rise: clock(550),
-  mark: clock(380),
-  ring: clock(260),
-  floatingFall: clock(345),
-  /** `--motion-travel-lead` / `-trail`: a traveling thumb's leading and trailing edges. */
-  travelLead: clock(320),
-  travelTrail: clock(480),
-} as const;
-
-/** `--press-squash` and `--press-scale`. */
-export const PRESS_SQUASH = 0.9;
-export const PRESS_SCALE = 0.975;
-/** `--focus-ring-width`, `--focus-ring-offset`, `--focus-ring-land`. */
-export const FOCUS_RING = { width: 2, offset: 2, land: 4 } as const;
+/** `--focus-ring-width`, `--focus-ring-offset`. */
+export const FOCUS_RING = { width: 2, offset: 2 } as const;

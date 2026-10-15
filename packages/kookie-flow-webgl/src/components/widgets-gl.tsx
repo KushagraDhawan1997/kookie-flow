@@ -29,7 +29,8 @@
  *
  * THE LOOK IS GLASS, from `gl/glass.ts`: a well is the card showing through a tint, lit along
  * its top edge, with a hairline; a checked box and a slider's fill are the accent under the same
- * light. Every state fades — see `gl/motion.ts` for how that costs nothing per frame.
+ * light. Every state lands at once, as v2's controls have no motion: a state change is one buffer
+ * write and nothing on the frames after it.
  */
 
 import { useRef, useMemo, useState, useEffect } from 'react';
@@ -61,29 +62,11 @@ import {
   DEPTH_LAYER,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
-import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import {
   DEFAULT_ENTITY_WIDTH,
   SOCKET_LABEL_WIDTH,
 } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
-import {
-  SDF_GLSL,
-  GLASS_GLSL,
-  EASE_GLSL,
-  TransitionTracker,
-  motionNow,
-  SETTLED,
-  MATERIAL,
-  MOTION,
-  PRESS_SQUASH,
-  FOCUS_RING,
-  easeColor,
-  springStiff,
-  springMark,
-  springLively,
-  type RGBA,
-  type CastLayer,
-} from '../gl/index';
+import { SDF_GLSL, GLASS_GLSL, MATERIAL, FOCUS_RING, type RGBA, type CastLayer } from '../gl/index';
 import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types/index';
 
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -227,31 +210,6 @@ function colorOf(value: unknown): [number, number, number] {
 }
 
 /**
- * A segmented control's traveling thumb, in parts: each edge's start, the part it is heading to,
- * when it left, and which way (1 right, -1 left, 0 placed).
- */
-interface SegmentMotion {
-  fromL: number;
-  fromR: number;
-  to: number;
-  start: number;
-  dir: number;
-}
-
-/** Where one thumb edge is at `now` — the shader's own curve, so a retarget starts on screen. */
-function travelEdge(
-  from: number,
-  to: number,
-  start: number,
-  duration: number,
-  now: number,
-  reduced: boolean
-): number {
-  const k = reduced || duration <= 0 ? 1 : springMark((now - start) / duration);
-  return from + (to - from) * k;
-}
-
-/**
  * One matrix, reused for every instance on every frame, exactly as nodes.tsx and sockets.tsx do
  * it. It is only ever written and immediately flushed into the instance array, so nothing can
  * observe it between iterations.
@@ -276,9 +234,7 @@ const vertexShader = /* glsl */ `
   attribute float aValue;
   attribute vec3 aTint;
   attribute float aHover;
-  attribute vec4 aAnim;
-  attribute vec3 aMotion;
-  attribute vec2 aRing;
+  attribute float aRing;
 
   varying vec2 vUv;
   varying vec2 vSize;
@@ -287,9 +243,7 @@ const vertexShader = /* glsl */ `
   varying vec3 vTint;
   varying float vRadius;
   varying float vHover;
-  varying vec4 vAnim;
-  varying vec3 vMotion;
-  varying vec2 vRing;
+  varying float vRing;
 
   void main() {
     vUv = uv;
@@ -299,8 +253,6 @@ const vertexShader = /* glsl */ `
     vTint = aTint;
     vRadius = aRadius;
     vHover = aHover;
-    vAnim = aAnim;
-    vMotion = aMotion;
     vRing = aRing;
     // The quad is WIDGET_GLOW_PAD wider than the box on every side: the focus ring lives there.
     vec3 pos = vec3(position.xy * (aSize + ${(2 * WIDGET_GLOW_PAD).toFixed(1)}), position.z);
@@ -310,20 +262,13 @@ const vertexShader = /* glsl */ `
 
 /**
  * The control shader: KookieUI v2's controls, from `gl/glass.ts` and the numbers in
- * `gl/material.ts`, animated the way v2 animates them.
+ * `gl/material.ts`.
  *
- * THREE CLOCKS, AS v2 KEEPS THEM. Colour and movement never share a clock in v2, and neither do
- * they here:
- *  - COLOUR (`vHover`: 0 rest, 1 hover or open, 2 pressed) arrives on hover in 48ms, leaves in
- *    132ms, and lands at once on a press, on `--motion-easing`.
- *  - MOVEMENT (`vMotion`: pressed or not) goes into a press on the stiff spring over 84ms and
- *    recovers on the lively spring over 330ms. Only a mark and a slider's grip move — they squash.
- *    A field never moves, and a select trigger holds still too: its value is drawn by the text
- *    layer, and a well that sank under still text would read as broken.
- *  - THE FOCUS RING (`vRing`) appears and leaves at once. On a mark or a trigger it lands from 6px
- *    out to 2px over `--motion-ring`; on a field and on a slider's grip it does not travel.
- * A checkbox's fill changes as a colour does; its tick draws on over `--motion-mark` and clears at
- * once. Under reduced motion `uMotion` is 0 and every one of these lands immediately.
+ * NO MOTION, AS v2 HAS NONE. Every state is drawn where it is, with no clock:
+ *  - COLOUR (`vHover`: 0 rest, 1 hover or open, 2 pressed) picks v2's fill step.
+ *  - THE FOCUS RING (`vRing`) is on or off, 2px wide at a 2px offset.
+ *  - A checked mark is filled with its tick drawn, a switch's thumb sits on its side, and a
+ *    segmented control's thumb sits under the chosen part. Nothing squashes, turns or travels.
  */
 const fragmentShader = /* glsl */ `
   precision highp float;
@@ -360,17 +305,7 @@ const fragmentShader = /* glsl */ `
   uniform vec4 uGripCast[2];
   uniform vec4 uGripCastColor[2];
   uniform float uGrain;
-  uniform float uPressSquash;
-  uniform vec3 uFocusRing;
-
-  // Motion: the clock, v2's durations (hover in, hover out, mark, ring; press, rise), and 0 under
-  // reduced motion.
-  uniform float uTime;
-  uniform float uMotion;
-  uniform vec4 uColourDur;
-  uniform vec2 uMoveDur;
-  // A traveling thumb's leading and trailing edges, on --motion-spring.
-  uniform vec2 uTravelDur;
+  uniform vec2 uFocusRing;
 
   varying vec2 vUv;
   varying vec2 vSize;
@@ -379,25 +314,14 @@ const fragmentShader = /* glsl */ `
   varying vec3 vTint;
   varying float vRadius;
   varying float vHover;
-  varying vec4 vAnim;
-  varying vec3 vMotion;
-  varying vec2 vRing;
+  varying float vRing;
 
   ${SDF_GLSL}
   ${GLASS_GLSL}
-  ${EASE_GLSL}
 
-  // How far through a step that started at \`start\` and lasts \`dur\`; a step of no length, or any
-  // step under reduced motion, has already arrived.
-  float progress(float start, float dur) {
-    float d = dur * uMotion;
-    return d <= 0.0 ? 1.0 : clamp((uTime - start) / d, 0.0, 1.0);
-  }
-
-  // The focus ring: 2px wide at a 2px offset, landing from \`land\` = 0 (6px out) to 1.
-  vec4 focusRing(vec4 acc, float d, float aa, float on, float land) {
-    float offset = uFocusRing.y + uFocusRing.z * (1.0 - land);
-    float band = ringSDF(d - offset - uFocusRing.x, uFocusRing.x, aa);
+  // The focus ring: 2px wide at a 2px offset.
+  vec4 focusRing(vec4 acc, float d, float aa, float on) {
+    float band = ringSDF(d - uFocusRing.y - uFocusRing.x, uFocusRing.x, aa);
     return over(acc, uRing, band * on);
   }
 
@@ -407,46 +331,35 @@ const fragmentShader = /* glsl */ `
     float aa = fwidth(p.x) * 0.75 + 1e-5;
     vec2 px = gl_FragCoord.xy;
 
-    float colDur = vHover > 1.5 ? 0.0 : (vHover > 0.5 ? uColourDur.x : uColourDur.y);
-    float col = mix(vAnim.x, vHover, easeColor(progress(vAnim.y, colDur)));
-    float hov = clamp(col, 0.0, 1.0);
-    float act = clamp(col - 1.0, 0.0, 1.0);
-
-    float pressedTo = vMotion.z;
-    float pt = progress(vMotion.y, pressedTo > 0.5 ? uMoveDur.x : uMoveDur.y);
-    float press = mix(vMotion.x, pressedTo, pressedTo > 0.5 ? springStiff(pt) : springLively(pt));
-
-    float ringOn = vRing.x;
-    float land = springStiff(progress(vRing.y, uColourDur.w));
+    float hov = clamp(vHover, 0.0, 1.0);
+    float act = clamp(vHover - 1.0, 0.0, 1.0);
+    float ringOn = vRing;
 
     vec4 acc = vec4(0.0);
 
     if (vKind < 2.5 && vKind > 0.5) {
       // ---- the mark: v2's .kui-checkbox. No material — a 20px square of blur is a 20px square ----
       float side = min(vSize.y, uMarkSize);
-      float squash = 1.0 - (1.0 - uPressSquash) * press;
       vec2 b = vec2(side * 0.5);
-      vec2 cp = (p - vec2(-halfSize.x + side * 0.5, 0.0)) / squash;
+      vec2 cp = p - vec2(-halfSize.x + side * 0.5, 0.0);
       float r = min(uMarkRadius, side * 0.5);
       float d = sdRoundedBox(cp, b, r);
       float inside = fillSDF(d, aa);
       float on = step(1.5, vKind);
-      float onV = mix(vAnim.z, on, easeColor(progress(vAnim.w, uColourDur.x)));
-      float tick = on > 0.5 ? springMark(progress(vAnim.w, uColourDur.z)) : 0.0;
 
       vec3 rest = mix(mix(uMarkFill, uMarkFillHover, hov), uMarkFillActive, act);
       vec3 checkedFill = mix(mix(uActive, uActiveHover, hov), uActivePressed, act);
-      acc = over(acc, mix(rest, checkedFill, onV), inside);
-      acc = glassLight(acc, inside * onV, (b.y - cp.y) / side, uMarkLight);
+      acc = over(acc, mix(rest, checkedFill, on), inside);
+      acc = glassLight(acc, inside * on, (b.y - cp.y) / side, uMarkLight);
       // Checked, the edge melts into the fill.
-      vec4 edge = mix(uMarkEdge, vec4(checkedFill, 1.0), onV);
+      vec4 edge = mix(uMarkEdge, vec4(checkedFill, 1.0), on);
       acc = overC(acc, edge, ringSDF(d, 1.0, aa));
 
-      if (tick > 0.001) {
-        float dt = sdTick(cp, side, min(tick, 1.0));
+      if (on > 0.5) {
+        float dt = sdTick(cp, side, 1.0);
         acc = over(acc, uActiveContrast, fillSDF(dt, aa) * inside);
       }
-      acc = focusRing(acc, d * squash, aa, ringOn, land);
+      acc = focusRing(acc, d, aa, ringOn);
     } else if (vKind > 2.5 && vKind < 3.5) {
       // ---- the slider: v2's .kui-slider ----
       float trackH = min(uTrackHeight, vSize.y * 0.25);
@@ -460,16 +373,15 @@ const fragmentShader = /* glsl */ `
 
       float gr = min(uMarkSize, vSize.y) * 0.5;
       float gx = clamp(fillEdge, -halfSize.x + gr, halfSize.x - gr);
-      float squash = 1.0 - (1.0 - uPressSquash) * press;
-      vec2 gp = (p - vec2(gx, 0.0)) / squash;
+      vec2 gp = p - vec2(gx, 0.0);
       float gd = sdCircle(gp, gr);
       for (int i = 0; i < 2; i++) {
         float dc = sdCircle(gp - vec2(0.0, -uGripCast[i].x), gr + uGripCast[i].z);
         acc = glassCast(acc, dc, gd, uGripCast[i].y, uGripCastColor[i]);
       }
       acc = over(acc, uThumb, fillSDF(gd, aa));
-      // The ring sits on the grip and does not travel.
-      acc = focusRing(acc, gd * squash, aa, ringOn, 1.0);
+      // The ring sits on the grip.
+      acc = focusRing(acc, gd, aa, ringOn);
     } else if (vKind > 5.5 && vKind < 7.5) {
       // ---- the switch: v2's .kui-switch, at the row's trailing edge ----
       float th = min(vSize.y, uMarkSize + ${SWITCH_HEIGHT_STEP.toFixed(1)});
@@ -478,27 +390,22 @@ const fragmentShader = /* glsl */ `
       float td = sdRoundedBox(tp, vec2(tw * 0.5, th * 0.5), th * 0.5);
       float inside = fillSDF(td, aa);
       float on = step(6.5, vKind);
-      // The thumb's travel, on its own spring; the track's colour follows the travel, so the two
-      // can never disagree about which side the switch is on.
-      float travel = clamp(mix(vAnim.z, on, springStiff(progress(vAnim.w, uColourDur.z))), 0.0, 1.0);
       vec3 rest = mix(mix(uMarkFill, uMarkFillHover, hov), uMarkFillActive, act);
       vec3 onFill = mix(mix(uActive, uActiveHover, hov), uActivePressed, act);
-      acc = over(acc, mix(rest, onFill, travel), inside);
-      acc = overC(acc, mix(uMarkEdge, vec4(onFill, 1.0), travel), ringSDF(td, 1.0, aa));
-      // The thumb, 2 in from the track, stretching toward where it would go while pressed.
+      acc = over(acc, mix(rest, onFill, on), inside);
+      acc = overC(acc, mix(uMarkEdge, vec4(onFill, 1.0), on), ringSDF(td, 1.0, aa));
+      // The thumb, 2 in from the track, on the side the switch is on.
       float gr = th * 0.5 - 2.0;
-      float stretch = 4.0 * press;
       float span = tw * 0.5 - th * 0.5;
-      float gx = mix(-span, span, travel) + mix(stretch, -stretch, on) * 0.5;
-      vec2 gp = tp - vec2(gx, 0.0);
-      vec2 gb = vec2(gr + stretch * 0.5, gr);
+      vec2 gp = tp - vec2(mix(-span, span, on), 0.0);
+      vec2 gb = vec2(gr);
       float gd = sdRoundedBox(gp, gb, gr);
       for (int i = 0; i < 2; i++) {
         float dc = sdRoundedBox(gp - vec2(0.0, -uGripCast[i].x), gb + uGripCast[i].z, gr + uGripCast[i].z);
         acc = glassCast(acc, dc, gd, uGripCast[i].y, uGripCastColor[i]);
       }
       acc = over(acc, uThumb, fillSDF(gd, aa));
-      acc = focusRing(acc, td, aa, ringOn, land);
+      acc = focusRing(acc, td, aa, ringOn);
     } else {
       // ---- field, select, colour, segmented, vector, seed: v2's .kui-field in the regular material ----
       float r = min(vRadius, min(halfSize.x, halfSize.y));
@@ -530,28 +437,20 @@ const fragmentShader = /* glsl */ `
       }
 
       if (vKind > 3.5 && vKind < 4.5) {
-        // v2's chevron: 7 by 3.5, a 1.17px stroke, muted ink, centred 18px in; it turns over while
-        // the list is open.
+        // v2's chevron: 7 by 3.5, a 1.17px stroke, muted ink, centred 18px in.
         vec2 c = p - vec2(halfSize.x - 18.0, 0.0);
-        float dc = sdChevron(c, 7.0, 3.5, 0.58, press * 3.14159265);
+        float dc = sdChevron(c, 7.0, 3.5, 0.58, 0.0);
         acc = over(acc, uChevron, fillSDF(dc, aa) * inside * uChevronAlpha);
       }
 
       if (vKind > 7.5 && vKind < 8.5) {
-        // ---- segmented: a raised thumb under the chosen part, sliding between parts ----
+        // ---- segmented: a raised thumb under the chosen part ----
         float count = max(vTint.x, 1.0);
         float segW = vSize.x / count;
         float chosen = vTint.y;
-        // v2's traveling thumb: its two edges fly on their own clocks — the edge heading into the
-        // new part leads over --motion-travel-lead, the one leaving trails over -trail, both on
-        // --motion-spring — so the thumb stretches toward its seat and its tail catches up.
-        // Edges are in parts: from vAnim.z (left) and vTint.z (right), to chosen and chosen + 1.
-        float kLead = springMark(progress(vAnim.w, uTravelDur.x));
-        float kTrail = springMark(progress(vAnim.w, uTravelDur.y));
-        // Clamped to the track, as v2 clamps its insets with max(): the spring's overshoot may
-        // squash a thumb against the end of the track, never carry it past.
-        float edgeL = max(mix(vAnim.z, chosen, vValue > 0.0 ? kTrail : kLead), 0.0);
-        float edgeR = min(mix(vTint.z, chosen + 1.0, vValue > 0.0 ? kLead : kTrail), count);
+        // The thumb's edges, in parts.
+        float edgeL = chosen;
+        float edgeR = chosen + 1.0;
         if (chosen >= 0.0) {
           // Inset 3: the field's ring owns the outer pixel, so this leaves 2px of track clear
           // around the thumb. The corner shrinks by the same amount, so the two stay concentric.
@@ -574,8 +473,8 @@ const fragmentShader = /* glsl */ `
           float fk = float(k);
           if (fk >= count) break;
           float lx = -halfSize.x + segW * fk;
-          // Gone under and beside the thumb, wherever its edges are mid-flight, as v2 hides the
-          // separators either side of the checked segment.
+          // Gone under and beside the thumb, as v2 hides the separators either side of the checked
+          // segment.
           float gap = max(max(edgeL - fk, fk - edgeR), 0.0);
           float fade = chosen >= 0.0 ? smoothstep(0.0, 0.6, gap) : 1.0;
           float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.45);
@@ -597,14 +496,12 @@ const fragmentShader = /* glsl */ `
       }
 
       if (vKind > 9.5) {
-        // ---- seed: a roll button at the trailing end, a die that turns while pressed ----
+        // ---- seed: a roll button at the trailing end ----
         float bw = min(vSize.y, vSize.x * 0.5);
         float lx = halfSize.x - bw;
         float line = (1.0 - smoothstep(0.5 - aa, 0.5 + aa, abs(p.x - lx))) * step(abs(p.y), halfSize.y * 0.5);
         acc = overC(acc, uMarkEdge, line * inside);
         vec2 dp = p - vec2(halfSize.x - bw * 0.5, 0.0);
-        float turn = press * 1.5707963;
-        dp = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * dp;
         float face = ringSDF(sdRoundedBox(dp, vec2(6.0), 2.5), 1.2, aa);
         float pips = fillSDF(
           min(min(sdCircle(dp - vec2(-2.7, 2.7), 1.2), sdCircle(dp, 1.2)), sdCircle(dp - vec2(2.7, -2.7), 1.2)),
@@ -613,10 +510,8 @@ const fragmentShader = /* glsl */ `
         acc = over(acc, uChevron, max(face, pips) * inside * uChevronAlpha);
       }
 
-      // A field rings whenever it has the caret, at once; a trigger rings for the keyboard and lands.
-      // Select, colour and segmented are triggers; a vector and a seed are fields.
-      float trigger = ((vKind > 3.5 && vKind < 5.5) || (vKind > 7.5 && vKind < 8.5)) ? 1.0 : 0.0;
-      acc = focusRing(acc, d, aa, ringOn, mix(1.0, land, trigger));
+      // A field rings whenever it has the caret; a trigger rings for the keyboard.
+      acc = focusRing(acc, d, aa, ringOn);
     }
 
     if (acc.a < 0.004) discard;
@@ -639,28 +534,14 @@ function createBuffers(capacity: number) {
      * instance, 80KB a mesh at MAX_CAPACITY, allocated with the capacity step and never in a frame.
      */
     hover: new Float32Array(capacity),
-    /**
-     * Where each instance's two transitions started, and when: (hoverFrom, hoverStart,
-     * checkedFrom, checkedStart). The shader eases from these to `hover` and to the checked
-     * kind against the clock uniform, so a fade costs one write here when the state changes
-     * and nothing per frame. See gl/motion.ts.
-     */
-    anim: new Float32Array(capacity * 4),
-    /**
-     * The press, on its own clock: (pressFrom, pressStart, pressedTo). v2 never lets colour and
-     * movement share a clock, so a squash cannot ride the colour's fade.
-     */
-    motion: new Float32Array(capacity * 3),
-    /** The focus ring: (on, landStart). */
-    ring: new Float32Array(capacity * 2),
+    /** The focus ring: 1 on, 0 off. */
+    ring: new Float32Array(capacity),
     sizeAttr: null as THREE.InstancedBufferAttribute | null,
     radiusAttr: null as THREE.InstancedBufferAttribute | null,
     kindAttr: null as THREE.InstancedBufferAttribute | null,
     valueAttr: null as THREE.InstancedBufferAttribute | null,
     tintAttr: null as THREE.InstancedBufferAttribute | null,
     hoverAttr: null as THREE.InstancedBufferAttribute | null,
-    animAttr: null as THREE.InstancedBufferAttribute | null,
-    motionAttr: null as THREE.InstancedBufferAttribute | null,
     ringAttr: null as THREE.InstancedBufferAttribute | null,
   };
 }
@@ -669,7 +550,7 @@ function createBuffers(capacity: number) {
  * What the shader is told about a widget, from the four store fields that name one.
  *
  * COLOUR is v2's fill ladder: 2 pressed, 1 under the pointer or holding its list open (an open
- * trigger holds its hover fill), 0 at rest. PRESS is the pose: pressed, or open. RING is focus:
+ * trigger holds its hover fill), 0 at rest. RING is focus:
  * the widget whose edit is open has the caret, and the one the keyboard is on through the
  * accessibility mirror is `:focus-visible` — a pointer press rings neither a mark nor a trigger.
  */
@@ -690,19 +571,6 @@ function colourLevel(
   if (key === s.widgetPopover?.key) return 1;
   const h = s.hoveredWidget;
   return h !== null && h.entityId === entityId && h.socketId === socketId ? 1 : 0;
-}
-/**
- * The same, from a key alone — for the event path, which has a key and not the ids. One
- * concatenation per event rather than a split: an entity id may itself contain a colon.
- */
-function colourLevelOfKey(key: string, s: WidgetStateSource): number {
-  if (key === s.pressedWidgetKey) return 2;
-  if (key === s.widgetPopover?.key) return 1;
-  const h = s.hoveredWidget;
-  return h !== null && widgetKey(h.entityId, h.socketId) === key ? 1 : 0;
-}
-function pressLevel(key: string, s: WidgetStateSource): number {
-  return key === s.pressedWidgetKey || key === s.widgetPopover?.key ? 1 : 0;
 }
 function ringLevel(key: string, s: WidgetStateSource): number {
   return key === s.editingWidgetKey || key === s.focusVisibleWidgetKey ? 1 : 0;
@@ -795,17 +663,7 @@ export function WidgetsGL({
         uGripCast: { value: m.gripCast.map(cast) },
         uGripCastColor: { value: m.gripCast.map(castColor) },
         uGrain: { value: m.grain },
-        uPressSquash: { value: PRESS_SQUASH },
-        uFocusRing: {
-          value: new THREE.Vector3(FOCUS_RING.width, FOCUS_RING.offset, FOCUS_RING.land),
-        },
-        uTime: { value: 0 },
-        uMotion: { value: 1 },
-        uColourDur: {
-          value: new THREE.Vector4(MOTION.hoverIn, MOTION.hoverOut, MOTION.mark, MOTION.ring),
-        },
-        uMoveDur: { value: new THREE.Vector2(MOTION.press, MOTION.rise) },
-        uTravelDur: { value: new THREE.Vector2(MOTION.travelLead, MOTION.travelTrail) },
+        uFocusRing: { value: new THREE.Vector2(FOCUS_RING.width, FOCUS_RING.offset) },
       },
       vertexShader,
       fragmentShader,
@@ -858,9 +716,7 @@ export function WidgetsGL({
       buffers.valueAttr = new THREE.InstancedBufferAttribute(buffers.value, 1);
       buffers.tintAttr = new THREE.InstancedBufferAttribute(buffers.tint, 3);
       buffers.hoverAttr = new THREE.InstancedBufferAttribute(buffers.hover, 1);
-      buffers.animAttr = new THREE.InstancedBufferAttribute(buffers.anim, 4);
-      buffers.motionAttr = new THREE.InstancedBufferAttribute(buffers.motion, 3);
-      buffers.ringAttr = new THREE.InstancedBufferAttribute(buffers.ring, 2);
+      buffers.ringAttr = new THREE.InstancedBufferAttribute(buffers.ring, 1);
       for (const a of [
         buffers.sizeAttr,
         buffers.radiusAttr,
@@ -868,8 +724,6 @@ export function WidgetsGL({
         buffers.valueAttr,
         buffers.tintAttr,
         buffers.hoverAttr,
-        buffers.animAttr,
-        buffers.motionAttr,
         buffers.ringAttr,
       ]) {
         a.setUsage(THREE.DynamicDrawUsage);
@@ -880,8 +734,6 @@ export function WidgetsGL({
       mesh.geometry.setAttribute('aValue', buffers.valueAttr);
       mesh.geometry.setAttribute('aTint', buffers.tintAttr);
       mesh.geometry.setAttribute('aHover', buffers.hoverAttr);
-      mesh.geometry.setAttribute('aAnim', buffers.animAttr);
-      mesh.geometry.setAttribute('aMotion', buffers.motionAttr);
       mesh.geometry.setAttribute('aRing', buffers.ringAttr);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     }
@@ -969,165 +821,10 @@ export function WidgetsGL({
     };
   }, [store]);
 
-  /**
-   * The transitions. Each of the four state fields above fires exactly on a change, and the
-   * change names the widget that left a state and the one that entered it — so those two keys,
-   * and only those two, are re-stated to the tracker at the moment it happened. This is the
-   * ONLY place a fade is started; the frame loop just copies the tracker's answer into the
-   * instance buffer. Value changes animate a checkbox by the key `setWidgetValue` last wrote.
-   */
-  // Reduced motion reaches the trackers through a ref, so flipping it rebuilds nothing; the
-  // shader hears it through `uMotion`.
-  const reducedMotion = usePrefersReducedMotion();
-  const reducedRef = useRef(reducedMotion);
-  reducedRef.current = reducedMotion;
-  useEffect(() => {
-    material.uniforms.uMotion.value = reducedMotion ? 0 : 1;
-    dirtyRef.current = true;
-  }, [material, reducedMotion]);
-
-  const colourTrack = useMemo(
-    () =>
-      new TransitionTracker(
-        (to) => (reducedRef.current || to >= 2 ? 0 : to >= 1 ? MOTION.hoverIn : MOTION.hoverOut),
-        easeColor
-      ),
-    []
-  );
-  const pressTrack = useMemo(
-    () =>
-      new TransitionTracker(
-        (to) => (reducedRef.current ? 0 : to >= 1 ? MOTION.press : MOTION.rise),
-        (t, to) => (to >= 1 ? springStiff(t) : springLively(t))
-      ),
-    []
-  );
-  const ringTrack = useMemo(
-    () => new TransitionTracker(() => (reducedRef.current ? 0 : MOTION.ring), springStiff),
-    []
-  );
-  // Held for the tick's whole draw so the clock keeps running, but answering where the FILL is,
-  // which changes as a colour does and lands in `hoverIn`.
-  const checkTrack = useMemo(
-    () =>
-      new TransitionTracker(
-        (to) => (reducedRef.current ? 0 : to >= 1 ? MOTION.mark : MOTION.hoverIn),
-        (t, to) => easeColor(to >= 1 ? (t * MOTION.mark) / MOTION.hoverIn : t)
-      ),
-    []
-  );
-  // A switch's thumb travels on the stiff spring over `--motion-mark`, both ways — the checkbox
-  // tracker's durations are a colour's on the way out, and a thumb that crossed in 48ms would jump.
-  const switchTrack = useMemo(
-    () => new TransitionTracker(() => (reducedRef.current ? 0 : MOTION.mark), springStiff),
-    []
-  );
-  // Each segmented control's traveling thumb: where its two edges started, when, and which way.
-  const segmentMotion = useMemo(() => new Map<string, SegmentMotion>(), []);
-  useEffect(() => {
-    const restate = (key: string | null | undefined) => {
-      if (!key) return;
-      const s = store.getState();
-      const now = motionNow();
-      colourTrack.set(key, colourLevelOfKey(key, s), now);
-      pressTrack.set(key, pressLevel(key, s), now);
-      ringTrack.set(key, ringLevel(key, s), now);
-    };
-    const handleKey = (h: { entityId: string; socketId: string } | null) =>
-      h ? widgetKey(h.entityId, h.socketId) : null;
-    const unsubs = [
-      store.subscribe(
-        (s) => s.hoveredWidget,
-        (next, prev) => {
-          restate(handleKey(prev));
-          restate(handleKey(next));
-        }
-      ),
-      store.subscribe(
-        (s) => s.editingWidgetKey,
-        (next, prev) => {
-          restate(prev);
-          restate(next);
-        }
-      ),
-      store.subscribe(
-        (s) => s.pressedWidgetKey,
-        (next, prev) => {
-          restate(prev);
-          restate(next);
-        }
-      ),
-      store.subscribe(
-        (s) => s.focusVisibleWidgetKey,
-        (next, prev) => {
-          restate(prev);
-          restate(next);
-        }
-      ),
-      store.subscribe(
-        (s) => s.widgetPopover,
-        (next, prev) => {
-          restate(prev?.key);
-          restate(next?.key);
-        }
-      ),
-      store.subscribe(
-        (s) => s.widgetValuesVersion,
-        () => {
-          const s = store.getState();
-          const key = s.lastChangedWidgetKey;
-          if (!key) return;
-          const value = s.widgetValues.get(key)?.value;
-          if (typeof value === 'boolean') {
-            const now = motionNow();
-            checkTrack.set(key, value ? 1 : 0, now);
-            switchTrack.set(key, value ? 1 : 0, now);
-          }
-        }
-      ),
-    ];
-    return () => {
-      for (const u of unsubs) u();
-      colourTrack.clear();
-      pressTrack.clear();
-      ringTrack.clear();
-      checkTrack.clear();
-      switchTrack.clear();
-      segmentMotion.clear();
-    };
-  }, [store, colourTrack, pressTrack, ringTrack, checkTrack, switchTrack, segmentMotion]);
-
-  const wasMovingRef = useRef(false);
   useFrame(({ size }) => {
     const bgMesh = bgMeshRef.current;
     const fgMesh = fgMeshRef.current;
     if (!bgMesh || !fgMesh || !initializedRef.current) return;
-    // The clock reaches the shader only while something is fading or the buffers are being
-    // rewritten; a still layer never re-uploads. `active` also sweeps settled transitions.
-    const now = motionNow();
-    // Each is swept on its own: `||` would stop at the first one moving and leave the rest unswept.
-    const colourMoving = colourTrack.active(now);
-    const pressMoving = pressTrack.active(now);
-    const ringMoving = ringTrack.active(now);
-    const checkMoving = checkTrack.active(now);
-    const switchMoving = switchTrack.active(now);
-    // A thumb in flight keeps the clock running until its trailing edge lands.
-    let travelMoving = false;
-    if (!reducedRef.current) {
-      for (const m of segmentMotion.values()) {
-        if (now - m.start < MOTION.travelTrail) {
-          travelMoving = true;
-          break;
-        }
-      }
-    }
-    const moving =
-      colourMoving || pressMoving || ringMoving || checkMoving || switchMoving || travelMoving;
-    // Send the terminal frame too. A slow frame can cross the whole remaining
-    // duration; stopping on that frame freezes the shader at its previous value.
-    if (moving || wasMovingRef.current || dirtyRef.current) material.uniforms.uTime.value = now;
-    wasMovingRef.current = moving;
-
     const sizeChanged =
       size.width !== lastSizeRef.current.width || size.height !== lastSizeRef.current.height;
     if (sizeChanged) {
@@ -1285,84 +982,9 @@ export function WidgetsGL({
         }
         // Written unconditionally rather than only when lit, because these buffers are reused across
         // frames and instance `n` is a different widget from one frame to the next — a conditional
-        // write would leave the previous occupant's state behind and light the wrong well. A key a
-        // tracker does not hold is at its state and has been for ever: SETTLED is a start every
-        // duration has long since elapsed from, so the shader's ease clamps to 1 and nothing moves.
-        const colour = colourLevel(key, entity.id, socket.id, state);
-        buffers.hover[n] = colour;
-        const colourT = colourTrack.read(key);
-        buffers.anim[n * 4] = colourT ? colourT.from : colour;
-        buffers.anim[n * 4 + 1] = colourT ? colourT.start : SETTLED;
-        if (config.type === 'segmented') {
-          /**
-           * The traveling thumb. A value change is noticed HERE, on the dirty frame it lands in,
-           * against the part this key last headed to. Each edge's start is where that edge IS at
-           * this instant — on its own clock — so a change mid-flight retargets from the stretched
-           * thumb on screen instead of snapping it back to a whole part. The direction picks which
-           * edge leads. One record per segmented control drawn; a change allocates nothing.
-           */
-          const chosen = buffers.tint[n * 3 + 1];
-          let m = segmentMotion.get(key);
-          if (!m) {
-            m = { fromL: chosen, fromR: chosen + 1, to: chosen, start: SETTLED, dir: 0 };
-            segmentMotion.set(key, m);
-          } else if (m.to !== chosen) {
-            if (chosen >= 0 && m.to >= 0) {
-              const reduced = reducedRef.current;
-              const leftLeads = m.dir < 0;
-              const l = travelEdge(
-                m.fromL,
-                m.to,
-                m.start,
-                leftLeads ? MOTION.travelLead : MOTION.travelTrail,
-                now,
-                reduced
-              );
-              const r = travelEdge(
-                m.fromR,
-                m.to + 1,
-                m.start,
-                leftLeads ? MOTION.travelTrail : MOTION.travelLead,
-                now,
-                reduced
-              );
-              m.fromL = l;
-              m.fromR = r;
-              m.dir = chosen > l ? 1 : -1;
-              m.start = now;
-            } else {
-              // Appearing or leaving: placed, not flown.
-              m.fromL = chosen;
-              m.fromR = chosen + 1;
-              m.dir = 0;
-              m.start = SETTLED;
-            }
-            m.to = chosen;
-          }
-          buffers.anim[n * 4 + 2] = m.fromL;
-          buffers.anim[n * 4 + 3] = m.start;
-          buffers.tint[n * 3 + 2] = m.fromR;
-          buffers.value[n] = m.dir;
-        } else {
-          const checked =
-            buffers.kind[n] === KIND.checkboxOn || buffers.kind[n] === KIND.switchOn ? 1 : 0;
-          const checkT =
-            config.type === 'checkbox'
-              ? checkTrack.read(key)
-              : config.type === 'switch'
-                ? switchTrack.read(key)
-                : undefined;
-          buffers.anim[n * 4 + 2] = checkT ? checkT.from : checked;
-          buffers.anim[n * 4 + 3] = checkT ? checkT.start : SETTLED;
-        }
-        const pressed = pressLevel(key, state);
-        const pressT = pressTrack.read(key);
-        buffers.motion[n * 3] = pressT ? pressT.from : pressed;
-        buffers.motion[n * 3 + 1] = pressT ? pressT.start : SETTLED;
-        buffers.motion[n * 3 + 2] = pressed;
-        const ringT = ringTrack.read(key);
-        buffers.ring[n * 2] = ringLevel(key, state);
-        buffers.ring[n * 2 + 1] = ringT ? ringT.start : SETTLED;
+        // write would leave the previous occupant's state behind and light the wrong well.
+        buffers.hover[n] = colourLevel(key, entity.id, socket.id, state);
+        buffers.ring[n] = ringLevel(key, state);
 
         tempMatrix.identity();
         tempMatrix.setPosition(box.x + drawWidth / 2, -(box.y + box.height / 2), z);
@@ -1433,16 +1055,8 @@ export function WidgetsGL({
         buffers.hoverAttr.addUpdateRange(0, count);
         buffers.hoverAttr.needsUpdate = true;
       }
-      if (buffers.animAttr) {
-        buffers.animAttr.addUpdateRange(0, count * 4);
-        buffers.animAttr.needsUpdate = true;
-      }
-      if (buffers.motionAttr) {
-        buffers.motionAttr.addUpdateRange(0, count * 3);
-        buffers.motionAttr.needsUpdate = true;
-      }
       if (buffers.ringAttr) {
-        buffers.ringAttr.addUpdateRange(0, count * 2);
+        buffers.ringAttr.addUpdateRange(0, count);
         buffers.ringAttr.needsUpdate = true;
       }
     }

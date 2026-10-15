@@ -34,7 +34,7 @@ import {
 import { VideoTextureManager } from '../utils/video-loader';
 import type { VideoEntityData, EntityChange } from '../types/index';
 import { entityDepth } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
-import { easeChromePresence, fitsControls, fitsDownload, fitsExpand } from '../utils/media-chrome';
+import { fitsControls, fitsDownload, fitsExpand } from '../utils/media-chrome';
 import { registerVideoOps } from '../utils/media-runtime';
 import {
   sharedGeometry,
@@ -122,14 +122,10 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
   const explicitPlayRef = useRef<Set<string>>(new Set());
   const explicitPauseRef = useRef<Set<string>>(new Set());
   /**
-   * How faded in each entity's controls are, 0..1.
-   *
-   * Eased rather than switched, so the bar arrives under the pointer instead of blinking, and
-   * kept in a ref because it changes every frame of a fade and must never reach React.
+   * Whether any chrome is on screen, and the pass must therefore run. Chrome is switched, not
+   * eased, as v2's controls are.
    */
-  const chromePresenceRef = useRef<Map<string, number>>(new Map());
-  /** Whether any chrome is on screen or on its way there, and the pass must therefore run. */
-  const chromeFadingRef = useRef(false);
+  const chromeShownRef = useRef(false);
   /**
    * What the PERSON asked for, per entity, by pressing play or pause.
    *
@@ -316,7 +312,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
   const cameraRef = useRef<CameraGate | null>(null);
   if (cameraRef.current === null) cameraRef.current = new CameraGate();
 
-  useFrame(({ size }, delta) => {
+  useFrame(({ size }) => {
     // The camera, before the dirty gate below: a pan that has left the collected rect is the one
     // thing that has to wake this pass, and a pan that has not is the thing that must not.
     const camera = cameraRef.current as CameraGate;
@@ -326,10 +322,10 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
         fullDirtyRef.current = true;
       }
     }
-    // Controls fading in or standing open keep the pass alive: the bar's own progress line moves
-    // with the clip, and nothing in the store changes while a video plays.
-    if (!fullDirtyRef.current && !hiddenDirtyRef.current && !chromeFadingRef.current) return;
-    let chromeFading = false;
+    // Controls standing open keep the pass alive: the bar's own progress line moves with the clip,
+    // and nothing in the store changes while a video plays.
+    if (!fullDirtyRef.current && !hiddenDirtyRef.current && !chromeShownRef.current) return;
+    let chromeShown = false;
 
     const { entityMap, selectedEntityIds, hiddenEntityIds, stackOrder, hoveredEntityId } =
       store.getState();
@@ -434,8 +430,8 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
        */
       const wantsChrome =
         (data.controls ?? true) && hoveredEntityId === entity.id && fitsExpand(w, h);
-      const presence = easeChromePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
-      if (presence > 0.001) chromeFading = true;
+      const presence = wantsChrome ? 1 : 0;
+      if (wantsChrome) chromeShown = true;
 
       if (texture) {
         const mat = materialRefs.current.get(entity.id);
@@ -449,16 +445,13 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
               : 0;
           setMediaChrome(
             mat,
-            presence > 0.001 && fitsControls(w, h) ? 1 : 0,
+            wantsChrome && fitsControls(w, h) ? 1 : 0,
             played,
             src ? texManager.isPlaying(src) : false,
             presence,
             presence,
             fitsDownload(w, h) ? presence : 0
           );
-          // A clip that is running redraws its own frames anyway; one that is paused still has to
-          // repaint while its bar fades, and while it is showing, so the played line keeps up.
-          if (presence > 0.001) chromeFading = true;
           const u = mat.uniforms;
           setMediaMap(mat, texture);
           u.opacity.value = 1;
@@ -536,7 +529,7 @@ export function VideoEntities({ onEntitiesChange }: VideoEntitiesProps) {
       topologyDirtyRef.current = false;
     }
 
-    chromeFadingRef.current = chromeFading;
+    chromeShownRef.current = chromeShown;
     fullDirtyRef.current = false;
     hiddenDirtyRef.current = false;
   });

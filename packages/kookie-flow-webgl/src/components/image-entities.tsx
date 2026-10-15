@@ -35,7 +35,7 @@ import {
 import { ImageTextureManager } from '../utils/image-loader';
 import type { ImageEntityData, EntityChange } from '../types/index';
 import { entityDepth } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
-import { easeChromePresence, fitsDownload, fitsExpand } from '../utils/media-chrome';
+import { fitsDownload, fitsExpand } from '../utils/media-chrome';
 import {
   sharedGeometry,
   createPlaceholderMaterial,
@@ -124,10 +124,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const selectionDirtyRef = useRef(true);
   const hiddenDirtyRef = useRef(true);
   const topologyDirtyRef = useRef(true);
-  /** How faded in each picture's expand button is. Same easing the video controls use. */
-  const chromePresenceRef = useRef<Map<string, number>>(new Map());
-  /** Whether a button is mid-fade, so the pass runs on frames the store published nothing on. */
-  const chromeFadingRef = useRef(false);
 
   // Refs for each mesh, keyed by entity ID
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -354,7 +350,7 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
   const cameraRef = useRef<CameraGate | null>(null);
   if (cameraRef.current === null) cameraRef.current = new CameraGate();
 
-  useFrame(({ size }, delta) => {
+  useFrame(({ size }) => {
     // The camera, before the dirty gate below: a pan that has left the collected rect is the one
     // thing that has to wake this pass, and a pan that has not is the thing that must not.
     const camera = cameraRef.current as CameraGate;
@@ -371,8 +367,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       texManager.processUploadQueue(2);
       fullDirtyRef.current = true;
     }
-    // A button mid-fade needs its next step, and only the full pass writes chrome.
-    if (chromeFadingRef.current) fullDirtyRef.current = true;
 
     const full = fullDirtyRef.current || hiddenDirtyRef.current;
     const selDirty = selectionDirtyRef.current;
@@ -383,7 +377,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
     const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder, hoveredEntityId } =
       store.getState();
-    let chromeFading = false;
 
     // O(k) iteration over image entity IDs only, with O(1) entityMap lookups
     const ids = imageEntityIdsRef.current;
@@ -466,12 +459,11 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
       // Cache entry lookup once (used for UV, error state, and auto-sizing)
       const entry = src ? texManager.getEntry(src) : undefined;
 
-      // The expand button, under the pointer. Only a settled fade lets the pass stop: an open
-      // button is a still picture and costs nothing per frame.
+      // The expand button, under the pointer, at once: an open button is a still picture and costs
+      // nothing per frame.
       const wantsChrome =
         (data.controls ?? true) && hoveredEntityId === entity.id && fitsExpand(w, h);
-      const presence = easeChromePresence(chromePresenceRef.current, entity.id, wantsChrome, delta);
-      if (presence !== (wantsChrome ? 1 : 0)) chromeFading = true;
+      const presence = wantsChrome ? 1 : 0;
 
       if (texture) {
         // ShaderMaterial pre-created in ref callback — update uniforms only
@@ -565,7 +557,6 @@ export function ImageEntities({ maxImageTextureSize, onEntitiesChange }: ImageEn
 
     if (full) texManager.endFrame();
 
-    if (full) chromeFadingRef.current = chromeFading;
     fullDirtyRef.current = false;
     selectionDirtyRef.current = false;
     hiddenDirtyRef.current = false;

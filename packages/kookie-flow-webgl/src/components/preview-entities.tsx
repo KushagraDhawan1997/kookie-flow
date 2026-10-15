@@ -20,7 +20,7 @@
  * runs while a video is playing or a model is being redrawn. Bands whose source has not changed
  * upload nothing; a model's target is redrawn only when its box crosses a resolution bucket or
  * its scene finishes loading. Hovering a node with a band runs a CHROME-ONLY pass over the one
- * hovered band and whatever is still fading, never the whole list — pointer moves write no store
+ * hovered band and whichever band it just left, never the whole list — pointer moves write no store
  * state, so the band has to look for the pointer itself, and it looks in one place.
  */
 
@@ -42,13 +42,7 @@ import {
   DEPTH_LAYER,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/entity-depth';
 import { previewBandRect, type BandRect } from '../utils/preview-band';
-import {
-  easeChromePresence,
-  fitsControls,
-  fitsDownload,
-  fitsExpand,
-  orbitDirection,
-} from '../utils/media-chrome';
+import { fitsControls, fitsDownload, fitsExpand, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, registerVideoOps, subscribeOrbit } from '../utils/media-runtime';
 import { applyMediaGlass, buildMediaGlass } from '../utils/media-glass';
 import type { Entity } from '../types/index';
@@ -146,9 +140,9 @@ export function PreviewEntities() {
   const wantPlayingRef = useRef<Set<string>>(new Set());
   /** A pause or play someone pressed, by source. It outranks a band's standing wish to play. */
   const userPlaybackRef = useRef<Map<string, boolean>>(new Map());
-  /** How faded in each band's controls are, 0..1. */
-  const chromePresenceRef = useRef<Map<string, number>>(new Map());
-  /** Whether the chrome-only pass must run: a band is hovered, or something is still fading. */
+  /** The bands whose controls are showing, so the one the pointer left can be cleared. */
+  const chromeShownRef = useRef<Set<string>>(new Set());
+  /** Whether the chrome-only pass must run: a band is hovered, or one still shows its controls. */
   const chromeActiveRef = useRef(false);
   /** Scratch box, rewritten for every band so the pass allocates nothing. */
   const bandRef = useRef<BandRect>({ x: 0, y: 0, width: 0, height: 0 });
@@ -339,7 +333,7 @@ export function PreviewEntities() {
   }
 
   /**
-   * Write one band's controls and return whether they are still fading.
+   * Write one band's controls, shown or hidden at once, as v2's controls are.
    *
    * The pointer has to be over the BAND, not merely the node: the controls belong to the picture,
    * and a button appearing when the pointer is on the node's title would be answering the wrong
@@ -352,9 +346,8 @@ export function PreviewEntities() {
     mat: THREE.ShaderMaterial,
     source: PreviewSource,
     hoveredEntityId: string | null,
-    pointerWorld: Float32Array,
-    delta: number
-  ): boolean {
+    pointerWorld: Float32Array
+  ): void {
     const px = pointerWorld[0];
     const py = pointerWorld[1];
     const over =
@@ -364,7 +357,9 @@ export function PreviewEntities() {
       py >= band.y &&
       py <= band.y + band.height;
     const wants = (entity.preview?.controls ?? true) && over && fitsExpand(band.width, band.height);
-    const presence = easeChromePresence(chromePresenceRef.current, entity.id, wants, delta);
+    const presence = wants ? 1 : 0;
+    if (wants) chromeShownRef.current.add(entity.id);
+    else chromeShownRef.current.delete(entity.id);
 
     const bar = source.kind === 'video' && fitsControls(band.width, band.height);
     let progress = 0;
@@ -384,14 +379,13 @@ export function PreviewEntities() {
         : 0;
     setMediaChrome(
       mat,
-      bar && presence > 0.001 ? 1 : 0,
+      bar && wants ? 1 : 0,
       progress,
       playing,
       bar ? presence : 0,
       presence,
       download
     );
-    return presence !== (wants ? 1 : 0);
   }
 
   /**
@@ -417,12 +411,11 @@ export function PreviewEntities() {
     return true;
   }
 
-  /** The chrome-only pass: the hovered band and anything still fading, and nothing else. */
-  function chromePass(delta: number): void {
+  /** The chrome-only pass: the hovered band and any band still showing controls, and nothing else. */
+  function chromePass(): void {
     const { entityMap, hoveredEntityId, pointerWorld } = store.getState();
-    const presences = chromePresenceRef.current;
+    const shown = chromeShownRef.current;
     const band = bandRef.current;
-    let fading = false;
 
     const step = (id: string) => {
       const entity = entityMap.get(id);
@@ -430,23 +423,22 @@ export function PreviewEntities() {
       const mat = materialRefs.current.get(id);
       const hold = holdsRef.current.get(id);
       if (!entity || !quad || !quad.visible || !mat || !hold || quad.material !== mat) {
-        presences.delete(id);
+        shown.delete(id);
         return;
       }
       if (!previewBandRect(entity, socketLayout, band)) {
-        presences.delete(id);
+        shown.delete(id);
         return;
       }
-      if (writeChrome(entity, band, mat, hold.source, hoveredEntityId, pointerWorld, delta))
-        fading = true;
+      writeChrome(entity, band, mat, hold.source, hoveredEntityId, pointerWorld);
     };
 
     const hovered =
       hoveredEntityId && entityMap.get(hoveredEntityId)?.preview ? hoveredEntityId : null;
     if (hovered) step(hovered);
-    for (const id of presences.keys()) if (id !== hovered) step(id);
+    for (const id of shown) if (id !== hovered) step(id);
 
-    chromeActiveRef.current = fading || hovered !== null;
+    chromeActiveRef.current = hovered !== null || shown.size > 0;
   }
 
   /**
@@ -463,7 +455,7 @@ export function PreviewEntities() {
   const cameraRef = useRef<CameraGate | null>(null);
   if (cameraRef.current === null) cameraRef.current = new CameraGate();
 
-  useFrame(({ gl, size, viewport: glViewport }, delta) => {
+  useFrame(({ gl, size, viewport: glViewport }) => {
     const frame = ++frameRef.current;
 
     // The camera, before the dirty gate below: a pan that has left the collected rect is the one
@@ -482,7 +474,7 @@ export function PreviewEntities() {
       fullDirtyRef.current = true;
     }
     if (!fullDirtyRef.current && !animatingRef.current) {
-      if (chromeActiveRef.current) chromePass(delta);
+      if (chromeActiveRef.current) chromePass();
       return;
     }
 
@@ -500,7 +492,6 @@ export function PreviewEntities() {
     const wantPlaying = wantPlayingRef.current;
     wantPlaying.clear();
     let animating = false;
-    let chromeFading = false;
     const band = bandRef.current;
 
     const cullRect = camera.rect;
@@ -695,8 +686,7 @@ export function PreviewEntities() {
         if (mat.uniforms.map.value !== target.rt.texture)
           mat.uniforms.map.value = target.rt.texture;
         mat.uniforms.opacity.value = 1;
-        if (writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld, delta))
-          chromeFading = true;
+        writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld);
         quad.material = mat;
         continue;
       }
@@ -759,8 +749,7 @@ export function PreviewEntities() {
       );
       setMediaMap(mat, texture);
       mat.uniforms.opacity.value = 1;
-      if (writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld, delta))
-        chromeFading = true;
+      writeChrome(entity, band, mat, source, hoveredEntityId, pointerWorld);
       quad.material = mat;
     }
 
@@ -775,7 +764,7 @@ export function PreviewEntities() {
     animatingRef.current = animating;
     // A hovered band has to keep looking for the pointer; see the file docblock.
     chromeActiveRef.current =
-      chromeFading ||
+      chromeShownRef.current.size > 0 ||
       (hoveredEntityId !== null && entityMap.get(hoveredEntityId)?.preview !== undefined);
 
     if (topologyDirtyRef.current) {
@@ -786,7 +775,7 @@ export function PreviewEntities() {
         refCallbacksRef.current.delete(id);
         targetsRef.current.get(id)?.rt.dispose();
         targetsRef.current.delete(id);
-        chromePresenceRef.current.delete(id);
+        chromeShownRef.current.delete(id);
         releaseHold(id);
       }
       topologyDirtyRef.current = false;

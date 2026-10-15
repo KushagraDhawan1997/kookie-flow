@@ -3347,10 +3347,6 @@ await withPage('scene=widgets&widgets=1&preserveBuffer=1', async (page) => {
   await page.mouse.move(field.x, field.y);
   await page.waitForTimeout(200);
   const hoverMean = await wellMean();
-  const motion = await page.evaluate(() => window.__harness.widgetMotion());
-  check('the widget clock reaches the terminal transition frame',
-    motion.length === 1 && motion.every((m) => m.clock >= m.start + m.duration),
-    JSON.stringify(motion));
   check(
     'hovering a widget changes what is on the screen',
     restMean !== null && hoverMean !== null && Math.abs(restMean - hoverMean) > 2,
@@ -4539,7 +4535,7 @@ await withPage('scene=media&grid=0&preserveBuffer=1', async (page) => {
    * read [121,100,161] before a 45-degree turn and [122,102,159] after — while a screenshot of the
    * same two frames showed a cube face-on and then a cube on its corner. A grid over the central
    * 60% cannot all land on one flat tone. The top edge and the corner stay out of it: the drag strip
-   * and the expand button fade in there once the pointer is over the model, and they would read as
+   * and the expand button appear there once the pointer is over the model, and they would read as
    * a redraw that never happened.
    */
   const modelGrid = () =>

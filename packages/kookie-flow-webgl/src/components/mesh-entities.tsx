@@ -47,7 +47,6 @@ import {
   setMediaChrome,
 } from '../utils/media-quad';
 import {
-  easeChromePresence,
   fitsDownload,
   fitsExpand,
   isMeshDragStrip,
@@ -172,9 +171,6 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
    * up to date on the frame the truth about it changes.
    */
   const hasRotatingRef = useRef(false);
-  /** How faded in each model's drag strip is. Same easing the video controls use. */
-  const chromePresenceRef = useRef<Map<string, number>>(new Map());
-  const chromeFadingRef = useRef(false);
 
   /** Scratch vectors, reused so the render pass allocates nothing. */
   const dirRef = useRef(new THREE.Vector3());
@@ -357,9 +353,8 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
 
     // Auto-rotating entities invalidate themselves, so the pass must run for them on frames the
     // store published nothing on.
-    if (!fullDirtyRef.current && !hasRotatingRef.current && !chromeFadingRef.current) return;
+    if (!fullDirtyRef.current && !hasRotatingRef.current) return;
     let rotating = false;
-    let chromeFading = false;
 
     const { entityMap, viewport, selectedEntityIds, hiddenEntityIds, stackOrder, hoveredEntityId } =
       store.getState();
@@ -560,17 +555,11 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         const hasStrip = (data.orbit ?? true) && isMeshDragStrip(0, h);
         const hasExpand = (data.controls ?? true) && fitsExpand(w, h);
         const wantsChrome = hoveredEntityId === entity.id && (hasStrip || hasExpand);
-        const presence = easeChromePresence(
-          chromePresenceRef.current,
-          entity.id,
-          wantsChrome,
-          delta
-        );
-        // Only a moving fade keeps the pass alive; open chrome on a still model is a still picture.
-        if (presence !== (wantsChrome ? 1 : 0)) chromeFading = true;
+        // At once, so open chrome on a still model is a still picture and keeps no pass alive.
+        const presence = wantsChrome ? 1 : 0;
         setMediaChrome(
           mat,
-          hasStrip && presence > 0.001 ? 2 : 0,
+          hasStrip && wantsChrome ? 2 : 0,
           0,
           false,
           hasStrip ? presence : 0,
@@ -591,7 +580,6 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
     }
 
     hasRotatingRef.current = rotating;
-    chromeFadingRef.current = chromeFading;
 
     if (topologyDirtyRef.current) {
       for (const [id] of materialRefs.current) {

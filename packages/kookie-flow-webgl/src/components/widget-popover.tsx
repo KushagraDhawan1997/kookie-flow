@@ -13,8 +13,7 @@
  * TWO DRAW CALLS. One quad for the panel — its shadow, its blurred ground, the glass on top, the
  * lit row, the selected mark, and for a colour picker the saturation square, the hue strip and
  * both cursors, all in one fragment shader — and one instanced MSDF mesh for the text. Both sit in
- * a group scaled about the panel's anchor for the entrance, so opening costs uniform writes and no
- * buffer traffic.
+ * a group placed at the trigger. There is no entrance: v2's floating panels have no motion.
  *
  * THE GROUND IS REAL. Just before the panel draws, the pixels already under it are copied out of
  * the frame (gl/backdrop.ts) and the shader blurs and saturates them the way `backdrop-filter`
@@ -26,7 +25,6 @@
  */
 
 import { useRef, useMemo, useEffect } from 'react';
-import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useFlowStoreApi } from './context';
@@ -35,11 +33,7 @@ import { useResolvedStyle, useSocketLayout } from '../contexts/StyleContext';
 import { useFont } from '../contexts/FontContext';
 import { THEME_COLORS, resolveColor } from '../core/theme-colors';
 import { rgbToHex } from '../utils/color';
-import {
-  msdfVertexShader,
-  msdfFragmentShaderFaded,
-  MSDF_SHADER_DEFAULTS,
-} from '../utils/msdf-shader';
+import { msdfVertexShader, msdfFragmentShader, MSDF_SHADER_DEFAULTS } from '../utils/msdf-shader';
 import {
   populateGlyphBuffers,
   truncateText,
@@ -59,14 +53,9 @@ import { hsvToHex } from '@kushagradhawan/kookie-flow-core/internal/utils/hsv';
 import {
   SDF_GLSL,
   GLASS_GLSL,
-  EASE_GLSL,
   BACKDROP_GLSL,
   BackdropSnapshot,
-  motionNow,
-  easeOutCubic,
-  springElastic,
   MATERIAL,
-  MOTION,
   CORNER_K_FLOATING_ROWS,
   type RGBA,
 } from '../gl/index';
@@ -76,8 +65,6 @@ const POPOVER_Z = 50;
 /** Past the text layer (6) and the resize handles (6.5), so the panel covers them. */
 const RENDER_ORDER_PANEL = 20;
 const RENDER_ORDER_TEXT = 21;
-/** The entrance: v2's `--floating-fall` on its elastic spring. */
-const OPEN_DURATION = MOTION.floatingFall;
 /** Glyph capacity: eight rows of long options, or one hex readout. Grown if ever exceeded. */
 const TEXT_CAPACITY = 1024;
 /**
@@ -103,7 +90,6 @@ const fragmentShader = /* glsl */ `
   uniform float uCornerK;
   uniform float uShadowPad;
   uniform float uKind;
-  uniform float uOpen;
   uniform float uBlur;
 
   // The material (gl/material.ts): the floating surface's fill over the filtered ground, its
@@ -145,7 +131,6 @@ const fragmentShader = /* glsl */ `
 
   ${SDF_GLSL}
   ${GLASS_GLSL}
-  ${EASE_GLSL}
   ${BACKDROP_GLSL}
 
   vec3 hsv2rgb(vec3 c) {
@@ -239,7 +224,6 @@ const fragmentShader = /* glsl */ `
     // has no border of its own — the ring is the whole edge.
     acc = glassRing(acc, d, aa, 1.0, p, uRingTop, uRingUpper, uRingSide, uRingBottom, 0.6);
 
-    acc.a *= uOpen;
     if (acc.a < 0.004) discard;
     gl_FragColor = acc;
   }
@@ -275,7 +259,6 @@ export function WidgetPopoverGL() {
   );
 
   const appearance = tokens.appearance;
-  const reducedMotion = usePrefersReducedMotion();
   const material = useMemo(() => {
     const m = MATERIAL[appearance];
     const rgb = (v: readonly number[]) => new THREE.Color(v[0], v[1], v[2]);
@@ -299,7 +282,6 @@ export function WidgetPopoverGL() {
         uCornerK: { value: CORNER_K_FLOATING_ROWS },
         uShadowPad: { value: POPOVER_SHADOW_PAD },
         uKind: { value: 0 },
-        uOpen: { value: 0 },
         uBlur: { value: m.surfaceBlur * BLUR_RADIUS_PER_SIGMA },
         uTint: { value: rgb(tint) },
         uTintA: { value: m.floatingAlpha },
@@ -361,10 +343,9 @@ export function WidgetPopoverGL() {
         uAtlas: { value: font.texture },
         uThreshold: { value: MSDF_SHADER_DEFAULTS.threshold },
         uAlphaTest: { value: MSDF_SHADER_DEFAULTS.alphaTest },
-        uOpacity: { value: 0 },
       },
       vertexShader: msdfVertexShader,
-      fragmentShader: msdfFragmentShaderFaded,
+      fragmentShader: msdfFragmentShader,
       transparent: true,
       depthWrite: false,
       depthTest: true,
@@ -472,18 +453,7 @@ export function WidgetPopoverGL() {
       return;
     }
 
-    // The entrance: uniforms only, on the frames it lasts.
-    // The entrance: v2's elastic spring on the size — it overshoots by a few percent and
-    // settles — with the fade done in the first third of it.
-    // Reduced motion: v2 turns a panel's animation off, so it is simply there.
-    const t = reducedMotion ? 1 : (motionNow() - pop.openedAt) / OPEN_DURATION;
-    const entering = t < 1;
-    if (entering || dirtyRef.current) {
-      const fade = easeOutCubic(t * 3);
-      material.uniforms.uOpen.value = fade;
-      if (textMaterial) textMaterial.uniforms.uOpacity.value = fade;
-      group.scale.setScalar(0.92 + 0.08 * springElastic(t));
-    }
+    // No entrance: v2's floating panels have no motion, so the panel is simply there.
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
 
@@ -498,7 +468,7 @@ export function WidgetPopoverGL() {
     layoutRef.current = layout;
     group.visible = true;
 
-    // v2 grows a panel out of its trigger's own box, so the scale is about the trigger's centre.
+    // The group sits at the trigger's centre and the panel is placed relative to it.
     const ax = layout.anchorX;
     const ay = layout.anchorY;
     group.position.set(ax, -ay, POPOVER_Z);

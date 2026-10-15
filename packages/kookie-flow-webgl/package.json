@@ -498,17 +498,6 @@
         "default": "./dist/gl/backdrop.cjs"
       }
     },
-    "./internal/gl/ease": {
-      "kookie-flow-source": "./src/gl/ease.ts",
-      "import": {
-        "types": "./dist/gl/ease.d.ts",
-        "default": "./dist/gl/ease.js"
-      },
-      "require": {
-        "types": "./dist/gl/ease.d.cts",
-        "default": "./dist/gl/ease.cjs"
-      }
-    },
     "./internal/gl/glass": {
       "kookie-flow-source": "./src/gl/glass.ts",
       "import": {
@@ -553,17 +542,6 @@
         "default": "./dist/gl/material.cjs"
       }
     },
-    "./internal/gl/motion": {
-      "kookie-flow-source": "./src/gl/motion.ts",
-      "import": {
-        "types": "./dist/gl/motion.d.ts",
-        "default": "./dist/gl/motion.js"
-      },
-      "require": {
-        "types": "./dist/gl/motion.d.cts",
-        "default": "./dist/gl/motion.cjs"
-      }
-    },
     "./internal/gl/sdf": {
       "kookie-flow-source": "./src/gl/sdf.ts",
       "import": {
@@ -595,17 +573,6 @@
       "require": {
         "types": "./dist/hooks/index.d.cts",
         "default": "./dist/hooks/index.cjs"
-      }
-    },
-    "./internal/hooks/usePrefersReducedMotion": {
-      "kookie-flow-source": "./src/hooks/usePrefersReducedMotion.ts",
-      "import": {
-        "types": "./dist/hooks/usePrefersReducedMotion.d.ts",
-        "default": "./dist/hooks/usePrefersReducedMotion.js"
-      },
-      "require": {
-        "types": "./dist/hooks/usePrefersReducedMotion.d.cts",
-        "default": "./dist/hooks/usePrefersReducedMotion.cjs"
       }
     },
     "./internal/hooks/useThemeTokens": {
