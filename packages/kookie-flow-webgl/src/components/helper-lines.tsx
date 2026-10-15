@@ -32,7 +32,8 @@ export function HelperLines() {
   const dirtyRef = useRef(true);
 
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const color = resolveColor(colors.selectionBox.fill, tokens);
+  // Memoised: resolveColor returns a fresh tuple, and the materials memoise on it.
+  const color = useMemo(() => resolveColor(colors.selectionBox.fill, tokens), [tokens, colors]);
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({

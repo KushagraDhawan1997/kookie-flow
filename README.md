@@ -11,11 +11,12 @@ nodes pans and zooms without React re-rendering.
 | Package | Owns |
 | --- | --- |
 | `@kushagradhawan/kookie-flow-core` | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
-| `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction, text editing and Kookie Flow's glass appearance. Uses React/R3F. |
+| `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin. |
+| `@kushagradhawan/kookie-flow-skin-glass` | KookieUI v2's glass look: colour roles, sizes, shaders and toolbar controls. |
 | `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
-| `@kushagradhawan/kookie-flow` | Compatibility entry forwarding to those packages. |
+| `@kushagradhawan/kookie-flow` | Compatibility entry forwarding to those packages, glass by default. |
 
-These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
+These 0.2.0 candidates are unpublished. Use the workspace or pack all five packages with pnpm.
 The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
 Fiber 9.7+, drei 10.7+, and WebGL 2. The core only depends on Zustand's vanilla store.
 
@@ -32,6 +33,7 @@ a box with a height.
 "use client";
 
 import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
+import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
 
 const initialEntities: Entity[] = [
   { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
@@ -47,7 +49,7 @@ export default function Graph() {
 
   return (
     <div style={{ width: "100%", height: 360 }}>
-      <KookieFlow entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
+      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange} onConnect={onConnect} />
     </div>
   );

@@ -58,11 +58,6 @@ export {
 
 // Style resolution utilities (Milestone 2)
 export {
-  SIZE_MAP,
-  VARIANT_MAP,
-  RADIUS_MAP,
-  SOCKET_ROW_HEIGHT_TOKEN,
-  WIDGET_HEIGHT_TOKEN,
   type ResolvedEntityStyle,
   type ResolvedSocketLayout,
   resolveEntityStyle,

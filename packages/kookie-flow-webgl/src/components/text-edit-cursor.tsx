@@ -98,8 +98,15 @@ export function TextEditCursor() {
   const matrixTmpRef = useRef(new THREE.Matrix4());
 
   // Theme colors
-  const accentColor = resolveColor(colors.entitySelection.selected, tokens);
-  const primaryTextColor = resolveColor(colors.text.primary, tokens);
+  // Memoised: resolveColor returns a fresh tuple, and the materials memoise on it.
+  const accentColor = useMemo(
+    () => resolveColor(colors.entitySelection.selected, tokens),
+    [tokens, colors]
+  );
+  const primaryTextColor = useMemo(
+    () => resolveColor(colors.text.primary, tokens),
+    [tokens, colors]
+  );
 
   // Cursor material (single mesh, not instanced)
   const cursorMaterial = useMemo(() => {

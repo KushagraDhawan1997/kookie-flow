@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { SkinShader } from '../types';
-import { resolveColor } from '../../core/theme-colors';
+import type { SkinShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
+import { resolveColor } from '@kushagradhawan/kookie-flow-webgl/internal/core/theme-colors';
 import { GLASS_GLSL } from './glass';
 import { GLINT, LENS, LENS_GLSL } from './lens';
 import { MATERIAL, type RGBA } from './material';

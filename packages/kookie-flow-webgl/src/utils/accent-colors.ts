@@ -30,8 +30,8 @@ export const NO_OVERRIDE_SENTINEL: RGBColor = [-1, -1, -1];
  * `red` here is a person choosing a red node, and `--destructive-9` is the colour of an invalid
  * connection. They are the same pixel in v1 and different questions, and a blanket rename during
  * the v2 swap briefly made them one — which would have moved every red-accented entity the day
- * someone re-judged the destructive tone. The semantic pair lives in `THEME_COLORS`, reads from
- * the design system, and is not in this table.
+ * someone re-judged the destructive tone. The semantic pair lives in the skin's colour roles,
+ * reads from the design system, and is not in this table.
  */
 const ACCENT_TOKEN_KEY: Record<AccentColor, string> = {
   gray: '--neutral-9',

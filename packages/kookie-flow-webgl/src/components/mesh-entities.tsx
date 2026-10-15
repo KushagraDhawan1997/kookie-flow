@@ -46,6 +46,7 @@ import {
   createMediaMaterial,
   setMediaBox,
   setMediaChrome,
+  setMediaSkin,
 } from '../utils/media-quad';
 import { fitsDownload, fitsExpand, isMeshDragStrip, orbitDirection } from '../utils/media-chrome';
 import { getOrbit, hasOrbit, subscribeOrbit } from '../utils/media-runtime';
@@ -112,6 +113,8 @@ interface MeshEntitiesProps {
 
 export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
   const skin = useSkin();
+  const skinRef = useRef(skin);
+  skinRef.current = skin;
   const { colors } = skin;
   const store = useFlowStoreApi();
   const tokens = useTheme();
@@ -153,7 +156,10 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
   const glassRef = useRef(glass);
   glassRef.current = glass;
   useEffect(() => {
-    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    for (const mat of materialRefs.current.values()) {
+      setMediaSkin(mat, skinRef.current);
+      applyMediaGlass(mat, glass);
+    }
     fullDirtyRef.current = true;
   }, [glass]);
 
@@ -281,7 +287,7 @@ export function MeshEntities({ onEntitiesChange }: MeshEntitiesProps) {
         if (mesh) {
           meshRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id)) {
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skinRef.current));
           }
         } else {
           meshRefs.current.delete(id);

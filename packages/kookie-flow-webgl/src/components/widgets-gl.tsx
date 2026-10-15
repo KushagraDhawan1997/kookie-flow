@@ -27,10 +27,10 @@
  * `widget-popover.tsx`, drawn in GL over everything. And nothing here handles a keystroke — a
  * text edit borrows a real DOM input for its caret and IME, which is `widget-edit-overlay.tsx`.
  *
- * THE LOOK IS THE SKIN'S (glass by default, `skin/glass/controls.ts`): a well is the card showing through a tint, lit along
- * its top edge, with a hairline; a checked box and a slider's fill are the accent under the same
- * light. Every state lands at once, as v2's controls have no motion: a state change is one buffer
- * write and nothing on the frames after it.
+ * THE LOOK IS THE SKIN'S (`skin.shaders.controls`; the glass skin's is described here): a well
+ * is the card showing through a tint, lit along its top edge, with a hairline; a checked box and a
+ * slider's fill are the accent under the same light. Every state lands at once, as v2's controls
+ * have no motion: a state change is one buffer write and nothing on the frames after it.
  */
 
 import { useSkin } from '../skin/context';
@@ -67,7 +67,7 @@ import {
   DEFAULT_ENTITY_WIDTH,
   SOCKET_LABEL_WIDTH,
 } from '@kushagradhawan/kookie-flow-core/internal/core/constants';
-import { SDF_GLSL, COMPOSITE_GLSL, FOCUS_RING } from '../gl/index';
+import { SDF_GLSL, COMPOSITE_GLSL } from '../gl/index';
 import type { SocketType, ResolvedWidgetConfig, WidgetType } from '../types/index';
 
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -556,7 +556,7 @@ export function WidgetsGL({
   defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
   socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: WidgetsGLProps) {
-  const { colors, shaders } = useSkin();
+  const { colors, shaders, metrics } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -622,7 +622,7 @@ export function WidgetsGL({
         uMarkSize: { value: socketLayout.markSize },
         uMarkRadius: { value: resolvedStyle.markRadius },
         uTrackHeight: { value: socketLayout.trackHeight },
-        uFocusRing: { value: new THREE.Vector2(FOCUS_RING.width, FOCUS_RING.offset) },
+        uFocusRing: { value: new THREE.Vector2(metrics.focusRing.width, metrics.focusRing.offset) },
         ...shaders.controls.uniforms({ tokens, colors }),
       },
       vertexShader,
@@ -633,7 +633,7 @@ export function WidgetsGL({
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, c, colors, shaders, resolvedStyle.markRadius]);
+  }, [tokens, c, colors, shaders, metrics, resolvedStyle.markRadius]);
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(
     () => () => {

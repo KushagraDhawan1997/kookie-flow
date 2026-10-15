@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CardShader } from '../types';
+import type { CardShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
 import { AURA_GLSL } from './glass';
 import { MATERIAL } from './material';
 import { GLASS_METRICS } from './metrics';

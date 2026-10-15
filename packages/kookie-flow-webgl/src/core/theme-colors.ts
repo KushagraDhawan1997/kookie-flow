@@ -44,6 +44,3 @@ export function resolveColor(
   // Fallback gray
   return [0.5, 0.5, 0.5];
 }
-
-/** @deprecated The glass skin's colour roles. Use `useSkin().colors`. */
-export { GLASS_COLORS as THEME_COLORS } from '../skin/glass/colors';

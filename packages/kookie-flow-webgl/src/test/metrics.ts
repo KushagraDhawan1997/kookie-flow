@@ -1,10 +1,11 @@
-import type { ThemeTokens } from '../../hooks/useThemeTokens';
-import type { EntityRadius, EntitySize, EntityVariant } from '../../types/index';
-import type { SizeConfig, SkinMetrics, VariantConfig } from '../types';
+import type { ThemeTokens } from '../hooks/useThemeTokens';
+import type { EntityRadius, EntitySize, EntityVariant } from '../types/index';
+import type { SizeConfig, SkinMetrics, VariantConfig } from '../skin/types';
 
 /**
- * The glass skin's sizes, radii and variants: which KookieUI v2 length token each slot takes.
- * Matches KookieUI v2's Card.
+ * A skin's metrics for tests that resolve a layout without mounting an editor. The renderer has
+ * no metrics of its own; these are a copy of the glass skin's, so a fixture lays out the way the
+ * default editor does.
  */
 
 /**
@@ -182,7 +183,7 @@ const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   full: '--radius-full',
 };
 
-export const GLASS_METRICS: SkinMetrics = {
+export const TEST_METRICS: SkinMetrics = {
   sizes: SIZE_MAP,
   variants: VARIANT_MAP,
   radii: RADIUS_MAP,
@@ -192,16 +193,5 @@ export const GLASS_METRICS: SkinMetrics = {
   nodeTopLight: NODE_TOP_LIGHT,
   socketRowHeightToken: SOCKET_ROW_HEIGHT_TOKEN,
   widgetHeightToken: WIDGET_HEIGHT_TOKEN,
-};
-
-export {
-  SIZE_MAP,
-  VARIANT_MAP,
-  RADIUS_MAP,
-  WIDGET_RADIUS_MAP,
-  MARK_RADIUS_BY_LEVEL,
-  NODE_SHADOW,
-  NODE_TOP_LIGHT,
-  SOCKET_ROW_HEIGHT_TOKEN,
-  WIDGET_HEIGHT_TOKEN,
+  focusRing: { width: 2, offset: 2 },
 };

@@ -12,7 +12,7 @@ import {
   ToolbarGroup,
   iconStroke,
 } from '@kushagradhawan/kookie-ui-react';
-import type { SkinUI } from '../types';
+import type { SkinUI } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
 
 /**
  * KookieUI v2's controls, with `backdrop` on everything that sits over the canvas.

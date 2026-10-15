@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { FloatingShader } from '../types';
-import { resolveColor } from '../../core/theme-colors';
+import type { FloatingShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
+import { resolveColor } from '@kushagradhawan/kookie-flow-webgl/internal/core/theme-colors';
 import { GLASS_GLSL } from './glass';
 import { CORNER_K_FLOATING_ROWS, MATERIAL, type RGBA } from './material';
 

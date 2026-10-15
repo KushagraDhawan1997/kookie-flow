@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { SkinShader } from '../types';
+import type { SkinShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
 import { GLASS_GLSL } from './glass';
 import { MATERIAL, type CastLayer, type RGBA } from './material';
 

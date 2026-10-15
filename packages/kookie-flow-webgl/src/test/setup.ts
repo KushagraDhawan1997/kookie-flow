@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 /**
  * jsdom setup for the DOM tier.
  *
@@ -65,3 +66,11 @@ if (typeof globalThis.PointerEvent === 'undefined') {
 
 // Deliberately NOT stubbed: getContext('webgl2'). A DOM test that reaches for a GL context
 // should fail loudly rather than silently assert against a null renderer.
+
+// The renderer has no look of its own, so every DOM test renders under the test skin unless it
+// provides one.
+vi.mock('../skin/context', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../skin/context')>();
+  const { TEST_SKIN } = await import('./skin');
+  return { ...actual, useSkin: () => TEST_SKIN };
+});

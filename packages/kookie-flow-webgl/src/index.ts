@@ -9,7 +9,7 @@ export { Toolbar, type ToolbarProps } from './components/toolbar';
 export {
   SkinProvider,
   useSkin,
-  glassSkin,
+  useOptionalSkin,
   type FlowSkin,
   type SkinColors,
   type SkinMetrics,
@@ -82,11 +82,6 @@ export { resolveSocketTypes } from './utils/socket-types';
 
 // Style resolution utilities
 export {
-  SIZE_MAP,
-  VARIANT_MAP,
-  RADIUS_MAP,
-  SOCKET_ROW_HEIGHT_TOKEN,
-  WIDGET_HEIGHT_TOKEN,
   resolveEntityStyle,
   resolveSocketLayout,
   calculateMinEntityHeight,
@@ -323,7 +318,12 @@ export {
 } from '@kushagradhawan/kookie-flow-core/internal/utils/socket-layout-cache';
 
 // Semantic theme colors
-export { THEME_COLORS, resolveColor, type ColorTokenKey } from './core/theme-colors';
+export {
+  resolveColor,
+  pickToken,
+  type ColorTokenKey,
+  type ColorTokenRef,
+} from './core/theme-colors';
 
 // Persisted document boundary (custom payload validation remains application-owned).
 export {

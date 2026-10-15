@@ -6,7 +6,6 @@
 import type { ThemeTokens, SimpleShadow } from '../hooks/useThemeTokens';
 import { pickToken, type ColorTokenRef } from '../core/theme-colors';
 import type { SkinMetrics } from '../skin/types';
-import { GLASS_METRICS } from '../skin/glass/metrics';
 import type {
   EntitySize,
   EntityVariant,
@@ -123,11 +122,11 @@ export interface ResolvedEntityStyle {
   /** 0 for transparent variants (ghost, outline), 1 otherwise */
   backgroundAlpha: number;
 
-  // Shadow: the card's float (NODE_SHADOW) or a --shadow-N token for classic/overrides
+  // Shadow: the card's float (skin metrics.nodeShadow) or a --shadow-N token for classic/overrides
   shadowBlur: number;
   shadowOffsetY: number;
   shadowOpacity: number;
-  /** Alpha of the white band inside the top edge (NODE_TOP_LIGHT), per appearance */
+  /** Alpha of the white band inside the top edge (skin metrics.nodeTopLight), per appearance */
   topLightAlpha: number;
 
   // Selection state (uses accent color)
@@ -208,8 +207,8 @@ export function resolveEntityStyle(
   header: HeaderPosition = 'none',
   accentHeader: boolean = false,
   tokens: ThemeTokens,
-  overrides?: Partial<EntityStyleOverrides>,
-  metrics: SkinMetrics = GLASS_METRICS
+  overrides: Partial<EntityStyleOverrides> | undefined,
+  metrics: SkinMetrics
 ): ResolvedEntityStyle {
   const sizeConfig = metrics.sizes[size];
   const variantConfig = metrics.variants[variant];
@@ -358,7 +357,7 @@ export function resolveSocketLayout(
   hasTitleBand: boolean,
   size: EntitySize = '2',
   tokens: ThemeTokens,
-  metrics: SkinMetrics = GLASS_METRICS
+  metrics: SkinMetrics
 ): ResolvedSocketLayout {
   const sizeConfig = metrics.sizes[size];
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
@@ -440,16 +439,3 @@ export function calculateMinEntityHeight(
   const rows = Math.max(1, totalRows);
   return layout.marginTop + rows * layout.rowHeight + layout.padding;
 }
-
-/** @deprecated The glass skin's metrics. Use `skin.metrics`. */
-export {
-  SIZE_MAP,
-  VARIANT_MAP,
-  RADIUS_MAP,
-  WIDGET_RADIUS_MAP,
-  MARK_RADIUS_BY_LEVEL,
-  NODE_SHADOW,
-  NODE_TOP_LIGHT,
-  SOCKET_ROW_HEIGHT_TOKEN,
-  WIDGET_HEIGHT_TOKEN,
-} from '../skin/glass/metrics';

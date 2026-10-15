@@ -11,6 +11,7 @@
  *   ?count=1000&seed=1&widgets=0&preserveBuffer=1
  */
 
+import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
@@ -18,15 +19,49 @@ import { Theme } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow } from '@kushagradhawan/kookie-flow-webgl/internal/components/kookie-flow';
 import { Toolbar } from '@kushagradhawan/kookie-flow-webgl/internal/components/toolbar';
 import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-webgl/internal/components/context';
-import type { Connection, Entity, Edge, EntityChange, EdgeChange } from '@kushagradhawan/kookie-flow-core/types';
-import { makeGraph, makeShapes, makeGroup, makeComments, makeToolbarScene, makeWidgets, makeControls, makeMedia, makeEvaluation, makeTypes, makePreview, TYPE_TABLE } from './graph';
+import type {
+  Connection,
+  Entity,
+  Edge,
+  EntityChange,
+  EdgeChange,
+} from '@kushagradhawan/kookie-flow-core/types';
+import {
+  makeGraph,
+  makeShapes,
+  makeGroup,
+  makeComments,
+  makeToolbarScene,
+  makeWidgets,
+  makeControls,
+  makeMedia,
+  makeEvaluation,
+  makeTypes,
+  makePreview,
+  TYPE_TABLE,
+} from './graph';
 import { capture } from '@kushagradhawan/kookie-flow-webgl/internal/utils/canvas-runtime';
-import { parseColorToRGB, parseColorToRGBA, resolveColorToRGB, parsePx, withColorScope } from '@kushagradhawan/kookie-flow-webgl/internal/utils/color';
+import {
+  parseColorToRGB,
+  parseColorToRGBA,
+  resolveColorToRGB,
+  parsePx,
+  withColorScope,
+} from '@kushagradhawan/kookie-flow-webgl/internal/utils/color';
 import { FALLBACK_TOKENS } from '@kushagradhawan/kookie-flow-webgl/internal/hooks/useThemeTokens';
-import { useTheme, useThemeScope } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/ThemeContext';
+import {
+  useTheme,
+  useThemeScope,
+} from '@kushagradhawan/kookie-flow-webgl/internal/contexts/ThemeContext';
 import { frozenHue } from '@kushagradhawan/kookie-flow-webgl/internal/core/palette';
-import { getWidgetBox, sliderTrackWidth } from '@kushagradhawan/kookie-flow-webgl/internal/utils/widget-geometry';
-import { popoverLayoutFor, POPOVER_PAD } from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
+import {
+  getWidgetBox,
+  sliderTrackWidth,
+} from '@kushagradhawan/kookie-flow-webgl/internal/utils/widget-geometry';
+import {
+  popoverLayoutFor,
+  POPOVER_PAD,
+} from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
 import { EDGE_SOCKET_RIM } from '@kushagradhawan/kookie-flow-core/internal/utils/edge-curve';
 import { useResolvedStyle } from '@kushagradhawan/kookie-flow-webgl/internal/contexts/StyleContext';
 import { resolveWidgetConfig } from '@kushagradhawan/kookie-flow-webgl/internal/utils/widgets';
@@ -197,7 +232,13 @@ export interface HarnessApi {
    * for sockets the way `widgetSockets()` does for widgets: one side is where a press is answered,
    * the other is where the shader was handed the quad.
    */
-  indexedSockets(): { entityId: string; socketId: string; isInput: boolean; x: number; y: number }[];
+  indexedSockets(): {
+    entityId: string;
+    socketId: string;
+    isInput: boolean;
+    x: number;
+    y: number;
+  }[];
   uploadHistogram(): { bucket: number; calls: number; bytes: number }[];
   /** What the driver said about the flow's own context, and any shader that failed to link. */
   contextFacts(): {
@@ -220,9 +261,9 @@ function params() {
     widgets: q.get('widgets') === '1',
     grid: q.get('grid') !== '0',
     appearance: (q.get('appearance') ?? 'light') as 'light' | 'dark',
-    radius: q.get('radius') as 'none'|'small'|'medium'|'large'|'full'|null,
+    radius: q.get('radius') as 'none' | 'small' | 'medium' | 'large' | 'full' | null,
     toolbar: q.get('toolbar') === '1',
-    entityRadius: q.get('entityRadius') as 'none'|'small'|'medium'|'large'|'full'|null,
+    entityRadius: q.get('entityRadius') as 'none' | 'small' | 'medium' | 'large' | 'full' | null,
     // Which fixture. 'grid' is the scale/behaviour workhorse; 'shapes' is the set of entities
     // where the four independent height/socket-Y implementations disagree; 'group' covers
     // collapse and hidden entities.
@@ -233,7 +274,18 @@ function params() {
     font: q.get('font'),
     /** A v2 density lever, set on the Theme element the way a product sets it. */
     scale: num('scale', 0),
-    scene: (q.get('scene') ?? 'grid') as 'grid' | 'shapes' | 'group' | 'comments' | 'toolbar' | 'widgets' | 'controls' | 'media' | 'evaluation' | 'types' | 'preview',
+    scene: (q.get('scene') ?? 'grid') as
+      | 'grid'
+      | 'shapes'
+      | 'group'
+      | 'comments'
+      | 'toolbar'
+      | 'widgets'
+      | 'controls'
+      | 'media'
+      | 'evaluation'
+      | 'types'
+      | 'preview',
     // Explicit width/height on every entity. Default off — see the note in graph.ts about why a
     // uniformly sized fixture hides two whole bug classes.
     explicitSize: q.get('explicitSize') === '1',
@@ -335,7 +387,10 @@ const disposals = { material: 0, geometry: 0, texture: 0 };
   const patch = (proto: { dispose?: unknown }, key: 'material' | 'geometry' | 'texture') => {
     const original = proto.dispose as (...a: unknown[]) => unknown;
     if (typeof original !== 'function') return;
-    (proto as unknown as Record<string, unknown>).dispose = function patched(this: unknown, ...args: unknown[]) {
+    (proto as unknown as Record<string, unknown>).dispose = function patched(
+      this: unknown,
+      ...args: unknown[]
+    ) {
       disposals[key]++;
       return original.apply(this, args);
     };
@@ -413,7 +468,10 @@ function installGlProbe() {
   if (typeof WebGL2RenderingContext === 'undefined') return;
   const proto = WebGL2RenderingContext.prototype;
 
-  const wrap = <K extends keyof WebGL2RenderingContext>(name: K, onCall: (args: unknown[]) => void) => {
+  const wrap = <K extends keyof WebGL2RenderingContext>(
+    name: K,
+    onCall: (args: unknown[]) => void
+  ) => {
     const original = proto[name] as unknown as (...a: unknown[]) => unknown;
     if (typeof original !== 'function') return;
     (proto as unknown as Record<string, unknown>)[name as string] = function patched(
@@ -433,7 +491,10 @@ function installGlProbe() {
     if (v instanceof ArrayBuffer) return v.byteLength;
     return 0;
   };
-  wrap('bufferData', (a) => { gl.bytesUploaded += byteLength(a[1]); tallyUpload(byteLength(a[1])); });
+  wrap('bufferData', (a) => {
+    gl.bytesUploaded += byteLength(a[1]);
+    tallyUpload(byteLength(a[1]));
+  });
   wrap('bufferSubData', (a) => {
     // A RANGED upload passes (target, dstOffset, src, srcOffset, length); a whole-array upload
     // passes three arguments. The byte count differs accordingly.
@@ -448,8 +509,12 @@ function installGlProbe() {
     tallyUpload(bytes, ranged);
   });
 
-  wrap('drawElements', () => { gl.drawCalls++; });
-  wrap('drawArrays', () => { gl.drawCalls++; });
+  wrap('drawElements', () => {
+    gl.drawCalls++;
+  });
+  wrap('drawArrays', () => {
+    gl.drawCalls++;
+  });
   wrap('drawElementsInstanced', (a) => {
     gl.drawCalls++;
     gl.instancedDrawCalls++;
@@ -472,9 +537,13 @@ function installGlProbe() {
     }
     frames.last = now;
   });
-  wrap('viewport', (a) => { gl.viewportSize = [Number(a[2] ?? 0), Number(a[3] ?? 0)]; });
+  wrap('viewport', (a) => {
+    gl.viewportSize = [Number(a[2] ?? 0), Number(a[3] ?? 0)];
+  });
 
-  wrap('createProgram', () => { live.programsCreated++; });
+  wrap('createProgram', () => {
+    live.programsCreated++;
+  });
 
   // Link status has to be read AFTER the call, which `wrap` (a before-hook) cannot do — so this
   // one replaces the method rather than hooking it.
@@ -486,11 +555,21 @@ function installGlProbe() {
     }
   };
 
-  wrap('deleteProgram', () => { live.programsDeleted++; });
-  wrap('createBuffer', () => { live.buffersCreated++; });
-  wrap('deleteBuffer', () => { live.buffersDeleted++; });
-  wrap('createTexture', () => { live.texturesCreated++; });
-  wrap('deleteTexture', () => { live.texturesDeleted++; });
+  wrap('deleteProgram', () => {
+    live.programsDeleted++;
+  });
+  wrap('createBuffer', () => {
+    live.buffersCreated++;
+  });
+  wrap('deleteBuffer', () => {
+    live.buffersDeleted++;
+  });
+  wrap('createTexture', () => {
+    live.texturesCreated++;
+  });
+  wrap('deleteTexture', () => {
+    live.texturesDeleted++;
+  });
 
   // KookieFlow creates its context with `preserveDrawingBuffer: false` (a deliberate Safari
   // performance choice). That is correct for the product and fatal for pixel assertions: the
@@ -501,7 +580,10 @@ function installGlProbe() {
   // preserving the buffer changes what the driver can optimise and would bias every timing.
   const forcePreserve = new URLSearchParams(location.search).get('preserveBuffer') === '1';
   const getContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function patched(this: HTMLCanvasElement, ...args: unknown[]) {
+  HTMLCanvasElement.prototype.getContext = function patched(
+    this: HTMLCanvasElement,
+    ...args: unknown[]
+  ) {
     if (forcePreserve && (args[0] === 'webgl2' || args[0] === 'webgl')) {
       args[1] = { ...(args[1] as object | undefined), preserveDrawingBuffer: true };
     }
@@ -536,10 +618,11 @@ interface CommitCounter {
   current: string | null;
 }
 
-const react: CommitCounter =
-  (window as unknown as { __kfReact?: CommitCounter }).__kfReact ??
-  { commits: 0, marks: {}, current: null };
-
+const react: CommitCounter = (window as unknown as { __kfReact?: CommitCounter }).__kfReact ?? {
+  commits: 0,
+  marks: {},
+  current: null,
+};
 
 installGlProbe();
 
@@ -702,7 +785,7 @@ function drawnInstances(): { kind: string; x: number; y: number }[] {
       if (!mesh.isInstancedMesh || mesh.visible === false) return;
       const kind =
         mesh.name ||
-        (mesh.geometry?.attributes?.aUvOffset ? 'glyphs' : mesh.geometry?.type ?? 'no-geometry') +
+        (mesh.geometry?.attributes?.aUvOffset ? 'glyphs' : (mesh.geometry?.type ?? 'no-geometry')) +
           ':r' +
           String(mesh.renderOrder);
       const m = mesh.instanceMatrix.array as unknown as ArrayLike<number>;
@@ -951,15 +1034,23 @@ function Probe() {
       evaluationLog: () => evaluationLog.slice(),
       evaluationCalls: () => evaluationCalls.slice(),
       evaluationStatus(id: string) {
-        return (store as { getState(): { getEvaluationStatus(id: string): string } }).getState().getEvaluationStatus(id);
+        return (store as { getState(): { getEvaluationStatus(id: string): string } })
+          .getState()
+          .getEvaluationStatus(id);
       },
       setSocketValue(entityId: string, socketId: string, value: unknown) {
         (store as { getState(): { setSocketValue(a: string, b: string, v: unknown): void } })
-          .getState().setSocketValue(entityId, socketId, value);
+          .getState()
+          .setSocketValue(entityId, socketId, value);
       },
       autoLayout() {
-        return (store as { getState(): { autoLayout(): { id: string; position: { x: number; y: number } }[] } })
-          .getState().autoLayout();
+        return (
+          store as {
+            getState(): { autoLayout(): { id: string; position: { x: number; y: number } }[] };
+          }
+        )
+          .getState()
+          .autoLayout();
       },
       toImage(pixelRatio?: number) {
         return capture(store as object, { pixelRatio });
@@ -971,13 +1062,27 @@ function Probe() {
         return consumerEntities.current.map((e) => ({ id: e.id, position: { ...e.position } }));
       },
       socketValue(entityId: string, socketId: string) {
-        return (store as { getState(): { getSocketValue(a: string, b: string): unknown } }).getState().getSocketValue(entityId, socketId);
+        return (store as { getState(): { getSocketValue(a: string, b: string): unknown } })
+          .getState()
+          .getSocketValue(entityId, socketId);
       },
       evaluate(id: string) {
-        return (store as { getState(): { evaluate(id: string): Promise<void> } }).getState().evaluate(id);
+        return (store as { getState(): { evaluate(id: string): Promise<void> } })
+          .getState()
+          .evaluate(id);
       },
       evaluationRecord(id: string) {
-        return (store as { getState(): { getEvaluationRecord(id: string): { status: string; message?: string; progress?: number } | undefined } }).getState().getEvaluationRecord(id);
+        return (
+          store as {
+            getState(): {
+              getEvaluationRecord(
+                id: string
+              ): { status: string; message?: string; progress?: number } | undefined;
+            };
+          }
+        )
+          .getState()
+          .getEvaluationRecord(id);
       },
       setEvaluationHook(name, on) {
         evaluationHooks[name] = on;
@@ -1008,9 +1113,7 @@ function Probe() {
         const computed = getComputedStyle(probe).color;
         probe.remove();
 
-        const srgb = computed.match(
-          /color\(srgb\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)/
-        );
+        const srgb = computed.match(/color\(srgb\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)/);
         if (srgb) {
           const clamp = (v: number) => Math.min(1, Math.max(0, v));
           return [clamp(Number(srgb[1])), clamp(Number(srgb[2])), clamp(Number(srgb[3]))];
@@ -1029,7 +1132,9 @@ function Probe() {
       readPixel(x: number, y: number) {
         const c = canvas();
         if (!c) return null;
-        const gl = c.getContext('webgl2', { preserveDrawingBuffer: true }) as WebGL2RenderingContext | null;
+        const gl = c.getContext('webgl2', {
+          preserveDrawingBuffer: true,
+        }) as WebGL2RenderingContext | null;
         if (!gl) return null;
         const dpr = c.width / c.clientWidth;
         const px = Math.round(x * dpr);
@@ -1118,7 +1223,9 @@ function Probe() {
         const pop = s.widgetPopover;
         if (!pop || pop.kind !== 'select' || !s.socketLayout) return null;
         const canvas = document.querySelector('canvas');
-        const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+        const rect = canvas
+          ? canvas.getBoundingClientRect()
+          : { left: 0, top: 0, width: 0, height: 0 };
         const layout = popoverLayoutFor(
           pop,
           s.socketLayout.listRowHeight,
@@ -1273,7 +1380,10 @@ function Probe() {
         parsePx: (v) => withColorScope(liveScopeRef.current, () => parsePx(v)),
         frozenHue,
       },
-      contextFacts: () => ({ depth: contextFacts.depth, linkFailures: [...contextFacts.linkFailures] }),
+      contextFacts: () => ({
+        depth: contextFacts.depth,
+        linkFailures: [...contextFacts.linkFailures],
+      }),
       uploadHistogram: () => [...uploadHistogram.entries()].map(([b, v]) => ({ bucket: b, ...v })),
       indexedSockets() {
         const s = store.getState();
@@ -1398,9 +1508,15 @@ function App() {
     <div
       key={i}
       data-instance={i}
-      style={{ position: 'relative', flex: 1, minHeight: 0, borderTop: i > 0 ? '1px solid #ccc' : undefined }}
+      style={{
+        position: 'relative',
+        flex: 1,
+        minHeight: 0,
+        borderTop: i > 0 ? '1px solid #ccc' : undefined,
+      }}
     >
       <KookieFlow
+        skin={glassSkin}
         entities={entities}
         edges={edges}
         onEntitiesChange={i === 0 ? onEntitiesChange : undefined}
@@ -1420,14 +1536,21 @@ function App() {
             prev.map((e) => {
               if (e.id !== entityId) return e;
               const data = (e.data ?? {}) as { values?: Record<string, unknown> };
-              return { ...e, data: { ...data, values: { ...(data.values ?? {}), [socketId]: value } } };
+              return {
+                ...e,
+                data: { ...data, values: { ...(data.values ?? {}), [socketId]: value } },
+              };
             })
           );
         }}
         {...(p.toolbar ? { entityTypes: TOOLBAR_TYPES } : {})}
         showGrid={p.grid}
         {...(p.scene === 'evaluation'
-          ? { onEvaluate: fixtureEvaluate, onStatusChange: fixtureStatus, entityTypes: EVALUATION_TYPES }
+          ? {
+              onEvaluate: fixtureEvaluate,
+              onStatusChange: fixtureStatus,
+              entityTypes: EVALUATION_TYPES,
+            }
           : {})}
         {...(p.scene === 'types' ? { entityTypes: TYPE_TABLE } : {})}
         helperLines={p.helperLines}
@@ -1462,7 +1585,9 @@ function App() {
       radius={p.radius ?? 'full'}
       // A product sets `--scale` on the Theme element, not on :root — which is exactly the case
       // a probe attached to the body could not resolve.
-      {...(p.scale ? { style: { ['--scale' as string]: String(p.scale) } as React.CSSProperties } : {})}
+      {...(p.scale
+        ? { style: { ['--scale' as string]: String(p.scale) } as React.CSSProperties }
+        : {})}
     >
       <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
         {flows}
@@ -1474,11 +1599,7 @@ function App() {
         style={{ position: 'fixed', bottom: 0, left: 0, display: 'flex', zIndex: 10 }}
       >
         {['--neutral-2', '--neutral-3', '--neutral-4', '--accent-9'].map((t) => (
-          <div
-            key={t}
-            data-token={t}
-            style={{ width: 24, height: 24, background: `var(${t})` }}
-          />
+          <div key={t} data-token={t} style={{ width: 24, height: 24, background: `var(${t})` }} />
         ))}
       </div>
     </Theme>

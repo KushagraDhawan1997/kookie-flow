@@ -67,6 +67,8 @@ export interface SkinMetrics {
   /** The header and socket row height. */
   socketRowHeightToken: keyof ThemeTokens;
   widgetHeightToken: keyof ThemeTokens;
+  /** The keyboard focus ring around a control: its width and its gap from the edge, in px. */
+  focusRing: { readonly width: number; readonly offset: number };
 }
 
 /** Which token plays each colour role. */

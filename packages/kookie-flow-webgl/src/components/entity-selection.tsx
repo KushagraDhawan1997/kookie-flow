@@ -91,8 +91,15 @@ export function EntitySelection() {
   );
 
   // Resolve theme colors
-  const selectedColor = resolveColor(colors.entitySelection.selected, tokens);
-  const hoverColor = resolveColor(colors.entitySelection.hover, tokens);
+  // Memoised: resolveColor returns a fresh tuple, and the materials memoise on it.
+  const selectedColor = useMemo(
+    () => resolveColor(colors.entitySelection.selected, tokens),
+    [tokens, colors]
+  );
+  const hoverColor = useMemo(
+    () => resolveColor(colors.entitySelection.hover, tokens),
+    [tokens, colors]
+  );
 
   const glowAlpha = SELECTION_GLOW_ALPHA[tokens.appearance];
 

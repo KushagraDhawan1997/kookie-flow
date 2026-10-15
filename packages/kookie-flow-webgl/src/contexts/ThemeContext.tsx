@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { useThemeTokens, type ThemeTokens } from '../hooks/useThemeTokens';
+import { useThemeTokens, FALLBACK_TOKENS, type ThemeTokens } from '../hooks/useThemeTokens';
 import { useSkin } from '../skin/context';
-import { GLASS_FALLBACK_TOKENS } from '../skin/glass/tokens';
-const ThemeContext = createContext<ThemeTokens>(GLASS_FALLBACK_TOKENS);
+const ThemeContext = createContext<ThemeTokens>(FALLBACK_TOKENS);
 const ThemeScopeContext = createContext<Element | null>(null);
 export interface ThemeProviderProps {
   children: ReactNode;

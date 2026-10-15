@@ -339,8 +339,12 @@ export function Sockets({ socketTypes = DEFAULT_SOCKET_TYPES }: SocketsProps) {
   const entitySocketRangesRef = useRef<Map<string, { start: number; count: number }>>(new Map());
 
   // Derive colors from semantic theme config
-  const invalidColor = resolveColor(colors.socket.invalid, tokens);
-  const validTargetColor = resolveColor(colors.socket.validTarget, tokens);
+  // Memoised: resolveColor returns a fresh tuple, and the materials memoise on it.
+  const invalidColor = useMemo(() => resolveColor(colors.socket.invalid, tokens), [tokens, colors]);
+  const validTargetColor = useMemo(
+    () => resolveColor(colors.socket.validTarget, tokens),
+    [tokens, colors]
+  );
   const fallbackSocketColor = rgbToHex(resolveColor(colors.socket.fallback, tokens));
   // The punch ring paints the canvas back over whatever the dot sits on, so it needs the canvas's
   // own colour — a pair token, resolved per appearance at material build. Memoised on `tokens`

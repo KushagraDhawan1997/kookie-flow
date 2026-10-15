@@ -18,7 +18,11 @@ export function SelectionBox() {
   const dirtyRef = useRef(true);
 
   // Derive accent color from semantic theme config
-  const accentColor = resolveColor(colors.selectionBox.fill, tokens);
+  // Memoised: resolveColor returns a fresh tuple, and the materials memoise on it.
+  const accentColor = useMemo(
+    () => resolveColor(colors.selectionBox.fill, tokens),
+    [tokens, colors]
+  );
 
   // Simple plane geometry
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);

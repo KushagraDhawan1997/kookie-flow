@@ -55,6 +55,7 @@ import {
   setMediaBox,
   setMediaMap,
   setMediaChrome,
+  setMediaSkin,
 } from '../utils/media-quad';
 
 const RENDER_ORDER_BG = 2;
@@ -116,6 +117,8 @@ interface PreviewHold {
 
 export function PreviewEntities() {
   const skin = useSkin();
+  const skinRef = useRef(skin);
+  skinRef.current = skin;
   const { colors } = skin;
   const store = useFlowStoreApi();
   const tokens = useTheme();
@@ -172,7 +175,10 @@ export function PreviewEntities() {
   const glassRef = useRef(glass);
   glassRef.current = glass;
   useEffect(() => {
-    for (const mat of materialRefs.current.values()) applyMediaGlass(mat, glass);
+    for (const mat of materialRefs.current.values()) {
+      setMediaSkin(mat, skinRef.current);
+      applyMediaGlass(mat, glass);
+    }
     markFullDirty();
   }, [glass, markFullDirty]);
 
@@ -313,7 +319,7 @@ export function PreviewEntities() {
         if (mesh) {
           quadRefs.current.set(id, mesh);
           if (!materialRefs.current.has(id))
-            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skin));
+            materialRefs.current.set(id, createMediaMaterial(glassRef.current, skinRef.current));
         } else {
           quadRefs.current.delete(id);
         }

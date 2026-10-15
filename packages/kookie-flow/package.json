@@ -66,8 +66,8 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc --noEmit && tsc -p tsconfig.harness.json",
-    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-react test",
+    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-skin-glass lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc --noEmit && tsc -p tsconfig.harness.json",
+    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-skin-glass test && pnpm --filter @kushagradhawan/kookie-flow-react test",
     "test:watch": "vitest",
     "clean": "rm -rf dist .turbo",
     "generate:fonts": "pnpm --filter @kushagradhawan/kookie-flow-webgl generate:fonts",
@@ -93,7 +93,8 @@
   },
   "dependencies": {
     "@kushagradhawan/kookie-flow-react": "workspace:*",
-    "@kushagradhawan/kookie-flow-core": "workspace:*"
+    "@kushagradhawan/kookie-flow-core": "workspace:*",
+    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*"
   },
   "peerDependencies": {
     "@react-three/drei": "^10.7.8",

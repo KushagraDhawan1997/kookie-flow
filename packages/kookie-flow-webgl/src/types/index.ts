@@ -118,15 +118,15 @@ export interface MinimapProps {
   width?: number;
   /** Height in pixels. Default: 150 */
   height?: number;
-  /** Background color. Default: from THEME_COLORS.minimap.background with 0.9 alpha */
+  /** Background color. Default: the skin's colors.minimap.background with 0.9 alpha */
   backgroundColor?: string;
-  /** Entity color (or function for per-entity color). Default: from THEME_COLORS.minimap.entity */
+  /** Entity color (or function for per-entity color). Default: the skin's colors.minimap.entity */
   entityColor?: string | ((entity: Entity) => string);
-  /** Selected entity color. Default: from THEME_COLORS.minimap.nodeSelected */
+  /** Selected entity color. Default: the skin's colors.minimap.nodeSelected */
   selectedEntityColor?: string;
-  /** Viewport indicator fill color. Default: from THEME_COLORS.minimap.viewport with 0.3 alpha */
+  /** Viewport indicator fill color. Default: the skin's colors.minimap.viewport with 0.3 alpha */
   viewportColor?: string;
-  /** Viewport indicator border color. Default: from THEME_COLORS.minimap.viewportBorder */
+  /** Viewport indicator border color. Default: the skin's colors.minimap.viewportBorder */
   viewportBorderColor?: string;
   /** Padding around content in minimap pixels. Default: 20 */
   padding?: number;
@@ -239,8 +239,11 @@ export interface KookieFlowProps {
   // Styling Props (Milestone 2 - matches Kookie UI Card)
   // ============================================================================
 
-  /** How the editor looks: colour roles, sizes, material and token reading. Default: glass. */
-  skin?: FlowSkin;
+  /**
+   * How the editor looks: colour roles, sizes, shaders, DOM chrome and token reading. Required;
+   * `glassSkin` from @kushagradhawan/kookie-flow-skin-glass is KookieUI v2's.
+   */
+  skin: FlowSkin;
   /** Entity size scale. Default: '2' */
   size?: EntitySize;
   /** Entity visual variant. Default: 'surface' */

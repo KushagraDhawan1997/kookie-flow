@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { RADIUS_MAP, WIDGET_RADIUS_MAP, SIZE_MAP, resolveEntityStyle } from './style-resolver';
-import { FALLBACK_TOKENS, type ThemeTokens } from '../hooks/useThemeTokens';
-import type { EntityRadius, EntitySize } from '../types/index';
+import { resolveEntityStyle } from '@kushagradhawan/kookie-flow-webgl/internal/utils/style-resolver';
+import { GLASS_METRICS, RADIUS_MAP, WIDGET_RADIUS_MAP, SIZE_MAP } from './metrics';
+import {
+  FALLBACK_TOKENS,
+  type ThemeTokens,
+} from '@kushagradhawan/kookie-flow-webgl/internal/hooks/useThemeTokens';
+import type {
+  EntityRadius,
+  EntitySize,
+} from '@kushagradhawan/kookie-flow-webgl/internal/types/index';
 
 const LEVELS: EntityRadius[] = ['none', 'small', 'medium', 'large', 'full'];
 const SIZES: EntitySize[] = ['1', '2', '3', '4', '5'];
@@ -80,7 +87,16 @@ describe('no radius level turns a node into a capsule', () => {
     it(`stays inside the shape at the theme's ${level} level`, () => {
       const tokens = v2Tokens(level);
       for (const entityLevel of LEVELS) {
-        const style = resolveEntityStyle('2', 'surface', entityLevel, 'none', false, tokens);
+        const style = resolveEntityStyle(
+          '2',
+          'surface',
+          entityLevel,
+          'none',
+          false,
+          tokens,
+          undefined,
+          GLASS_METRICS
+        );
         for (const [w, h] of BOXES) {
           expect(style.borderRadius).toBeLessThan(capsuleAt(w, h));
         }
@@ -92,7 +108,10 @@ describe('no radius level turns a node into a capsule', () => {
     const tokens = v2Tokens('full');
     // The old table read `--radius-full` here, which is 9999 at every level of both systems.
     expect(tokens['--radius-full']).toBe(9999);
-    expect(resolveEntityStyle('2', 'surface', 'full', 'none', false, tokens).borderRadius).toBe(48);
+    expect(
+      resolveEntityStyle('2', 'surface', 'full', 'none', false, tokens, undefined, GLASS_METRICS)
+        .borderRadius
+    ).toBe(48);
   });
 });
 
@@ -100,7 +119,8 @@ describe('the radius level reaches the controls on the node', () => {
   it('moves a widget with the level rather than pinning it to one number', () => {
     const tokens = v2Tokens('medium');
     const at = (level: EntityRadius) =>
-      resolveEntityStyle('2', 'surface', level, 'none', false, tokens).widgetRadius;
+      resolveEntityStyle('2', 'surface', level, 'none', false, tokens, undefined, GLASS_METRICS)
+        .widgetRadius;
     expect(at('none')).toBe(0);
     expect(at('small')).toBe(4);
     expect(at('medium')).toBe(6);
@@ -112,16 +132,32 @@ describe('the radius level reaches the controls on the node', () => {
 
   it('leaves the body and the controls on independent families', () => {
     const tokens = v2Tokens('full');
-    const style = resolveEntityStyle('2', 'surface', 'full', 'none', false, tokens);
+    const style = resolveEntityStyle(
+      '2',
+      'surface',
+      'full',
+      'none',
+      false,
+      tokens,
+      undefined,
+      GLASS_METRICS
+    );
     expect(style.borderRadius).toBe(48); // surface: bounded
     expect(style.widgetRadius).toBe(9999); // control: a pill, clamped to its own box downstream
   });
 
   it('does not let a body radius override reshape the fields on it', () => {
     const tokens = v2Tokens('medium');
-    const style = resolveEntityStyle('2', 'surface', 'medium', 'none', false, tokens, {
-      borderRadius: 0,
-    });
+    const style = resolveEntityStyle(
+      '2',
+      'surface',
+      'medium',
+      'none',
+      false,
+      tokens,
+      { borderRadius: 0 },
+      GLASS_METRICS
+    );
     expect(style.borderRadius).toBe(0);
     expect(style.widgetRadius).toBe(6);
   });
