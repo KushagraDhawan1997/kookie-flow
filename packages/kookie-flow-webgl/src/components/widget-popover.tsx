@@ -51,14 +51,7 @@ import {
   type PopoverLayout,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/popover-layout';
 import { hsvToHex } from '@kushagradhawan/kookie-flow-core/internal/utils/hsv';
-import {
-  SDF_GLSL,
-  GLASS_GLSL,
-  BACKDROP_GLSL,
-  BackdropSnapshot,
-  CORNER_K_FLOATING_ROWS,
-  type RGBA,
-} from '../gl/index';
+import { SDF_GLSL, COMPOSITE_GLSL, BACKDROP_GLSL, BackdropSnapshot } from '../gl/index';
 
 /** Above every entity: the depth ladder tops out at 0 (utils/entity-depth.ts). */
 const POPOVER_Z = 50;
@@ -81,39 +74,19 @@ const vertexShader = /* glsl */ `
   }
 `;
 
-const fragmentShader = /* glsl */ `
+const fragmentShader = (skinGlsl: string) => /* glsl */ `
   precision highp float;
 
   uniform vec2 uSize;
   uniform float uRadius;
   uniform float uRowRadius;
-  uniform float uCornerK;
   uniform float uShadowPad;
   uniform float uKind;
   uniform float uBlur;
 
-  // The material (gl/material.ts): the floating surface's fill over the filtered ground, its
-  // ring, its border, its grain and its three-layer cast.
-  uniform vec3 uTint;
-  uniform float uTintA;
-  uniform float uSaturate;
-  uniform float uBrightness;
-  uniform vec4 uRingTop;
-  uniform vec4 uRingUpper;
-  uniform vec4 uRingSide;
-  uniform vec4 uRingBottom;
-  uniform vec4 uBorder;
-  uniform vec2 uWash;
-  uniform float uPool;
-  uniform float uTopLine;
-  uniform float uGrain;
-  uniform vec4 uCast[3];
-  uniform vec4 uCastColor[3];
-  uniform vec4 uRow;
   uniform vec3 uInk;
   uniform vec3 uAccent;
   uniform vec3 uRowInk;
-  uniform float uRowSolid;
 
   // Select: the row band, and which rows are lit and chosen (in visible-row units, -1 for none).
   uniform float uRowHeight;
@@ -130,8 +103,9 @@ const fragmentShader = /* glsl */ `
   varying vec2 vUv;
 
   ${SDF_GLSL}
-  ${GLASS_GLSL}
+  ${COMPOSITE_GLSL}
   ${BACKDROP_GLSL}
+  ${skinGlsl}
 
   vec3 hsv2rgb(vec3 c) {
     vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
@@ -154,30 +128,12 @@ const fragmentShader = /* glsl */ `
     // Panel-local, top-left origin, y down: what the layout is written in.
     vec2 l = vec2(p.x + hs.x, hs.y - p.y);
     float aa = fwidth(p.x) * 0.75 + 1e-5;
-    // The squircle v2 draws a floating-rows surface with: the corner token times its k.
-    float r = uRadius * uCornerK;
-    float d = sdSquircleBox(p, hs, r);
+    float r = floatingRadius(uRadius);
+    float d = floatingShape(p, hs, r);
     float inside = fillSDF(d, aa);
 
     vec4 acc = vec4(0.0);
-
-    // --shadow-3: three layers, each the shape moved down, grown by its spread, and blurred.
-    for (int i = 0; i < 3; i++) {
-      float dc = sdSquircleBox(p - vec2(0.0, -uCast[i].x), hs + uCast[i].z, r + uCast[i].z);
-      acc = glassCast(acc, dc, d, uCast[i].y, uCastColor[i]);
-    }
-
-    // The ground, blurred, saturated and lifted as backdrop-filter does it, under the fill.
-    vec3 ground = filterGround(blurBackdrop(gl_FragCoord.xy, uBlur), uSaturate, uBrightness);
-    acc = over(acc, mix(ground, uTint, uTintA), inside);
-    // The floating wash: the radial glint at the top-left and the top-down white.
-    acc = glassWash(acc, inside, l / uSize, uWash.x, uWash.y);
-    // inset 0 -10px 20px -14px: the hole is the panel moved up 10 and grown by 14.
-    acc = glassInset(acc, inside, sdSquircleBox(p - vec2(0.0, 10.0), hs + 14.0, r + 14.0), 20.0, uPool);
-    // inset 0 1px 0 white, dark only: the one pixel the panel's own shape moved down leaves bare.
-    float dDown = sdSquircleBox(p + vec2(0.0, 1.0), hs, r);
-    acc = over(acc, vec3(1.0), inside * uTopLine * (1.0 - fillSDF(dDown, aa)));
-    acc = glassGrain(acc, inside, gl_FragCoord.xy, uGrain);
+    acc = paintFloatingBody(acc, p, hs, r, d, inside, aa, l / uSize);
 
     if (uKind < 0.5) {
       // ---- the list: pill rows, one lit, one marked ----
@@ -187,9 +143,10 @@ const fragmentShader = /* glsl */ `
         vec2 rc = vec2(uPad + rb.x, top + rb.y);
         // A row is a control, and a control's corner is round — only the panel is a squircle.
         float dr = sdRoundedBox(l - rc, rb, uRowRadius);
-        acc = overC(acc, uRow, fillSDF(dr, aa) * inside);
+        vec4 row = floatingRow();
+        acc = overC(acc, row, fillSDF(dr, aa) * inside);
         // A solid row hides the grain and the wash under it, as a painted row does.
-        acc = over(acc, uRow.rgb, fillSDF(dr, aa) * inside * uRowSolid);
+        acc = over(acc, row.rgb, fillSDF(dr, aa) * inside * floatingRowSolid());
       }
       if (uSelected >= 0.0) {
         float cy = uPad + (uSelected + 0.5) * uRowHeight;
@@ -205,13 +162,13 @@ const fragmentShader = /* glsl */ `
       vec2 st = clamp((l - uSvRect.xy) / uSvRect.zw, 0.0, 1.0);
       vec3 svColor = hsv2rgb(vec3(uHsv.x, st.x, 1.0 - st.y));
       acc = over(acc, svColor, fillSDF(dsv, aa));
-      acc = overC(acc, uBorder, ringSDF(dsv, 1.0, aa));
+      acc = overC(acc, floatingBorder(), ringSDF(dsv, 1.0, aa));
 
       vec2 hc = uHueRect.xy + uHueRect.zw * 0.5;
       float dh = sdRoundedBox(l - hc, uHueRect.zw * 0.5, uHueRect.w * 0.5);
       float ht = clamp((l.x - uHueRect.x) / uHueRect.z, 0.0, 1.0);
       acc = over(acc, hsv2rgb(vec3(ht, 1.0, 1.0)), fillSDF(dh, aa));
-      acc = overC(acc, uBorder, ringSDF(dh, 1.0, aa));
+      acc = overC(acc, floatingBorder(), ringSDF(dh, 1.0, aa));
 
       vec3 current = hsv2rgb(uHsv);
       vec2 svCursor = uSvRect.xy + vec2(uHsv.y, 1.0 - uHsv.z) * uSvRect.zw;
@@ -220,9 +177,7 @@ const fragmentShader = /* glsl */ `
       acc = cursor(acc, l - hueCursor, hsv2rgb(vec3(uHsv.x, 1.0, 1.0)), aa);
     }
 
-    // The edge: v2's ::after ring at the floating opacity, on the outermost pixel. A floating panel
-    // has no border of its own — the ring is the whole edge.
-    acc = glassRing(acc, d, aa, 1.0, p, uRingTop, uRingUpper, uRingSide, uRingBottom, 0.6);
+    acc = paintFloatingEdge(acc, p, d, aa);
 
     if (acc.a < 0.004) discard;
     gl_FragColor = acc;
@@ -232,7 +187,7 @@ const fragmentShader = /* glsl */ `
 const SCREEN_ORIGIN = new THREE.Vector2();
 
 export function WidgetPopoverGL() {
-  const { colors, material: skinMaterial } = useSkin();
+  const { colors, material: skinMaterial, shaders } = useSkin();
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const socketLayout = useSocketLayout();
@@ -261,55 +216,21 @@ export function WidgetPopoverGL() {
 
   const appearance = tokens.appearance;
   const material = useMemo(() => {
-    const m = skinMaterial[appearance];
     const rgb = (v: readonly number[]) => new THREE.Color(v[0], v[1], v[2]);
-    const rgba = (v: RGBA) => new THREE.Vector4(v[0], v[1], v[2], v[3]);
-    const highContrast = tokens.contrast === 'high';
     const canvasBg = resolveColor(colors.canvas.background, tokens);
-    // The floating fill: v2's `--color-surface` in light, and in dark that surface mixed twelve
-    // percent toward white — a floating panel sits a step above the card it floats over.
-    const surface = resolveColor(colors.widget.thumb, tokens);
-    const tint =
-      appearance === 'dark'
-        ? resolveColor({ light: '--neutral-1', dark: '--neutral-2' }, tokens).map(
-            (v) => v * 0.88 + 0.12
-          )
-        : surface;
     return new THREE.ShaderMaterial({
       uniforms: {
         uSize: { value: new THREE.Vector2(1, 1) },
         uRadius: { value: 8 },
         uRowRadius: { value: 8 },
-        uCornerK: { value: CORNER_K_FLOATING_ROWS },
         uShadowPad: { value: POPOVER_SHADOW_PAD },
         uKind: { value: 0 },
-        uBlur: { value: m.surfaceBlur * BLUR_RADIUS_PER_SIGMA },
-        uTint: { value: rgb(tint) },
-        uTintA: { value: m.floatingAlpha },
-        uSaturate: { value: m.surfaceSaturate },
-        uBrightness: { value: m.surfaceBrightness },
-        uRingTop: { value: rgba(m.surfaceRing.top) },
-        uRingUpper: { value: rgba(m.surfaceRing.upper) },
-        uRingSide: { value: rgba(m.surfaceRing.side) },
-        uRingBottom: { value: rgba(m.surfaceRing.bottom) },
-        uBorder: { value: rgba(m.glassBorder) },
-        uWash: { value: new THREE.Vector2(m.floatingWashRadial, m.floatingWashLinear) },
-        uPool: { value: m.floatingPool },
-        uTopLine: { value: m.floatingTopLine },
-        uGrain: { value: m.grain },
-        uCast: { value: m.floatingCast.map((l) => new THREE.Vector4(l.y, l.blur, l.spread, 0)) },
-        uCastColor: { value: m.floatingCast.map((l) => rgba(l.color)) },
-        uRow: {
-          value: highContrast
-            ? new THREE.Vector4(...resolveColor(colors.widget.active, tokens), 1)
-            : rgba(m.rowWash),
-        },
+        uBlur: { value: skinMaterial[appearance].surfaceBlur * BLUR_RADIUS_PER_SIGMA },
         uInk: { value: rgb(resolveColor(colors.text.primary, tokens)) },
         // The selected row's tick: v2's `--accent-glyph`, not the solid accent.
         uAccent: { value: rgb(resolveColor(colors.widget.glyph, tokens)) },
         // High contrast turns the lit row into a solid fill with contrast ink under it.
         uRowInk: { value: rgb(resolveColor(colors.widget.activeContrast, tokens)) },
-        uRowSolid: { value: highContrast ? 1 : 0 },
         uRowHeight: { value: 28 },
         uPad: { value: POPOVER_PAD },
         uCheckX: { value: ROW_CHECK_X },
@@ -322,14 +243,15 @@ export function WidgetPopoverGL() {
         uBackdropOrigin: { value: new THREE.Vector2() },
         uBackdropSize: { value: new THREE.Vector2(1, 1) },
         uCanvasBg: { value: rgb(canvasBg) },
+        ...shaders.floating.uniforms({ tokens, colors }),
       },
       vertexShader,
-      fragmentShader,
+      fragmentShader: fragmentShader(shaders.floating.glsl),
       transparent: true,
       depthWrite: false,
       depthTest: true,
     });
-  }, [tokens, appearance, colors, skinMaterial]);
+  }, [tokens, appearance, colors, skinMaterial, shaders]);
   useEffect(
     () => () => {
       material.dispose();
@@ -484,7 +406,6 @@ export function WidgetPopoverGL() {
     (u.uSize.value as THREE.Vector2).set(layout.width, layout.height);
     u.uRadius.value = layout.radius;
     u.uRowRadius.value = layout.kind === 'select' ? layout.rowRadius : 8;
-    u.uCornerK.value = CORNER_K_FLOATING_ROWS;
 
     const entries = entriesRef.current;
     entries.length = 0;

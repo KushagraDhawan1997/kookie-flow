@@ -498,15 +498,15 @@
         "default": "./dist/gl/backdrop.cjs"
       }
     },
-    "./internal/gl/glass": {
-      "kookie-flow-source": "./src/gl/glass.ts",
+    "./internal/gl/composite": {
+      "kookie-flow-source": "./src/gl/composite.ts",
       "import": {
-        "types": "./dist/gl/glass.d.ts",
-        "default": "./dist/gl/glass.js"
+        "types": "./dist/gl/composite.d.ts",
+        "default": "./dist/gl/composite.js"
       },
       "require": {
-        "types": "./dist/gl/glass.d.cts",
-        "default": "./dist/gl/glass.cjs"
+        "types": "./dist/gl/composite.d.cts",
+        "default": "./dist/gl/composite.cjs"
       }
     },
     "./internal/gl/index": {
@@ -650,6 +650,39 @@
       "require": {
         "types": "./dist/skin/glass/colors.d.cts",
         "default": "./dist/skin/glass/colors.cjs"
+      }
+    },
+    "./internal/skin/glass/controls": {
+      "kookie-flow-source": "./src/skin/glass/controls.ts",
+      "import": {
+        "types": "./dist/skin/glass/controls.d.ts",
+        "default": "./dist/skin/glass/controls.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/controls.d.cts",
+        "default": "./dist/skin/glass/controls.cjs"
+      }
+    },
+    "./internal/skin/glass/floating": {
+      "kookie-flow-source": "./src/skin/glass/floating.ts",
+      "import": {
+        "types": "./dist/skin/glass/floating.d.ts",
+        "default": "./dist/skin/glass/floating.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/floating.d.cts",
+        "default": "./dist/skin/glass/floating.cjs"
+      }
+    },
+    "./internal/skin/glass/glass": {
+      "kookie-flow-source": "./src/skin/glass/glass.ts",
+      "import": {
+        "types": "./dist/skin/glass/glass.d.ts",
+        "default": "./dist/skin/glass/glass.js"
+      },
+      "require": {
+        "types": "./dist/skin/glass/glass.d.cts",
+        "default": "./dist/skin/glass/glass.cjs"
       }
     },
     "./internal/skin/glass/index": {

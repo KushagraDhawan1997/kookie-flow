@@ -6,28 +6,16 @@
  * white at the top, a faint dark line around the sides and bottom — masked to the border; a
  * radial glint at the top-left plus a top-down wash; a soft inner shade pooled along the bottom;
  * fractal-noise grain at 4.5%; and, on anything filled or floating, a layered drop shadow. Each of
- * those is one function here, and `gl/material.ts` carries the numbers, so a control in GL is the
+ * those is one function here, and `skin/glass/material.ts` carries the numbers, so a control in GL is the
  * same recipe as a control in the DOM rather than an impression of it.
  *
  * Every layer is an `over` onto a straight-alpha accumulator that starts transparent, so a control
  * returns ONE colour and ONE alpha and the GPU does the last composite.
  *
- * Requires `SDF_GLSL` first. Coordinates are the shape's own: `p` centred, y up, world units.
+ * Requires `SDF_GLSL` and `COMPOSITE_GLSL` first. Coordinates are the shape's own: `p` centred, y up, world units.
  */
 
 export const GLASS_GLSL = /* glsl */ `
-  // Straight-alpha "over": c at alpha a on top of dst.
-  vec4 over(vec4 dst, vec3 c, float a) {
-    a = clamp(a, 0.0, 1.0);
-    float outA = a + dst.a * (1.0 - a);
-    vec3 outC = (c * a + dst.rgb * dst.a * (1.0 - a)) / max(outA, 1e-5);
-    return vec4(outC, outA);
-  }
-
-  vec4 overC(vec4 dst, vec4 c, float a) {
-    return over(dst, c.rgb, c.a * a);
-  }
-
   // Saturation and brightness, as backdrop-filter applies them to a ground.
   vec3 filterGround(vec3 c, float sat, float bright) {
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
