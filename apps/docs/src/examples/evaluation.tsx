@@ -11,7 +11,7 @@ import {
   type KookieFlowInstance,
   type OnEvaluate,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const float = (id: string, name: string) => ({ id, name, type: 'float', min: 0, max: 10, step: 1 });
 
@@ -123,7 +123,7 @@ export default function EvaluationExample() {
       </Flex>
       <div style={{ width: '100%', height: 360 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           ref={flowRef}
           entities={entities}
           edges={edges}

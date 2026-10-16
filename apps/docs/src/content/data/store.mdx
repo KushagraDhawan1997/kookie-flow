@@ -15,7 +15,7 @@ are drawn in a layer over the canvas.
 'use client';
 
 import { KookieFlow, useGraph } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { SelectionPanel } from './selection-panel';
 
 export function Flow() {
@@ -23,7 +23,7 @@ export function Flow() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}

@@ -73,7 +73,7 @@ choose the shape for every edge, and set `type` on one edge when you want a diff
 
 ```tsx
 import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const edges: Edge[] = [
   // Drawn as a step, because defaultEdgeType says so.
@@ -83,7 +83,7 @@ const edges: Edge[] = [
 ];
 
 export function Pipeline({ entities }: { entities: Entity[] }) {
-  return <KookieFlow skin={glassSkin} entities={entities} edges={edges} defaultEdgeType="step" />;
+  return <KookieFlow skin={skin} entities={entities} edges={edges} defaultEdgeType="step" />;
 }
 ```
 

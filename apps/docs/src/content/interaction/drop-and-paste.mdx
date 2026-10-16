@@ -78,7 +78,7 @@ URL:
 'use client';
 
 import { KookieFlow, useGraph, type XYPosition } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 async function upload(file: File): Promise<string> {
   const body = new FormData();
@@ -110,7 +110,7 @@ export function Board() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={graph.entities}
         edges={graph.edges}
         onEntitiesChange={graph.onEntitiesChange}
@@ -166,7 +166,7 @@ press. `preventDefault` is ignored on this binding.
 'use client';
 
 import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 const entities: Entity[] = [];
@@ -188,7 +188,7 @@ function Shortcuts() {
 export function FlowWithShortcuts() {
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
+      <KookieFlow skin={skin} entities={entities} edges={edges}>
         <Shortcuts />
       </KookieFlow>
     </div>

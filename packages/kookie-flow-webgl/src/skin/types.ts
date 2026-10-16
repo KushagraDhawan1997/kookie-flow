@@ -69,6 +69,13 @@ export interface SkinMetrics {
   widgetHeightToken: keyof ThemeTokens;
   /** The keyboard focus ring around a control: its width and its gap from the edge, in px. */
   focusRing: { readonly width: number; readonly offset: number };
+  /**
+   * Where an inside title's band sits. `inset` (the default) starts it at the body's padding, a
+   * line of type with air around it. `edge` starts it at the card's top edge and makes it one socket
+   * row tall, so a skin can fill it as a header: the title centres in it and the first row starts
+   * one padding below it, measured to its control.
+   */
+  titleBand?: 'inset' | 'edge';
 }
 
 /** Which token plays each colour role. */
@@ -142,7 +149,9 @@ export interface SkinShape {
 }
 
 /**
- * A node card's look. The renderer includes `shape.glsl` and `COMPOSITE_GLSL` before `glsl`.
+ * A node card's look. The renderer includes `shape.glsl` and `COMPOSITE_GLSL` before `glsl`, and
+ * declares `uniform float uHeaderBand`: the height of the title band measured from the card's top
+ * edge when `metrics.titleBand` is `edge` and the title is inside, else 0.
  * `r` is the scaled corner radius, `b` the card's half-size, `p` centred with y up. Defines:
  *
  * - `vec4 paintCardShadow(vec2 p, vec2 b, float r)` the card's float, as a straight-alpha colour.

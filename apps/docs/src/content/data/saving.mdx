@@ -46,7 +46,7 @@ Give the saved entities and edges to `useGraph` as its starting graph, and the s
 'use client';
 
 import { KookieFlow, useGraph, type FlowObject } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Board({ saved }: { saved: FlowObject }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -55,7 +55,7 @@ export function Board({ saved }: { saved: FlowObject }) {
   });
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       defaultViewport={saved.viewport}

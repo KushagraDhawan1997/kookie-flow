@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FloatingShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
 import { resolveColor } from '@kushagradhawan/kookie-flow-webgl/internal/core/theme-colors';
-import { GLASS_GLSL } from './glass';
+import { MATERIAL_GLSL } from './paint';
 import { CORNER_K_FLOATING_ROWS, MATERIAL, type RGBA } from './material';
 
 /**
@@ -9,7 +9,7 @@ import { CORNER_K_FLOATING_ROWS, MATERIAL, type RGBA } from './material';
  * ground, with a wash, a pooled inner shade, a dark-only top line, grain, a three-layer cast and
  * the conic ring at 60% as its only edge.
  */
-export const glassFloating: FloatingShader = {
+export const floating: FloatingShader = {
   glsl: /* glsl */ `
   uniform float uCornerK;
   uniform vec3 uTint;
@@ -30,7 +30,7 @@ export const glassFloating: FloatingShader = {
   uniform vec4 uRow;
   uniform float uRowSolid;
 
-  ${GLASS_GLSL}
+  ${MATERIAL_GLSL}
 
   // The squircle v2 draws a floating-rows surface with: the corner token times its k.
   float floatingRadius(float radius) {

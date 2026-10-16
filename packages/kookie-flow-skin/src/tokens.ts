@@ -92,7 +92,7 @@ function detectContrast(root: Element): 'normal' | 'high' {
 /**
  * Read all theme tokens from CSS variables.
  */
-export function readGlassTokens(root: Element): ThemeTokens {
+export function readTokens(root: Element): ThemeTokens {
   const styles = getComputedStyle(root);
   const appearance = detectAppearance(root);
   /**

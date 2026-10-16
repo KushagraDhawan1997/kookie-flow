@@ -12,7 +12,7 @@ A hook that needs the flow has to run in a component you pass to `KookieFlow` as
 'use client';
 
 import { KookieFlow, useFlowStore, useGraph } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 function SelectionCount() {
   // Inside the flow, so the hook reads this flow's store.
@@ -27,7 +27,7 @@ export function Editor() {
   // useFlowStore here would throw: Editor is outside the flow it renders.
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}

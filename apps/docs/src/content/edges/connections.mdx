@@ -59,7 +59,7 @@ as one undo step when history is on:
 
 ```tsx title="editor.tsx"
 import { KookieFlow, useGraph, type Connection, type EdgeChange, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
@@ -76,7 +76,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   }
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -136,7 +136,7 @@ import {
   type Entity,
   type IsValidConnectionFn,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -149,7 +149,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   };
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -187,7 +187,7 @@ A `SocketHandle` names one socket:
 has to run in order, such as a processing pipeline, where a loop has no first step.
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} onConnect={onConnect} allowCycles={false} />
+<KookieFlow skin={skin} entities={entities} edges={edges} onConnect={onConnect} allowCycles={false} />
 ```
 
 With `allowCycles={false}`, the canvas rejects a wire when its target entity already leads
@@ -221,7 +221,7 @@ drag started from:
 
 ```tsx title="editor.tsx"
 import { KookieFlow, useGraph, type ConnectionEndState, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -247,7 +247,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   }
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}

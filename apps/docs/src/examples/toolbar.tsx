@@ -8,7 +8,7 @@ import {
   type Entity,
   type EntityTypeDefinition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // Outside the component, so the table keeps one identity across renders.
 const entityTypes: Record<string, EntityTypeDefinition> = {
@@ -62,7 +62,7 @@ export default function ToolbarExample() {
   return (
     <div style={{ width: '100%', height: 400 }}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         entities={entities}
         edges={edges}
         entityTypes={entityTypes}

@@ -16,7 +16,7 @@ import {
   type Entity,
   type EntityTypeDefinition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   'math/number': {
@@ -50,7 +50,7 @@ export function MathEditor() {
 
   return (
     <div style={{ height: 400 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         entityTypes={entityTypes}
@@ -136,10 +136,10 @@ again and rebuilds its hit-testing indexes each time your component renders.
 
 ```tsx
 // Wrong: new entries on every render.
-<KookieFlow skin={glassSkin} entityTypes={{ 'math/add': { type: 'math/add', label: 'Add' } }} {...props} />
+<KookieFlow skin={skin} entityTypes={{ 'math/add': { type: 'math/add', label: 'Add' } }} {...props} />
 
 // Right: the same entries on every render.
-<KookieFlow skin={glassSkin} entityTypes={entityTypes} {...props} />
+<KookieFlow skin={skin} entityTypes={entityTypes} {...props} />
 ```
 
 ## Run a type only when you ask
@@ -176,14 +176,14 @@ child of `KookieFlow`, then set `toolbar` on the types that should have one:
 
 ```tsx
 import { KookieFlow, Toolbar, type EntityTypeDefinition } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const entityTypes: Record<string, EntityTypeDefinition> = {
   text: { type: 'text', toolbar: true },
   image: { type: 'image', toolbar: ['objectFit', 'aspectLock'] },
 };
 
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} entityTypes={entityTypes}>
+<KookieFlow skin={skin} entities={entities} edges={edges} entityTypes={entityTypes}>
   <Toolbar />
 </KookieFlow>;
 ```

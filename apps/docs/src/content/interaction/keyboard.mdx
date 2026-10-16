@@ -15,7 +15,7 @@ between nodes, Enter reaches the focused node's controls, and Escape comes back.
 Give every graph a name that says what it holds, especially when a page has more than one.
 
 ```tsx
-<KookieFlow skin={glassSkin} ariaLabel="Image pipeline" entities={entities} edges={edges} />
+<KookieFlow skin={skin} ariaLabel="Image pipeline" entities={entities} edges={edges} />
 ```
 
 The canvas is announced as an application, because its arrow keys move between nodes rather
@@ -149,7 +149,7 @@ pressed on the canvas reach that element on their way up, and keys pressed elsew
 
 import { useRef, useState } from 'react';
 import { KookieFlow, useGraph, type Entity, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
@@ -172,7 +172,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
 
   return (
     <div ref={setBoard} style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

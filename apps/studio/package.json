@@ -34,7 +34,7 @@
     "studio-core": "workspace:*",
     "three": "^0.186.0",
     "zod": "^4.6.2",
-    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*",
+    "@kushagradhawan/kookie-flow-skin": "workspace:*",
     "@kushagradhawan/kookie-flow-core": "workspace:*"
   },
   "devDependencies": {

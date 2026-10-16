@@ -11,7 +11,7 @@ default, and `minimapProps` has no effect while `showMinimap` is off.
 'use client';
 
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const initialEntities: Entity[] = [
   { id: 'load', type: 'default', position: { x: 0, y: 0 }, data: { label: 'Load' } },
@@ -27,7 +27,7 @@ export function Pipeline() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -51,7 +51,7 @@ same props as `minimapProps`. When you render it yourself, the component around 
 flow's theme colours, as the section [Read colours from the theme](#read-colours-from-the-theme) shows.
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+<KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
   <Minimap position="top-right" />
 </KookieFlow>
 ```
@@ -109,7 +109,7 @@ Set `interactive` to `false` for a minimap that only shows the graph. Clicks and
 through the minimap to the graph underneath, as if the minimap weren't there.
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} showMinimap minimapProps={{ interactive: false }} />
+<KookieFlow skin={skin} entities={entities} edges={edges} showMinimap minimapProps={{ interactive: false }} />
 ```
 
 | Prop | Type | Default | Meaning |
@@ -126,7 +126,7 @@ middle of the view, and draws the graph at 0.15 times the canvas zoom
 (`MINIMAP_DEFAULTS.zoomableBaseScale`). When you zoom the canvas in, the minimap zooms in too.
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} showMinimap minimapProps={{ zoomable: true }} />
+<KookieFlow skin={skin} entities={entities} edges={edges} showMinimap minimapProps={{ zoomable: true }} />
 ```
 
 A zoomable minimap works differently in three ways:

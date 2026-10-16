@@ -191,7 +191,7 @@ const WIDGET_RADIUS_MAP: Record<EntityRadius, keyof ThemeTokens | 0> = {
   full: '--radius-full',
 };
 
-export const GLASS_METRICS: SkinMetrics = {
+export const METRICS: SkinMetrics = {
   sizes: SIZE_MAP,
   variants: VARIANT_MAP,
   radii: RADIUS_MAP,

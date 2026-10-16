@@ -30,7 +30,7 @@ capsules separates them. The row tells its controls that the canvas passes behin
 show your theme's glass material. The whole row is one tab stop, and the arrow keys move inside it.
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+<KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
   <Toolbar size="2" />
 </KookieFlow>
 ```
@@ -195,14 +195,14 @@ from `entities` what to show. Return `null` to show nothing.
 
 import { ToolbarButton, ToolbarGroup } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow, Toolbar, useGraph } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Board() {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph();
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange}>
+      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange}>
         <Toolbar>
           {({ entities: selected, align }) =>
             selected.length < 2 ? null : (

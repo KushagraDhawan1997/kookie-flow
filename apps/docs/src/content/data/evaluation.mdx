@@ -13,7 +13,7 @@ outputs as an object keyed by output socket id. The function can be synchronous 
 
 import { useEffect, useRef } from 'react';
 import { KookieFlow, useGraph, type FlowObject, type KookieFlowInstance, type OnEvaluate } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const onEvaluate: OnEvaluate = async (id, type, inputs) => {
   switch (type) {
@@ -39,7 +39,7 @@ export function Board({ graph }: { graph: FlowObject }) {
   }, []);
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       ref={flowRef}
       entities={entities}
       edges={edges}

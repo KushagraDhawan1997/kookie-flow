@@ -7,7 +7,7 @@ import {
   type Entity,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 /**
  * A picture, a clip and a model, each an entity of its own. Move the pointer over one to see its
@@ -53,7 +53,7 @@ export default function MediaEntitiesExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import type { CardShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
-import { AURA_GLSL } from './glass';
+import { AURA_GLSL } from './paint';
 import { MATERIAL } from './material';
-import { GLASS_METRICS } from './metrics';
+import { METRICS } from './metrics';
 
 /**
  * The glass card: v2's `--shadow-3` as its float, an accent that is light rather than trim (an
  * aura diffusing down from top-centre and a glowing rim), and a faint white top line otherwise.
  */
-export const glassCard: CardShader = {
+export const card: CardShader = {
   glsl: /* glsl */ `
   // The float: shadow-3 as (y, blur, spread) and a colour, three layers.
   uniform vec4 uCast[3];
@@ -72,7 +72,7 @@ export const glassCard: CardShader = {
       // token's own, so the appearance pair is the material's and not a light/dark opacity.
       uCast: { value: m.floatingCast.map((l) => new THREE.Vector4(l.y, l.blur, l.spread, 0)) },
       uCastColor: { value: m.floatingCast.map((l) => new THREE.Vector4(...l.color)) },
-      uTopLight: { value: GLASS_METRICS.nodeTopLight[tokens.appearance] },
+      uTopLight: { value: METRICS.nodeTopLight[tokens.appearance] },
       uAuraAlpha: { value: m.auraAlpha },
       uAuraGrain: { value: m.auraGrain },
       uRimLight: { value: m.rimLight },

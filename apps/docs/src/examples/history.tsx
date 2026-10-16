@@ -9,7 +9,7 @@ import {
   type Entity,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const node = (id: string, x: number, y: number): Entity => ({
   id,
@@ -69,7 +69,7 @@ export default function HistoryExample() {
       </Flex>
       <div style={{ width: '100%', height: 360 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           ref={flowRef}
           entities={entities}
           edges={edges}

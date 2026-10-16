@@ -2,7 +2,7 @@
 
 ## Ownership
 
-The dependency direction is `react → webgl → core`, and a skin depends on `webgl` (`skin-glass →
+The dependency direction is `react → webgl → core`, and a skin depends on `webgl` (`skin →
 webgl`); `webgl` and `react` never import a skin. Core does not import React, Three, R3F, KookieUI or browser globals.
 Its TypeScript configuration excludes DOM libraries. `pnpm check:boundaries` checks the source
 imports; `pnpm test:packages` installs the tarballs in consumers outside this repository.
@@ -13,7 +13,7 @@ It uses React and R3F internally and is not a framework-independent WebGL render
 of its own: `KookieFlow` requires a `skin` (`FlowSkin`, in `webgl/src/skin/types.ts`), which says
 which token plays each colour role, the sizes and radii, the card outline, the GLSL that paints
 cards, controls, the popover and media chrome, the DOM chrome's components, and how tokens are read
-off the page. `skin-glass` is KookieUI v2's glass. `react` adds controlled graph state and history
+off the page. `skin` is the look built on KookieUI v2's tokens; today that look is glass. `react` adds controlled graph state and history
 through `useGraph`, and exposes the normal application API.
 
 Core's numeric socket layout contract lets the renderer supply measured geometry without
@@ -26,7 +26,7 @@ imports and new imports share the store and React contexts.
 ## Use the packages
 
 For a React editor, import from `@kushagradhawan/kookie-flow-react` and its `/plugins` subpath, and
-pass `skin={glassSkin}` from `@kushagradhawan/kookie-flow-skin-glass`. For the glass skin, import
+pass `skin={skin}` from `@kushagradhawan/kookie-flow-skin`. For the glass skin, import
 `@kushagradhawan/kookie-ui-react/styles.css` once and wrap the app in its `Theme`. `layoutGraph`
 for non-React use is at `@kushagradhawan/kookie-flow-core/layout`. The old all-in-one
 `@kushagradhawan/kookie-flow` package is gone.
@@ -74,7 +74,7 @@ must exist in the archives. Do not publish development source export conditions.
 
 Install all four Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.3.tgz` in a
 consumer, with the peers listed in `packages/kookie-flow-webgl/package.json` and
-`packages/kookie-flow-skin-glass/package.json`. The UI
+`packages/kookie-flow-skin/package.json`. The UI
 archive is the previously tested Flow snapshot with only its package name and version changed.
 Current UI v2 removed motion; upgrading Flow to that source is a separate change, not hidden
 inside this package rename. Ordinary npm-only installation requires published, qualified releases.

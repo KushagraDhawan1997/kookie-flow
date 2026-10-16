@@ -11,7 +11,7 @@ import {
   type XYPosition,
   type EntityTypeDefinition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -378,7 +378,7 @@ function WebGLBenchmarkGraph({ nodeCount }: { nodeCount: number }) {
 
   return (
     <KookieFlow
-      skin={glassSkin}
+      skin={skin}
       entities={entities}
       edges={edges}
       entityTypes={entityTypes}

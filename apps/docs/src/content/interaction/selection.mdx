@@ -128,7 +128,7 @@ This inspector shows the node you last clicked and closes when you click empty c
 
 import { useState } from 'react';
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({ initialEntities });
@@ -138,7 +138,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   return (
     <div style={{ display: 'flex', height: 480 }}>
       <div style={{ flex: 1 }}>
-        <KookieFlow skin={glassSkin}
+        <KookieFlow skin={skin}
           entities={entities}
           edges={edges}
           onEntitiesChange={onEntitiesChange}

@@ -11,7 +11,7 @@ Give the entity `type: 'text'` and put the words in `data.content`. Give it a `w
 'use client';
 
 import { KookieFlow, resizableForSizingMode, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const initialEntities: Entity[] = [
   {
@@ -30,7 +30,7 @@ export function Board() {
   const { entities, edges, onEntitiesChange, onEdgesChange } = useGraph({ initialEntities });
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange} />
+      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange} onEdgesChange={onEdgesChange} />
     </div>
   );
 }

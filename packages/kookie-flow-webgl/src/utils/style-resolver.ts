@@ -362,6 +362,7 @@ export function resolveSocketLayout(
   const sizeConfig = metrics.sizes[size];
   const padding = resolveTokenPx(sizeConfig.padding, tokens);
   const borderWidth = 1;
+  const edgeBand = metrics.titleBand === 'edge';
 
   /*
    * THE ROW PITCH IS DECLARED, not imported, and this is the one number in the file that a design
@@ -399,8 +400,14 @@ export function resolveSocketLayout(
    * `none` and `outside` reserve nothing: one draws no title at all, the other draws it above the
    * body.
    */
-  const titleBand = hasTitleBand ? TITLE_LINE_BOX + 2 * rowInset : 0;
-  const marginTop = padding + titleBand;
+  const titleBand = !hasTitleBand ? 0 : edgeBand ? rowHeight : TITLE_LINE_BOX + 2 * rowInset;
+  /*
+   * An EDGE band is a header: it starts at the card's top edge, so the padding sits below it
+   * instead of above it. The first row's own block inset already separates its control from the
+   * row's top, so only the rest of the padding is added — the band-to-control gap is the padding,
+   * the same air the control has from the card's sides.
+   */
+  const marginTop = edgeBand && hasTitleBand ? titleBand + padding - rowInset : padding + titleBand;
 
   return {
     rowHeight,

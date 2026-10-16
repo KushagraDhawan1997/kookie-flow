@@ -15,7 +15,7 @@
  * Requires `SDF_GLSL` and `COMPOSITE_GLSL` first. Coordinates are the shape's own: `p` centred, y up, world units.
  */
 
-export const GLASS_GLSL = /* glsl */ `
+export const MATERIAL_GLSL = /* glsl */ `
   // Saturation and brightness, as backdrop-filter applies them to a ground.
   vec3 filterGround(vec3 c, float sat, float bright) {
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -132,7 +132,7 @@ export const GLASS_GLSL = /* glsl */ `
  * cast that diffuses as it travels down. The grain is the controls' own, so it is light on a surface
  * and not a gradient on a screen.
  *
- * Self-contained — it does not need `GLASS_GLSL` or `SDF_GLSL`, so a shader that runs on every
+ * Self-contained — it does not need `MATERIAL_GLSL` or `SDF_GLSL`, so a shader that runs on every
  * node pays for these three functions and nothing else.
  */
 export const AURA_GLSL = /* glsl */ `

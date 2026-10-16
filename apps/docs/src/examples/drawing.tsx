@@ -7,7 +7,7 @@ import {
   type EntityTypeDefinition,
   type KookieFlowProps,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // Both objects live outside the component, so neither changes identity on a render.
 const entityTypes: Record<string, EntityTypeDefinition> = {
@@ -33,7 +33,7 @@ export default function DrawingExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}

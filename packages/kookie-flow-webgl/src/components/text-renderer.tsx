@@ -458,7 +458,8 @@ export function MultiWeightTextRenderer({
   defaultEntityWidth = DEFAULT_ENTITY_WIDTH,
   socketLabelWidth = SOCKET_LABEL_WIDTH,
 }: MultiWeightTextRendererProps) {
-  const { colors } = useSkin();
+  const { colors, metrics } = useSkin();
+  const edgeTitleBand = metrics.titleBand === 'edge';
   const store = useFlowStoreApi();
   const tokens = useTheme();
   const { resolved: style, config } = useEntityStyle();
@@ -660,9 +661,12 @@ export function MultiWeightTextRenderer({
          * `outside` is unchanged: the band is above the body, where no inset applies.
          */
         const outside = config.header === 'outside';
+        // An `edge` band is a header that starts at the card's top edge (see SkinMetrics.titleBand).
         const bandTop = outside
           ? entity.position.y - style.headerHeight
-          : entity.position.y + contentInset;
+          : edgeTitleBand
+            ? entity.position.y
+            : entity.position.y + contentInset;
         const bandHeight = outside ? style.headerHeight : socketLayout.titleBand;
         const labelY = bandTop + (bandHeight - TITLE_LINE_BOX) / 2;
         const entry: TextEntry = {
@@ -1082,6 +1086,7 @@ export function MultiWeightTextRenderer({
       config,
       style,
       socketLayout,
+      edgeTitleBand,
       showWidgetValues,
       socketTypes,
       defaultEntityWidth,
