@@ -72,7 +72,7 @@ Use `pnpm pack` rather than `npm pack`: pnpm expands workspace dependencies and 
 and real packing path. Built JS and both ESM/CJS declarations, licenses and WebGL font assets
 must exist in the archives. Do not publish development source export conditions.
 
-Install all four Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz` in a
+Install all four Flow archives plus `vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.3.tgz` in a
 consumer, with the peers listed in `packages/kookie-flow-webgl/package.json` and
 `packages/kookie-flow-skin-glass/package.json`. The UI
 archive is the previously tested Flow snapshot with only its package name and version changed.

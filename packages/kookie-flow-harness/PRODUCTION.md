@@ -34,8 +34,8 @@ React DOM 19.2.8, Fiber 9.7.0, drei 10.7.8 and three 0.186.0. React/Fiber/drei s
 current major; three stays within 0.186. Node tooling and CJS consumers require Node 24 or newer.
 Do not infer compatibility with an older three release or a future major from this work.
 
-The renderer uses the unpublished `@kushagradhawan/kookie-ui-react@0.0.0-flow.2` archive in
-`vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz`. It preserves the old tested UI snapshot;
+The renderer uses the unpublished `@kushagradhawan/kookie-ui-react@0.0.0-flow.3` archive in
+`vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.3.tgz`. It preserves the old tested UI snapshot;
 only its package identity changed. Current UI v2 is a separate upgrade. See
 [package installation](../../docs/PACKAGES.md) for the four Flow archives and all peers.
 

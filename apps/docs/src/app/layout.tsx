@@ -154,7 +154,7 @@ export default function RootLayout({
             unmarked in-flow control still resolves solid. */}
         {/* THE AXES COME FROM A STORE (theme-store.tsx): the sidebar's Theme panel writes them
             and this root reads them. Its resting values are what was written here —
-            `material="regular"`, `radius="full"`, `size="2"`. */}
+            `material="3"`, `radius="full"`, `size="2"`. */}
         <DocsTheme>
           {/* THE SITE'S TOOLTIP TIMING, ONCE (2026-09-06, Kushagra: "Why no tooltip?" — and
               there were tooltips; what was missing is this).

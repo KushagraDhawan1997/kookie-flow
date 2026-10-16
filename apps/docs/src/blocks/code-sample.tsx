@@ -18,7 +18,7 @@
  * THE CHROME'S SHAPE: the NAME sits outside, a sibling row aligned to the code with the
  * pane's own inset token (`--surface-p-N`); the ACTIONS float over the pane — copy top-right,
  * expand bottom-centre — as
- * GLASS (`backdrop`, the theme's material: the docs Theme runs `material="regular"`), at
+ * GLASS (`backdrop`, the theme's material: the docs Theme runs `material="3"`), at
  * Button's own medium default, because a floating control over content is exactly what the
  * material defends. No gradient — a scrollable well with a scrollbar already says "more".
  * SIZE PRICES EVERYTHING — pane, code step, label, copy and expand buttons all ride one

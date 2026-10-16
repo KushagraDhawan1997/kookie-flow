@@ -10,7 +10,7 @@
  * appearance store: the session's truth is memory, storage is persistence, and a write that
  * cannot persist must never stop the change from being applied.
  *
- * The server snapshot is the site's own resting choice (`material="regular"`, `radius="full"`,
+ * The server snapshot is the site's own resting choice (`material="3"`, `radius="full"`,
  * `size="2"`, the package defaults for the rest), so the first paint is what the root Theme
  * always rendered and a stored choice arrives after hydration — the window-class hook's own
  * honesty.
@@ -24,12 +24,12 @@ export type ThemeChoice = { [K in ThemeAxisKey]: (typeof themeAxes)[K][number] }
 export const THEME_AXES: readonly ThemeAxisKey[] = ["size", "density", "radius", "depth", "material", "pointer"];
 
 /** What the root Theme rendered before the panel existed, so the panel's "reset" is a real
-    value. `radius="full"` and `material="regular"` are this app's identity. */
+    value. `radius="full"` and `material="3"` are this app's identity. */
 export const SITE_THEME: ThemeChoice = {
   density: themeDefaults.density,
   radius: "full",
   depth: themeDefaults.depth,
-  material: "regular",
+  material: "3",
   size: "2",
   pointer: themeDefaults.pointer,
 };

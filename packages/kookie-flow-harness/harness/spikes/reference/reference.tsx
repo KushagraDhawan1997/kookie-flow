@@ -1,5 +1,5 @@
 /**
- * Real KookieUI v2 controls in `material="regular"`, drawn by the browser, for the GL controls to
+ * Real KookieUI v2 controls in `material="3"`, drawn by the browser, for the GL controls to
  * be compared against pixel for pixel. Not a law and not shipped: the ground truth a look spike
  * screenshots beside the canvas.
  */
@@ -24,7 +24,7 @@ const open = q.get('open') === '1';
 
 function App() {
   return (
-    <Theme appearance={appearance} material="regular" radius="full">
+    <Theme appearance={appearance} material="3" radius="full">
       <Box backdrop>
         <div
           id="stage"

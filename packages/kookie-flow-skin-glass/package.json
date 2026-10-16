@@ -184,7 +184,7 @@
     "vitest": "^5.0.0",
     "vite": "^8.3.0",
     "@types/node": "^26.5.1",
-    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.2.tgz"
+    "@kushagradhawan/kookie-ui-react": "file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.3.tgz"
   },
   "engines": {
     "node": ">=24"
@@ -193,7 +193,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "~0.186.0",
-    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.2"
+    "@kushagradhawan/kookie-ui-react": "0.0.0-flow.3"
   },
   "publishConfig": {
     "access": "public"

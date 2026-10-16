@@ -9,7 +9,7 @@ import { Theme } from '@kushagradhawan/kookie-ui-react';
  */
 export function StudioTheme({ children }: { children: React.ReactNode }) {
   return (
-    <Theme appearance="inherit" material="thick" radius="full" size="3">
+    <Theme appearance="inherit" material="5" radius="full" size="3">
       {children}
     </Theme>
   );
