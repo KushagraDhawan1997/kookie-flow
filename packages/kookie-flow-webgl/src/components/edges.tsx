@@ -34,11 +34,11 @@ const INITIAL_EDGE_CAPACITY = 512;
  * The cost is paid twice over — the CPU tessellates them and the GPU shades six vertices each —
  * so the count halves with each halving of zoom, down to a floor that still reads as a curve.
  *
- * It is a function of ZOOM ALONE, deliberately, and not of the edge's own length. Every edge in a
- * frame therefore gets the same count, which is what keeps the vertex-slot arithmetic stable: the
- * partial (drag) path writes into the slot the last full rebuild laid out, so a per-edge count
- * that changed as an edge was stretched would overrun its neighbour. Zoom changes the count for
- * every edge at once, and a band crossing forces a full rebuild, which relays every slot.
+ * The zoom sets every edge's base count, and a curve long on screen may take more
+ * (`segmentsForEdge`). A curve's count is chosen at a FULL rebuild and kept until the next one,
+ * which is what keeps the vertex-slot arithmetic stable: the partial (drag) path writes into the
+ * slot the last full rebuild laid out, so a count that changed as an edge was stretched would
+ * overrun its neighbour. A zoom band crossing forces a full rebuild, which relays every slot.
  */
 const SEGMENTS_PER_EDGE = 64;
 const MIN_SEGMENTS_PER_EDGE = 8;
@@ -55,6 +55,33 @@ export function segmentsForZoom(zoom: number): number {
   // 64 at zoom >= 1, 32 at 0.5, 16 at 0.25, 8 below 0.125.
   const scaled = SEGMENTS_PER_EDGE * Math.pow(2, Math.ceil(Math.log2(Math.min(zoom, 1))));
   return Math.max(MIN_SEGMENTS_PER_EDGE, Math.min(SEGMENTS_PER_EDGE, scaled));
+}
+
+/** Screen px a segment may span on a long curve before its corners show. */
+const SCREEN_PX_PER_SEGMENT = 12;
+
+/**
+ * How many segments ONE curve is sampled at: the zoom's count, raised for a curve long on screen.
+ *
+ * The zoom count is right for a short edge and wrong for a long one: an edge 2,000 units long is
+ * still 200 screen px at zoom 0.1, where eight segments drew a polygon with visible corners. A
+ * blanket higher floor fixes that by paying for every edge, and zoomed out is exactly when every
+ * edge is on screen. So the floor follows the curve's own screen length: about one segment per
+ * twelve px, as a power of two, never below the zoom's count nor above the ceiling. At zoom 1 and
+ * above the zoom's count is already the ceiling, so nothing changes there.
+ *
+ * `length` is the control polygon's length, which bounds the curve's own from above. The count is
+ * chosen at a full rebuild and kept for the edge until the next one, because the drag path writes
+ * into the slot the rebuild laid out (see SEGMENTS_PER_EDGE).
+ */
+export function segmentsForEdge(zoom: number, length: number): number {
+  const base = segmentsForZoom(zoom);
+  if (!(zoom > 0) || !(length > 0)) return base;
+  const wanted = Math.pow(
+    2,
+    Math.ceil(Math.log2(Math.max(1, (length * zoom) / SCREEN_PX_PER_SEGMENT)))
+  );
+  return Math.min(SEGMENTS_PER_EDGE, Math.max(base, wanted));
 }
 // Each segment = 1 quad = 2 triangles = 6 vertices
 // Plus up to 2 arrows (3 vertices each) = 6 extra vertices
@@ -103,11 +130,25 @@ const MAX_POINTS_PER_EDGE = SEGMENTS_PER_EDGE + 3;
 const EDGE_CORE_HALF = 1.0;
 /** Half the core's anti-alias ramp, in screen px; the fragment shader uses the same 0.75. */
 const EDGE_CORE_AA = 0.75;
+/** The thinnest a core gets, as a half-width in screen px: a 1px line. */
+const EDGE_CORE_MIN_HALF = 0.5;
 const EDGE_HALF_WIDTH = 4.0;
 const EDGE_GLOW_ALPHA = { dark: 0.12, light: 0.08 } as const;
 const EDGE_GLOW_ALPHA_SELECTED = 0.22;
 /** Two spots per edge, one lap every four seconds. */
 const EDGE_LIGHT_LAPS_PER_SEC = 0.25;
+
+/**
+ * The core's half-width in screen px at this zoom.
+ *
+ * A fixed 2px core read as a hairline at zoom 1 and as the whole picture zoomed out, where the
+ * cards it joins had shrunk to a fifth and the lines had not. It now thins with the square root of
+ * zoom below 1, so it recedes with the graph without vanishing, and stops at 1px.
+ */
+export function edgeCoreHalfAtZoom(zoom: number): number {
+  if (!(zoom > 0)) return EDGE_CORE_HALF;
+  return Math.max(EDGE_CORE_MIN_HALF, EDGE_CORE_HALF * Math.min(1, Math.sqrt(zoom)));
+}
 
 /**
  * Where the glow goes as the graph zooms out: the half-width in screen px that the vertex shader
@@ -564,6 +605,8 @@ export function Edges({
   // Per-edge vertex layout in buffer: parallel arrays for start offset and vertex count
   const edgeVertexStartsRef = useRef<Int32Array>(new Int32Array(0));
   const edgeVertexCountsRef = useRef<Int32Array>(new Int32Array(0));
+  /** Segments each curve was tessellated at by the last full rebuild; the drag path reuses them. */
+  const edgeSegmentsRef = useRef<Uint8Array>(new Uint8Array(0));
 
   // Cached endpoint positions for dirty detection: flat [x0, y0, x1, y1] per edge
   const endpointCacheRef = useRef<Float64Array>(new Float64Array(0));
@@ -877,6 +920,9 @@ export function Edges({
     fgMaterial.uniforms.uZoom.value = viewport.zoom;
     bgMaterial.uniforms.uHalfWidth.value = halfWidth;
     fgMaterial.uniforms.uHalfWidth.value = halfWidth;
+    const coreHalf = edgeCoreHalfAtZoom(viewport.zoom);
+    bgMaterial.uniforms.uCore.value = coreHalf;
+    fgMaterial.uniforms.uCore.value = coreHalf;
     // The clock only reaches the shader while something is lit; a still graph never re-uploads.
     if (hasLiveRef.current) {
       bgMaterial.uniforms.uTime.value = clock.elapsedTime;
@@ -1131,7 +1177,6 @@ export function Edges({
       segmentsRef.current = segmentsForZoom(viewport.zoom);
     }
     const cullRect = camera.rect;
-    const segments = segmentsRef.current;
 
     // Ensure endpoint cache and layout arrays have capacity
     const neededCacheSize = edges.length * 4;
@@ -1147,10 +1192,14 @@ export function Edges({
       const newCounts = new Int32Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
       newCounts.set(edgeVertexCountsRef.current);
       edgeVertexCountsRef.current = newCounts;
+      const newSegments = new Uint8Array(Math.ceil(edges.length * BUFFER_GROWTH_FACTOR));
+      newSegments.set(edgeSegmentsRef.current);
+      edgeSegmentsRef.current = newSegments;
     }
     const epCache = endpointCacheRef.current;
     const evStarts = edgeVertexStartsRef.current;
     const evCounts = edgeVertexCountsRef.current;
+    const edgeSegments = edgeSegmentsRef.current;
 
     // The vertex spans this partial pass writes, for the GPU upload at the end.
     const dirtySpans = dirtySpansRef.current;
@@ -1527,8 +1576,17 @@ export function Edges({
            */
           const lx0 = x0 + lead0;
           const lx1 = x1 - lead1;
-          for (let s = 0; s <= segments; s++) {
-            const t = s / segments;
+          let curveSegments = edgeSegments[i];
+          if (!isPartialUpdate || curveSegments === 0) {
+            const hull =
+              Math.hypot(cx1 - lx0, cy1 - y0) +
+              Math.hypot(cx2 - cx1, cy2 - cy1) +
+              Math.hypot(lx1 - cx2, y1 - cy2);
+            curveSegments = segmentsForEdge(viewport.zoom, hull);
+            edgeSegments[i] = curveSegments;
+          }
+          for (let s = 0; s <= curveSegments; s++) {
+            const t = s / curveSegments;
             const mt = 1 - t;
             const mt2 = mt * mt;
             const mt3 = mt2 * mt;
@@ -1542,10 +1600,10 @@ export function Edges({
           // The two leader ends, in front of and behind the sampled curve.
           points[0] = x0;
           points[1] = y0;
-          const tail = (segments + 2) * 2;
+          const tail = (curveSegments + 2) * 2;
           points[tail] = x1;
           points[tail + 1] = y1;
-          pointsCount = segments + 3;
+          pointsCount = curveSegments + 3;
         }
 
         // Generate ribbon geometry from points

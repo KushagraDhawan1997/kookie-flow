@@ -7,6 +7,8 @@ import {
   unpackEdgeFlags,
   edgeHalfWidthAtZoom,
   segmentsForZoom,
+  segmentsForEdge,
+  edgeCoreHalfAtZoom,
   DirtyVertexSpans,
   MAX_EDGE_UPDATE_RANGES,
 } from './edges';
@@ -359,5 +361,47 @@ describe('DirtyVertexSpans', () => {
     const bytes = ranges.reduce((sum, r) => sum + r.count, 0);
     expect(bytes).toBe(6 * 128 * 3);
     expect(bytes).toBeLessThan((envelope * 3) / 8);
+  });
+});
+
+describe('segmentsForEdge', () => {
+  it('is the zoom count for a short curve', () => {
+    for (const zoom of [0.05, 0.125, 0.25, 0.5, 1, 2]) {
+      expect(segmentsForEdge(zoom, 40)).toBe(segmentsForZoom(zoom));
+    }
+  });
+
+  it('adds segments to a curve that is long on screen, up to the ceiling', () => {
+    // 2,000 units at zoom 0.1 is 200 screen px: about one segment per twelve px.
+    expect(segmentsForZoom(0.1)).toBe(8);
+    expect(segmentsForEdge(0.1, 2000)).toBe(32);
+    expect(segmentsForEdge(0.1, 600)).toBe(8);
+    expect(segmentsForEdge(0.01, 1e6)).toBe(64);
+  });
+
+  it('changes nothing at zoom 1 and above', () => {
+    for (const length of [10, 500, 50_000]) {
+      expect(segmentsForEdge(1, length)).toBe(64);
+      expect(segmentsForEdge(3, length)).toBe(64);
+    }
+  });
+});
+
+describe('edgeCoreHalfAtZoom', () => {
+  it('is the 2px core at and above zoom 1', () => {
+    expect(edgeCoreHalfAtZoom(1)).toBeCloseTo(1);
+    expect(edgeCoreHalfAtZoom(4)).toBeCloseTo(1);
+  });
+
+  it('thins as the graph zooms out, and stops at a 1px line', () => {
+    expect(edgeCoreHalfAtZoom(0.5)).toBeLessThan(1);
+    expect(edgeCoreHalfAtZoom(0.25)).toBeCloseTo(0.5);
+    expect(edgeCoreHalfAtZoom(0.01)).toBeCloseTo(0.5);
+  });
+
+  it('never thicker than the ribbon that holds it', () => {
+    for (const zoom of [0.01, 0.1, 0.45, 0.8, 1, 3]) {
+      expect(edgeCoreHalfAtZoom(zoom) + 0.75).toBeLessThanOrEqual(edgeHalfWidthAtZoom(zoom) + 1e-9);
+    }
   });
 });

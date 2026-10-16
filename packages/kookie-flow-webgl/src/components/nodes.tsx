@@ -472,8 +472,12 @@ export function Entities() {
           // Simplified AA - single fwidth call
           float aa = fwidth(d) * 1.5;
 
-          // Border calculation
-          float borderD = d + statusBorderWidth;
+          // Border calculation. A hairline never drops below one screen pixel: at zoom 0.2 a 1px
+          // border is 0.2px, which anti-aliases to nothing and leaves white cards on a pale
+          // canvas with no edge at all. A border of 0 (soft, ghost) stays 0.
+          float borderPx = fwidth(d);
+          float borderW = statusBorderWidth > 0.0 ? max(statusBorderWidth, borderPx) : 0.0;
+          float borderD = d + borderW;
           float borderMask = smoothstep(-aa, aa, borderD) - smoothstep(-aa, aa, d);
 
           // Background fill (respects backgroundAlpha for ghost/outline variants)
