@@ -4,7 +4,7 @@ import type { SkinColors } from '@kushagradhawan/kookie-flow-webgl/internal/skin
  * Which KookieUI v2 token plays each colour role in the glass skin.
  * All values are token keys (e.g., '--neutral-8').
  */
-export const GLASS_COLORS = {
+export const COLORS = {
   // ============================================
   // Canvas
   // ============================================

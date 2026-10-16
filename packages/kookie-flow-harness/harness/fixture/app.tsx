@@ -11,7 +11,7 @@
  *   ?count=1000&seed=1&widgets=0&preserveBuffer=1
  */
 
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
@@ -1516,7 +1516,7 @@ function App() {
       }}
     >
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={i === 0 ? onEntitiesChange : undefined}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import type { EntitySize, EntityVariant, HeaderPosition } from '@kushagradhawan/kookie-flow-react';
 
 const image = { name: 'Image', type: 'image' };
@@ -78,7 +78,7 @@ export default function EntityStylingExample() {
       </div>
       <div style={{ height: 360 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           entities={entities}
           edges={edges}
           onEntitiesChange={onEntitiesChange}

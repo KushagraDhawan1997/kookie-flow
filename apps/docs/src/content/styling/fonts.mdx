@@ -16,7 +16,7 @@ atlas it uses.
 | A `FontConfig` | Your own atlas | Your atlas images and metrics |
 
 ```tsx lineNumbers=false
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} font="system" />
+<KookieFlow skin={skin} entities={entities} edges={edges} font="system" />
 ```
 
 The canvas draws no text until the atlas is ready, so titles and labels appear a moment after
@@ -78,7 +78,7 @@ import {
   type FontPreset,
   type KookieFlowProps,
 } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 
 async function loadMetrics(url: string): Promise<FontMetrics> {
   const response = await fetch(url);
@@ -107,7 +107,7 @@ export function Board(props: Omit<KookieFlowProps, "font">) {
   }, []);
 
   if (!font) return null;
-  return <KookieFlow skin={glassSkin} {...props} font={font} />;
+  return <KookieFlow skin={skin} {...props} font={font} />;
 }
 ```
 

@@ -241,7 +241,7 @@ export interface KookieFlowProps {
 
   /**
    * How the editor looks: colour roles, sizes, shaders, DOM chrome and token reading. Required;
-   * `glassSkin` from @kushagradhawan/kookie-flow-skin-glass is KookieUI v2's.
+   * each design system ships one in its kookie-flow-skin package.
    */
   skin: FlowSkin;
   /** Entity size scale. Default: '2' */

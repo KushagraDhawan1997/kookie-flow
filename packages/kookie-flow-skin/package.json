@@ -1,13 +1,13 @@
 {
-  "name": "@kushagradhawan/kookie-flow-skin-glass",
+  "name": "@kushagradhawan/kookie-flow-skin",
   "version": "0.2.0",
-  "description": "KookieUI v2's glass look for Kookie Flow: colour roles, sizes, shaders and DOM chrome.",
+  "description": "Kookie Flow's skin on KookieUI v2's tokens: colour roles, sizes, shaders and DOM chrome.",
   "author": "Kushagra Dhawan",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/KushagraDhawan1997/kookie-flow",
-    "directory": "packages/kookie-flow-skin-glass"
+    "directory": "packages/kookie-flow-skin"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -80,17 +80,6 @@
         "default": "./dist/floating.cjs"
       }
     },
-    "./glass": {
-      "kookie-flow-source": "./src/glass.ts",
-      "import": {
-        "types": "./dist/glass.d.ts",
-        "default": "./dist/glass.js"
-      },
-      "require": {
-        "types": "./dist/glass.d.cts",
-        "default": "./dist/glass.cjs"
-      }
-    },
     "./lens": {
       "kookie-flow-source": "./src/lens.ts",
       "import": {
@@ -133,6 +122,17 @@
       "require": {
         "types": "./dist/metrics.d.cts",
         "default": "./dist/metrics.cjs"
+      }
+    },
+    "./paint": {
+      "kookie-flow-source": "./src/paint.ts",
+      "import": {
+        "types": "./dist/paint.d.ts",
+        "default": "./dist/paint.js"
+      },
+      "require": {
+        "types": "./dist/paint.d.cts",
+        "default": "./dist/paint.cjs"
       }
     },
     "./tokens": {

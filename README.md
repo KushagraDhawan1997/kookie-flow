@@ -12,7 +12,7 @@ nodes pans and zooms without React re-rendering.
 | --- | --- |
 | `@kushagradhawan/kookie-flow-core` | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
 | `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin. |
-| `@kushagradhawan/kookie-flow-skin-glass` | KookieUI v2's glass look: colour roles, sizes, shaders and toolbar controls. |
+| `@kushagradhawan/kookie-flow-skin` | KookieUI v2's glass look: colour roles, sizes, shaders and toolbar controls. |
 | `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
 
 These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
@@ -32,7 +32,7 @@ a box with a height.
 "use client";
 
 import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 
 const initialEntities: Entity[] = [
   { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
@@ -48,7 +48,7 @@ export default function Graph() {
 
   return (
     <div style={{ width: "100%", height: 360 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
+      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange} onConnect={onConnect} />
     </div>
   );
@@ -122,7 +122,7 @@ against the package's last build.
 ```text
 packages/kookie-flow-core        graph data, store, evaluation, history, layout (no React)
 packages/kookie-flow-webgl       the renderer: drawing, interaction, text, accessibility
-packages/kookie-flow-skin-glass  KookieUI v2's glass look
+packages/kookie-flow-skin  KookieUI v2's glass look
 packages/kookie-flow-react       the React entry: KookieFlow, useGraph, plugins
 packages/kookie-flow-harness     private: the Playwright behaviour suite and release gate
 packages/studio-core             shared logic for the studio app

@@ -26,7 +26,7 @@ import {
   type Entity,
   type XYPosition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const initialEntities: Entity[] = [
   { id: 'moodboard', type: 'frame', position: { x: 0, y: 0 }, width: 720, height: 480, data: { label: 'Moodboard' } },
@@ -54,7 +54,7 @@ export function Moodboard() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -92,9 +92,9 @@ import {
   useSocketLayout,
   type XYPosition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
-// Call from a component rendered inside <KookieFlow skin={glassSkin}>.
+// Call from a component rendered inside <KookieFlow skin={skin}>.
 export function useEntityAt() {
   const store = useFlowStoreApi();
   const layout = useSocketLayout();
@@ -374,14 +374,14 @@ import {
   useTheme,
   type SocketType,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export const socketTypes: Record<string, SocketType> = {
   audio: { name: 'Audio', color: '--crimson-10' },
   prompt: { name: 'Prompt', color: '#7c3aed' },
 };
 
-// Render inside <KookieFlow skin={glassSkin} socketTypes={socketTypes}>, where useTheme reads the flow's theme.
+// Render inside <KookieFlow skin={skin} socketTypes={socketTypes}>, where useTheme reads the flow's theme.
 export function SocketLegend() {
   const tokens = useTheme();
   const resolved = useMemo(

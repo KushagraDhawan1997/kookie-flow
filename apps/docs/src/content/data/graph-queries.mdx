@@ -256,7 +256,7 @@ import {
   type EdgeChange,
   type Entity,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const blurNode = (): Entity => ({
   id: crypto.randomUUID(),
@@ -287,7 +287,7 @@ export function InsertOnClick() {
 
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={graph.entities}
         edges={graph.edges}
         onEntitiesChange={graph.onEntitiesChange}

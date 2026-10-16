@@ -39,7 +39,7 @@ change, leave the handlers out, and read the graph back through the ref when you
 ```tsx
 import { useRef } from "react";
 import { KookieFlow, type Edge, type Entity, type KookieFlowInstance } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 
 const entities: Entity[] = [
   { id: "idea", type: "note", position: { x: 0, y: 0 }, data: { label: "Idea" } },
@@ -57,7 +57,7 @@ export function Sketchpad() {
   return (
     <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: 520 }}>
       <button onClick={save}>Save</button>
-      <KookieFlow skin={glassSkin} ref={flowRef} entities={entities} edges={edges} />
+      <KookieFlow skin={skin} ref={flowRef} entities={entities} edges={edges} />
     </div>
   );
 }
@@ -86,7 +86,7 @@ check the graph, or save on every edit:
 
 ```tsx
 import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const graph = useGraph({ initialEntities, history: true });
@@ -97,7 +97,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
         {graph.entities.length} nodes, {graph.edges.length} wires
         <button onClick={graph.undo} disabled={!graph.canUndo}>Undo</button>
       </header>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={graph.entities}
         edges={graph.edges}
         onEntitiesChange={graph.onEntitiesChange}
@@ -207,7 +207,7 @@ Then call them from the three handlers. This component keeps the document in `us
 ```tsx
 import { useCallback, useState } from "react";
 import { KookieFlow, type Connection, type EdgeChange, type EntityChange, type FlowObject } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 import { applyEdgeChanges, applyEntityChanges, connect } from "./graph-changes";
 
 export function DocumentEditor({ initial }: { initial: FlowObject }) {
@@ -224,7 +224,7 @@ export function DocumentEditor({ initial }: { initial: FlowObject }) {
   }, []);
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={doc.entities}
       edges={doc.edges}
       defaultViewport={initial.viewport}
@@ -335,7 +335,7 @@ work that changed nothing.
 // Rebuilds on every render: a new socketTypes object and a new entities array each time.
 function SlowBoard({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       socketTypes={{ texture: { name: "Texture", color: "--purple-10" } }}
       entities={entities.filter((entity) => !entity.data.archived)}
       edges={edges}
@@ -348,6 +348,6 @@ const socketTypes = { texture: { name: "Texture", color: "--purple-10" } };
 
 function Board({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
   const visible = useMemo(() => entities.filter((entity) => !entity.data.archived), [entities]);
-  return <KookieFlow skin={glassSkin} socketTypes={socketTypes} entities={visible} edges={edges} />;
+  return <KookieFlow skin={skin} socketTypes={socketTypes} entities={visible} edges={edges} />;
 }
 ```

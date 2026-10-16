@@ -5,20 +5,29 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### The skin is just "skin" !
+
+- `@kushagradhawan/kookie-flow-skin-glass` is now `@kushagradhawan/kookie-flow-skin`. It exports
+  `skin` (was `glassSkin`), `COLORS`, `METRICS`, `readTokens` and `ui`. The skin is whatever look
+  KookieUI v2's tokens give Kookie Flow; today that is glass.
+- From Womp's copy: the packing hook and webgl's test config match any package scope, and
+  `SkinMetrics.titleBand: 'edge'` lets a skin start the title band at the card's top edge as a
+  header (`uHeaderBand` in the card shader). This skin leaves it unset, so nothing moves.
+
 ### The look moves into a skin !
 
 - `KookieFlow` takes a required `skin: FlowSkin`. The renderer keeps behaviour; the skin supplies
   colour roles, sizes, the card outline, the shader code for cards, controls, the popover and media
   chrome, the toolbar's components, and how tokens are read. The new
-  `@kushagradhawan/kookie-flow-skin-glass` package is KookieUI v2's glass: pass `glassSkin`.
+  `@kushagradhawan/kookie-flow-skin` package is KookieUI v2's glass: pass `skin`.
 - `@kushagradhawan/kookie-flow-webgl` no longer depends on KookieUI. `THEME_COLORS`, `SIZE_MAP`,
   `VARIANT_MAP`, `RADIUS_MAP`, `SOCKET_ROW_HEIGHT_TOKEN`, `WIDGET_HEIGHT_TOKEN` and the GL kit's
-  `MATERIAL`, `GLASS_GLSL`, `AURA_GLSL`, `LENS*`, `GLINT`, `FOCUS_RING` and `CORNER_K_*` move to the
+  `MATERIAL`, `MATERIAL_GLSL`, `AURA_GLSL`, `LENS*`, `GLINT`, `FOCUS_RING` and `CORNER_K_*` move to the
   glass skin. `resolveEntityStyle` and `resolveSocketLayout` take the skin's metrics;
   `useThemeTokens(scope, skin)` takes the skin.
 - Remove the old all-in-one `@kushagradhawan/kookie-flow` package. Import from
   `@kushagradhawan/kookie-flow-react` (and `/plugins`), take `layoutGraph` from
-  `@kushagradhawan/kookie-flow-core/layout`, and pass `skin={glassSkin}`. The browser harness and
+  `@kushagradhawan/kookie-flow-core/layout`, and pass `skin={skin}`. The browser harness and
   release gate move to the private `packages/kookie-flow-harness`. From react and webgl,
   `ThemeProvider` and `StyleProvider` need a `SkinProvider` above them when used outside
   `KookieFlow`; `useOptionalSkin` reads the skin without throwing.

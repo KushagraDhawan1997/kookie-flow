@@ -158,7 +158,7 @@ function markBuffersForUpload(bufs: InstanceBuffers, count: number) {
  * - Dirty flag to skip unnecessary updates
  */
 export function Entities() {
-  const { colors, shape, shaders } = useSkin();
+  const { colors, metrics, shape, shaders } = useSkin();
   const store = useFlowStoreApi();
   const bgMeshRef = useRef<THREE.InstancedMesh>(null);
   const fgMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -246,6 +246,8 @@ export function Entities() {
         // The global accent band hue (r < 0 = none). A Vector3 rather than a Color so the
         // resolver's negative sentinel is not a colour.
         uHeaderColor: { value: new THREE.Vector3(...(resolvedStyle.accentBand ?? NO_ACCENT_BAND)) },
+        // The header a skin may fill: the title band from the top edge, when it starts there.
+        uHeaderBand: { value: metrics.titleBand === 'edge' ? socketLayout.titleBand : 0 },
         uShadowPad: { value: castPad },
         ...shaders.card.uniforms(skinCtx),
         // Status rendering
@@ -306,6 +308,7 @@ export function Entities() {
         uniform float uBackgroundAlpha;
         // Header uniforms
         uniform vec3 uHeaderColor; // global accent band hue; r < 0 = none
+        uniform float uHeaderBand; // title band height from the top edge, 0 = none (SkinShaders.card)
         uniform float uPass;
         // Status uniforms
         uniform vec3 uAccentColor;
@@ -499,7 +502,7 @@ export function Entities() {
       depthWrite: true,
       depthTest: true,
     });
-  }, [resolvedStyle, tokens, colors, shape, shaders]);
+  }, [resolvedStyle, socketLayout.titleBand, tokens, colors, metrics, shape, shaders]);
 
   /** Free the GPU resources this component owns; see nodes.tsx for why the dep array is the value itself. */
   useEffect(

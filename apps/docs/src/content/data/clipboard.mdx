@@ -16,7 +16,7 @@ else.
 'use client';
 
 import { KookieFlow, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 const entities: Entity[] = [
@@ -53,7 +53,7 @@ function ClipboardShortcuts() {
 export function FlowEditor() {
   return (
     <div style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
+      <KookieFlow skin={skin} entities={entities} edges={edges}>
         <ClipboardShortcuts />
       </KookieFlow>
     </div>
@@ -131,7 +131,7 @@ export function FlowEditor() {
 
   return (
     <div ref={setContainer} style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges}>
+      <KookieFlow skin={skin} entities={entities} edges={edges}>
         <ClipboardShortcuts container={container} />
       </KookieFlow>
     </div>
@@ -413,7 +413,7 @@ import {
   type EdgeChange,
   type EntityChange,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 import { initialEntities } from './initial-graph';
 
@@ -461,7 +461,7 @@ export function FlowEditor() {
 
   return (
     <div ref={setContainer} style={{ height: 480 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={graph.entities}
         edges={graph.edges}
         onEntitiesChange={graph.onEntitiesChange}

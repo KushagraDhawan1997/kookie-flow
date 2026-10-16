@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { SkinShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
-import { GLASS_GLSL } from './glass';
+import { MATERIAL_GLSL } from './paint';
 import { MATERIAL, type CastLayer, type RGBA } from './material';
 
 /**
@@ -8,7 +8,7 @@ import { MATERIAL, type CastLayer, type RGBA } from './material';
  * grain and the conic ring on a field; top-down light on a filled mark; a two-layer cast under
  * a grip.
  */
-export const glassControls: SkinShader = {
+export const controls: SkinShader = {
   glsl: /* glsl */ `
   uniform float uControlAlpha;
   uniform vec4 uRingTop;
@@ -23,7 +23,7 @@ export const glassControls: SkinShader = {
   uniform float uGrain;
   uniform vec4 uMarkEdge;
 
-  ${GLASS_GLSL}
+  ${MATERIAL_GLSL}
 
   vec4 controlEdge() {
     return uMarkEdge;

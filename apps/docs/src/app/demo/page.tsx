@@ -10,7 +10,7 @@ import {
   type KookieFlowInstance,
   type ConnectionEndState,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 import {
   Code,
@@ -775,7 +775,7 @@ type ClipboardApi = {
 };
 
 /**
- * The clipboard lives on the flow's store, so this has to sit inside `<KookieFlow skin={glassSkin}>`; the buttons
+ * The clipboard lives on the flow's store, so this has to sit inside `<KookieFlow skin={skin}>`; the buttons
  * that drive it sit in the band outside. It hands its actions out through a ref and reports how
  * many entities are held, and registers the shortcuts.
  */
@@ -1019,7 +1019,7 @@ export default function DemoPage() {
       }
     >
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

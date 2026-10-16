@@ -61,7 +61,7 @@ connects to. Pass your types to `KookieFlow` as `socketTypes`:
 
 ```tsx
 import { KookieFlow, type Edge, type Entity, type SocketType } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // Declared outside the component, so the object is the same on every render.
 const socketTypes: Record<string, SocketType> = {
@@ -72,7 +72,7 @@ const socketTypes: Record<string, SocketType> = {
 };
 
 export function Synth({ entities, edges }: { entities: Entity[]; edges: Edge[] }) {
-  return <KookieFlow skin={glassSkin} entities={entities} edges={edges} socketTypes={socketTypes} />;
+  return <KookieFlow skin={skin} entities={entities} edges={edges} socketTypes={socketTypes} />;
 }
 ```
 
@@ -163,7 +163,7 @@ after a gutter of `socketLabelWidth`, which defaults to `96` (`SOCKET_LABEL_WIDT
 shortens a socket name that doesn't fit the gutter. Widen the gutter when your names are long:
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} socketLabelWidth={140} />
+<KookieFlow skin={skin} entities={entities} edges={edges} socketLabelWidth={140} />
 ```
 
 A stacked row puts the name above the widget and gives the widget the full width of the body. Use
@@ -200,7 +200,7 @@ socket's `defaultValue`. Write each change back there:
 
 import { useCallback } from 'react';
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, setEntities, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -221,7 +221,7 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
   );
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}

@@ -29,7 +29,7 @@ import {
   type KookieFlowInstance,
   type OnEvaluate,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -245,7 +245,7 @@ export default function DemoEvaluationPage() {
       }
     >
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

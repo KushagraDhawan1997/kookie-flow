@@ -10,7 +10,7 @@ breaking change.
 
 This is the React entry. It sits on `@kushagradhawan/kookie-flow-core` (the graph) and
 `@kushagradhawan/kookie-flow-webgl` (the renderer), and takes its look from a skin:
-`@kushagradhawan/kookie-flow-skin-glass` is KookieUI v2's glass.
+`@kushagradhawan/kookie-flow-skin` is KookieUI v2's glass.
 
 The 0.2.0 candidates are unpublished. Pack with pnpm and install all four Flow archives plus the
 pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.3` archive from this repository's `vendor/`.
@@ -41,7 +41,7 @@ export default function App({ children }: { children: React.ReactNode }) {
 "use client";
 
 import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
-import { glassSkin } from "@kushagradhawan/kookie-flow-skin-glass";
+import { skin } from "@kushagradhawan/kookie-flow-skin";
 
 const initialEntities: Entity[] = [
   { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
@@ -57,7 +57,7 @@ export default function Graph() {
 
   return (
     <div style={{ width: "100%", height: 360 }}>
-      <KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
+      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
         onEdgesChange={onEdgesChange} onConnect={onConnect} />
     </div>
   );

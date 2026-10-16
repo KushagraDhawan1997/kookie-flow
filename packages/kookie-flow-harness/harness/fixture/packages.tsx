@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { createRoot } from 'react-dom/client';
 import { Theme } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow, useGraph, useTheme, type Entity } from '@kushagradhawan/kookie-flow-react';
@@ -55,7 +55,7 @@ function Editor({ name }: { name: string }) {
       </nav>
       <div style={{ flex: 1, minHeight: 0 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           entities={graph.entities}
           edges={graph.edges}
           onEntitiesChange={graph.onEntitiesChange}

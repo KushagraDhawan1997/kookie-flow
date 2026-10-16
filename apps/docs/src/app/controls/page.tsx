@@ -7,7 +7,7 @@ import {
   type Entity,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { Code, Text } from '@kushagradhawan/kookie-ui-react';
 
 import { DemoFrame } from '../demo-frame';
@@ -217,7 +217,7 @@ export default function ControlsPage() {
       }
     >
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

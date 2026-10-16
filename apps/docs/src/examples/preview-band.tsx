@@ -10,7 +10,7 @@ import {
   type KookieFlowInstance,
   type OnEvaluate,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 /**
  * Three nodes, three kinds of band. Each names one of its own output sockets, and the canvas
@@ -111,7 +111,7 @@ export default function PreviewBandExample() {
       </Flex>
       <div style={{ width: '100%', height: 400 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           ref={flowRef}
           entities={entities}
           edges={edges}

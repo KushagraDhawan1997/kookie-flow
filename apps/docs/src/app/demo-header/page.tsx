@@ -22,7 +22,7 @@ import {
   type HeaderPosition,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 import { DemoFrame } from '../demo-frame';
 
@@ -84,7 +84,7 @@ function Board({
   return (
     <section style={columnStyle}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

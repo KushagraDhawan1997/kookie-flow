@@ -27,7 +27,7 @@ const nextConfig = {
   transpilePackages: [
     '@kushagradhawan/kookie-flow-core',
     '@kushagradhawan/kookie-flow-webgl',
-    '@kushagradhawan/kookie-flow-skin-glass',
+    '@kushagradhawan/kookie-flow-skin',
     '@kushagradhawan/kookie-flow-react',
     'studio-core',
   ],

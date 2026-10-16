@@ -13,7 +13,7 @@ import {
   type ResolvedSocketLayout,
   type XYPosition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useContextMenu } from '@kushagradhawan/kookie-flow-react/plugins';
 
 const step = (id: string, x: number, y: number, label = id): Entity => ({
@@ -82,7 +82,7 @@ export default function ContextMenuExample() {
       style={{ position: 'relative', width: '100%', height: 360 }}
     >
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

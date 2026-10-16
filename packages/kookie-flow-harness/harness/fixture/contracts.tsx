@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { createRoot } from 'react-dom/client';
 import { Theme } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow } from '@kushagradhawan/kookie-flow-webgl/internal/components/kookie-flow';
@@ -50,7 +50,7 @@ function App() {
     <Theme>
       <div ref={host} style={{ position: 'fixed', inset: 0 }}>
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           ref={ref}
           entities={entities}
           edges={edges}

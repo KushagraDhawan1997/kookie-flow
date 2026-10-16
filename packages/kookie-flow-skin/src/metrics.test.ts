@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveEntityStyle } from '@kushagradhawan/kookie-flow-webgl/internal/utils/style-resolver';
-import { GLASS_METRICS, RADIUS_MAP, WIDGET_RADIUS_MAP, SIZE_MAP } from './metrics';
+import { METRICS, RADIUS_MAP, WIDGET_RADIUS_MAP, SIZE_MAP } from './metrics';
 import {
   FALLBACK_TOKENS,
   type ThemeTokens,
@@ -95,7 +95,7 @@ describe('no radius level turns a node into a capsule', () => {
           false,
           tokens,
           undefined,
-          GLASS_METRICS
+          METRICS
         );
         for (const [w, h] of BOXES) {
           expect(style.borderRadius).toBeLessThan(capsuleAt(w, h));
@@ -109,7 +109,7 @@ describe('no radius level turns a node into a capsule', () => {
     // The old table read `--radius-full` here, which is 9999 at every level of both systems.
     expect(tokens['--radius-full']).toBe(9999);
     expect(
-      resolveEntityStyle('2', 'surface', 'full', 'none', false, tokens, undefined, GLASS_METRICS)
+      resolveEntityStyle('2', 'surface', 'full', 'none', false, tokens, undefined, METRICS)
         .borderRadius
     ).toBe(48);
   });
@@ -119,7 +119,7 @@ describe('the radius level reaches the controls on the node', () => {
   it('moves a widget with the level rather than pinning it to one number', () => {
     const tokens = v2Tokens('medium');
     const at = (level: EntityRadius) =>
-      resolveEntityStyle('2', 'surface', level, 'none', false, tokens, undefined, GLASS_METRICS)
+      resolveEntityStyle('2', 'surface', level, 'none', false, tokens, undefined, METRICS)
         .widgetRadius;
     expect(at('none')).toBe(0);
     expect(at('small')).toBe(4);
@@ -140,7 +140,7 @@ describe('the radius level reaches the controls on the node', () => {
       false,
       tokens,
       undefined,
-      GLASS_METRICS
+      METRICS
     );
     expect(style.borderRadius).toBe(48); // surface: bounded
     expect(style.widgetRadius).toBe(9999); // control: a pill, clamped to its own box downstream
@@ -156,7 +156,7 @@ describe('the radius level reaches the controls on the node', () => {
       false,
       tokens,
       { borderRadius: 0 },
-      GLASS_METRICS
+      METRICS
     );
     expect(style.borderRadius).toBe(0);
     expect(style.widgetRadius).toBe(6);

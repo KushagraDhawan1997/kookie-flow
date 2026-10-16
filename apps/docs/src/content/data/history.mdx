@@ -9,7 +9,7 @@ Pass `history: true` to `useGraph`.
 'use client';
 
 import { KookieFlow, useGraph, type Edge, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Board({ initialEntities, initialEdges }: { initialEntities: Entity[]; initialEdges: Edge[] }) {
   const { entities, edges, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -19,7 +19,7 @@ export function Board({ initialEntities, initialEdges }: { initialEntities: Enti
   });
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -89,7 +89,7 @@ change instead:
 
 import { useCallback } from 'react';
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   const { entities, edges, getEntity, onEntitiesChange, onEdgesChange, onConnect } = useGraph({
@@ -107,7 +107,7 @@ export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   );
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}
@@ -157,7 +157,7 @@ the whole page except while a text field has focus:
 'use client';
 
 import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 
 export function Board({ initialEntities }: { initialEntities: Entity[] }) {
@@ -171,7 +171,7 @@ export function Board({ initialEntities }: { initialEntities: Entity[] }) {
   });
 
   return (
-    <KookieFlow skin={glassSkin}
+    <KookieFlow skin={skin}
       entities={entities}
       edges={edges}
       onEntitiesChange={onEntitiesChange}

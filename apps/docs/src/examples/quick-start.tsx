@@ -7,7 +7,7 @@ import {
   type Entity,
   type KookieFlowInstance,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // Two nodes: one with a float output, one with a float input.
 const initialEntities: Entity[] = [
@@ -41,7 +41,7 @@ export default function QuickStartExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}

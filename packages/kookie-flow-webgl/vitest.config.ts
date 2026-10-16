@@ -12,7 +12,7 @@ export default defineConfig({
   resolve: { conditions: ['kookie-flow-source'] },
   ssr: {
     resolve: { conditions: ['kookie-flow-source'] },
-    noExternal: [/^@kushagradhawan\/kookie-flow-/],
+    noExternal: [/^@[^/]+\/kookie-flow-/],
   },
   test: {
     projects: [

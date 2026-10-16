@@ -17,7 +17,7 @@ import {
   type Viewport,
   type XYPosition,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { registry, SOCKET_TYPES } from 'studio-core';
 
 import { AddNodeMenu } from './canvas-menu';
@@ -139,7 +139,7 @@ function CanvasImpl(props: CanvasProps) {
       >
         <Box ref={props.visibleRef} position="absolute" inset="0" style={VISIBLE_PART} />
         <KookieFlow
-          skin={glassSkin}
+          skin={skin}
           ref={flowRef}
           entities={props.entities}
           edges={props.edges}

@@ -9,7 +9,7 @@ every prop it takes, with its type and default, and link each one to the chapter
 
 import { useRef } from 'react';
 import { KookieFlow, useGraph, type KookieFlowInstance } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 export function Editor() {
   const flowRef = useRef<KookieFlowInstance>(null);
@@ -17,7 +17,7 @@ export function Editor() {
 
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}
@@ -199,7 +199,7 @@ export function ZoomButton() {
 ```
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
+<KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}>
   <ZoomButton />
 </KookieFlow>
 ```
@@ -248,7 +248,7 @@ Define these outside your component, or wrap them in `useMemo`:
 'use client';
 
 import { KookieFlow, useGraph, type SocketType } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // Module scope: one object for the life of the app, however often Editor renders.
 const socketTypes: Record<string, SocketType> = {
@@ -261,7 +261,7 @@ export function Editor() {
 
   return (
     <div style={{ height: 600 }}>
-      <KookieFlow skin={glassSkin}
+      <KookieFlow skin={skin}
         entities={entities}
         edges={edges}
         onEntitiesChange={onEntitiesChange}
@@ -284,7 +284,7 @@ the [Minimap](/styling/minimap#read-colours-from-the-theme) chapter explains.
 Set `showStats` to show a frame-rate panel while you work on a graph's performance:
 
 ```tsx
-<KookieFlow skin={glassSkin} entities={entities} edges={edges} showStats={process.env.NODE_ENV === 'development'} />
+<KookieFlow skin={skin} entities={entities} edges={edges} showStats={process.env.NODE_ENV === 'development'} />
 ```
 
 The panel is fixed to the top-left corner of the page, not of the canvas, and sits above the rest

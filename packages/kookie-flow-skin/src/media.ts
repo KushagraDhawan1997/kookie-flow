@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SkinShader } from '@kushagradhawan/kookie-flow-webgl/internal/skin/types';
 import { resolveColor } from '@kushagradhawan/kookie-flow-webgl/internal/core/theme-colors';
-import { GLASS_GLSL } from './glass';
+import { MATERIAL_GLSL } from './paint';
 import { GLINT, LENS, LENS_GLSL } from './lens';
 import { MATERIAL, type RGBA } from './material';
 
@@ -53,7 +53,7 @@ const MEDIA_LENS = {
 /** The glint's peak. A touch lower in dark, where a white rim on a dark ground reads louder. */
 const GLINT_PEAK = { light: 0.75, dark: 0.5 } as const;
 
-export const glassMedia: SkinShader = {
+export const media: SkinShader = {
   glsl: /* glsl */ `
 uniform vec3 uGlassTint;
 uniform float uGlassTintA;
@@ -75,7 +75,7 @@ uniform vec4 uLens;
 uniform float uLensFringe;
 uniform vec3 uGlint;
 
-${GLASS_GLSL}
+${MATERIAL_GLSL}
 ${LENS_GLSL}
 
 // How far past a control its cast can reach, so the blur runs only where glass can be.

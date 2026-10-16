@@ -5,13 +5,13 @@ import { dirname, resolve, relative, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const names = ['core', 'webgl', 'skin-glass', 'react'];
+const names = ['core', 'webgl', 'skin', 'react'];
 const owners = new Map(names.map((name) => ['@kushagradhawan/kookie-flow-' + name, name]));
 // A skin depends on the renderer; the renderer and the React layer never depend on a skin.
 const allowed = {
   core: new Set(),
   webgl: new Set(['core']),
-  'skin-glass': new Set(['core', 'webgl']),
+  skin: new Set(['core', 'webgl']),
   react: new Set(['core', 'webgl']),
 };
 const files = (dir) =>
@@ -81,5 +81,5 @@ for (const name of names) {
   }
 }
 console.log(
-  `Package boundaries passed: ${checked} production modules; core → webgl → react, webgl → skin-glass.`
+  `Package boundaries passed: ${checked} production modules; core → webgl → react, webgl → skin.`
 );

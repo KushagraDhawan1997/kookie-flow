@@ -14,8 +14,8 @@ export function useSkin(): FlowSkin {
   const skin = useContext(SkinContext);
   if (!skin) {
     throw new Error(
-      'Kookie Flow has no skin. Pass `skin` to <KookieFlow>, for example `glassSkin` from ' +
-        '@kushagradhawan/kookie-flow-skin-glass.'
+      'Kookie Flow has no skin. Pass `skin` to <KookieFlow>, for example the one exported by ' +
+        'kookie-flow-skin.'
     );
   }
   return skin;

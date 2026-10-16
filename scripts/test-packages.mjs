@@ -38,7 +38,7 @@ try {
   cpSync(join(root, '.pnpmfile.mjs'), join(stagingRoot, '.pnpmfile.mjs'));
   json(join(stagingRoot, 'package.json'), { private: true, packageManager: 'pnpm@12.4.1' });
   write(join(stagingRoot, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
-  for (const part of ['core', 'webgl', 'skin-glass', 'react']) {
+  for (const part of ['core', 'webgl', 'skin', 'react']) {
     const folder = 'kookie-flow-' + part;
     const source = join(root, 'packages', folder);
     const stage = join(stagingRoot, 'packages', folder);
@@ -52,7 +52,7 @@ try {
       if (existsSync(join(source, file))) cpSync(join(source, file), join(stage, file));
     if (part === 'webgl') cpSync(join(source, 'fonts'), join(stage, 'fonts'), { recursive: true });
   }
-  for (const part of ['core', 'webgl', 'skin-glass', 'react']) {
+  for (const part of ['core', 'webgl', 'skin', 'react']) {
     const folder = 'kookie-flow-' + part;
     const stage = join(stagingRoot, 'packages', folder);
     const manifest = JSON.parse(readFileSync(join(stage, 'package.json'), 'utf8'));
@@ -165,7 +165,7 @@ try {
   };
   for (const peer of Object.keys({
     ...manifests.webgl.peerDependencies,
-    ...manifests['skin-glass'].peerDependencies,
+    ...manifests['skin'].peerDependencies,
   }))
     if (!(peer in dependencies)) dependencies[peer] = harnessDev[peer].replace(/^[~^]/, '');
   dependencies['@types/react'] = harnessDev['@types/react'].replace(/^[~^]/, '');
@@ -175,17 +175,17 @@ try {
   for (const mode of ['mjs', 'cjs']) {
     const load =
       mode === 'mjs'
-        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as glass from '@kushagradhawan/kookie-flow-skin-glass'; import * as plugins from '@kushagradhawan/kookie-flow-react/plugins';`
-        : `const flow=require('@kushagradhawan/kookie-flow-react'),gl=require('@kushagradhawan/kookie-flow-webgl'),glass=require('@kushagradhawan/kookie-flow-skin-glass'),plugins=require('@kushagradhawan/kookie-flow-react/plugins');`;
+        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as glass from '@kushagradhawan/kookie-flow-skin'; import * as plugins from '@kushagradhawan/kookie-flow-react/plugins';`
+        : `const flow=require('@kushagradhawan/kookie-flow-react'),gl=require('@kushagradhawan/kookie-flow-webgl'),glass=require('@kushagradhawan/kookie-flow-skin'),plugins=require('@kushagradhawan/kookie-flow-react/plugins');`;
     write(
       join(app, 'smoke.' + mode),
-      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || flow.FlowProvider !== gl.FlowProvider) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !glass.glassSkin.shaders.card.glsl) throw Error('Missing exports');`
+      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || flow.FlowProvider !== gl.FlowProvider) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !glass.skin.shaders.card.glsl) throw Error('Missing exports');`
     );
     run(process.execPath, ['smoke.' + mode], app);
   }
   const source = `import {KookieFlow,useGraph,type Entity,type FlowSkin} from '@kushagradhawan/kookie-flow-react';
-    import {glassSkin} from '@kushagradhawan/kookie-flow-skin-glass';
-    const skin: FlowSkin = glassSkin;
+    import {skin} from '@kushagradhawan/kookie-flow-skin';
+    const skin: FlowSkin = skin;
     import {layoutGraph} from '@kushagradhawan/kookie-flow-core/layout';
     const entities: Entity[] = []; export {KookieFlow,useGraph,layoutGraph,entities,skin};`;
   for (const ext of ['mts', 'cts']) write(join(app, 'consumer.' + ext), source);

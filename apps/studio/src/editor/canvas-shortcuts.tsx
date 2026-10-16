@@ -1,7 +1,7 @@
 'use client';
 
 import type { EdgeChange, EntityChange } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-react';
 import { useClipboard, useKeyboardShortcuts } from '@kushagradhawan/kookie-flow-react/plugins';
 import { registry, stripResolved } from 'studio-core';
@@ -18,7 +18,7 @@ const canvasHasFocus = () =>
   Boolean(document.activeElement?.closest('[data-kookie-flow-container]'));
 
 /**
- * Copy, paste, duplicate, undo and redo for the canvas. Rendered inside `<KookieFlow skin={glassSkin}>` because
+ * Copy, paste, duplicate, undo and redo for the canvas. Rendered inside `<KookieFlow skin={skin}>` because
  * the clipboard lives in the flow store. Delete and select-all are the library's own.
  *
  * NOTHING IS CANCELLED PAGE-WIDE. These keys are bound on the document, so cancelling them up

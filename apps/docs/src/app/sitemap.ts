@@ -15,5 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly' as const,
       priority: 0.8,
     })),
+    // Not a chapter, so the registry cannot list it.
+    { url: `${SITE_URL}/whats-new`, lastModified, changeFrequency: 'weekly', priority: 0.5 },
   ];
 }

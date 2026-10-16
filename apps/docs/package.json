@@ -25,7 +25,7 @@
     "remark-gfm": "^4.0.1",
     "shiki": "^4.4.3",
     "three": "^0.186.0",
-    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*"
+    "@kushagradhawan/kookie-flow-skin": "workspace:*"
   },
   "devDependencies": {
     "@types/mdx": "^2.0.14",

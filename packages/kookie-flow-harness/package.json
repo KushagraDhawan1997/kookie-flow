@@ -6,8 +6,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-skin-glass lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc -p tsconfig.harness.json",
-    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-skin-glass test && pnpm --filter @kushagradhawan/kookie-flow-react test",
+    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-skin lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc -p tsconfig.harness.json",
+    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-skin test && pnpm --filter @kushagradhawan/kookie-flow-react test",
     "clean": "rm -rf harness/dist .turbo",
     "generate:fonts": "pnpm --filter @kushagradhawan/kookie-flow-webgl generate:fonts",
     "harness:build": "node harness/build.mjs",
@@ -50,7 +50,7 @@
     "vite": "^8.3.0",
     "@kushagradhawan/kookie-flow-webgl": "workspace:*",
     "@kushagradhawan/kookie-flow-core": "workspace:*",
-    "@kushagradhawan/kookie-flow-skin-glass": "workspace:*",
+    "@kushagradhawan/kookie-flow-skin": "workspace:*",
     "@kushagradhawan/kookie-flow-react": "workspace:*"
   },
   "engines": {

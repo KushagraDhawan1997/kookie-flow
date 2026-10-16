@@ -22,7 +22,7 @@ import type { SkinUI } from '@kushagradhawan/kookie-flow-webgl/internal/skin/typ
  * toolbar does. `backdrop` tells every glass-capable control in the row that the canvas passes
  * behind it, once on the toolbar, and again on groups and fields that stand alone.
  */
-export const glassUI: SkinUI = {
+export const ui: SkinUI = {
   Toolbar: (props) => <Toolbar backdrop {...props} />,
   ToolbarGroup: (props) => <ToolbarGroup backdrop {...props} />,
   ToolbarButton,

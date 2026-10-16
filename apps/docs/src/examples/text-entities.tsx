@@ -12,7 +12,7 @@ import {
   type TextEntityData,
   type TextSizingMode,
 } from '@kushagradhawan/kookie-flow-react';
-import { glassSkin } from '@kushagradhawan/kookie-flow-skin-glass';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 // `toolbar: true` shows the sizing, font, and colour controls when text is selected.
 const entityTypes: Record<string, EntityTypeDefinition> = { text: { type: 'text', toolbar: true } };
@@ -66,7 +66,7 @@ export default function TextEntitiesExample() {
   return (
     <div style={{ width: '100%', height: 360 }}>
       <KookieFlow
-        skin={glassSkin}
+        skin={skin}
         ref={flowRef}
         entities={entities}
         edges={edges}
