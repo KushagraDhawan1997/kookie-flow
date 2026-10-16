@@ -175,17 +175,17 @@ try {
   for (const mode of ['mjs', 'cjs']) {
     const load =
       mode === 'mjs'
-        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as glass from '@kushagradhawan/kookie-flow-skin'; import * as plugins from '@kushagradhawan/kookie-flow-react/plugins';`
-        : `const flow=require('@kushagradhawan/kookie-flow-react'),gl=require('@kushagradhawan/kookie-flow-webgl'),glass=require('@kushagradhawan/kookie-flow-skin'),plugins=require('@kushagradhawan/kookie-flow-react/plugins');`;
+        ? `import * as flow from '@kushagradhawan/kookie-flow-react'; import * as gl from '@kushagradhawan/kookie-flow-webgl'; import * as skinPackage from '@kushagradhawan/kookie-flow-skin'; import * as plugins from '@kushagradhawan/kookie-flow-react/plugins';`
+        : `const flow=require('@kushagradhawan/kookie-flow-react'),gl=require('@kushagradhawan/kookie-flow-webgl'),skinPackage=require('@kushagradhawan/kookie-flow-skin'),plugins=require('@kushagradhawan/kookie-flow-react/plugins');`;
     write(
       join(app, 'smoke.' + mode),
-      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || flow.FlowProvider !== gl.FlowProvider) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !glass.skin.shaders.card.glsl) throw Error('Missing exports');`
+      `${load}\nif(gl.KookieFlow !== flow.KookieFlow || flow.FlowProvider !== gl.FlowProvider) throw Error('Duplicate implementations'); if (!flow.useGraph || !plugins.useClipboard || !skinPackage.skin.shaders.card.glsl) throw Error('Missing exports');`
     );
     run(process.execPath, ['smoke.' + mode], app);
   }
   const source = `import {KookieFlow,useGraph,type Entity,type FlowSkin} from '@kushagradhawan/kookie-flow-react';
-    import {skin} from '@kushagradhawan/kookie-flow-skin';
-    const skin: FlowSkin = skin;
+    import {skin as kookieSkin} from '@kushagradhawan/kookie-flow-skin';
+    const skin: FlowSkin = kookieSkin;
     import {layoutGraph} from '@kushagradhawan/kookie-flow-core/layout';
     const entities: Entity[] = []; export {KookieFlow,useGraph,layoutGraph,entities,skin};`;
   for (const ext of ['mts', 'cts']) write(join(app, 'consumer.' + ext), source);
