@@ -84,6 +84,7 @@ export function SiteFooter() {
             title: "Reference",
             links: [
               { label: "Live demo", href: "/demo" },
+              { label: "What's new", href: "/whats-new" },
               { label: "llms.txt", href: "/llms.txt" },
               { label: "GitHub", href: "https://github.com/KushagraDhawan1997/kookie-flow" },
             ],
