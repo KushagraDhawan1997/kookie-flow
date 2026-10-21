@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
+import { Box, Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
+import { CanvasGuard } from "./canvas-guard";
+import { Hero } from "./hero";
 import { PageFrame } from "./page-frame";
 import { WipNotice } from "./wip-notice";
 import { SECTIONS, chaptersIn } from "./chapters";
@@ -58,7 +60,16 @@ const DEMOS: { href: string; label: string }[] = [
 
 export default function Home() {
   return (
-    <PageFrame width="48rem">
+    <>
+      {/* THE HERO RUNS TO THE PANE'S TOP, LEFT AND RIGHT EDGES (Kushagra, 2026-10-21): `bleed`
+          cancels the content pane's padding, so the live graph is the top of the page and the
+          title sits under it. The guard keeps the page's scroll when the wheel passes over it. */}
+      <Box mt="bleed" mx="bleed">
+        <CanvasGuard>
+          <Hero />
+        </CanvasGuard>
+      </Box>
+      <PageFrame width="48rem">
       <Stack gap="10">
         {/* THE MASTHEAD: the title, then the deck. No mark above the title — the sidebar's
             masthead is three inches away and already carries it, and the footer signs the page
@@ -143,6 +154,7 @@ export default function Home() {
           </Grid>
         </Stack>
       </Stack>
-    </PageFrame>
+      </PageFrame>
+    </>
   );
 }
