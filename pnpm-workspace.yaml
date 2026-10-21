@@ -19,3 +19,5 @@ minimumReleaseAgeExclude:
 overrides:
   '@esbuild-kit/core-utils>esbuild': '^0.25.0'
   'three-stdlib>fflate': '^0.6.11'
+  # GHSA-587h-7wmj-h5pm (launch-editor in vite 8.3.0 to 8.3.2), reached through better-auth>vitest.
+  vite: '^8.3.3'
