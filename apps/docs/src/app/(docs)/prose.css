@@ -363,3 +363,9 @@
     touch-action: pan-y;
   }
 }
+
+/* The work-in-progress notice, hidden before first paint once dismissed (wip-notice-script.ts
+   stamps the attribute). The row collapses with it, so the frame never jumps. */
+html[data-wip-dismissed] .docs-wip-notice {
+  display: none;
+}

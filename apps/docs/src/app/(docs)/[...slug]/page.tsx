@@ -14,7 +14,6 @@ import { Box, Page } from "@kushagradhawan/kookie-ui-react";
 import { ProseFlow } from "../../../mdx-components";
 import { BY_SLUG, CHAPTERS } from "../chapters";
 import { PageFrame } from "../page-frame";
-import { WIP_NOTICE_CHAPTERS, WipNotice } from "../wip-notice";
 import { chapterToc, type TocEntry } from "../toc";
 import { TableOfContents } from "../../../blocks/table-of-contents";
 
@@ -100,7 +99,6 @@ export default async function ChapterPage({ params }: { params: Promise<{ slug: 
 
               `kd-prose` for the reading measure alone: the deck is prose and belongs on the
               same column as the prose under it, and the class is where that width is stated. */}
-          {WIP_NOTICE_CHAPTERS.has(chapter.slug) ? <WipNotice /> : null}
           <ProseFlow>
             <Content />
           </ProseFlow>

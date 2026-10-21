@@ -13,7 +13,7 @@ This is the React entry. It sits on `@kushagradhawan/kookie-flow-core` (the grap
 `@kushagradhawan/kookie-flow-skin` is KookieUI v2's glass.
 
 The 0.2.0 candidates are unpublished. Pack with pnpm and install all four Flow archives plus the
-pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.3` archive from this repository's `vendor/`.
+pinned `@kushagradhawan/kookie-ui-react@0.0.0-flow.4` archive from this repository's `vendor/`.
 Do not substitute current UI v2 without qualifying it: that source changed since the tested snapshot.
 See [package migration](../../docs/PACKAGES.md) and [production qualification](../kookie-flow-harness/PRODUCTION.md).
 

@@ -51,6 +51,7 @@ import { PanelLeftIcon, XSocialIcon } from "../icons";
 import { RepoLink } from "./repo-link";
 import { CHAPTERS, READING_ORDER, SECTIONS } from "./chapters";
 import { DocsPager } from "./docs-pager";
+import { WipNotice } from "./wip-notice";
 import { PageActions } from "./page-actions";
 import { DocsNav, type NavSection } from "./docs-nav";
 import { DocsSearch } from "./docs-search";
@@ -130,6 +131,9 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
           number", and the drag now moves this same name (see the resize note in shell.tsx), so
           the two stay one number after the reader changes it too. */}
       <Shell style={{ "--shell-sidebar-w": "336px" } as React.CSSProperties}>
+        {/* The work-in-progress notice, on every page rather than on the two a deciding reader
+            lands on: it is a fact about the whole site, which is exactly the Shell's notice row. */}
+        <WipNotice />
         {/* RESIZABLE, and the bounds are this site's content speaking (§27's own reason for a
             width prop). The floor is not the system's 160: a nav whose rows wrap and change
             height as you drag is a worse thing than a nav you cannot narrow. The ceiling is a reading site's: past ~420 the column is wider than most of

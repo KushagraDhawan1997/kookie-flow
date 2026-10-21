@@ -3,6 +3,7 @@
 ## October 21
 
 1. **Front-page hero.** The docs front page opens with a live graph: a Generate node wired into the picture it made.
+2. **Work-in-progress notice at the top.** The notice sits above every page instead of on two, and stays dismissed after a reload.
 
 ## October 16
 
