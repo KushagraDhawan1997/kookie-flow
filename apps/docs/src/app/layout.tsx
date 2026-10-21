@@ -6,6 +6,7 @@ import { Inter, Inter_Tight } from "next/font/google";
 import { TooltipProvider } from "@kushagradhawan/kookie-ui-react";
 
 import { appearanceScript } from "./appearance-script";
+import { wipNoticeScript } from "./(docs)/wip-notice-script";
 import { DevOutlineGate } from "./dev-outline";
 import { DocsTheme } from "./theme-store";
 import { SITE_URL } from "./site";
@@ -147,6 +148,7 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: appearanceScript }} />
+        <script dangerouslySetInnerHTML={{ __html: wipNoticeScript }} />
       </head>
       <body>
         {/* The docs run on the system's own glass. Selectivity means this costs nothing at
