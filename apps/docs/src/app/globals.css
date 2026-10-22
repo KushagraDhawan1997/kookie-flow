@@ -82,3 +82,18 @@ body {
 .kd-canvas {
   font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
+
+/* The front page's hero has two places. On a phone it sits under the title and the intro, so the
+   first screen says what the page is; on a wider window it stays at the top (Kushagra,
+   2026-10-22). */
+@media (max-width: 48rem) {
+  .kd-hero-top {
+    display: none;
+  }
+}
+
+@media not all and (max-width: 48rem) {
+  .kd-hero-inline {
+    display: none;
+  }
+}

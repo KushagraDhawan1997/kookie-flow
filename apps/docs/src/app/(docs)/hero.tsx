@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import {
   KookieFlow,
   useGraph,
@@ -104,4 +104,29 @@ export function Hero() {
       />
     </div>
   );
+}
+
+const HERO_HEIGHT = 'clamp(440px, 45vw, 560px)';
+const NARROW = '(max-width: 48rem)';
+
+function subscribe(onChange: () => void) {
+  const query = window.matchMedia(NARROW);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+/**
+ * One of the hero's two places. On a phone the hero sits under the title and the intro, so the
+ * first screen says what the page is (Kushagra, 2026-10-22); on a wider window it stays at the
+ * top. CSS shows one place per width before any script runs, and only the shown place mounts the
+ * graph, so the page holds one canvas.
+ */
+export function HeroSlot({ placement }: { placement: 'top' | 'inline' }) {
+  const narrow = useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(NARROW).matches,
+    () => null,
+  );
+  const shown = narrow !== null && narrow === (placement === 'inline');
+  return shown ? <Hero /> : <div style={{ height: HERO_HEIGHT }} />;
 }
