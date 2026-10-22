@@ -82,14 +82,3 @@ body {
 .kd-canvas {
   font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
-
-/* NO TEXT INFLATION ON iOS (2026-09-08, Kushagra: the code wells on component pages "render
-   HUGE" on a phone while the prose fences do not). Safari scales text up inside blocks it
-   judges too small to read once a page lays out wider than the screen, and the header row
-   does exactly that on a phone (measured ~90px of overflow on every page). The inflation is
-   per block, which is how two identical code wells came to render at two sizes. The type
-   ladder already answers the handheld case (§17); Safari's guess is not wanted on top. */
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
