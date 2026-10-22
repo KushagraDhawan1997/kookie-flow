@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Box, Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import { CanvasGuard } from "./canvas-guard";
-import { Hero } from "./hero";
+import { HeroSlot } from "./hero";
 import { PageFrame } from "./page-frame";
 import { SECTIONS, chaptersIn } from "./chapters";
 
@@ -63,9 +63,9 @@ export default function Home() {
       {/* THE HERO RUNS TO THE PANE'S TOP, LEFT AND RIGHT EDGES (Kushagra, 2026-10-21): `bleed`
           cancels the content pane's padding, so the live graph is the top of the page and the
           title sits under it. The guard keeps the page's scroll when the wheel passes over it. */}
-      <Box mt="bleed" mx="bleed">
+      <Box mt="bleed" mx="bleed" className="kd-hero-top">
         <CanvasGuard>
-          <Hero />
+          <HeroSlot placement="top" />
         </CanvasGuard>
       </Box>
       <PageFrame width="48rem">
@@ -77,6 +77,12 @@ export default function Home() {
           title="Kookie Flow"
           description="A node graph library for React that renders on the GPU. It keeps React Flow's ergonomics — entities, edges and a hook to hold them — and draws 50,000 nodes at 60fps with zero React re-renders while you pan, zoom and drag."
         />
+
+        <Box mx="bleed" className="kd-hero-inline">
+          <CanvasGuard>
+            <HeroSlot placement="inline" />
+          </CanvasGuard>
+        </Box>
 
 
         {/* NO HEADING OVER THIS. The grid is the whole page, and a heading over the only thing
