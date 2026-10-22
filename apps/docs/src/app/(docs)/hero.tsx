@@ -79,8 +79,9 @@ export function Hero() {
       const box = boxRef.current;
       if (!flow || !box) return;
       const { clientWidth: width, clientHeight: height } = box;
-      // Generate's top-left corner lands 20px in from the left and 72px down, under the header.
-      if (width < 640) flow.setCenter((width / 2 - 20) / 0.9, (height / 2 - 72) / 0.9, { zoom: 0.9 });
+      // Generate's top-left corner lands 40px in from the left, so its input sockets clear the
+      // edge and line up with the text below, and 72px down, under the header.
+      if (width < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 72) / 0.9, { zoom: 0.9 });
       else flow.fitView({ padding: 72, maxZoom: 1 });
     });
     return () => cancelAnimationFrame(id);
