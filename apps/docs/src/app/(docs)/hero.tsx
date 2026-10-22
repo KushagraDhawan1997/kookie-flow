@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   KookieFlow,
   useGraph,
@@ -79,9 +79,9 @@ export function Hero() {
       const box = boxRef.current;
       if (!flow || !box) return;
       const { clientWidth: width, clientHeight: height } = box;
-      // Generate's top-left corner lands 40px in from the left, so its input sockets clear the
-      // edge and line up with the text below, and 72px down, under the header.
-      if (width < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 72) / 0.9, { zoom: 0.9 });
+      // Generate's top-left corner lands 40px in from the left and 40px down, so its input
+      // sockets clear the edge and line up with the text above.
+      if (width < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });
       else flow.fitView({ padding: 72, maxZoom: 1 });
     });
     return () => cancelAnimationFrame(id);
@@ -106,27 +106,3 @@ export function Hero() {
   );
 }
 
-const HERO_HEIGHT = 'clamp(440px, 45vw, 560px)';
-const NARROW = '(max-width: 48rem)';
-
-function subscribe(onChange: () => void) {
-  const query = window.matchMedia(NARROW);
-  query.addEventListener('change', onChange);
-  return () => query.removeEventListener('change', onChange);
-}
-
-/**
- * One of the hero's two places. On a phone the hero sits under the title and the intro, so the
- * first screen says what the page is (Kushagra, 2026-10-22); on a wider window it stays at the
- * top. CSS shows one place per width before any script runs, and only the shown place mounts the
- * graph, so the page holds one canvas.
- */
-export function HeroSlot({ placement }: { placement: 'top' | 'inline' }) {
-  const narrow = useSyncExternalStore(
-    subscribe,
-    () => window.matchMedia(NARROW).matches,
-    () => null,
-  );
-  const shown = narrow !== null && narrow === (placement === 'inline');
-  return shown ? <Hero /> : <div style={{ height: HERO_HEIGHT }} />;
-}
