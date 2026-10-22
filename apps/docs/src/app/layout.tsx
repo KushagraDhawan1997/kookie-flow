@@ -141,9 +141,17 @@ export default function RootLayout({
   return (
     // The font class only publishes `--kd-font-canvas`; it sets no font-family here, so
     // globals.css is the one place that decides where each face lands.
+    // NO TEXT INFLATION ON iOS, inline (2026-10-22). Safari on iPhone enlarges text in any block
+    // wider than the screen, and the type ladder already sizes text for a phone. This was a rule
+    // on `html` in globals.css, and the build's minifier dropped its `-webkit-` form — the only
+    // one iPhone Safari reads — so the live CSS shipped `-moz-` and the bare spelling and the
+    // fix never reached a phone. A style attribute is not minified. Kookie UI's outermost Theme
+    // carries the same inline style from its next release, and this copy can go with that
+    // vendor update.
     <html
       lang="en"
       className={`${canvas.variable} ${heading.variable}`}
+      style={{ WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%" }}
       suppressHydrationWarning
     >
       <head>
