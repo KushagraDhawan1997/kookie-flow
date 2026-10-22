@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Box, Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
 
 import { CanvasGuard } from "./canvas-guard";
-import { HeroSlot } from "./hero";
+import { Hero } from "./hero";
 import { PageFrame } from "./page-frame";
 import { SECTIONS, chaptersIn } from "./chapters";
 
@@ -60,30 +60,25 @@ const DEMOS: { href: string; label: string }[] = [
 export default function Home() {
   return (
     <>
-      {/* THE HERO RUNS TO THE PANE'S TOP, LEFT AND RIGHT EDGES (Kushagra, 2026-10-21): `bleed`
-          cancels the content pane's padding, so the live graph is the top of the page and the
-          title sits under it. The guard keeps the page's scroll when the wheel passes over it. */}
-      <Box mt="bleed" mx="bleed" className="kd-hero-top">
-        <CanvasGuard>
-          <HeroSlot placement="top" />
-        </CanvasGuard>
-      </Box>
-      <PageFrame width="48rem">
-      <Stack gap="10">
-        {/* THE MASTHEAD: the title, then the deck. No mark above the title — the sidebar's
-            masthead is three inches away and already carries it, and the footer signs the page
-            off with the long form. */}
+      {/* THE MASTHEAD: the title, then the deck. No mark above the title — the sidebar's
+          masthead is three inches away and already carries it, and the footer signs the page
+          off with the long form. */}
+      <Box style={{ maxInlineSize: "48rem", marginInline: "auto" }}>
         <Page
           title="Kookie Flow"
           description="A node graph library for React that renders on the GPU. It keeps React Flow's ergonomics — entities, edges and a hook to hold them — and draws 50,000 nodes at 60fps with zero React re-renders while you pan, zoom and drag."
         />
-
-        <Box mx="bleed" className="kd-hero-inline">
-          <CanvasGuard>
-            <HeroSlot placement="inline" />
-          </CanvasGuard>
-        </Box>
-
+      </Box>
+      {/* The live graph sits under the title and the intro at every width, so the first screen
+          says what the page is (Kushagra, 2026-10-22). `bleed` reaches the pane's edges, and the
+          guard keeps the page's scroll when the wheel passes over it. */}
+      <Box mx="bleed" my="10">
+        <CanvasGuard>
+          <Hero />
+        </CanvasGuard>
+      </Box>
+      <PageFrame width="48rem">
+      <Stack gap="10">
 
         {/* NO HEADING OVER THIS. The grid is the whole page, and a heading over the only thing
             on a page is a second title for it.
