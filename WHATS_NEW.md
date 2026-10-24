@@ -1,6 +1,6 @@
 # What's new in Kookie Flow
 
-Each release groups its changes as Major, Minor or Quiet. Major is a new product or a change to what it is. Minor is a change you notice when you use it. Quiet is a small touch, or how the work is made.
+Each day groups its changes as Major, Minor or Quiet. Major is a new product or a change to what it is. Minor is a change you notice when you use it. Quiet is a small touch, or how the work is made.
 
 ## October 21
 
