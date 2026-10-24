@@ -7,14 +7,9 @@
  *
  * The words are `WHATS_NEW.md` at the repo root, minus its `#` line: the title is the page's, as
  * on every chapter, so the heading on the page is not stated twice.
- *
- * THE TIER IS A CHIP. Each item opens with `Major`, `Minor` or `Quiet` as inline code, which
- * reads well in the plain file. On this page those three words are a label, not a literal, so
- * they render as a neutral `Chip`. Any other inline code keeps the chapter's `Code`.
  */
 import type { Metadata } from "next";
-import type { MDXComponents } from "mdx/types";
-import { Box, Chip, Code, Page } from "@kushagradhawan/kookie-ui-react";
+import { Box, Page } from "@kushagradhawan/kookie-ui-react";
 
 import WhatsNew from "../../../content/whats-new.mdx";
 import { ProseFlow } from "../../../mdx-components";
@@ -25,24 +20,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/whats-new" },
 };
 
-const TIERS = new Set(["Major", "Minor", "Quiet"]);
-
-const components: MDXComponents = {
-  code: ({ children }) =>
-    typeof children === "string" && TIERS.has(children) ? (
-      <Chip size="1">{children}</Chip>
-    ) : (
-      <Code>{children}</Code>
-    ),
-};
-
 export default function WhatsNewPage() {
   return (
     <Box className="kd-chapter">
       <PageFrame width="var(--kd-measure)">
         <Page title="What's new in Kookie Flow" style={{ minWidth: 0 }}>
           <ProseFlow>
-            <WhatsNew components={components} />
+            <WhatsNew />
           </ProseFlow>
         </Page>
       </PageFrame>
