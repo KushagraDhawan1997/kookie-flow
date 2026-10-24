@@ -23,8 +23,8 @@ These 0.2.0 candidates are unpublished. Use the workspace or pack all four packa
 The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
 Fiber 9.7+, drei 10.7+, and WebGL 2. The core only depends on Zustand's vanilla store.
 
-See [package migration and two-way sync](docs/PACKAGES.md) for installation, API changes and the
-planned Womp copy. [Production qualification](packages/kookie-flow-harness/PRODUCTION.md) describes the
+See [package migration](docs/PACKAGES.md) for installation and API changes.
+[Production qualification](packages/kookie-flow-harness/PRODUCTION.md) describes the
 release gate and remaining product acceptance checks.
 
 ## An example
