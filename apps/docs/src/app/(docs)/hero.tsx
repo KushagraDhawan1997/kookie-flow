@@ -69,26 +69,28 @@ export function Hero() {
   const flowRef = useRef<KookieFlowInstance>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Frame the graph on the next frame, once the canvas has its size. A wide canvas fits the
-  // pair, with padding that clears the floating header. A narrow one would shrink the node until
-  // Flow hides its widget values, so it zooms in on Generate and lets the picture run off the
-  // right edge (Kushagra, 2026-10-21).
+  // Frame the graph on the next frame, once the canvas has its size. When the whole window shows,
+  // it fits the pair, with padding that clears the floating header. On a phone the window runs
+  // off the right and only its left part shows; fitting would shrink the node until Flow hides
+  // its widget values, so it zooms in on Generate and lets the picture run off (Kushagra,
+  // 2026-10-21).
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       const flow = flowRef.current;
       const box = boxRef.current;
       if (!flow || !box) return;
       const { clientWidth: width, clientHeight: height } = box;
-      // Generate's top-left corner lands 40px in from the left and 40px down, so its input
-      // sockets clear the edge and line up with the text above.
-      if (width < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });
+      const visible = Math.min(width, document.documentElement.clientWidth - box.getBoundingClientRect().left);
+      // Generate's top-left corner lands 40px in from the window's left and 40px down, so its
+      // input sockets clear the edge.
+      if (visible < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });
       else flow.fitView({ padding: 72, maxZoom: 1 });
     });
     return () => cancelAnimationFrame(id);
   }, []);
 
   return (
-    <div ref={boxRef} style={{ width: '100%', height: 'clamp(440px, 45vw, 560px)' }}>
+    <div ref={boxRef} style={{ width: '100%', height: '100%' }}>
       <KookieFlow
         skin={skin}
         ref={flowRef}

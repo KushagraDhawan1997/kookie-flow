@@ -71,11 +71,18 @@ export default function Home() {
       </Box>
       {/* The live graph sits under the title and the intro at every width, so the first screen
           says what the page is (Kushagra, 2026-10-22). `bleed` reaches the pane's edges, and the
-          guard keeps the page's scroll when the wheel passes over it. */}
-      <Box mx="bleed" my="10">
-        <CanvasGuard>
-          <Hero />
-        </CanvasGuard>
+          guard keeps the page's scroll when the wheel passes over it. Since 2026-11-02 it stands
+          in a laptop lid on a grey gradient, as kushagradhawan-v3/FIGURES.md asks. */}
+      <Box mx="bleed" my="10" className="kd-band">
+        <div className="kd-band-stage">
+          <div className="kd-device">
+            <div className="kd-band-window">
+              <CanvasGuard>
+                <Hero />
+              </CanvasGuard>
+            </div>
+          </div>
+        </div>
       </Box>
       <PageFrame width="48rem">
       <Stack gap="10">
