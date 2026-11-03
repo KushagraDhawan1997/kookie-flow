@@ -83,3 +83,132 @@ body {
   font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
+
+/* THE FRONT PAGE'S HERO IN A LAPTOP LID (2026-11-02, kushagradhawan-v3/FIGURES.md, the same look
+   as the Kookie UI v2 docs). The live graph sits in a 960px window inside a laptop lid, on a grey
+   gradient, edge to edge with a hairline at the top and the bottom. The band is 54 cells of 12px,
+   as on kushagradhawan.com's Kookie Flow page, so the graph keeps its size; the lid is 4 cells
+   down and runs off the band's bottom. The canvas keeps Flow's own dot ground, because the canvas
+   is the product. */
+.kd-band {
+  position: relative;
+  block-size: calc(54 * var(--layout-space-4));
+  overflow: clip;
+  background-color: var(--color-surface);
+  background-image: linear-gradient(to bottom, var(--color-surface), var(--neutral-6));
+}
+
+.kd-band::before,
+.kd-band::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  block-size: var(--border-width);
+  background-color: var(--color-border);
+  pointer-events: none;
+}
+
+.kd-band::before {
+  inset-block-start: 0;
+}
+
+.kd-band::after {
+  inset-block-end: 0;
+}
+
+.kd-band-stage {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: var(--layout-space-9);
+  display: grid;
+  justify-items: center;
+}
+
+/* The window runs a little past the band's bottom, so the cut falls on the canvas, not on the
+   window's edge. */
+.kd-band-window {
+  box-sizing: border-box;
+  inline-size: calc(30 * var(--layout-space-7));
+  block-size: calc(54 * var(--layout-space-4) - var(--layout-space-9) - var(--layout-space-6) + var(--layout-space-7));
+  background-color: var(--color-ground);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: calc(var(--radius-7) * 0.876);
+  overflow: clip;
+}
+
+@supports (corner-shape: squircle) {
+  .kd-band-window {
+    border-radius: calc(var(--radius-7) * 1.613);
+    corner-shape: squircle;
+  }
+}
+
+.kd-band-window > .kd-canvas-guard,
+.kd-band-window .kd-canvas-guard-stage {
+  block-size: 100%;
+}
+
+/* The lid: a surface-coloured rim with a hairline outside it, 8px at the sides and the bottom,
+   24px at the top with a camera centred in it. The corners stay concentric with the window's:
+   the outer radius is the inner one plus the gap (the rim and the window's hairline), and a
+   squircle needs 1.84 times the gap, because its curve sits nearer its corner. The top corners
+   take the top gap vertically. */
+.kd-device {
+  --kd-device-rim: var(--layout-space-3);
+  --kd-device-top: var(--layout-space-6);
+  --kd-device-gap: calc(var(--kd-device-rim) + var(--border-width));
+  --kd-device-gap-top: calc(var(--kd-device-top) + var(--border-width));
+  --kd-device-k: 1;
+  --kd-device-inner: calc(var(--radius-7) * 0.876);
+  position: relative;
+  box-sizing: border-box;
+  padding: var(--kd-device-top) var(--kd-device-rim) var(--kd-device-rim);
+  background-color: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius:
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k)) /
+    calc(var(--kd-device-inner) + var(--kd-device-gap-top) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap-top) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
+    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k));
+}
+
+@supports (corner-shape: squircle) {
+  .kd-device {
+    --kd-device-k: 1.84;
+    --kd-device-inner: calc(var(--radius-7) * 1.613);
+    corner-shape: squircle;
+  }
+}
+
+.kd-device::before {
+  --kd-camera: calc(var(--kd-device-rim) * 0.75);
+  content: "";
+  position: absolute;
+  inset-block-start: calc((var(--kd-device-top) - var(--kd-camera)) / 2);
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  inline-size: var(--kd-camera);
+  block-size: var(--kd-camera);
+  border-radius: 50%;
+  background-color: var(--color-border);
+}
+
+/* When the pane is narrower than the lid (a phone, or a laptop with the sidebar open), the lid
+   starts two steps in from the pane's edge and runs off the right, instead of off both edges.
+   The band is the container, so this follows the pane, not the window. 978px is the window and
+   the lid's rim and hairlines; 48px is the two steps on either side. */
+.kd-band {
+  container-type: inline-size;
+}
+
+@container (max-width: 1026px) {
+  .kd-band-stage {
+    justify-items: start;
+    padding-inline-start: var(--layout-space-6);
+  }
+}
