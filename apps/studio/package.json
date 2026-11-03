@@ -24,7 +24,7 @@
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "ai": "7.0.107",
-    "better-auth": "1.7.4",
+    "better-auth": "1.7.15",
     "drizzle-orm": "^0.45.2",
     "next": "^16.4.2",
     "postgres": "^3.4.9",
@@ -33,7 +33,7 @@
     "stripe": "22.6.2",
     "studio-core": "workspace:*",
     "three": "^0.186.0",
-    "zod": "^4.6.2",
+    "zod": "^4.6.6",
     "@kushagradhawan/kookie-flow-skin": "workspace:*",
     "@kushagradhawan/kookie-flow-core": "workspace:*"
   },
