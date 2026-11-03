@@ -94,8 +94,15 @@ body {
   position: relative;
   block-size: calc(54 * var(--layout-space-4));
   overflow: clip;
-  background-color: var(--color-surface);
-  background-image: linear-gradient(to bottom, var(--color-surface), var(--neutral-6));
+  /* A dot grid that comes through toward the cut (FIGURES.md, 2026-11-03): the soft neutral with
+     12px dots, under a wash of the surface that runs from solid at the top to clear at the
+     bottom. The wash over a flat neutral is the same surface-to-neutral gradient as before. */
+  background-color: var(--neutral-6);
+  background-image:
+    linear-gradient(to bottom, var(--color-surface), transparent),
+    radial-gradient(circle, var(--neutral-a6) var(--border-width), transparent calc(var(--border-width) * 1.5));
+  background-size: auto, var(--layout-space-4) var(--layout-space-4);
+  background-position: 0 0, calc(var(--layout-space-4) / 2) calc(var(--layout-space-4) / 2);
 }
 
 .kd-band::before,
