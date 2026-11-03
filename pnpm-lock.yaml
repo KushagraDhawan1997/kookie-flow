@@ -198,8 +198,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/kookie-flow-skin
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@mdx-js/loader':
         specifier: ^3.1.1
         version: 3.1.1
@@ -277,8 +277,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/kookie-flow-skin
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -375,8 +375,8 @@ importers:
         specifier: workspace:*
         version: link:../kookie-flow-webgl
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0))(@types/react@19.2.18)(@types/three@0.186.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.186.0)
@@ -473,8 +473,8 @@ importers:
         version: link:../kookie-flow-webgl
     devDependencies:
       '@kushagradhawan/kookie-ui-react':
-        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz
-        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../../vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz
+        version: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@types/node':
         specifier: ^26.5.1
         version: 26.5.1
@@ -1632,13 +1632,13 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz':
-    resolution: {integrity: sha512-egAKuDtmGaco4voUjMx+6hcLyC3qx4e0qBs5MtzX2pTzSU2ihKb4Dej7Kb79VahmLUcvt0rrWJcT2TLXKtYuIA==, tarball: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz}
-    version: 0.0.0-flow.4
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz':
+    resolution: {integrity: sha512-UsKuEsDXSLk+YNJdKmyOD1WHYkTIdKHA8nHy9MOh7F/1LIzrvQEHPNwblhecTaMJmVbAN1ZhoIsaMdJVBf84Zg==, tarball: file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz}
+    version: 0.0.0-flow.5
     hasBin: true
     peerDependencies:
-      react: ^19.0.0
-      react-dom: ^19.0.0
+      react: ^19.2.0
+      react-dom: ^19.2.0
 
   '@mdx-js/loader@3.1.1':
     resolution: {integrity: sha512-0TTacJyZ9mDmY+VefuthVshaNIyCGZHJG2fMnGaDttCt8HmjUF7SizlHJpaCDoGnN635nK1wpzfpx/Xx5S4WnQ==}
@@ -5134,7 +5134,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.4.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@kushagradhawan/kookie-ui-react@file:vendor/kushagradhawan-kookie-ui-react-0.0.0-flow.5.tgz(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@base-ui/react': 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@shadcn/react': 0.3.1(@types/react@19.2.18)(react@19.2.8)
