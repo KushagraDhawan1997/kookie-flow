@@ -80,7 +80,10 @@ export function Hero() {
       const box = boxRef.current;
       if (!flow || !box) return;
       const { clientWidth: width, clientHeight: height } = box;
-      const visible = Math.min(width, document.documentElement.clientWidth - box.getBoundingClientRect().left);
+      // The part of the window the band shows: the band clips the lid that runs off it.
+      const band = box.closest('.kd-band')?.getBoundingClientRect();
+      const rect = box.getBoundingClientRect();
+      const visible = band ? Math.min(rect.right, band.right) - Math.max(rect.left, band.left) : width;
       // Generate's top-left corner lands 40px in from the window's left and 40px down, so its
       // input sockets clear the edge.
       if (visible < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });

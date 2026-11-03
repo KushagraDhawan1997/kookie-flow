@@ -198,9 +198,15 @@ body {
   background-color: var(--color-border);
 }
 
-/* On a phone the window is wider than the screen, so it starts at the reading column's edge and
-   runs off the right, instead of off both edges. */
-@media (max-width: 48rem) {
+/* When the pane is narrower than the lid (a phone, or a laptop with the sidebar open), the lid
+   starts two steps in from the pane's edge and runs off the right, instead of off both edges.
+   The band is the container, so this follows the pane, not the window. 978px is the window and
+   the lid's rim and hairlines; 48px is the two steps on either side. */
+.kd-band {
+  container-type: inline-size;
+}
+
+@container (max-width: 1026px) {
   .kd-band-stage {
     justify-items: start;
     padding-inline-start: var(--layout-space-6);
