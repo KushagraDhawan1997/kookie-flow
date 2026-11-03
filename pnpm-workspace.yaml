@@ -21,3 +21,6 @@ overrides:
   'three-stdlib>fflate': '^0.6.11'
   # GHSA-587h-7wmj-h5pm (launch-editor in vite 8.3.0 to 8.3.2), reached through better-auth>vitest.
   vite: '^8.3.3'
+  # GHSA advisories in undici below 7.30.1 and zod below 4.6.6 (2026-11-03), reached through ai and better-auth.
+  undici: '^7.30.1'
+  zod: '^4.6.6'
