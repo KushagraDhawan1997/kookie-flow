@@ -1,8 +1,12 @@
 # Kookie Flow
 
-A React library for node-graph editors: shader graphs, AI pipelines and whiteboards. It draws
-nodes, edges, text, widgets, images, video and 3D models in WebGL, so a board of thousands of
-nodes pans and zooms without React re-rendering.
+Kookie Flow is a React library for node editors, such as shader graphs, AI pipelines and
+whiteboards. Most node editors draw each node as HTML, and they become slow when a graph has many
+nodes. Kookie Flow draws everything in WebGL instead, so a board with thousands of nodes stays
+smooth when you pan, zoom and drag. Read the docs at [flow.kookie.design](https://flow.kookie.design).
+
+[Kookie Studio](apps/studio), a node canvas for AI images and video, uses Kookie Flow for its
+canvas.
 
 **Pre-1.0.** The API still moves. [`CHANGELOG.md`](CHANGELOG.md) marks every breaking change.
 
@@ -12,15 +16,15 @@ nodes pans and zooms without React re-rendering.
 | --- | --- |
 | `@kushagradhawan/kookie-flow-core` | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
 | `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin. |
-| `@kushagradhawan/kookie-flow-skin` | KookieUI v2's glass look: colour roles, sizes, shaders and toolbar controls. |
+| `@kushagradhawan/kookie-flow-skin` | Kookie UI's glass look: colour roles, sizes, shaders and toolbar controls. |
 | `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
 
 These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
 The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
 Fiber 9.7+, drei 10.7+, and WebGL 2. The core only depends on Zustand's vanilla store.
 
-See [package migration and two-way sync](docs/PACKAGES.md) for installation, API changes and the
-planned Womp copy. [Production qualification](packages/kookie-flow-harness/PRODUCTION.md) describes the
+See [package migration](docs/PACKAGES.md) for installation and API changes.
+[Production qualification](packages/kookie-flow-harness/PRODUCTION.md) describes the
 release gate and remaining product acceptance checks.
 
 ## An example
@@ -74,7 +78,7 @@ Drag from the Constant node's output to the Viewer node's input to connect them.
 - A [selection toolbar](https://flow.kookie.design/interaction/toolbar), a
   [minimap](https://flow.kookie.design/styling/minimap), and
   [keyboard access](https://flow.kookie.design/interaction/keyboard) to every node.
-- [Theming](https://flow.kookie.design/styling/theming) from KookieUI v2, in light and dark.
+- [Theming](https://flow.kookie.design/styling/theming) from Kookie UI, in light and dark.
 
 Nodes don't host React components. The canvas draws nodes in depth order, so a node in front
 covers the one behind it, and a DOM element can only sit above the whole canvas or below it. The
@@ -122,7 +126,7 @@ against the package's last build.
 ```text
 packages/kookie-flow-core        graph data, store, evaluation, history, layout (no React)
 packages/kookie-flow-webgl       the renderer: drawing, interaction, text, accessibility
-packages/kookie-flow-skin  KookieUI v2's glass look
+packages/kookie-flow-skin  Kookie UI's glass look
 packages/kookie-flow-react       the React entry: KookieFlow, useGraph, plugins
 packages/kookie-flow-harness     private: the Playwright behaviour suite and release gate
 packages/studio-core             shared logic for the studio app
