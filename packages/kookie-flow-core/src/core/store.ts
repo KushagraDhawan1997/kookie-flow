@@ -2515,9 +2515,16 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             const clonedEntities: Entity[] = entitiesToClone.map((entity) => {
               const newId = idMap.get(entity.id)!;
               const newData = transformData ? transformData(entity.data as T) : { ...entity.data };
+              // A child whose frame was cloned with it belongs to the CLONE of that frame. Left as it
+              // was, the pasted children stayed in the original frame — they moved when it moved, and
+              // the pasted frame arrived empty. A parent outside the cloned set is kept: a node
+              // duplicated inside a frame is still in that frame.
+              const newParentId =
+                entity.parentId !== undefined ? idMap.get(entity.parentId) : undefined;
               return {
                 ...entity,
                 id: newId,
+                ...(newParentId !== undefined ? { parentId: newParentId } : {}),
                 position: {
                   x: entity.position.x + offset.x,
                   y: entity.position.y + offset.y,
@@ -2526,6 +2533,11 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                 selected: false,
               };
             });
+
+            // The same remap for the reroute points an edge passes through: a cloned edge bends
+            // through the cloned points, and keeps any point that was not cloned.
+            const cloneReroutes = (edge: Edge): Pick<Edge, 'reroutes'> =>
+              edge.reroutes ? { reroutes: edge.reroutes.map((id) => idMap.get(id) ?? id) } : {};
 
             // Build set of cloned entity IDs for fast lookup
             const clonedEntityIdSet = new Set(entitiesToClone.map((n) => n.id));
@@ -2546,6 +2558,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                   source: newSource,
                   target: newTarget,
                   selected: false,
+                  ...cloneReroutes(edge),
                 });
               } else if (preserveExternalConnections) {
                 // External edge: remap only the cloned endpoint, keep external reference
@@ -2557,6 +2570,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                     source: idMap.get(edge.source)!,
                     target: edge.target, // Keep original external target
                     selected: false,
+                    ...cloneReroutes(edge),
                   });
                 } else if (targetInCloned) {
                   // Target is cloned, source is external
@@ -2566,6 +2580,7 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                     source: edge.source, // Keep original external source
                     target: idMap.get(edge.target)!,
                     selected: false,
+                    ...cloneReroutes(edge),
                   });
                 }
               }

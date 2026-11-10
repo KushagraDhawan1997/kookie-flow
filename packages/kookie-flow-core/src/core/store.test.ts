@@ -548,3 +548,45 @@ describe('the keyboard cursor', () => {
     unsub();
   });
 });
+
+describe('cloning keeps the copy self-contained', () => {
+  const frame: Entity = { ...ent('frame'), type: 'frame', width: 400, height: 300 };
+  const child: Entity = { ...ent('child', 10, 10), parentId: 'frame' };
+
+  it('a pasted child belongs to the pasted frame, not the original', () => {
+    // The clone kept `parentId: 'frame'`, so the pasted children moved with the ORIGINAL frame
+    // and the pasted frame arrived empty.
+    const store = createFlowStore({ entities: [frame, child] });
+    store.getState().selectEntities(['frame', 'child']);
+    store.getState().copySelectedToInternal();
+    const pasted = store.getState().pasteFromInternal();
+
+    const newFrameId = pasted?.idMap.get('frame');
+    const newChild = pasted?.entities.find((e) => e.id === pasted.idMap.get('child'));
+    expect(newFrameId).toBeDefined();
+    expect(newChild?.parentId).toBe(newFrameId);
+    expect(
+      store
+        .getState()
+        .getGroupChildren('frame')
+        .map((e) => e.id)
+    ).toEqual(['child']);
+  });
+
+  it('a child cloned without its frame stays in that frame', () => {
+    const store = createFlowStore({ entities: [frame, child] });
+    const { entities } = store.getState().cloneElements([child], []);
+    expect(entities[0].parentId).toBe('frame');
+  });
+
+  it('a cloned edge runs through the cloned reroute points', () => {
+    const reroute: Entity = { ...ent('dot', 100, 0), type: 'reroute' };
+    const edge = { id: 'e', source: 'a', target: 'b', reroutes: ['dot', 'elsewhere'] };
+    const store = createFlowStore({ entities: [ent('a'), ent('b', 300), reroute], edges: [edge] });
+    const { edges, idMap } = store
+      .getState()
+      .cloneElements([ent('a'), ent('b', 300), reroute], [edge]);
+    // A point outside the cloned set is kept as it was.
+    expect(edges[0].reroutes).toEqual([idMap.get('dot'), 'elsewhere']);
+  });
+});
