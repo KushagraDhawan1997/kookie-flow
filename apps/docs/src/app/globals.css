@@ -17,8 +17,8 @@
    goes back if one is ever chosen.
 
    `:root:root` RATHER THAN `:root`, so this wins on rank rather than on source order.
-   `layout.tsx` imports the package's stylesheet first, but webpack (this app's dev bundler)
-   emits globals.css AHEAD of it in the layout chunk, and a plain `:root` here then lost to
+   `layout.tsx` imports the package's stylesheet first, but webpack (this app's dev bundler
+   when this was written) emitted globals.css AHEAD of it in the layout chunk, and a plain `:root` here then lost to
    tokens.css's `:root` — every paragraph, heading and fence fell back to the system stack, and
    the canvas's edit overlay stopped sitting on the Inter the MSDF atlas is cut from. Doubling
    the pseudo-class outranks the package's `:root` whichever order the bundler picks.

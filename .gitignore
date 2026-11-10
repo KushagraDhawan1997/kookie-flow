@@ -35,9 +35,9 @@ coverage
 # Vercel
 .vercel
 
-# Licensed fonts — never commit. The docs set V2's faces (Switzer and Boska under the Fontshare
-# FFL, Neue Montreal Mono from Pangram Pangram), and both licences forbid redistribution through a
-# repository. globals.css falls back to system-ui when the files are absent. Only web font
-# formats: the library's MSDF sources and the OG image's Inter are .ttf and stay tracked.
+# Licensed fonts — never commit. The docs set code in Neue Montreal Mono and the wordmark in PP
+# Acma, both from Pangram Pangram, whose licence forbids redistribution through a repository.
+# globals.css falls back to the system stack when the files are absent. Only web font formats:
+# the library's MSDF sources are .ttf and stay tracked.
 *.woff
 *.woff2
