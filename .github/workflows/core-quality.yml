@@ -27,7 +27,7 @@ jobs:
       - name: Package boundaries
         run: pnpm check:boundaries
       - name: Types and unit/DOM regressions
-        run: pnpm --filter kookie-flow-harness run lint && pnpm --filter kookie-flow-harness run test
+        run: pnpm --filter kookie-flow-harness run lint:all && pnpm --filter kookie-flow-harness run test:all
       - name: Bounded spatial stress
         run: pnpm --filter kookie-flow-harness run test:spatial-stress
       - name: Build and isolated packed consumer

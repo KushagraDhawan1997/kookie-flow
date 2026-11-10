@@ -6,8 +6,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "lint": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-skin lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && tsc -p tsconfig.harness.json",
-    "test": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-skin test && pnpm --filter @kushagradhawan/kookie-flow-react test",
+    "lint": "tsc -p tsconfig.harness.json",
+    "lint:all": "pnpm --filter @kushagradhawan/kookie-flow-core lint && pnpm --filter @kushagradhawan/kookie-flow-webgl lint && pnpm --filter @kushagradhawan/kookie-flow-skin lint && pnpm --filter @kushagradhawan/kookie-flow-react lint && pnpm run lint",
+    "test:all": "pnpm --filter @kushagradhawan/kookie-flow-core test && pnpm --filter @kushagradhawan/kookie-flow-webgl test && pnpm --filter @kushagradhawan/kookie-flow-skin test && pnpm --filter @kushagradhawan/kookie-flow-react test",
     "clean": "rm -rf harness/dist .turbo",
     "generate:fonts": "pnpm --filter @kushagradhawan/kookie-flow-webgl generate:fonts",
     "harness:build": "node harness/build.mjs",
@@ -28,7 +29,7 @@
     "harness:evaluation": "node harness/spikes/evaluation-bench.mjs",
     "test:spatial-stress": "node harness/spikes/spatial-overlap.mjs",
     "test:package": "node ../../scripts/test-packages.mjs",
-    "check:release": "pnpm -w check:boundaries && pnpm run lint && pnpm run test && pnpm run test:spatial-stress && pnpm --filter kookie-flow-harness... run build && pnpm run test:package && pnpm run test:browser"
+    "check:release": "pnpm -w check:boundaries && pnpm run lint:all && pnpm run test:all && pnpm run test:spatial-stress && pnpm --filter kookie-flow-harness... run build && pnpm run test:package && pnpm run test:browser"
   },
   "devDependencies": {
     "@react-three/drei": "^10.7.8",
