@@ -220,9 +220,15 @@ importers:
       '@shikijs/transformers':
         specifier: ^4.4.3
         version: 4.4.3
+      matter-js:
+        specifier: 0.20.0
+        version: 0.20.0
       next:
         specifier: ^16.4.2
         version: 16.4.2(@types/node@26.5.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      poly-decomp:
+        specifier: 0.3.0
+        version: 0.3.0
       react:
         specifier: ~19.2.8
         version: 19.2.8
@@ -239,6 +245,9 @@ importers:
         specifier: ^0.186.0
         version: 0.186.0
     devDependencies:
+      '@types/matter-js':
+        specifier: 0.19.8
+        version: 0.19.8
       '@types/mdx':
         specifier: ^2.0.14
         version: 2.0.14
@@ -251,6 +260,9 @@ importers:
       '@types/react-dom':
         specifier: ~19.2.7
         version: 19.2.7(@types/react@19.2.18)
+      '@types/three':
+        specifier: ^0.186.0
+        version: 0.186.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2163,6 +2175,9 @@ packages:
   '@types/hast@3.0.5':
     resolution: {integrity: sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g==}
 
+  '@types/matter-js@0.19.8':
+    resolution: {integrity: sha512-W2ZWG58Lijv/4v768NgpeyFqqiOyslmAU7qqM1Lhz4XBoUgGtZtPz4CjcOKYtqHIak14dvPldslQhltqLTWwsw==}
+
   '@types/mdast@4.0.4':
     resolution: {integrity: sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA==}
 
@@ -3175,6 +3190,9 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
+  matter-js@0.20.0:
+    resolution: {integrity: sha512-iC9fYR7zVT3HppNnsFsp9XOoQdQN2tUyfaKg4CHLH8bN+j6GT4Gw7IH2rP0tflAebrHFw730RR3DkVSZRX8hwA==}
+
   maxrects-packer@2.7.3:
     resolution: {integrity: sha512-bG6qXujJ1QgttZVIH4WDanhoJtvbud/xP/XPyf6A69C9RdA61BM4TomFALCq2nrTa+tARRIBB4LuIFsnUQU2wA==}
 
@@ -3506,6 +3524,9 @@ packages:
   pngjs@7.0.0:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
+
+  poly-decomp@0.3.0:
+    resolution: {integrity: sha512-hWeBxGzPYiybmI4548Fca7Up/0k1qS5+79cVHI9+H33dKya5YNb9hxl0ZnDaDgvrZSuYFBhkCK/HOnqN7gefkQ==}
 
   postcss-load-config@6.0.1:
     resolution: {integrity: sha512-oPtTM4oerL+UXmx+93ytZVN82RrlY/wPUV8IeDxFrzIjXOLF1pN+EmKPLbubvKHT2HC20xXsCAH2Z+CKV6Oz/g==}
@@ -5538,6 +5559,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/matter-js@0.19.8': {}
+
   '@types/mdast@4.0.4':
     dependencies:
       '@types/unist': 3.0.3
@@ -6532,6 +6555,8 @@ snapshots:
 
   math-intrinsics@1.1.0: {}
 
+  matter-js@0.20.0: {}
+
   maxrects-packer@2.7.3: {}
 
   mdast-util-find-and-replace@3.0.2:
@@ -7131,6 +7156,8 @@ snapshots:
   pngjs@6.0.0: {}
 
   pngjs@7.0.0: {}
+
+  poly-decomp@0.3.0: {}
 
   postcss-load-config@6.0.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.23.13):
     dependencies:
