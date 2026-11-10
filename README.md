@@ -126,7 +126,7 @@ against the package's last build.
 ```text
 packages/kookie-flow-core        graph data, store, evaluation, history, layout (no React)
 packages/kookie-flow-webgl       the renderer: drawing, interaction, text, accessibility
-packages/kookie-flow-skin  Kookie UI's glass look
+packages/kookie-flow-skin        Kookie UI's glass look
 packages/kookie-flow-react       the React entry: KookieFlow, useGraph, plugins
 packages/kookie-flow-harness     private: the Playwright behaviour suite and release gate
 packages/studio-core             shared logic for the studio app

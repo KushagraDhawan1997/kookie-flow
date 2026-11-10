@@ -45,9 +45,8 @@ store.getState().disposeEvaluation();
 The standalone store is a Zustand vanilla store, not a React hook. `fitView` needs positive,
 finite viewport width and height for a nonempty graph. The React canvas supplies its dimensions.
 
-The legacy package preserves the root, `/plugins` and `/layout` import paths. It does not preserve
-removed DOM widget APIs: `widgetTypes`, `ThemeComponent`, `InlineWidgetComponent`, `WidgetProps`
-and `socket.widget = { component }` are removed. Use a supported GPU `WidgetType`, or `false`.
+The DOM widget APIs are removed: `widgetTypes`, `ThemeComponent`, `InlineWidgetComponent`,
+`WidgetProps` and `socket.widget = { component }`. Use a supported GPU `WidgetType`, or `false`.
 An untyped inline widget object throws instead of silently painting a second layer.
 
 Notes now use instanced WebGL fill/border quads and MSDF text. Their colors and font size still

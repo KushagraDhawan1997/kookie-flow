@@ -30,10 +30,12 @@ const rafIdRef = useRef<number>(0);
 
 const updatePositions = useCallback(() => {
   rafIdRef.current = 0;
-  const { nodes } = store.getState();
+  const { entityMap } = store.getState();
   labelsRef.current.forEach((el, id) => {
-    const node = nodes.find((n) => n.id === id);
-    if (node) el.style.transform = `translate3d(${node.x}px, ${node.y}px, 0)`;
+    const entity = entityMap.get(id); // O(1), never a scan of the array
+    if (entity) {
+      el.style.transform = `translate3d(${entity.position.x}px, ${entity.position.y}px, 0)`;
+    }
   });
 }, [store]);
 
@@ -45,13 +47,13 @@ store.subscribe(() => {
 });
 
 // React state ONLY for element count changes
-if (state.nodes.length !== nodes.length) setNodes(state.nodes);
+if (state.entities.length !== entities.length) setEntities(state.entities);
 ```
 
 ```typescript
 // ❌ WRONG: React props for positions = re-renders every frame
-{nodes.map(node => (
-  <Label key={node.id} x={node.position.x} y={node.position.y} />  // NEVER DO THIS
+{entities.map(entity => (
+  <Label key={entity.id} x={entity.position.x} y={entity.position.y} />  // NEVER DO THIS
 ))}
 ```
 
@@ -110,7 +112,8 @@ Never run build commands like `npm run build` or `pnpm build`—watchers are alr
 - Use explicit types for public API surfaces.
 - Leverage inference for internals.
 - No non-null assertions (`!`) unless unavoidable.
-- Update types in `src/types/index.ts` first when adding features.
+- Update types first when adding features: `packages/kookie-flow-core/src/types/index.ts` for the
+  graph, `packages/kookie-flow-webgl/src/types/index.ts` for the component.
 
 ---
 
