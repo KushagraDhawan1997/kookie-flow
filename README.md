@@ -118,8 +118,8 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` watch-builds the package and runs the site together. `pnpm docs` runs the site alone,
-against the package's last build.
+`pnpm dev` watch-builds the package and runs the site together. `pnpm docs` runs the site alone.
+Either way the site compiles the library from its source, so an edit shows without a build.
 
 ## Repository layout
 

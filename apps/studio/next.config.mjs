@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceAliases } from '../../scripts/source-aliases.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +42,10 @@ const nextConfig = {
     process.env.STUDIO_LAN === '1' ? ['192.168.*.*', '10.*.*.*', '172.*.*.*', '*.local'] : [],
   /* THE LIBRARY FROM SOURCE, NOT FROM DIST. The studio is where the library gets changed for
      its own needs, and a change is only real here once it is on screen. Going through `dist`
-     puts a separate watcher between an edit and the page. The two entry points are mapped to
-     `src` by `paths` in tsconfig.json, which Next applies to bundling as well as to tsc — so the
-     app's own compiler is the only step, and there is no second copy of the mapping here. A
-     `paths` key with no `*` is an exact match, so the root entry never swallows `/plugins`. */
+     puts a separate watcher between an edit and the page. Every entry point is mapped to `src`
+     by `sourceAliases`, read from each package's own exports, so the app's own compiler is the
+     only step and there is no second copy of the mapping here. */
+  turbopack: { resolveAlias: sourceAliases(here) },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

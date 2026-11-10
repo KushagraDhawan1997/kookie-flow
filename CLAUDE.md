@@ -59,9 +59,11 @@ if (state.entities.length !== entities.length) setEntities(state.entities);
 
 ---
 
-## Do Not Build
+## No Build Needed
 
-Never run build commands like `npm run build` or `pnpm build`—watchers are already running.
+The docs site and the studio compile the library from its source (`scripts/source-aliases.mjs`),
+so an edit shows on the page with no build and no watcher. Only the harness and the packed-package
+test use `dist`; they build it themselves.
 
 ---
 

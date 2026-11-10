@@ -1,5 +1,8 @@
 import nextMDX from '@next/mdx';
 import { createRequire } from 'module';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { sourceAliases } from '../../scripts/source-aliases.mjs';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../packages/kookie-flow-react/package.json');
@@ -124,11 +127,12 @@ const nextConfig = {
   env: {
     KOOKIE_FLOW_VERSION: packageJson.version,
   },
-  /* THE LIBRARY FROM SOURCE, NOT FROM DIST, as the studio does. The two entry points are mapped to
-     `src` by `paths` in tsconfig.json, which Next applies to bundling as well as to tsc, so the
-     app's own compiler is the only step. Through `dist` a stalled `tsup --watch` left the docs
-     showing a ten-hour-old library while the studio showed the current one. The built package is
-     still exercised as a consumer gets it by the harness, which builds it. */
+  /* THE LIBRARY FROM SOURCE, NOT FROM DIST, as the studio does. Every entry point is mapped to
+     `src` by `sourceAliases`, so the app's own compiler is the only step. Through `dist` a
+     stalled `tsup --watch` left the docs showing a ten-hour-old library while the studio showed
+     the current one. The built package is still exercised as a consumer gets it by the harness,
+     which builds it. */
+  turbopack: { resolveAlias: sourceAliases(dirname(fileURLToPath(import.meta.url))) },
   transpilePackages: [
     '@kushagradhawan/kookie-flow-core',
     '@kushagradhawan/kookie-flow-webgl',
