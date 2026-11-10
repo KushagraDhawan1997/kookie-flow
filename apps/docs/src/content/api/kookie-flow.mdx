@@ -38,13 +38,14 @@ from a file that starts with `'use client'`. The `ref` gives you the methods lis
 
 ## Props
 
-Only `entities` and `edges` are required. A default of "none" means the prop is `undefined` unless
+Only `skin`, `entities` and `edges` are required. A default of "none" means the prop is `undefined` unless
 you set it.
 
 ### Graph data
 
 | Prop | Type | Default | Meaning | Chapter |
 | --- | --- | --- | --- | --- |
+| `skin` | `FlowSkin` | required | How the canvas looks: its colours, sizes and materials. Pass `skin` from `@kushagradhawan/kookie-flow-skin`. | [Installation](/start/installation) |
 | `entities` | `Entity[]` | required | The entities in the graph. | [State](/start/state) |
 | `edges` | `Edge[]` | required | The edges between them. | [State](/start/state) |
 | `onEntitiesChange` | `(changes: EntityChange[]) => void` | none | Called with the entity changes an interaction made, for you to apply to your own state. | [State](/start/state) |
