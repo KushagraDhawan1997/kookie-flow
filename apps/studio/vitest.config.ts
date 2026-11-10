@@ -15,5 +15,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     // `*.dom.test.ts` needs a window and runs under `vitest.dom.config.ts` (pnpm test:dom).
     exclude: ['**/node_modules/**', 'src/**/*.dom.test.ts'],
+    // The integration tests start a database each. Alone they finish in under a second; beside
+    // every other package's suite under `pnpm test` they passed the default five and failed.
+    testTimeout: 30_000,
   },
 });
