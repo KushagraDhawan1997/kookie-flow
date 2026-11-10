@@ -26,7 +26,10 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = join(here, '..', '..', 'src');
+// The two modules live in their own packages since the split; this used to look under the harness.
+const packages = join(here, '..', '..', '..');
+const core = join(packages, 'kookie-flow-core', 'src');
+const webgl = join(packages, 'kookie-flow-webgl', 'src');
 
 // The measured code is TypeScript. Bundle exactly the two modules this needs into one ESM file
 // rather than pulling a test runner in to transpile.
@@ -34,8 +37,8 @@ const tmp = mkdtempSync(join(tmpdir(), 'kookie-cull-'));
 const entry = join(tmp, 'entry.ts');
 writeFileSync(
   entry,
-  `export { Quadtree, getEntityBounds } from '${join(src, 'core', 'spatial').replace(/\\/g, '/')}';\n` +
-    `export { inflateViewRect, viewEscaped, worldViewRect } from '${join(src, 'utils', 'viewport-cull').replace(/\\/g, '/')}';\n`
+  `export { Quadtree, getEntityBounds } from '${join(core, 'core', 'spatial').replace(/\\/g, '/')}';\n` +
+    `export { inflateViewRect, viewEscaped, worldViewRect } from '${join(webgl, 'utils', 'viewport-cull').replace(/\\/g, '/')}';\n`
 );
 const out = join(tmp, 'bundle.mjs');
 await build({
