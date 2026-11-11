@@ -5516,6 +5516,57 @@ await withPage('scene=graph&count=2&seed=3&grid=0', async (page) => {
     away === before + 2,
     String(away)
   );
+
+  // A dropped file belongs to what it lands ON. The handler is on `window` and used to test the
+  // canvas rectangle alone, so a file dropped on a dialog covering the canvas made an entity
+  // behind it.
+  const dropOn = (onDialog) =>
+    page.evaluate(async (onDialog) => {
+      const container = document.querySelector('[data-kookie-flow-container]');
+      const rect = container.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      let dialog = null;
+      let target = container;
+      if (onDialog) {
+        dialog = document.createElement('div');
+        dialog.style.cssText = 'position:fixed;inset:0;z-index:99999';
+        document.body.appendChild(dialog);
+        target = dialog;
+      }
+      const bytes = Uint8Array.from(
+        atob(
+          'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO4Y2Njs+AOw4cTNlEnKgAtBAab4uZ2GwAAAABJRU5ErkJggg=='
+        ),
+        (c) => c.charCodeAt(0)
+      );
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], 'dropped.png', { type: 'image/png' }));
+      const init = { clientX: x, clientY: y, dataTransfer: dt, bubbles: true, cancelable: true };
+      const over = new DragEvent('dragover', init);
+      target.dispatchEvent(over);
+      const drop = new DragEvent('drop', init);
+      target.dispatchEvent(drop);
+      await new Promise((r) => setTimeout(r, 250));
+      dialog?.remove();
+      return {
+        claimed: over.defaultPrevented || drop.defaultPrevented,
+        count: window.__harness.counts().entities,
+      };
+    }, onDialog);
+
+  const covered = await dropOn(true);
+  check(
+    'a file dropped on something covering the canvas is left to what it landed on',
+    covered.count === before + 2 && !covered.claimed,
+    JSON.stringify(covered)
+  );
+  const direct = await dropOn(false);
+  check(
+    'and a file dropped on the canvas itself still makes an entity',
+    direct.count === before + 3 && direct.claimed,
+    JSON.stringify(direct)
+  );
 });
 
 // ---------------------------------------------------------------- the pen

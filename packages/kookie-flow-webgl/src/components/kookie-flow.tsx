@@ -4360,6 +4360,12 @@ function InputHandler({
     if (!containerRef.current) return;
 
     const inBounds = (e: DragEvent) => {
+      // ON the canvas, not merely over its rectangle. The rectangle alone also answered for
+      // whatever the host had put on top: a file dropped on a dialog covering the canvas made an
+      // entity behind the dialog. Something covering the canvas is the event's target, and it is
+      // not inside this container.
+      const container = containerRef.current;
+      if (!container || !(e.target instanceof Node) || !container.contains(e.target)) return false;
       const r = cachedRectRef.current;
       return (
         e.clientX >= r.left &&

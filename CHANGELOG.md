@@ -11,6 +11,8 @@ still moving, and a `!` on a heading means something that was there changed shap
   a console warning. Both used to accept it, which left two entities under one id.
 - A cloned or pasted child belongs to the clone of its frame, and a cloned edge runs through the
   cloned reroute points.
+- A file dropped on something that covers the canvas, such as a dialog, is no longer taken by the
+  canvas.
 
 ### The skin is just "skin" !
 
