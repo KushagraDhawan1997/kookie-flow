@@ -5,6 +5,12 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### The add and remove helpers can be undone
+
+- `useGraph`'s `addEntity`, `removeEntity`, `addEdge` and `removeEdge` each record an undo step.
+  `removeEntity` takes the node and its wires as one step. `setEntities` and `setEdges` still
+  record nothing.
+
 ### One id, one entity
 
 - `addElements` and an `add` entity change refuse an entity whose id is already in the graph, with

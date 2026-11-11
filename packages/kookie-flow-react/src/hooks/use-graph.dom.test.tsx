@@ -148,3 +148,74 @@ describe('undo through useGraph', () => {
     host.remove();
   });
 });
+
+describe('the add and remove helpers are steps', () => {
+  const b: Entity = { id: 'b', type: 'default', position: { x: 9, y: 9 }, data: {} };
+  const wire = { id: 'e', source: 'a', target: 'b' };
+
+  it('an added node is taken back by undo, and only that node', () => {
+    // Unrecorded, the node stayed until the NEXT undo, which removed it along with the step before.
+    const g = mountGraph();
+    act(() => {
+      g.api().onEntitiesChange([{ type: 'position', id: 'a', position: { x: 50, y: 0 } }]);
+    });
+    act(() => {
+      g.api().addEntity(b);
+    });
+    expect(g.api().canUndo).toBe(true);
+    act(() => {
+      g.api().undo();
+    });
+    expect(g.api().entities.map((e: Entity) => e.id)).toEqual(['a']);
+    expect(g.api().entities[0].position.x).toBe(50);
+    act(() => {
+      g.api().redo();
+    });
+    expect(g.api().entities.map((e: Entity) => e.id)).toEqual(['a', 'b']);
+    g.unmount();
+  });
+
+  it('a removed node comes back with its wires, in one step', () => {
+    const g = mountGraph();
+    act(() => {
+      g.api().addEntity(b);
+    });
+    act(() => {
+      g.api().addEdge(wire);
+    });
+    act(() => {
+      g.api().removeEntity('b');
+    });
+    expect(g.api().entities).toHaveLength(1);
+    expect(g.api().edges).toHaveLength(0);
+    act(() => {
+      g.api().undo();
+    });
+    expect(g.api().entities.map((e: Entity) => e.id)).toEqual(['a', 'b']);
+    expect(g.api().edges.map((e) => e.id)).toEqual(['e']);
+    g.unmount();
+  });
+
+  it('an added wire and a removed wire are each a step', () => {
+    const g = mountGraph();
+    act(() => {
+      g.api().addEntity(b);
+    });
+    act(() => {
+      g.api().addEdge(wire);
+    });
+    act(() => {
+      g.api().removeEdge('e');
+    });
+    act(() => {
+      g.api().undo();
+    });
+    expect(g.api().edges.map((e) => e.id)).toEqual(['e']);
+    act(() => {
+      g.api().undo();
+    });
+    expect(g.api().edges).toHaveLength(0);
+    expect(g.api().entities).toHaveLength(2);
+    g.unmount();
+  });
+});

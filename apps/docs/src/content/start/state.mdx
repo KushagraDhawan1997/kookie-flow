@@ -138,9 +138,8 @@ export function Editor({ initialEntities }: { initialEntities: Entity[] }) {
 | `undo`, `redo` | `() => void` | Step back or forward. They do nothing while `history` is off. |
 | `canUndo`, `canRedo` | `boolean` | Whether there's a step to take. |
 
-History records the changes the canvas reports and the connections `onConnect` adds. The
-edits you make yourself, through `setEntities`, `setEdges` and the four add and remove
-functions, aren't recorded.
+History records the changes the canvas reports, the connections `onConnect` adds, and the four
+add and remove functions. Edits you make through `setEntities` and `setEdges` aren't recorded.
 
 `onConnect` adds an edge every time it runs. It doesn't check whether the same two sockets are
 already wired, or whether the input already has a wire. If your graph allows one wire per

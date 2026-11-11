@@ -50,11 +50,11 @@ describe('Production regression contracts', () => {
     act(() => h.result.current.onEntitiesChange([{ type: 'collapse', id: 'f', collapsed: true }]));
     expect(h.result.current.entities[0].collapsed).toBe(true);
   });
-  it('C02 documented: imperative hook additions bypass enabled history', () => {
+  it('C02 imperative hook additions are steps undo takes back', () => {
     const h = renderHook(() => useGraph({ initialEntities: [node('a')], history: true }));
     act(() => h.result.current.addEntity(node('b')));
     act(() => h.result.current.undo());
-    expect(h.result.current.entities.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(h.result.current.entities.map((e) => e.id)).toEqual(['a']);
   });
   it('A03 repeated identical onConnect does not duplicate an edge id', () => {
     const h = renderHook(() => useGraph());

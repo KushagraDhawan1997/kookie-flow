@@ -195,9 +195,8 @@ const runDelete = (target: ContextMenuTarget) => {
 
 A `remove` change for an entity doesn't remove its edges, so report them yourself. With
 `useGraph({ history: true })`, the two calls in one handler become one undo step. `useGraph` also
-returns a `removeEntity(id)` helper, which removes an entity and its edges in one call. It records
-no undo step, and neither does `addEntity`. The [undo and redo chapter](/data/history) covers
-history.
+returns a `removeEntity(id)` helper, which removes an entity and its edges in one call, as one
+undo step. The [undo and redo chapter](/data/history) covers history.
 
 To add something where the menu was opened, use its `worldPosition`:
 

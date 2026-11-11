@@ -380,23 +380,46 @@ export function useGraph(options: UseGraphOptions = {}): UseGraphReturn {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [historyOn, historyShortcuts, historyContainerRef, onEntitiesChange, undo, redo]);
 
-  const addEntity = useCallback((entity: Entity) => {
-    setEntities((nds) => [...nds, entity]);
-  }, []);
+  /**
+   * The four helpers are edits, so each is a step undo can take back.
+   *
+   * They used to change the graph without recording anything: an app's own "Add node" button made
+   * a node that undo could not remove, and the next undo took it away together with whatever step
+   * came before it. `removeEntity` drops the node and its wires as one step.
+   */
+  const addEntity = useCallback(
+    (entity: Entity) => {
+      remember([{ type: 'add', entity }]);
+      setEntities((nds) => [...nds, entity]);
+    },
+    [remember, setEntities]
+  );
 
-  const removeEntity = useCallback((id: string) => {
-    setEntities((nds) => nds.filter((n) => n.id !== id));
-    // Also remove connected edges
-    setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
-  }, []);
+  const removeEntity = useCallback(
+    (id: string) => {
+      remember([{ type: 'remove', id }]);
+      setEntities((nds) => nds.filter((n) => n.id !== id));
+      // Also remove connected edges
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+    },
+    [remember, setEntities, setEdges]
+  );
 
-  const addEdge = useCallback((edge: Edge) => {
-    setEdges((eds) => [...eds, edge]);
-  }, []);
+  const addEdge = useCallback(
+    (edge: Edge) => {
+      remember([{ type: 'add', edge }]);
+      setEdges((eds) => [...eds, edge]);
+    },
+    [remember, setEdges]
+  );
 
-  const removeEdge = useCallback((id: string) => {
-    setEdges((eds) => eds.filter((e) => e.id !== id));
-  }, []);
+  const removeEdge = useCallback(
+    (id: string) => {
+      remember([{ type: 'remove', id }]);
+      setEdges((eds) => eds.filter((e) => e.id !== id));
+    },
+    [remember, setEdges]
+  );
 
   const getEntity = useCallback((id: string) => entities.find((n) => n.id === id), [entities]);
 

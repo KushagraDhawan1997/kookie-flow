@@ -74,11 +74,13 @@ undo. These rules decide when a copy is kept:
 - **Undoing starts a new step.** The next edit after an undo or a redo isn't folded into an
   earlier one, and it discards the steps you could have redone.
 
-Only changes that arrive through `onEntitiesChange`, `onEdgesChange` and `onConnect` are recorded.
-`setEntities`, `setEdges`, `addEntity`, `removeEntity`, `addEdge` and `removeEdge` change the graph
-without recording a step. An undo after one of them restores a copy taken before it, so that change
-is undone along with the step. Report an edit through `onEntitiesChange` when people should be able
-to undo it.
+Changes that arrive through `onEntitiesChange`, `onEdgesChange` and `onConnect` are recorded, and so
+are `addEntity`, `removeEntity`, `addEdge` and `removeEdge`. `removeEntity` takes the node and its
+wires away as one step.
+
+`setEntities` and `setEdges` change the graph without recording a step. An undo after one of them
+restores a copy taken before it, so that change is undone along with the step. Report an edit
+through `onEntitiesChange` when people should be able to undo it.
 
 Widget values are the edit this catches most often. The canvas reports a widget change only to
 `onWidgetChange`, and writing it back with `setEntities` records nothing. Report it as a `data`
