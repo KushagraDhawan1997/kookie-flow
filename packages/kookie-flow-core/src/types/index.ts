@@ -798,7 +798,7 @@ export type {
 import type { EvaluationMode } from '../core/evaluation';
 
 /** Built-in font presets with pre-generated MSDF atlases */
-export type FontPreset = 'inter' | 'roboto' | 'source-serif' | 'system';
+export type FontPreset = 'inter' | 'system';
 
 /** Font weight configuration for MSDF rendering */
 export interface FontWeightConfig {

@@ -205,7 +205,7 @@ export interface KookieFlowProps {
   /**
    * Font for text rendering. Labels are drawn with instanced MSDF, so this picks the
    * MSDF atlas rather than a CSS font family.
-   * - Preset name: 'inter' | 'roboto' | 'source-serif' | 'system'
+   * - Preset name: 'inter' | 'system'
    * - Custom config: { name, weights: { regular, semibold? } } with MSDF metrics/atlas
    * Default: 'inter'
    */

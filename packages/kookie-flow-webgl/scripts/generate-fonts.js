@@ -8,8 +8,6 @@
  * Usage:
  *   pnpm generate:fonts              - Generate Inter (default)
  *   pnpm generate:fonts inter        - Generate Inter
- *   pnpm generate:fonts roboto       - Generate Roboto
- *   pnpm generate:fonts source-serif - Generate Source Serif Pro
  *   pnpm generate:fonts all          - Generate all fonts
  *   pnpm generate:fonts inter --embed-only - Re-embed the checked-in atlases without rebuilding them
  */
@@ -37,22 +35,6 @@ const FONT_FAMILIES = {
       { name: 'semibold', file: 'Inter-SemiBold.ttf', output: 'inter-semibold-msdf' },
     ],
     downloadUrl: 'https://github.com/rsms/inter/releases',
-  },
-  'roboto': {
-    displayName: 'Roboto',
-    weights: [
-      { name: 'regular', file: 'Roboto-Regular.ttf', output: 'roboto-regular-msdf' },
-      { name: 'medium', file: 'Roboto-Medium.ttf', output: 'roboto-medium-msdf' },
-    ],
-    downloadUrl: 'https://fonts.google.com/specimen/Roboto',
-  },
-  'source-serif': {
-    displayName: 'Source Serif Pro',
-    weights: [
-      { name: 'regular', file: 'SourceSerifPro-Regular.ttf', output: 'source-serif-regular-msdf' },
-      { name: 'semibold', file: 'SourceSerifPro-SemiBold.ttf', output: 'source-serif-semibold-msdf' },
-    ],
-    downloadUrl: 'https://fonts.google.com/specimen/Source+Serif+Pro',
   },
 };
 

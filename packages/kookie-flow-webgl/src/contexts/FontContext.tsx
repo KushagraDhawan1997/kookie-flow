@@ -244,18 +244,6 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
       };
     }
 
-    case 'roboto':
-    case 'source-serif': {
-      // MSDF atlases not yet bundled for these presets.
-      // Provide an actionable message so developers know how to supply their own.
-      console.warn(
-        `[KookieFlow] Font preset "${preset}" is not yet bundled. ` +
-          `Falling back to Inter. To use ${preset}, provide a custom FontConfig ` +
-          `with your own MSDF atlas via the \`font\` prop.`
-      );
-      return loadFontPreset('inter');
-    }
-
     case 'system': {
       /**
        * The platform's own UI font, baked into an atlas here and now.
@@ -288,7 +276,7 @@ async function loadFontPreset(preset: FontPreset): Promise<FontConfig | null> {
     default:
       console.warn(
         `[KookieFlow] Unknown font preset "${preset}". ` +
-          `Falling back to Inter. Valid presets: "inter", "roboto", "source-serif", "system".`
+          `Falling back to Inter. Valid presets: "inter", "system".`
       );
       return loadFontPreset('inter');
   }

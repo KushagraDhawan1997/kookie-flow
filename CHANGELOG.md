@@ -5,6 +5,11 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### Two font presets removed !
+
+- `FontPreset` is `'inter' | 'system'`. `'roboto'` and `'source-serif'` never had an atlas and drew
+  Inter with a warning. For another face, pass a `FontConfig`.
+
 ### The add and remove helpers can be undone
 
 - `useGraph`'s `addEntity`, `removeEntity`, `addEdge` and `removeEdge` each record an undo step.

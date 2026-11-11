@@ -11,7 +11,6 @@ atlas it uses.
 | --- | --- | --- |
 | `'inter'` | Inter, in a regular and a semibold weight | A separate chunk, downloaded the first time a canvas uses it |
 | `'system'` | The platform's own interface font, built into an atlas when the canvas mounts | No font file to download. The atlas is built on the main thread at mount. |
-| `'roboto'`, `'source-serif'` | Inter, with a console warning, because these atlases aren't bundled | The same as `'inter'` |
 | Any other string | Inter, with a console warning that lists the valid presets. TypeScript rejects the name, so this happens only in JavaScript. | The same as `'inter'` |
 | A `FontConfig` | Your own atlas | Your atlas images and metrics |
 
