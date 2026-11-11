@@ -5,6 +5,13 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### One id, one entity
+
+- `addElements` and an `add` entity change refuse an entity whose id is already in the graph, with
+  a console warning. Both used to accept it, which left two entities under one id.
+- A cloned or pasted child belongs to the clone of its frame, and a cloned edge runs through the
+  cloned reroute points.
+
 ### The skin is just "skin" !
 
 - `@kushagradhawan/kookie-flow-skin-glass` is now `@kushagradhawan/kookie-flow-skin`. It exports

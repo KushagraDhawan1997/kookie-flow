@@ -1056,6 +1056,20 @@ function reconcileWidgetValues(
   return dropped;
 }
 
+/**
+ * Say that an entity was refused because its id is already in the graph.
+ *
+ * Two entities with one id used to be accepted: the array then held both and `entityMap` held
+ * one, so a drag or a delete aimed at the id acted on whichever copy the index happened to name.
+ * Refused with a warning rather than thrown, the way an unknown change type is: it is a
+ * programming error worth surfacing, and not one that should take the canvas down.
+ */
+function warnDuplicateEntity(action: string, id: string): void {
+  console.warn(
+    `[kookie-flow] ${action}: ignoring an entity whose id ${JSON.stringify(id)} is already in the graph.`
+  );
+}
+
 /** Narrow an entity's open-ended `data.values` bag without asserting it into shape. */
 function isValueBag(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1918,6 +1932,10 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
                   break;
                 }
                 case 'add': {
+                  if (idToIndex.has(change.entity.id)) {
+                    warnDuplicateEntity('applyEntityChanges', change.entity.id);
+                    break;
+                  }
                   const added = resolveOne(change.entity);
                   idToIndex.set(added.id, nextEntities.length);
                   nextEntities.push(added);
@@ -2604,7 +2622,18 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
             } = get();
             // Resolved on the way in, like the prop sync: a node added by a plugin or a paste gets
             // its type's sockets the same way one that arrived as a prop does.
-            const newEntities = resolve(batch.entities ?? []);
+            // An id already in the graph, or given twice in this batch, is refused.
+            const offered = batch.entities ?? [];
+            const seenIds = new Set<string>();
+            const accepted = offered.filter((e) => {
+              if (entityMap.has(e.id) || seenIds.has(e.id)) {
+                warnDuplicateEntity('addElements', e.id);
+                return false;
+              }
+              seenIds.add(e.id);
+              return true;
+            });
+            const newEntities = resolve(accepted.length === offered.length ? offered : accepted);
             const newEdges = batch.edges ?? [];
             // A new entity has never run, and a new wire changes what its target reads. Marked now
             // against the pre-add index; the pass itself runs in a microtask, after the set below,

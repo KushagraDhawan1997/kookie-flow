@@ -590,3 +590,53 @@ describe('cloning keeps the copy self-contained', () => {
     expect(edges[0].reroutes).toEqual([idMap.get('dot'), 'elsewhere']);
   });
 });
+
+describe('an id is in the graph once', () => {
+  function capturingWarnings<T>(run: () => T): { result: T; warnings: unknown[] } {
+    const warnings: unknown[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args[0]);
+    try {
+      return { result: run(), warnings };
+    } finally {
+      console.warn = original;
+    }
+  }
+
+  it('addElements refuses an id the graph already holds, and one given twice', () => {
+    // Accepted, the array held two entities with one id while the map held one.
+    const store = createFlowStore({ entities: [ent('a')] });
+    const { warnings } = capturingWarnings(() =>
+      store.getState().addElements({ entities: [ent('a', 50), ent('b'), ent('b', 90)] })
+    );
+    const { entities, entityMap } = store.getState();
+    expect(entities.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(entityMap.size).toBe(2);
+    expect(entities[0].position.x).toBe(0);
+    expect(entities[1].position.x).toBe(0);
+    expect(warnings).toHaveLength(2);
+  });
+
+  it('an add change refuses an id the graph already holds', () => {
+    const store = createFlowStore({ entities: [ent('a')] });
+    const { warnings } = capturingWarnings(() =>
+      store.getState().applyEntityChanges([{ type: 'add', entity: ent('a', 50) }])
+    );
+    expect(store.getState().entities.map((e) => e.id)).toEqual(['a']);
+    expect(store.getState().entities[0].position.x).toBe(0);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('an id removed earlier in the same batch can be added back', () => {
+    // The pen does this on release: the growing stroke goes and the finished one arrives.
+    const store = createFlowStore({ entities: [ent('a')] });
+    const { warnings } = capturingWarnings(() =>
+      store.getState().applyEntityChanges([
+        { type: 'remove', id: 'a' },
+        { type: 'add', entity: ent('a', 50) },
+      ])
+    );
+    expect(store.getState().entities.map((e) => e.position.x)).toEqual([50]);
+    expect(warnings).toHaveLength(0);
+  });
+});
