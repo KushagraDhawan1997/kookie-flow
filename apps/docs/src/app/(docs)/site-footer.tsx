@@ -59,9 +59,8 @@ export function SiteFooter() {
     <Surface>
       <Footer
         brand={
-          /* The mark, not the word typed out again. `Wordmark` is where the face, the weight and
-             the collapsed line box live; the link is the only fact that belongs to this
-             placement, and the accessible name is the link's because the glyph is decoration
+          /* The mark, not the word typed out again. `Logo` is where the drawing lives; the link is
+             the only fact that belongs to this placement, and the accessible name is the link's because the glyph is decoration
              doing a logo's job — the same arrangement the sidebar's header states. */
           <Link
             href="/"

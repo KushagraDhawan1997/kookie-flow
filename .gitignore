@@ -35,9 +35,8 @@ coverage
 # Vercel
 .vercel
 
-# Licensed fonts — never commit. The docs set code in Neue Montreal Mono and the wordmark in PP
-# Acma, both from Pangram Pangram, whose licence forbids redistribution through a repository.
-# globals.css falls back to the system stack when the files are absent. Only web font formats:
-# the library's MSDF sources are .ttf and stay tracked.
+# Licensed fonts — never commit. Neither app loads one now: every face comes through `next/font`.
+# The rule stays so a licensed file dropped into `public/fonts` to try a face cannot be committed.
+# Only web font formats: the library's MSDF sources are .ttf and stay tracked.
 *.woff
 *.woff2

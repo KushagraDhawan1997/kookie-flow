@@ -166,19 +166,17 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
           {/* The unofficial header — pinned above the scroller by position alone (§27's
               pinned-stack rule; no part names exist and none are needed).
 
-              THE LOGO IS THE WORD. `wordmark.tsx` carries the reasoning; what is here is only
-              the link that wraps it.
+              THE LOGO IS THE MARK. `logo.tsx` carries the drawing; what is here is only the link
+              that wraps it.
 
               THE ACCESSIBLE NAME IS THE LINK'S. The mark is decoration doing a logo's job and
               is `aria-hidden` either way, so the link states `aria-label` and a screen reader
               announces "Kookie Flow" — which is what keeps the one route back to the home page
               from announcing itself as a picture with no name.
 
-              THE GLYPH ITSELF IS `<Wordmark>`, because the footer sets the same mark and the
-              three facts that make it the mark — the face, the weight, the collapsed line box —
-              cannot be copied to a second call site and stay one thing. Why each of them is what
-              it is lives beside the component. What stays HERE is the only fact that is about
-              this placement rather than the mark: the link. */}
+              THE GLYPH ITSELF IS `<Logo>`, because the footer sets the same mark and a drawing
+              copied to a second call site does not stay one thing. What stays HERE is the only
+              fact that is about this placement rather than the mark: the link. */}
           {/* One row, not two (2026-08-28) — search moved in beside the mark once it became
               an icon button rather than a full-width fake input, the same `Flex
               justify="space-between"` shape the footer row below already uses.

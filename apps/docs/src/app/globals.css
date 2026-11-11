@@ -28,42 +28,10 @@
    the app's, and all three are filled.
 
    INTER READS, the same face the canvas's MSDF labels are cut from, published by layout.tsx
-   as `--kd-font-canvas`. Neue Montreal Mono sets code, PP Acma sets the wordmark (PP Hatton until 2026-09-15, PP Playground before that).
-
-   @FONT-FACE OVER `public/fonts`, NOT `next/font/local`, for the two licensed faces. Both are
-   Pangram Pangram's, so they are gitignored and a clone or a Vercel build does not have them.
-   `next/font/local` fails the build on a missing file; a url() here 404s and the stack below
-   falls back to the system. */
-@font-face {
-  font-family: "Neue Montreal Mono";
-  src: url("/fonts/NeueMontrealMono.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Neue Montreal Mono";
-  src: url("/fonts/NeueMontrealMono-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* One static cut, at the weight `<Wordmark>` asks for, so the browser never synthesizes a bolder
-   one by stroking the outline. */
-@font-face {
-  font-family: "PP Acma";
-  src: url("/fonts/PPAcma-Semibold.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
+   as `--kd-font-canvas`. JetBrains Mono sets code, published there as `--kd-font-mono`. Every
+   face comes through `next/font`, so none is a file this repo has to carry. */
 :root:root {
   --kd-font-body: var(--kd-font-canvas);
-  --kd-font-mono: "Neue Montreal Mono";
-  --kd-font-wordmark: "PP Acma";
   --font-body: var(--kd-font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-heading: var(--kd-font-heading), var(--font-body);
   --font-mono: var(--kd-font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

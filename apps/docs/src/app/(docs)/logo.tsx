@@ -1,9 +1,8 @@
 /**
- * THE MARK (2026-09-27, Kushagra's drawing). The word says the name; this says it without
- * words, and the two sit together in the masthead.
+ * THE MARK (2026-09-27, Kushagra's drawing). It says the name without words.
  *
  * `currentColor` and a height in `em`, so it takes the ink and the size of whatever it stands
- * beside rather than stating either — the same arrangement `Wordmark` uses for its face. Its
+ * beside rather than stating either. Its
  * own aspect ratio does the width, so nothing here is a second measurement to keep in step.
  *
  * `aria-hidden` because it is a picture of the name: every placement carries the name on the

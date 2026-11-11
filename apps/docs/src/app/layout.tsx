@@ -2,7 +2,7 @@ import "@kushagradhawan/kookie-ui-react/styles.css";
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
-import { Inter, Inter_Tight } from "next/font/google";
+import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { TooltipProvider } from "@kushagradhawan/kookie-ui-react";
 
 import { appearanceScript } from "./appearance-script";
@@ -18,8 +18,7 @@ import { SITE_URL } from "./site";
  * on `.kd-canvas`. The canvas has to be Inter whatever the site uses — kookie-flow draws every
  * label as MSDF glyphs cut from Inter, and the edit overlay is a real <textarea> that lands on
  * those glyphs and inherits its face from the DOM around it, so another face would make the text
- * jump the moment a field is focused. Neue Montreal Mono still sets code, and PP Playground the
- * wordmark.
+ * jump the moment a field is focused.
  */
 const canvas = Inter({
   subsets: ["latin"],
@@ -34,6 +33,20 @@ const heading = Inter_Tight({
   variable: "--kd-font-heading",
   display: "swap",
   fallback: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+});
+
+/**
+ * The code face, JetBrains Mono. globals.css spends `--kd-font-mono` on the mono slot.
+ *
+ * Through `next/font` like the two above, so the file is fetched at build time and served from
+ * this site. The face before it was licensed and could not travel with the repo, so the live site
+ * never had it and set code in whatever mono the reader's system shipped.
+ */
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--kd-font-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
 });
 
 const siteConfig = {
@@ -150,7 +163,7 @@ export default function RootLayout({
     // vendor update.
     <html
       lang="en"
-      className={`${canvas.variable} ${heading.variable}`}
+      className={`${canvas.variable} ${heading.variable} ${mono.variable}`}
       style={{ WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%" }}
       suppressHydrationWarning
     >
