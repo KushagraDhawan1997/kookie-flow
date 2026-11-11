@@ -3698,8 +3698,12 @@ function InputHandler({
           } as DrawEntityData,
           resizable: false,
         };
-        store.getState().applyEntityChanges([{ type: 'remove', id: finished.id }]);
-        store.getState().applyEntityChanges([{ type: 'add', entity }]);
+        // One batch: the growing stroke goes and the finished one arrives in a single rebuild of
+        // the indexes, where two calls rebuilt them twice.
+        store.getState().applyEntityChanges([
+          { type: 'remove', id: finished.id },
+          { type: 'add', entity },
+        ]);
         onEntitiesChangeRef.current?.([{ type: 'add', entity }]);
         pointerDownPos.current = null;
         return;
