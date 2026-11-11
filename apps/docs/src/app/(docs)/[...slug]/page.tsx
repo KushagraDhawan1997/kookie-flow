@@ -21,6 +21,16 @@ export function generateStaticParams() {
   return CHAPTERS.map((chapter) => ({ slug: chapter.slug.split("/") }));
 }
 
+/**
+ * ONLY THE CHAPTERS ABOVE EXIST. Left open, an unknown path was rendered on demand, `notFound()`
+ * was thrown mid-render, and the server answered with an EMPTY document for the browser to fill
+ * in. The appearance script in the root layout's head is then drawn by React on the client, and a
+ * script React draws on the client never runs — so a visitor on a dark system got the 404 on a
+ * white page. Closed, an unknown path is answered with the prerendered not-found page, whose
+ * head is real HTML.
+ */
+export const dynamicParams = false;
+
 export async function generateMetadata({
   params,
 }: {
