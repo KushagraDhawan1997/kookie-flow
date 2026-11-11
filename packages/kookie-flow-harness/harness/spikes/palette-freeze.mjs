@@ -1,4 +1,9 @@
 /**
+ * A RECORD, NOT A LIVE INSTRUMENT. This measured KookieUI v1's hues, and the UI archive the
+ * fixture loads now is v2, which defines only a few of them: run today it prints #000000 for the
+ * rest. Do not copy its output over the frozen table. The table lives in
+ * `packages/kookie-flow-webgl/src/core/palette.ts`.
+ *
  * Re-measure the hue palette kookie-flow froze out of CSS.
  *
  * `src/core/palette.ts` holds the values KookieUI v1 resolved in a real browser at the moment of
