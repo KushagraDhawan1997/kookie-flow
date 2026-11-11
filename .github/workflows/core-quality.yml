@@ -28,6 +28,8 @@ jobs:
         run: pnpm check:boundaries
       - name: Types and unit/DOM regressions
         run: pnpm --filter kookie-flow-harness run lint:all && pnpm --filter kookie-flow-harness run test:all
+      - name: App types and studio tests
+        run: pnpm --filter docs --filter studio --filter studio-core run lint && pnpm --filter studio-core --filter studio run test
       - name: Bounded spatial stress
         run: pnpm --filter kookie-flow-harness run test:spatial-stress
       - name: Build and isolated packed consumer
