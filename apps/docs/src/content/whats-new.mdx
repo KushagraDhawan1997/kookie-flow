@@ -1,5 +1,21 @@
 Each day groups its changes as Major, Minor or Quiet. Major is a new product or a change to what it is. Minor is a change you notice when you use it. Quiet is a small touch, or how the work is made.
 
+## November 11
+
+### Minor
+
+- **Fit the view can glide.** `fitView({ duration })` moves the camera smoothly to the fit, and stops if you pan or zoom on the way.
+- **Add and remove can be undone.** The `useGraph` helpers `addEntity`, `removeEntity`, `addEdge` and `removeEdge` each record an undo step.
+- **Pasted frames keep their children.** A copied frame arrives with its own nodes and reroute points, not the original's.
+- **Dropped files land where you drop them.** A file dropped on a dialog over the canvas is no longer added to the canvas.
+- **Page not found follows dark mode.** The 404 page was white for visitors in dark mode.
+
+### Quiet
+
+- **Docs: check a save, and skins.** The Saving chapter covers checking a save before loading it, and a new Skins chapter covers changing the look.
+- **Code in JetBrains Mono.** The docs set code in a font the live site can ship.
+- **Two font presets removed.** `'roboto'` and `'source-serif'` only ever drew Inter.
+
 ## November 3
 
 ### Quiet

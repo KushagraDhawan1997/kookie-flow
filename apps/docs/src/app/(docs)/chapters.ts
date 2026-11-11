@@ -42,6 +42,7 @@ import Theming from "../../content/styling/theming.mdx";
 import EntityStyling from "../../content/styling/entities.mdx";
 import Fonts from "../../content/styling/fonts.mdx";
 import Minimap from "../../content/styling/minimap.mdx";
+import Skins from "../../content/styling/skins.mdx";
 import KookieFlowApi from "../../content/api/kookie-flow.mdx";
 import InstanceApi from "../../content/api/instance.mdx";
 import HooksApi from "../../content/api/hooks.mdx";
@@ -99,7 +100,7 @@ export const SECTIONS: readonly Section[] = [
     id: "styling",
     title: "Styling",
     blurb:
-      "Make the graph follow your KookieUI theme, set how entities look, choose the font labels are drawn with, and add a minimap.",
+      "Make the graph follow your KookieUI theme, set how entities look, choose the font labels are drawn with, add a minimap, and change the skin.",
   },
   {
     id: "api",
@@ -422,6 +423,15 @@ export const CHAPTERS: readonly Chapter[] = [
       "Show a small overview of the whole graph in a corner of the canvas. People can click it or drag it to move the view.",
     source: "styling/minimap.mdx",
     Content: Minimap,
+  },
+  {
+    slug: "styling/skins",
+    title: "Skins",
+    section: "styling",
+    blurb:
+      "A skin is how the canvas looks. See what one holds, change part of the shipped skin, and learn what writing your own involves.",
+    source: "styling/skins.mdx",
+    Content: Skins,
   },
 
   {

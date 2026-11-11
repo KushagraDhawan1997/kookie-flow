@@ -1,0 +1,70 @@
+`KookieFlow` takes a skin as its `skin` prop and draws with it: which theme token colours each
+part, how big each size step is, and the shader code that paints cards, controls and floating
+panels. Behaviour isn't in a skin. Hit testing, dragging, text and
+keyboard access are the same under every skin.
+
+`@kushagradhawan/kookie-flow-skin` is the one skin that ships. It draws Kookie Flow in KookieUI
+v2's tokens.
+
+The skin contract is pre-1.0 and still moves. [`CHANGELOG.md`](https://github.com/KushagraDhawan1997/kookie-flow/blob/main/CHANGELOG.md)
+marks each change.
+
+## What a skin holds
+
+A skin is a plain object of type `FlowSkin`.
+
+| Field | What it decides |
+| --- | --- |
+| `name` | A label for the skin. |
+| `colors` | Which theme token plays each colour role: the canvas, edges, sockets, selection, widgets, text and the minimap. |
+| `metrics` | The padding, corner radius and font size of each size step, the fill and border of each variant, shadows and the focus ring. |
+| `shape` | The outline of a card, as shader code. |
+| `shaders` | The shader code that paints cards, inline controls, floating panels and media controls. |
+| `ui` | The React components the selection toolbar and the media viewer are built from. |
+| `readTokens` | How token values are read off the page when the theme changes. |
+| `fallbackTokens` | The token values used before the page's theme can be read. |
+
+## Change part of the look
+
+A skin is an object, so the short way to a look of your own is to copy the shipped one and
+replace the parts you want. This one recolours edges and the canvas, and thickens the focus ring.
+
+```tsx title="my-skin.ts"
+import type { FlowSkin } from '@kushagradhawan/kookie-flow-react';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
+
+export const mySkin: FlowSkin = {
+  ...skin,
+  name: 'mine',
+  colors: {
+    ...skin.colors,
+    edge: { ...skin.colors.edge, default: '--neutral-9', selected: '--accent-11' },
+    canvas: { background: { light: '--neutral-1', dark: '--neutral-2' } },
+  },
+  metrics: { ...skin.metrics, focusRing: { width: 3, offset: 2 } },
+};
+```
+
+```tsx lineNumbers=false
+<KookieFlow skin={mySkin} entities={entities} edges={edges} />
+```
+
+A colour role names a token, never a colour value, so the canvas keeps following the theme in
+light and dark. A role is one token, or a `{ light, dark }` pair when the two appearances need
+different steps. TypeScript rejects a token the theme doesn't have.
+
+Build the skin once, outside your component. The canvas reads it when it builds its materials
+and reads the theme, so a new skin object on every render makes it redo that work every render.
+
+## Write a skin from nothing
+
+A skin for another design system fills every field itself. `colors` and `metrics` are tables.
+`readTokens` maps your system's CSS variables onto the token names the canvas asks for. `ui`
+maps a handful of props onto your own toolbar, button, field and select components.
+
+`shape` and `shaders` are the work. Each is GLSL that defines functions the canvas calls, such as
+the fill of a card or the body of a field, with fixed names and arguments. The
+[skin contract](https://github.com/KushagraDhawan1997/kookie-flow/blob/main/packages/kookie-flow-webgl/src/skin/types.ts)
+lists every function, and the
+[shipped skin](https://github.com/KushagraDhawan1997/kookie-flow/tree/main/packages/kookie-flow-skin/src)
+is a complete one to read beside it.
