@@ -888,14 +888,18 @@ export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom
 export interface FitViewOptions {
   /** Padding around the content in pixels. Default: 50 */
   padding?: number;
-  /** Whether to include hidden entities in the bounds calculation. Default: true */
-  includeHiddenEntities?: boolean;
   /** Minimum zoom level for the fit. Default: uses component's minZoom */
   minZoom?: number;
   /** Maximum zoom level for the fit. Default: 1 (won't zoom in past 100%) */
   maxZoom?: number;
   /** Specific entities to fit (by ID). If not provided, fits all entities. */
   entities?: string[];
-  /** Animation duration in ms. 0 = instant. Default: 0 */
+  /**
+   * How long the camera takes to get there, in ms. Default: 0, which jumps.
+   *
+   * The glide is the canvas's: the standalone store has no clock and always jumps. It is skipped
+   * for a person who has asked their system for reduced motion, and it stops the moment anything
+   * else moves the camera.
+   */
   duration?: number;
 }

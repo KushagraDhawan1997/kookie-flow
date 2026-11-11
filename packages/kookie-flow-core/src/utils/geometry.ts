@@ -858,3 +858,34 @@ export function getEdgeEndpoints(
 
   return { start, end };
 }
+
+/**
+ * The camera part-way between two viewports, for a glide. `t` runs 0 to 1.
+ *
+ * Interpolating x, y and zoom separately looks wrong: the point in the middle of the canvas swings
+ * out and back, because x and y are screen offsets that only mean something at their own zoom. So
+ * the WORLD point at the centre of the canvas travels in a straight line, and the zoom changes by
+ * equal ratios rather than equal amounts, which is what reads as a steady zoom.
+ */
+export function interpolateViewport(
+  from: Viewport,
+  to: Viewport,
+  t: number,
+  canvasWidth: number,
+  canvasHeight: number
+): Viewport {
+  if (t <= 0) return from;
+  if (t >= 1) return to;
+  const halfW = canvasWidth / 2;
+  const halfH = canvasHeight / 2;
+  const fromCx = (halfW - from.x) / from.zoom;
+  const fromCy = (halfH - from.y) / from.zoom;
+  const toCx = (halfW - to.x) / to.zoom;
+  const toCy = (halfH - to.y) / to.zoom;
+  const zoom = from.zoom * Math.pow(to.zoom / from.zoom, t);
+  return {
+    x: halfW - (fromCx + (toCx - fromCx) * t) * zoom,
+    y: halfH - (fromCy + (toCy - fromCy) * t) * zoom,
+    zoom,
+  };
+}

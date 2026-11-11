@@ -1121,6 +1121,93 @@ function reconcileEvaluationInputs(
   return result;
 }
 
+/**
+ * Where the camera has to be for these entities to fill the canvas, or null when there is nothing
+ * to frame.
+ *
+ * Its own function so the answer can be had WITHOUT moving the camera: the store's `fitView` jumps
+ * there, and the canvas glides there over `options.duration` — and a glide needs to know where it
+ * is going before it sets off.
+ */
+export function fitViewport(
+  allEntities: Entity[],
+  options: FitViewOptions = {},
+  canvasWidth?: number,
+  canvasHeight?: number,
+  socketLayout?: ResolvedSocketLayout | null
+): Viewport | null {
+  const {
+    padding = 50,
+    minZoom: optMinZoom = MIN_ZOOM,
+    maxZoom: optMaxZoom = 1, // Default: don't zoom in past 100%
+    entities: entityIds,
+  } = options;
+
+  // Determine which entities to fit
+  let entitiesToFit: Entity[];
+  if (entityIds && entityIds.length > 0) {
+    // Fit specific entities by ID
+    const entityIdSet = new Set(entityIds);
+    entitiesToFit = allEntities.filter((n) => entityIdSet.has(n.id));
+  } else {
+    // Fit all entities
+    entitiesToFit = allEntities;
+  }
+
+  if (entitiesToFit.length === 0) return null;
+
+  // The host owns its viewport size. The engine also runs without a browser.
+  if (
+    canvasWidth === undefined ||
+    canvasHeight === undefined ||
+    !Number.isFinite(canvasWidth) ||
+    !Number.isFinite(canvasHeight) ||
+    canvasWidth <= 0 ||
+    canvasHeight <= 0
+  ) {
+    throw new RangeError('fitView requires positive, finite canvas width and height');
+  }
+
+  // Calculate bounds
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+
+  for (const entity of entitiesToFit) {
+    // 200x100 was neither the renderer's default width nor any entity's computed height, so
+    // fitView framed a box smaller than the content and cut entities off at the right and
+    // bottom edges.
+    const { width, height } = getEntityBounds(entity, socketLayout ?? undefined);
+    minX = Math.min(minX, entity.position.x);
+    minY = Math.min(minY, entity.position.y);
+    maxX = Math.max(maxX, entity.position.x + width);
+    maxY = Math.max(maxY, entity.position.y + height);
+  }
+
+  // Add padding
+  minX -= padding;
+  minY -= padding;
+  maxX += padding;
+  maxY += padding;
+
+  // Calculate zoom to fit content in container
+  const contentWidth = maxX - minX;
+  const contentHeight = maxY - minY;
+
+  // Clamp zoom between optMinZoom and optMaxZoom, then also clamp to global limits
+  const rawZoom = Math.min(canvasWidth / contentWidth, canvasHeight / contentHeight);
+  const clampedZoom = Math.max(optMinZoom, Math.min(optMaxZoom, rawZoom));
+  const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, clampedZoom));
+
+  // Center the content
+  return {
+    x: (canvasWidth - contentWidth * zoom) / 2 - minX * zoom,
+    y: (canvasHeight - contentHeight * zoom) / 2 - minY * zoom,
+    zoom,
+  };
+}
+
 export const createFlowStore = (initialState?: Partial<FlowState>) => {
   // Initialize derived state from initial entities and edges
   /**
@@ -2219,92 +2306,15 @@ export const createFlowStore = (initialState?: Partial<FlowState>) => {
           },
 
           fitView: (options: FitViewOptions = {}, canvasWidth?: number, canvasHeight?: number) => {
-            const { entities: allEntities, socketLayout } = get();
-
-            const {
-              padding = 50,
-              // includeHiddenEntities - reserved for future use when hidden entities are supported
-              minZoom: optMinZoom = MIN_ZOOM,
-              maxZoom: optMaxZoom = 1, // Default: don't zoom in past 100%
-              entities: entityIds,
-              // duration - reserved for future animation support
-            } = options;
-
-            // Determine which entities to fit
-            let entitiesToFit: Entity[];
-            if (entityIds && entityIds.length > 0) {
-              // Fit specific entities by ID
-              const entityIdSet = new Set(entityIds);
-              entitiesToFit = allEntities.filter((n) => entityIdSet.has(n.id));
-            } else {
-              // Fit all entities
-              entitiesToFit = allEntities;
-            }
-
-            if (entitiesToFit.length === 0) return;
-
-            // The host owns its viewport size. The engine also runs without a browser.
-            if (
-              canvasWidth === undefined ||
-              canvasHeight === undefined ||
-              !Number.isFinite(canvasWidth) ||
-              !Number.isFinite(canvasHeight) ||
-              canvasWidth <= 0 ||
-              canvasHeight <= 0
-            ) {
-              throw new RangeError('fitView requires positive, finite canvas width and height');
-            }
-            const containerWidth = canvasWidth;
-            const containerHeight = canvasHeight;
-
-            // Calculate bounds
-            let minX = Infinity,
-              minY = Infinity,
-              maxX = -Infinity,
-              maxY = -Infinity;
-
-            for (const entity of entitiesToFit) {
-              // 200x100 was neither the renderer's default width nor any entity's computed height, so
-              // fitView framed a box smaller than the content and cut entities off at the right and
-              // bottom edges.
-              const { width, height } = getEntityBounds(entity, socketLayout ?? undefined);
-              minX = Math.min(minX, entity.position.x);
-              minY = Math.min(minY, entity.position.y);
-              maxX = Math.max(maxX, entity.position.x + width);
-              maxY = Math.max(maxY, entity.position.y + height);
-            }
-
-            // Add padding
-            minX -= padding;
-            minY -= padding;
-            maxX += padding;
-            maxY += padding;
-
-            // Calculate zoom to fit content in container
-            const contentWidth = maxX - minX;
-            const contentHeight = maxY - minY;
-
-            // Clamp zoom between optMinZoom and optMaxZoom, then also clamp to global limits
-            const rawZoom = Math.min(
-              containerWidth / contentWidth,
-              containerHeight / contentHeight
+            const { entities, socketLayout } = get();
+            const viewport = fitViewport(
+              entities,
+              options,
+              canvasWidth,
+              canvasHeight,
+              socketLayout
             );
-            const clampedZoom = Math.max(optMinZoom, Math.min(optMaxZoom, rawZoom));
-            const finalZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, clampedZoom));
-
-            // Center the content
-            const scaledWidth = contentWidth * finalZoom;
-            const scaledHeight = contentHeight * finalZoom;
-            const offsetX = (containerWidth - scaledWidth) / 2 - minX * finalZoom;
-            const offsetY = (containerHeight - scaledHeight) / 2 - minY * finalZoom;
-
-            set({
-              viewport: {
-                x: offsetX,
-                y: offsetY,
-                zoom: finalZoom,
-              },
-            });
+            if (viewport) set({ viewport });
           },
 
           // Efficient batch position update for dragging

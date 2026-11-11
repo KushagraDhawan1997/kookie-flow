@@ -5,6 +5,13 @@ still moving, and a `!` on a heading means something that was there changed shap
 
 ## Unreleased
 
+### fitView glides !
+
+- `fitView({ duration })` on the canvas ref glides the camera to the fit over that many
+  milliseconds. The option was accepted and ignored before. The glide ends when anything else moves
+  the camera, and is skipped under reduced motion.
+- `FitViewOptions.includeHiddenEntities` is removed. It never had an effect.
+
 ### Two font presets removed !
 
 - `FontPreset` is `'inter' | 'system'`. `'roboto'` and `'source-serif'` never had an atlas and drew

@@ -5931,6 +5931,76 @@ await withPage('scene=widgets&widgets=1&grid=0&preserveBuffer=1', async (page) =
   }
 });
 
+/**
+ * fitView's `duration`: the camera glides to where an instant fit would have put it.
+ *
+ * The option was accepted and ignored for a long time, so the first law is that it does anything
+ * at all. The rest are the three ways a glide goes wrong: it ends somewhere else, it fights a
+ * person who takes the canvas mid-way, or it moves for someone who asked their system not to.
+ */
+head('fitView glides when asked');
+await withPage('scene=graph&count=12&seed=1&grid=0', async (page) => {
+  const viewport = () => page.evaluate(() => ({ ...window.__harness.store.getState().viewport }));
+  const offset = { x: 900, y: -700, zoom: 2 };
+  const reset = () =>
+    page.evaluate((v) => window.__harness.store.getState().setViewport(v), offset);
+  const near = (a, b) =>
+    Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.zoom - b.zoom) < 1e-3;
+
+  await reset();
+  await page.evaluate(() => window.__flow.fitView());
+  const target = await viewport();
+  check('an instant fit moves the camera', !near(target, offset), JSON.stringify(target));
+
+  await reset();
+  await page.evaluate(() => window.__flow.fitView({ duration: 600 }));
+  await page.waitForTimeout(250);
+  const midway = await viewport();
+  check(
+    'a fit with a duration is part-way there part-way through',
+    !near(midway, offset) && !near(midway, target),
+    JSON.stringify({ midway, target })
+  );
+  check(
+    'and its zoom is between where it started and where it is going',
+    midway.zoom < offset.zoom && midway.zoom > target.zoom,
+    JSON.stringify({ from: offset.zoom, midway: midway.zoom, to: target.zoom })
+  );
+  await page.waitForTimeout(700);
+  const landed = await viewport();
+  check(
+    'and it lands exactly where the instant fit does',
+    near(landed, target),
+    JSON.stringify(landed)
+  );
+
+  // A person who takes the canvas mid-glide keeps it.
+  await reset();
+  await page.evaluate(() => window.__flow.fitView({ duration: 600 }));
+  await page.waitForTimeout(150);
+  const taken = { x: 123, y: 456, zoom: 1.5 };
+  await page.evaluate((v) => window.__harness.store.getState().setViewport(v), taken);
+  await page.waitForTimeout(700);
+  const kept = await viewport();
+  check(
+    'anything else that moves the camera ends the glide',
+    near(kept, taken),
+    JSON.stringify(kept)
+  );
+
+  // Reduced motion: the camera jumps.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await reset();
+  await page.evaluate(() => window.__flow.fitView({ duration: 600 }));
+  const jumped = await viewport();
+  check(
+    'a person who asked for reduced motion gets the jump',
+    near(jumped, target),
+    JSON.stringify(jumped)
+  );
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+});
+
 await hardeningChecks({ head, withPage, check, context, port, skipping });
 
 // ---------------------------------------------------------------- summary

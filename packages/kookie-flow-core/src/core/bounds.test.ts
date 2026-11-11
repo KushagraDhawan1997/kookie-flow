@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createFlowStore } from './store';
+import { createFlowStore, fitViewport } from './store';
+import { interpolateViewport } from '../utils/geometry';
 import { computeCollapseToSubgraph, buildAdjacencyIndex } from './graph';
 import { calculateGroupBounds } from '../utils/grouping';
 import { getEntityBounds } from './spatial';
@@ -128,5 +129,53 @@ describe('computed boxes contain what they were computed from', () => {
     // ...and it did not simply zoom out to nothing.
     expect(right).toBeGreaterThan(0);
     expect(bottom).toBeGreaterThan(0);
+  });
+});
+
+describe('where a fit would put the camera, without moving it', () => {
+  it('fitViewport answers what fitView then does', () => {
+    const store = createFlowStore({ entities: [unsized('a', 0, 0), unsized('b', 900, 400)] });
+    store.getState().setSocketLayout(LAYOUT);
+    const before = store.getState().viewport;
+    const { entities, socketLayout } = store.getState();
+    const planned = fitViewport(entities, { padding: 20 }, 800, 600, socketLayout);
+    // Asking is not moving.
+    expect(store.getState().viewport).toBe(before);
+    store.getState().fitView({ padding: 20 }, 800, 600);
+    expect(store.getState().viewport).toEqual(planned);
+  });
+
+  it('there is nowhere to go with nothing to frame', () => {
+    expect(fitViewport([], {}, 800, 600)).toBeNull();
+  });
+});
+
+describe('a camera glide', () => {
+  const from = { x: 100, y: 50, zoom: 2 };
+  const to = { x: -300, y: 20, zoom: 0.5 };
+  const centre = (v: { x: number; y: number; zoom: number }) => ({
+    x: (400 - v.x) / v.zoom,
+    y: (300 - v.y) / v.zoom,
+  });
+
+  it('starts and ends on the two viewports themselves', () => {
+    expect(interpolateViewport(from, to, 0, 800, 600)).toBe(from);
+    expect(interpolateViewport(from, to, 1, 800, 600)).toBe(to);
+  });
+
+  it('carries the middle of the canvas in a straight line through the world', () => {
+    // Interpolating x and y directly swings this point out and back, because they are screen
+    // offsets that mean something only at their own zoom.
+    const a = centre(from);
+    const b = centre(to);
+    for (const t of [0.25, 0.5, 0.75]) {
+      const c = centre(interpolateViewport(from, to, t, 800, 600));
+      expect(c.x).toBeCloseTo(a.x + (b.x - a.x) * t, 6);
+      expect(c.y).toBeCloseTo(a.y + (b.y - a.y) * t, 6);
+    }
+  });
+
+  it('changes zoom by equal ratios, so the half-way zoom is the geometric mean', () => {
+    expect(interpolateViewport(from, to, 0.5, 800, 600).zoom).toBeCloseTo(1, 6);
   });
 });

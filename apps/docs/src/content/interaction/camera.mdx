@@ -92,10 +92,17 @@ moves, subscribe to `viewport` in the flow store, as the chapter on
 | `entities` | `string[]` | every entity | The ids to frame. An empty list frames every entity. |
 | `minZoom` | `number` | the `minZoom` prop | The furthest out the fit may go. |
 | `maxZoom` | `number` | `1` | The furthest in the fit may go, so a small graph is shown at full size rather than blown up. |
+| `duration` | `number` | `0` | How long the camera takes to get there, in milliseconds. `0` jumps. |
 
-`FitViewOptions` also lists `duration` and `includeHiddenEntities`, but neither has any effect.
-The camera always moves in one step, and entities hidden inside a collapsed frame still count
-toward the area it frames.
+With a `duration`, the camera glides to the fit. The glide stops as soon as anything else moves
+the camera, so a person who pans or zooms part-way keeps the canvas. It's skipped for a person
+whose system asks for reduced motion, and they get the jump.
+
+```tsx lineNumbers=false
+flowRef.current?.fitView({ duration: 300 });
+```
+
+Entities hidden inside a collapsed frame still count toward the area the fit frames.
 
 This toolbar frames the selection, or the whole graph when nothing is selected, and steps the
 zoom. It sits outside `<KookieFlow>`, so it reaches the camera through the ref.

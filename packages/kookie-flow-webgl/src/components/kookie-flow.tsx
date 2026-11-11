@@ -143,7 +143,9 @@ import {
   screenToWorldInto,
   getSocketAtPositionFast,
   getEdgeAtPosition,
+  interpolateViewport,
 } from '@kushagradhawan/kookie-flow-core/internal/utils/geometry';
+import { fitViewport } from '@kushagradhawan/kookie-flow-core/internal/core/store';
 import { isPointInWidget } from '../utils/widget-geometry';
 import {
   getWidgetAt,
@@ -200,6 +202,7 @@ import type {
   KookieFlowProps,
   KookieFlowInstance,
   FitViewOptions,
+  Viewport,
   Entity,
   AlignEdge,
   Edge,
@@ -709,6 +712,42 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
       [store]
     );
 
+    /**
+     * THE GLIDE: the camera travelling to where `fitView` would have put it.
+     *
+     * One viewport write per frame, which is what a pan costs, and no React state: the camera is
+     * the store's. It gives way to anything else that moves the camera — a wheel, a drag, another
+     * method on this handle — by noticing that the viewport is no longer the one it last wrote,
+     * so a person who grabs the canvas mid-glide keeps it.
+     */
+    const stopGlideRef = useRef<() => void>(() => {});
+    const glideTo = useCallback(
+      (to: Viewport, duration: number, width: number, height: number) => {
+        stopGlideRef.current();
+        const from = store.getState().viewport;
+        const start = performance.now();
+        let written = from;
+        let raf = 0;
+        const step = (now: number) => {
+          raf = 0;
+          if (store.getState().viewport !== written) return;
+          const t = Math.min(1, (now - start) / duration);
+          // Ease in and out, so the camera neither lurches off nor stops dead.
+          const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          written = interpolateViewport(from, to, eased, width, height);
+          store.getState().setViewport(written);
+          if (t < 1) raf = requestAnimationFrame(step);
+        };
+        raf = requestAnimationFrame(step);
+        stopGlideRef.current = () => {
+          if (raf !== 0) cancelAnimationFrame(raf);
+          raf = 0;
+        };
+      },
+      [store]
+    );
+    useEffect(() => () => stopGlideRef.current(), []);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -727,7 +766,20 @@ const FlowInstanceHandle = forwardRef<KookieFlowInstance, FlowInstanceHandleProp
             maxZoom: Math.max(fitMinZoom, Math.min(maxZoom, options?.maxZoom ?? 1)),
           };
 
-          store.getState().fitView(mergedOptions, width, height);
+          const duration = options?.duration ?? 0;
+          const reducedMotion =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (!(duration > 0) || reducedMotion) {
+            stopGlideRef.current();
+            store.getState().fitView(mergedOptions, width, height);
+            return;
+          }
+
+          const state = store.getState();
+          const to = fitViewport(state.entities, mergedOptions, width, height, state.socketLayout);
+          if (!to) return;
+          glideTo(to, duration, width, height);
         },
 
         getViewport: () => {

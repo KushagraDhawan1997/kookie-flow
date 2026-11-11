@@ -17,6 +17,7 @@ import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import { Theme } from '@kushagradhawan/kookie-ui-react';
 import { KookieFlow } from '@kushagradhawan/kookie-flow-webgl/internal/components/kookie-flow';
+import type { KookieFlowInstance } from '@kushagradhawan/kookie-flow-webgl/types';
 import { Toolbar } from '@kushagradhawan/kookie-flow-webgl/internal/components/toolbar';
 import { useFlowStoreApi } from '@kushagradhawan/kookie-flow-webgl/internal/components/context';
 import type {
@@ -73,6 +74,8 @@ declare global {
     __harness?: HarnessApi;
     /** Every mounted instance, in mount order. `__harness` is the first. */
     __harnesses?: HarnessApi[];
+    /** The first canvas's own ref — the handle a consumer holds, for the methods that live on it. */
+    __flow?: KookieFlowInstance | null;
   }
 }
 
@@ -1464,6 +1467,13 @@ function App() {
   const [entities, setEntities] = useState<Entity[]>(initial.entities);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);
   consumerEntities.current = entities;
+  const flowRef = useRef<KookieFlowInstance>(null);
+  useEffect(() => {
+    window.__flow = flowRef.current;
+    return () => {
+      window.__flow = null;
+    };
+  }, []);
 
   // Applying changes keeps the fixture honest: a test that drags a node and then asserts on
   // `entities` is exercising the same controlled-component contract a consumer signs up for.
@@ -1516,6 +1526,7 @@ function App() {
       }}
     >
       <KookieFlow
+        ref={i === 0 ? flowRef : undefined}
         skin={skin}
         entities={entities}
         edges={edges}
