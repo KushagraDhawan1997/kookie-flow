@@ -80,7 +80,7 @@
    geometric step, so every entry at one level shares a left edge and the alignment is by
    construction rather than by per-node judgement. Standing the ink down again would put a rung
    below muted on a line that is still a destination — the objection §11 makes to a faded link. */
-.kb-toc-item[data-level="3"] .kb-toc-link {
+.kb-toc-item[data-level='3'] .kb-toc-link {
   padding-inline-start: var(--layout-space-6);
 }
 

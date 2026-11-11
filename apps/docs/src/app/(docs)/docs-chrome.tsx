@@ -24,7 +24,7 @@
  * `<main>` landmark, its heading flush in the viewport's corner with the ascenders clipped.
  * A route group is a layout boundary, not a place.
  */
-import Link from "next/link";
+import Link from 'next/link';
 import {
   Box,
   Flex,
@@ -43,23 +43,23 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { AppearanceToggle } from "../appearance-toggle";
-import { ThemePanel } from "../theme-panel";
-import { PanelLeftIcon, XSocialIcon } from "../icons";
-import { RepoLink } from "./repo-link";
-import { CHAPTERS, READING_ORDER, SECTIONS } from "./chapters";
-import { DocsPager } from "./docs-pager";
-import { WipNotice } from "./wip-notice";
-import { PageActions } from "./page-actions";
-import { DocsNav, type NavSection } from "./docs-nav";
-import { DocsSearch } from "./docs-search";
-import { DocsTabBar } from "./docs-tab-bar";
-import { PAGES } from "./markdown";
-import { Logo } from "./logo";
-import { buildSearchIndex } from "./search-index";
-import "./prose.css";
+import { AppearanceToggle } from '../appearance-toggle';
+import { ThemePanel } from '../theme-panel';
+import { PanelLeftIcon, XSocialIcon } from '../icons';
+import { RepoLink } from './repo-link';
+import { CHAPTERS, READING_ORDER, SECTIONS } from './chapters';
+import { DocsPager } from './docs-pager';
+import { WipNotice } from './wip-notice';
+import { PageActions } from './page-actions';
+import { DocsNav, type NavSection } from './docs-nav';
+import { DocsSearch } from './docs-search';
+import { DocsTabBar } from './docs-tab-bar';
+import { PAGES } from './markdown';
+import { Logo } from './logo';
+import { buildSearchIndex } from './search-index';
+import './prose.css';
 
 /**
  * WHERE THIS PROJECT LIVES ELSEWHERE — one row in the sidebar's footer.
@@ -80,9 +80,9 @@ import "./prose.css";
  * page with no twin.
  */
 const GITHUB = {
-  label: "GitHub",
-  name: "Kookie Flow on GitHub",
-  href: "https://github.com/KushagraDhawan1997/kookie-flow",
+  label: 'GitHub',
+  name: 'Kookie Flow on GitHub',
+  href: 'https://github.com/KushagraDhawan1997/kookie-flow',
 } as const;
 
 /**
@@ -94,9 +94,9 @@ const GITHUB = {
  */
 const SOCIALS = [
   {
-    label: "X",
-    name: "Kookie Flow on X",
-    href: "https://x.com/kushagradhawan",
+    label: 'X',
+    name: 'Kookie Flow on X',
+    href: 'https://x.com/kushagradhawan',
     Mark: XSocialIcon,
   },
   /* Discord and Medium were both here on 2026-09-07 and both came out the same day
@@ -109,18 +109,16 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
   const sections: NavSection[] = SECTIONS.map((section) => ({
     id: section.id,
     title: section.title,
-    links: CHAPTERS.filter((chapter) => chapter.section === section.id).map(
-      (chapter) => ({
-        href: `/${chapter.slug}`,
-        label: chapter.title,
-      }),
-    ),
+    links: CHAPTERS.filter((chapter) => chapter.section === section.id).map((chapter) => ({
+      href: `/${chapter.slug}`,
+      label: chapter.title,
+    })),
   })).filter((section) => section.links.length > 0);
 
   return (
     // The frame takes the window; `100dvh` rather than `100vh` so a phone's collapsing
     // browser chrome does not leave the shell taller than the screen it is in.
-    <Box style={{ blockSize: "100dvh" }}>
+    <Box style={{ blockSize: '100dvh' }}>
       {/* THE SIDEBAR'S WIDTH IS STATED ON THE FRAME, NOT ON THE PANE (2026-09-05). It was
           `width={336}` for a few hours, which is the one spelling §27 warns about: the frame
           builds `--kui-shell-inset-inline-start` — the reach this pane's floating chrome clears
@@ -130,7 +128,7 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
           Stating the token here is §27's own escape, where "the pane and the content read one
           number", and the drag now moves this same name (see the resize note in shell.tsx), so
           the two stay one number after the reader changes it too. */}
-      <Shell style={{ "--shell-sidebar-w": "336px" } as React.CSSProperties}>
+      <Shell style={{ '--shell-sidebar-w': '336px' } as React.CSSProperties}>
         {/* The work-in-progress notice, on every page rather than on the two a deciding reader
             lands on: it is a fact about the whole site, which is exactly the Shell's notice row. */}
         <WipNotice />
@@ -229,7 +227,7 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
                 href="/"
                 aria-label="Kookie Flow"
                 className="kd-masthead"
-                style={{ color: "inherit", textDecoration: "none" }}
+                style={{ color: 'inherit', textDecoration: 'none' }}
               >
                 {/* THE MARK ALONE (2026-09-27, Kushagra). The word said the name a second time
                     in the one row a reader glances at all day; the footer spells it out. Its
@@ -317,7 +315,7 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
             `position: relative` is the trigger's containing block, stated inline because the
             shell root is the nearest positioned ancestor otherwise and the trigger would
             resolve its inset over the sidebar column, not this pane. */}
-        <ShellContent style={{ position: "relative" }} flush={true}>
+        <ShellContent style={{ position: 'relative' }} flush={true}>
           {/* The route back to a closed or overlaying sidebar floats in the pane's own safe
               area — `--kui-sf-p` inherits from the pane deliberately (§10, the bleed
               mechanism), so the trigger sits exactly where pinned content would start.
@@ -426,7 +424,7 @@ export function DocsChrome({ children }: { children: React.ReactNode }) {
                 padding, which is the choice the reach exists to make possible. */}
             <Box
               style={{
-                paddingInlineStart: "var(--kui-shell-inset-inline-start)",
+                paddingInlineStart: 'var(--kui-shell-inset-inline-start)',
               }}
             >
               {/* The page states its own measure, deliberately. A chapter is a reading column

@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { Button, Flex, Page } from "@kushagradhawan/kookie-ui-react";
+import Link from 'next/link';
+import { Button, Flex, Page } from '@kushagradhawan/kookie-ui-react';
 
-import { PageFrame } from "./page-frame";
+import { PageFrame } from './page-frame';
 
 /**
  * What a 404 SAYS, with no chrome around it — because it is rendered under two different
@@ -32,12 +32,10 @@ export function NotFoundBody() {
         description="That page does not exist. The chapters moved out of /docs recently and the old addresses redirect, so this one is either mistyped or was never here."
       >
         <Flex gap="3">
-        <Button tone="accent" emphasis="loud" render={<Link href="/" />}>
-          Back to the start
-        </Button>
-        <Button render={<Link href="/start/installation" />}>
-          Installation
-        </Button>
+          <Button tone="accent" emphasis="loud" render={<Link href="/" />}>
+            Back to the start
+          </Button>
+          <Button render={<Link href="/start/installation" />}>Installation</Button>
         </Flex>
       </Page>
     </PageFrame>

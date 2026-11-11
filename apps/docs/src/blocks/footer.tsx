@@ -66,10 +66,10 @@
  * mark beside the columns, that is a `Flex` around two children in your copy, which is the same
  * answer this file gives about steps and colours.
  */
-import * as React from "react";
-import { Flex, Stack, Text } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { Flex, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
-import "./footer.css";
+import './footer.css';
 
 export type FooterLink = {
   label: string;
@@ -173,11 +173,7 @@ export function Footer({ brand, groups, note, legal }: FooterProps) {
               on Box is `grid-template-columns`, which is the mechanism this had to leave. */}
           <div className="kb-footer-columns">
             {groups.map((group, index) => (
-              <Stack
-                key={group.title}
-                gap="3"
-                render={<nav aria-labelledby={`${id}-${index}`} />}
-              >
+              <Stack key={group.title} gap="3" render={<nav aria-labelledby={`${id}-${index}`} />}>
                 {/* Full ink at medium against muted links: the title is the one thing in the
                     column that is not a destination, and §15 puts that rank in the ink rather
                     than in a heavier face or a larger step. */}

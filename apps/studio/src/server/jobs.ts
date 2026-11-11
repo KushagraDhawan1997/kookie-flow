@@ -203,7 +203,8 @@ export async function findOrSubmit(ask: JobAsk, workspaceId = LOCAL_WORKSPACE): 
   let row: JobRow | undefined;
   if (billingEnabled()) {
     const estimate = estimateModelMicros(ask.task, ask.input);
-    if (estimate === undefined) throw new BadJobRequest(`${ask.task} has no price yet, so it cannot run`);
+    if (estimate === undefined)
+      throw new BadJobRequest(`${ask.task} has no price yet, so it cannot run`);
     const charge = withFee(estimate);
     row = await db.transaction(async (tx) => {
       await hold(tx, workspaceId, values.id, charge);

@@ -23,13 +23,33 @@ import {
 
 import { AgentChoice } from '@/app/agent-choice';
 import { AttachButton } from '@/app/attach-button';
-import { Conversation, Pictures, Reply, Step, Steps, Thinking, Turn, UserMessage } from '@/app/conversation';
+import {
+  Conversation,
+  Pictures,
+  Reply,
+  Step,
+  Steps,
+  Thinking,
+  Turn,
+  UserMessage,
+} from '@/app/conversation';
 import { EmptyState } from '@/app/empty-state';
 import { ArrowDownIcon, RetryIcon, SendIcon, StopIcon } from '@/app/icons';
-import { picturesOf, withoutPictures, type AgentSession, type AgentSessionState, type PendingRun } from './session';
+import {
+  picturesOf,
+  withoutPictures,
+  type AgentSession,
+  type AgentSessionState,
+  type PendingRun,
+} from './session';
 import './agent-panel.css';
 
-const SEND_ICONS = { ready: <SendIcon />, submitted: <SendIcon />, streaming: <StopIcon />, error: <RetryIcon /> };
+const SEND_ICONS = {
+  ready: <SendIcon />,
+  submitted: <SendIcon />,
+  streaming: <StopIcon />,
+  error: <RetryIcon />,
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -51,7 +71,8 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     void session.start();
   }, [session]);
 
-  if (state.loadError) return <EmptyState title="The agent is unavailable" description={state.loadError} />;
+  if (state.loadError)
+    return <EmptyState title="The agent is unavailable" description={state.loadError} />;
   if (!state.chat) {
     return (
       <Flex className="kd-agent-loading" align="center" justify="center">
@@ -74,10 +95,17 @@ function readable(error: Error | undefined): string | null {
   return error.message;
 }
 
-function AgentChat({ session, state, chat }: { session: AgentSession; state: AgentSessionState; chat: Chat<UIMessage> }) {
+function AgentChat({
+  session,
+  state,
+  chat,
+}: {
+  session: AgentSession;
+  state: AgentSessionState;
+  chat: Chat<UIMessage>;
+}) {
   const { messages, status, error, stop, regenerate } = useChat({ chat });
   const [text, setText] = React.useState('');
-
 
   // `delivering` is a message waiting for its triage: it has left the composer but not reached the
   // chat, so `status` is still 'ready'. Without it here the composer stays live through that wait and
@@ -89,12 +117,14 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
   const last = messages.at(-1);
   const lastPart = last?.parts.at(-1);
   // A reply whose last block is a run of steps shows its own live line, so "Thinking" would say it twice.
-  const stepsLive = thinking && last?.role === 'assistant' && blocksOf(last).at(-1)?.kind === 'steps';
+  const stepsLive =
+    thinking && last?.role === 'assistant' && blocksOf(last).at(-1)?.kind === 'steps';
   const quiet =
     !stepsLive &&
     (state.delivering ||
       status === 'submitted' ||
-      (status === 'streaming' && (!lastPart || lastPart.type === 'step-start' || lastPart.type === 'reasoning')));
+      (status === 'streaming' &&
+        (!lastPart || lastPart.type === 'step-start' || lastPart.type === 'reasoning')));
   const send = () => {
     if (!text.trim() || blocked) return;
     session.send(text);
@@ -115,12 +145,20 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
           <EmptyState
             size="3"
             title="Ask the agent"
-            description={state.mode === 'mock' ? 'Scripted replies. Add a model key for the real agent.' : undefined}
+            description={
+              state.mode === 'mock'
+                ? 'Scripted replies. Add a model key for the real agent.'
+                : undefined
+            }
           />
         }
       >
         {messages.map((message) => (
-          <Turn key={message.id} id={message.id} from={message.role === 'user' ? 'person' : 'agent'}>
+          <Turn
+            key={message.id}
+            id={message.id}
+            from={message.role === 'user' ? 'person' : 'agent'}
+          >
             <Message message={message} live={stepsLive && message === last} />
           </Turn>
         ))}
@@ -139,12 +177,19 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
             state.pendingRun || problem ? (
               <>
                 {problem && (
-                  <Notice tone="destructive" action={<Button onClick={() => void regenerate()}>Try again</Button>}>
+                  <Notice
+                    tone="destructive"
+                    action={<Button onClick={() => void regenerate()}>Try again</Button>}
+                  >
                     {problem}
                   </Notice>
                 )}
                 {state.pendingRun && (
-                  <RunApproval run={state.pendingRun} running={state.running} onDecide={(approve) => void session.decide(approve)} />
+                  <RunApproval
+                    run={state.pendingRun}
+                    running={state.running}
+                    onDecide={(approve) => void session.decide(approve)}
+                  />
                 )}
               </>
             ) : undefined
@@ -168,12 +213,20 @@ function AgentChat({ session, state, chat }: { session: AgentSession; state: Age
               <AgentChoice value={state.settings} onChange={(next) => session.setSettings(next)} />
               {(state.attached.length > 0 || state.uploading) && (
                 <Text size="2" emphasis="medium">
-                  {state.uploading ? 'Adding…' : `${state.attached.length} ${state.attached.length === 1 ? 'picture' : 'pictures'}`}
+                  {state.uploading
+                    ? 'Adding…'
+                    : `${state.attached.length} ${state.attached.length === 1 ? 'picture' : 'pictures'}`}
                 </Text>
               )}
             </Flex>
             <ComposerSend
-              status={status === 'streaming' ? 'streaming' : status === 'submitted' ? 'submitted' : 'ready'}
+              status={
+                status === 'streaming'
+                  ? 'streaming'
+                  : status === 'submitted'
+                    ? 'submitted'
+                    : 'ready'
+              }
               onStop={() => void stop()}
               disabled={thinking ? false : !text.trim() || blocked}
               icons={SEND_ICONS}
@@ -199,7 +252,12 @@ function Message({ message, live }: { message: UIMessage; live: boolean }) {
             : undefined
         }
       >
-        {withoutPictures(message.parts.filter(isTextUIPart).map((p) => p.text).join('\n'))}
+        {withoutPictures(
+          message.parts
+            .filter(isTextUIPart)
+            .map((p) => p.text)
+            .join('\n')
+        )}
       </UserMessage>
     );
   }
@@ -232,7 +290,12 @@ type ToolPart = Parameters<typeof getToolName>[0];
 
 type Block =
   | { kind: 'text'; key: string; text: string }
-  | { kind: 'steps'; key: string; parts: ToolPart[]; pictures: Array<{ node: string; url: string }> };
+  | {
+      kind: 'steps';
+      key: string;
+      parts: ToolPart[];
+      pictures: Array<{ node: string; url: string }>;
+    };
 
 /**
  * A reply as the panel reads it: words, and runs of tool calls between them. A run folds to one row
@@ -243,7 +306,8 @@ function blocksOf(message: UIMessage): Block[] {
   const blocks: Block[] = [];
   for (const part of message.parts) {
     if (isTextUIPart(part)) {
-      if (part.text.trim()) blocks.push({ kind: 'text', key: `t${blocks.length}`, text: part.text });
+      if (part.text.trim())
+        blocks.push({ kind: 'text', key: `t${blocks.length}`, text: part.text });
       continue;
     }
     if (!isToolUIPart(part)) continue;
@@ -251,7 +315,10 @@ function blocksOf(message: UIMessage): Block[] {
     // same sentence twice.
     if (getToolName(part) === 'run' && isPending(part)) continue;
     const last = blocks.at(-1);
-    const run = last?.kind === 'steps' ? last : { kind: 'steps' as const, key: part.toolCallId, parts: [], pictures: [] };
+    const run =
+      last?.kind === 'steps'
+        ? last
+        : { kind: 'steps' as const, key: part.toolCallId, parts: [], pictures: [] };
     if (run !== last) blocks.push(run);
     run.parts.push(part);
     const url = pictureOf(part);
@@ -266,7 +333,12 @@ function blocksOf(message: UIMessage): Block[] {
 }
 
 function pictureOf(part: ToolPart): string | undefined {
-  if (getToolName(part) !== 'inspect' || part.state !== 'output-available' || !isRecord(part.output)) return undefined;
+  if (
+    getToolName(part) !== 'inspect' ||
+    part.state !== 'output-available' ||
+    !isRecord(part.output)
+  )
+    return undefined;
   return typeof part.output.url === 'string' ? part.output.url : undefined;
 }
 
@@ -288,7 +360,11 @@ function Run({ parts, live }: { parts: ToolPart[]; live: boolean }) {
         const pending = isPending(part);
         const words = stepWords(part, pending);
         return (
-          <Step key={part.toolCallId} pending={pending} title={typeof words === 'string' ? words : undefined}>
+          <Step
+            key={part.toolCallId}
+            pending={pending}
+            title={typeof words === 'string' ? words : undefined}
+          >
             {words}
           </Step>
         );
@@ -313,7 +389,8 @@ function stepWords(part: ToolPart, pending: boolean): React.ReactNode {
     case 'create_graph':
       return typeof out.url === 'string' ? (
         <>
-          Started “{String(out.name ?? 'a new graph')}” · <Link render={<NextLink href={out.url} />}>Open</Link>
+          Started “{String(out.name ?? 'a new graph')}” ·{' '}
+          <Link render={<NextLink href={out.url} />}>Open</Link>
         </>
       ) : (
         'Starting a new graph'
@@ -323,9 +400,17 @@ function stepWords(part: ToolPart, pending: boolean): React.ReactNode {
       const created = strings(out.created).length;
       const refused = Array.isArray(out.errors) ? out.errors.length : 0;
       const ops = Array.isArray(input.ops) ? input.ops.length : 0;
-      const onlyArrange = Array.isArray(input.ops) && input.ops.length > 0 && input.ops.every((op) => isRecord(op) && op.op === 'arrange');
+      const onlyArrange =
+        Array.isArray(input.ops) &&
+        input.ops.length > 0 &&
+        input.ops.every((op) => isRecord(op) && op.op === 'arrange');
       if (onlyArrange && !refused) return 'Arranged the graph';
-      return [created ? `Added ${created} ${created === 1 ? 'node' : 'nodes'}` : `Made ${ops} ${ops === 1 ? 'change' : 'changes'}`, refused ? `${refused} refused` : '']
+      return [
+        created
+          ? `Added ${created} ${created === 1 ? 'node' : 'nodes'}`
+          : `Made ${ops} ${ops === 1 ? 'change' : 'changes'}`,
+        refused ? `${refused} refused` : '',
+      ]
         .filter(Boolean)
         .join(' · ');
     }
@@ -349,7 +434,15 @@ function stepWords(part: ToolPart, pending: boolean): React.ReactNode {
 }
 
 /** The price, and the only way anything costly starts: FAUNA's assist mode, Krea's plan-first gate. */
-function RunApproval({ run, running, onDecide }: { run: PendingRun; running: boolean; onDecide: (approve: boolean) => void }) {
+function RunApproval({
+  run,
+  running,
+  onDecide,
+}: {
+  run: PendingRun;
+  running: boolean;
+  onDecide: (approve: boolean) => void;
+}) {
   const count = run.estimate.nodes.length;
   return (
     <Confirmation
@@ -359,7 +452,8 @@ function RunApproval({ run, running, onDecide }: { run: PendingRun; running: boo
       onConfirm={() => onDecide(true)}
       onCancel={() => onDecide(false)}
     >
-      Run {count} {count === 1 ? 'node' : 'nodes'} for <span className="kd-num">{run.estimate.total}</span>?
+      Run {count} {count === 1 ? 'node' : 'nodes'} for{' '}
+      <span className="kd-num">{run.estimate.total}</span>?
     </Confirmation>
   );
 }

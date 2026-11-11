@@ -7,9 +7,9 @@
  * The stored value is the notice's VERSION, not a boolean, so a changed message shows again
  * once rather than staying dismissed forever. Bump it when the words change.
  */
-export const WIP_NOTICE_KEY = "kflow-wip-notice";
-export const WIP_NOTICE_VERSION = "1";
-export const WIP_NOTICE_ATTR = "data-wip-dismissed";
+export const WIP_NOTICE_KEY = 'kflow-wip-notice';
+export const WIP_NOTICE_VERSION = '1';
+export const WIP_NOTICE_ATTR = 'data-wip-dismissed';
 
 export const wipNoticeScript = `(function () {
   try {

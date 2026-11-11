@@ -16,43 +16,43 @@
  * Every example is a client component: a canvas is a WebGL context, and there is no server
  * rendering of one to fall back to.
  */
-import type * as React from "react";
+import type * as React from 'react';
 
-import ArrangeExample from "./arrange";
-import ConnectionRulesExample from "./connection-rules";
-import ContextMenuExample from "./context-menu";
-import DrawingExample from "./drawing";
-import EdgesExample from "./edges";
-import EntityKindsExample from "./entity-kinds";
-import EntityStylingExample from "./entity-styling";
-import EvaluationExample from "./evaluation";
-import FramesExample from "./frames";
-import HistoryExample from "./history";
-import MediaExample from "./media";
-import MediaEntitiesExample from "./media-entities";
-import NodesExample from "./nodes";
-import PreviewBandExample from "./preview-band";
-import QuickStartExample from "./quick-start";
-import TextEntitiesExample from "./text-entities";
-import ToolbarExample from "./toolbar";
+import ArrangeExample from './arrange';
+import ConnectionRulesExample from './connection-rules';
+import ContextMenuExample from './context-menu';
+import DrawingExample from './drawing';
+import EdgesExample from './edges';
+import EntityKindsExample from './entity-kinds';
+import EntityStylingExample from './entity-styling';
+import EvaluationExample from './evaluation';
+import FramesExample from './frames';
+import HistoryExample from './history';
+import MediaExample from './media';
+import MediaEntitiesExample from './media-entities';
+import NodesExample from './nodes';
+import PreviewBandExample from './preview-band';
+import QuickStartExample from './quick-start';
+import TextEntitiesExample from './text-entities';
+import ToolbarExample from './toolbar';
 
 /* In reading order, so the registry reads like the chapters that use it. */
 export const EXAMPLES: Record<string, React.ComponentType> = {
-  "quick-start": QuickStartExample,
-  "entity-kinds": EntityKindsExample,
+  'quick-start': QuickStartExample,
+  'entity-kinds': EntityKindsExample,
   nodes: NodesExample,
   frames: FramesExample,
-  "text-entities": TextEntitiesExample,
-  "media-entities": MediaEntitiesExample,
+  'text-entities': TextEntitiesExample,
+  'media-entities': MediaEntitiesExample,
   media: MediaExample,
-  "preview-band": PreviewBandExample,
+  'preview-band': PreviewBandExample,
   edges: EdgesExample,
-  "connection-rules": ConnectionRulesExample,
+  'connection-rules': ConnectionRulesExample,
   evaluation: EvaluationExample,
   history: HistoryExample,
   arrange: ArrangeExample,
   toolbar: ToolbarExample,
-  "context-menu": ContextMenuExample,
+  'context-menu': ContextMenuExample,
   drawing: DrawingExample,
-  "entity-styling": EntityStylingExample,
+  'entity-styling': EntityStylingExample,
 };

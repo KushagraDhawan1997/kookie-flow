@@ -5,6 +5,7 @@
 ## Creative node tools
 
 **FLORA / FAUNA** — most direct competitor
+
 - Agent builds whole graphs and edits live canvases: add, reconnect, remove nodes, change settings, group and arrange, drive the layer editor. Runs up to 50 generation nodes at once. Finds web and Unsplash references; resizes one approved image into many formats.
 - Sidebar (⌘/), @-mention nodes, attach images, expandable reasoning. Notices canvas edits between turns ([NEW]/[MODIFIED]).
 - Assist mode (default) shows which nodes will run and the estimated cost, then waits for approval. Auto mode runs without asking. No clarifying-question step documented; it follows direction rather than challenging it.
@@ -15,12 +16,14 @@
 - https://docs.flora.ai/editor/fauna · https://flora.ai/blog/introducing-fauna · https://ppc.land/floras-fauna-the-ai-creative-agent-that-fights-back-against-generic/ · https://cmotech.news/story/flora-launches-on-canvas-tools-dollar-usage-pools
 
 **Krea Node Agent** (inside Krea Nodes, March 2026)
+
 - Reads the whole canvas including cached outputs and reuses them. Plans a pipeline, wires nodes, fills missing parameters, adds converter nodes. Reruns only affected downstream nodes after an edit.
 - Plan first; you can swap models or drop stages. "Nothing runs until you say go."
 - Per-node cost shown before running, in credits. Pro and up (about $30 a month).
 - https://www.krea.ai/blog/ai-workflow-agent · https://www.krea.ai/docs/user-guide/features/nodes · https://x.com/krea_ai/status/2034642297485140143
 
 **Krea Agent** (separate chat product, beta 2026-09-03)
+
 - Plans, picks models, generates and edits assets, files them in a context library (session, personal, workspace). Explicitly does not run Krea Nodes graphs. Connects to Slack, Notion and others with allow-or-ask permissions; hosted MCP server.
 - Generations cost the same as manual. Planning model billed separately. No cost preview documented. Stops before the next billable turn when credits run out.
 - Plan access inconsistent (docs: every plan; blog: Max and up).
@@ -28,46 +31,55 @@
 - https://www.krea.ai/docs/user-guide/agent/plans-and-credits · https://www.krea.ai/blog/what-is-krea-agent · https://alphasignal.ai/news/krea-agents-opens-beta-to-replace-node-wiring-with-plain-english-prompts · https://au.trustpilot.com/review/krea.ai
 
 **Runway Agent + Workflows**
+
 - Workflows (manual canvas) October 2025. Agent builds Skills 2026-07-08. `/Workflow` builds, connects and runs a full graph from plain language, 2026-07-23; no clarifying questions. Agent sessions in Projects with Brand Kits 2026-08-11. MCP lists, opens, changes and runs any workflow in the workspace, 2026-08-20: the only cross-workflow scope found.
 - Credits; Claude nodes 3–4 credits a run on top of media.
 - Agent 2.0 storyboard approval before spending (unverified). Stated downside: debugging a graph you didn't build is slower.
 - https://runway.com/changelog · https://alphasignal.ai/news/runway-agent-builds-entire-ai-video-pipelines-from-plain-language · https://www.veo3ai.io/blog/runway-agent-2-0-review-2026 (unverified)
 
 **Magnific** (Freepik Spaces, renamed 2026-04-28; Agents, MCP, Flows 2026-06-03)
+
 - Agent builds editable Spaces workflows. Memory persists across sessions, shared with the team, holds brand files, coordinates other agents. Three stock agents plus custom. Workflows publish as team-runnable "Flows".
 - Cost preview and clarifying questions not found (pages 403).
 - https://www.magnific.com/agents · https://x.com/magnific/status/2062304741842137144 · https://www.wireflow.ai/blog/freepik-spaces-is-now-magnific
 
 **Figma Weave** (Weavy, acquired October 2025, about $200M)
+
 - No agent that builds Weave graphs. Weave tools inside Figma Design; workflows publish to Figma Community; exposed via MCP. Figma agent packages skills (September 2026).
 - Credits vary with parameters; $10 = 1,000–1,200 credits.
 - https://help.weavy.ai/en/articles/12267166-figma-weave-s-credit-system · https://www.figma.com/blog/config-2026-recap/ · https://releasebot.io/updates/figma
 
 **Scenario Node Agent** (2026-05-06)
+
 - Builds or edits graphs from text, including bulk edits. 500 models; 3D, rigging, animation chains. No cost preview documented.
 - https://www.scenario.com/blog/scenario-node-agent-is-here
 
 **Higgsfield Canvas**
+
 - Node canvas; "agent-built workflow" tweet unverified, docs describe manual building. Free to build, pay per node run; canvases save as templates.
 - https://x.com/higgsfield/status/2049582424535830917 · https://higgsfield.ai/creator-hub/help-center/tools/how-do-i-use-canvas
 
 **Adobe**
+
 - Firefly AI Assistant (Project Moonlight), public beta 2026-04-27: about 100 tools across Creative Cloud, step in anytime, remembers preferences. Pricing undisclosed.
 - Project Graph / Firefly Graph: node workflows shared as "capsules". No date; no graph-building agent. Invoke acquired October 2025 into AI Foundry.
 - https://techcrunch.com/2026/04/15/adobes-new-firefly-ai-assistant-can-use-creative-cloud-apps-to-complete-tasks/ · https://blog.adobe.com/en/publish/2025/11/25/introducing-project-graph-creative-workflows-reimagined · https://www.pixelsham.com/2025/10/20/adobe-buys-invokeai-and-launches-adobe-ai-foundry/
 
 **ComfyUI ecosystem**
+
 - ComfyUI-Copilot (Alibaba AIDC, v2.0 August 2025): returns 3 library workflows plus 1 written; debugs errors, suggests model downloads, edits by language; GenLab batch-compares parameters. Needs an API key; some services "no longer available".
 - Comfy MCP (official, 2026-06-30): agents search and run shared workflows; do not build graphs.
 - Image Chooser custom nodes pause a run for a human pick: the manual version of our pick node.
 - https://github.com/AIDC-AI/ComfyUI-Copilot · https://comfyui-wiki.com/en/news/2026-06-30-comfy-mcp-agent-integration · https://www.runcomfy.com/comfyui-nodes/cg-image-picker
 
 **NodeTool** (AGPL, Cloud alpha)
+
 - Agent-first, about 120 tools across canvas, timeline, 3D and app builder. Builds, validates before running, runs, repairs. Decision and dollar caps per run. "Questioning mode" asks for decisions only the user can make.
 - Bring your own keys at list price; no credits, no markup.
 - https://nodetool.ai/blog/agent-first-privacy-first-ai-workspace · https://github.com/nodetool-ai/nodetool · https://nodetool.ai/pricing
 
 **Chat agents without a graph**
+
 - Luma Agents (2026-03-05): brief to delivery on boards; credits don't roll over, failed runs cost. https://techcrunch.com/2026/03/05/exclusive-luma-launches-creative-ai-agents-powered-by-its-new-unified-intelligence-models/
 - Glif dropped nodes for a chat agent (March 2026); APIs deprecated 2026-05-20.
 - fal Agent (2026-08-12): graph output not confirmed.

@@ -4,7 +4,10 @@ import { getStorage, isStorageKey } from '@/server/storage';
 export const dynamic = 'force-dynamic';
 
 /** `bytes=0-1023`, `bytes=512-` or `bytes=-1024`, resolved against a known size. */
-function parseRange(header: string, size: number): { start: number; end: number } | 'unsatisfiable' | null {
+function parseRange(
+  header: string,
+  size: number
+): { start: number; end: number } | 'unsatisfiable' | null {
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
   if (!match) return null;
   const [, rawStart, rawEnd] = match;
@@ -12,7 +15,8 @@ function parseRange(header: string, size: number): { start: number; end: number 
   // A range with no start is a suffix: the last N bytes.
   const start = rawStart === '' ? Math.max(0, size - Number(rawEnd)) : Number(rawStart);
   const end = rawStart === '' || rawEnd === '' ? size - 1 : Math.min(Number(rawEnd), size - 1);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return 'unsatisfiable';
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size)
+    return 'unsatisfiable';
   return { start, end };
 }
 
@@ -39,7 +43,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   if (rangeHeader) {
     const range = parseRange(rangeHeader, file.size);
     if (range === 'unsatisfiable') {
-      return new NextResponse(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${file.size}` } });
+      return new NextResponse(null, {
+        status: 416,
+        headers: { ...headers, 'Content-Range': `bytes */${file.size}` },
+      });
     }
     if (range) {
       return new NextResponse(file.body(range.start, range.end), {

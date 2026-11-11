@@ -52,10 +52,10 @@
  *    live region belongs on the results region wrapping both the list and this. Saying it here
  *    would announce a first-use state on every page load.
  */
-import * as React from "react";
-import { Flex, Heading, Stack, Text } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { Flex, Heading, Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
-import "./empty-state.css";
+import './empty-state.css';
 
 export type EmptyStateProps = {
   /** The glyph above the words. A node, because §8 ships no icon set — and optional, because

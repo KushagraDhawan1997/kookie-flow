@@ -74,11 +74,11 @@
 
 /* Columns by count: one fills the column, three sit in a row, four make a square. So a set of
    crops at 1:1, 4:5 and 9:16 stands side by side instead of one tall box stacking under two. */
-.kd-template-outputs[data-count="1"] {
+.kd-template-outputs[data-count='1'] {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.kd-template-outputs[data-count="3"] {
+.kd-template-outputs[data-count='3'] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 

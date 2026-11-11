@@ -33,10 +33,10 @@ running app: `{ revision: "182", colorManagementEnabled: false }`.
 Together those give **sRGB in, sRGB out**, with no encode or decode anywhere. Both construction
 styles in the codebase land on the same pixel:
 
-| Path | Sites | Measured, management OFF | Measured, management ON |
-|---|---|---|---|
-| `new THREE.Color(r, g, b)` floats | 24 | **128,128,128** ✅ | 128,128,128 ✅ |
-| `new THREE.Color('#808080')` hex | grid, connection-line | **128,128,128** ✅ | 55,55,55 ❌ |
+| Path                              | Sites                 | Measured, management OFF | Measured, management ON |
+| --------------------------------- | --------------------- | ------------------------ | ----------------------- |
+| `new THREE.Color(r, g, b)` floats | 24                    | **128,128,128** ✅       | 128,128,128 ✅          |
+| `new THREE.Color('#808080')` hex  | grid, connection-line | **128,128,128** ✅       | 55,55,55 ❌             |
 
 (DOM truth for the same token: `rgb(128,128,128)`.)
 
@@ -73,14 +73,14 @@ Two mitigations, worth doing before anyone touches renderer configuration:
 
    Measured, both spellings, same render, same readback:
 
-   | Spelling | Read back | |
-   |---|---|---|
-   | `setRGB(0.5,0.5,0.5, THREE.LinearSRGBColorSpace)` | **128,128,128** | ✅ |
-   | `setRGB(0.5,0.5,0.5, THREE.SRGBColorSpace)` | **55,55,55** | ❌ |
+   | Spelling                                          | Read back       |     |
+   | ------------------------------------------------- | --------------- | --- |
+   | `setRGB(0.5,0.5,0.5, THREE.LinearSRGBColorSpace)` | **128,128,128** | ✅  |
+   | `setRGB(0.5,0.5,0.5, THREE.SRGBColorSpace)`       | **55,55,55**    | ❌  |
 
-   The second is the trap: the values genuinely *are* sRGB, so naming `SRGBColorSpace` reads like the
+   The second is the trap: the values genuinely _are_ sRGB, so naming `SRGBColorSpace` reads like the
    honest thing to write, and it is exactly wrong — the argument declares the space to convert
-   *from*. The helper mostly exists to stop someone making this correction in good faith.
+   _from_. The helper mostly exists to stop someone making this correction in good faith.
 
 ---
 
@@ -112,12 +112,12 @@ mid-grey**, with no warning.
 
 ### The fix, measured against four candidates
 
-| Candidate | Result | |
-|---|---|---|
-| `getComputedStyle().color` (current) | `oklch(0.628 0.2577 29.23)` | ❌ unchanged |
-| canvas 2D `fillStyle` round-trip | `oklch(0.628 0.2577 29.23)` | ❌ unchanged |
-| `CSS.registerProperty` with `syntax: '<color>'` | `oklch(0.628 0.2577 29.23)` | ❌ unchanged |
-| paint + `getImageData` readback | `[255, 0, 0]` | ✅ works, 8-bit |
+| Candidate                                              | Result                                        |                          |
+| ------------------------------------------------------ | --------------------------------------------- | ------------------------ |
+| `getComputedStyle().color` (current)                   | `oklch(0.628 0.2577 29.23)`                   | ❌ unchanged             |
+| canvas 2D `fillStyle` round-trip                       | `oklch(0.628 0.2577 29.23)`                   | ❌ unchanged             |
+| `CSS.registerProperty` with `syntax: '<color>'`        | `oklch(0.628 0.2577 29.23)`                   | ❌ unchanged             |
+| paint + `getImageData` readback                        | `[255, 0, 0]`                                 | ✅ works, 8-bit          |
 | **`color-mix(in srgb, <value> 100%, transparent 0%)`** | `color(srgb 1.00005 0.000209593 0.000442659)` | ✅ **works, full float** |
 
 `color-mix` wins: no canvas allocation, full float precision rather than 8-bit quantisation, and it
@@ -141,10 +141,10 @@ correct, which is precisely why v1 works and v2 would not have.
 **The exported colour probe was outside the theme scope — FIXED.** `getColorProbe` (`color.ts:25`) appends its
 probe to `document.body`, but tokens are scoped to `.radix-themes`. Measured:
 
-| Value | probe on `<body>` | probe inside the theme |
-|---|---|---|
-| `var(--accent-9)` | `rgb(0, 0, 0)` | `rgb(0, 144, 255)` |
-| `var(--gray-2)` | `rgb(249, 249, 249)` | `rgb(249, 249, 251)` |
+| Value             | probe on `<body>`    | probe inside the theme |
+| ----------------- | -------------------- | ---------------------- |
+| `var(--accent-9)` | `rgb(0, 0, 0)`       | `rgb(0, 144, 255)`     |
+| `var(--gray-2)`   | `rgb(249, 249, 249)` | `rgb(249, 249, 251)`   |
 
 Flow's own rendering was unaffected — its internal path passes literal colour values, which resolve
 identically anywhere. But `resolveColorToRGB` and `resolveColorToRGBA` are **public API**
@@ -169,7 +169,7 @@ The measurement supporting it was real — hex path reads back 55 where the toke
 taken in a **bare three.js page**, not in Flow. Flow mounts `<Canvas flat legacy>`, colour management
 is off, and under that configuration the hex path is correct.
 
-The draft before *that* claimed the exact opposite: that the 24 float sites rendered too bright. That
+The draft before _that_ claimed the exact opposite: that the 24 float sites rendered too bright. That
 one came from reasoning about `THREE.Color` semantics without rendering anything, and it was wrong
 because `ShaderMaterial` gets no output encode — a fact no amount of reading `Color`'s internals
 would surface.

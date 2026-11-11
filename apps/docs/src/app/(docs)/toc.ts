@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-import { slugify } from "./slug";
+import { slugify } from './slug';
 
 /**
  * A chapter's table of contents, read from its SOURCE rather than from the rendered tree.
@@ -27,10 +27,10 @@ export type TocEntry = { id: string; title: string; level: 2 | 3 };
  * with it. Registry entries therefore name a path inside `src/content/`, never a path from the
  * app root.
  */
-const CONTENT_ROOT = path.join(process.cwd(), "src", "content");
+const CONTENT_ROOT = path.join(process.cwd(), 'src', 'content');
 
 export function readChapterSource(source: string): string {
-  return readFileSync(path.join(CONTENT_ROOT, source), "utf8");
+  return readFileSync(path.join(CONTENT_ROOT, source), 'utf8');
 }
 
 /**
@@ -44,7 +44,7 @@ export function readChapterSource(source: string): string {
 export function tableOfContents(markdown: string): TocEntry[] {
   const entries: TocEntry[] = [];
   let inFence = false;
-  for (const line of markdown.split("\n")) {
+  for (const line of markdown.split('\n')) {
     if (/^\s*(```|~~~)/.test(line)) {
       inFence = !inFence;
       continue;
@@ -55,7 +55,7 @@ export function tableOfContents(markdown: string): TocEntry[] {
     const title = match[2]
       // Strip the inline marks a heading can carry, so the navigation shows words rather
       // than syntax. The rendered heading resolves these to components; here they are noise.
-      .replace(/[*_`]/g, "")
+      .replace(/[*_`]/g, '')
       .trim();
     entries.push({ id: slugify(title), title, level: match[1].length === 2 ? 2 : 3 });
   }

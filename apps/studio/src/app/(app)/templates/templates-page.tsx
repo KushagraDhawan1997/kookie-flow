@@ -2,7 +2,14 @@
 
 import * as React from 'react';
 import NextLink from 'next/link';
-import { Flex, Page, SegmentedControl, SegmentedItem, Stack, Text } from '@kushagradhawan/kookie-ui-react';
+import {
+  Flex,
+  Page,
+  SegmentedControl,
+  SegmentedItem,
+  Stack,
+  Text,
+} from '@kushagradhawan/kookie-ui-react';
 
 import { AppPane } from '../app-shell';
 import { KIND_LABEL, TEMPLATES, type Template, type TemplateKind } from './templates';
@@ -20,10 +27,17 @@ export function TemplatesPage() {
 
   return (
     <AppPane>
-      <Page title="Templates" description="Graphs that already work. Open one to see what goes in and what comes out.">
+      <Page
+        title="Templates"
+        description="Graphs that already work. Open one to see what goes in and what comes out."
+      >
         <Stack gap="6">
           <Flex>
-            <SegmentedControl value={filter} onValueChange={(value) => setFilter(value as Filter)} aria-label="Show">
+            <SegmentedControl
+              value={filter}
+              onValueChange={(value) => setFilter(value as Filter)}
+              aria-label="Show"
+            >
               <SegmentedItem value="all">All</SegmentedItem>
               {(Object.keys(KIND_LABEL) as TemplateKind[]).map((kind) => (
                 <SegmentedItem key={kind} value={kind}>
@@ -44,7 +58,13 @@ export function TemplatesPage() {
 }
 
 /** The picture, then what it is called and the one sentence that says what it does. The whole tile is the link. */
-export function TemplateTile({ template, summary = true }: { template: Template; summary?: boolean }) {
+export function TemplateTile({
+  template,
+  summary = true,
+}: {
+  template: Template;
+  summary?: boolean;
+}) {
   return (
     <NextLink href={`/templates/${template.slug}`} className="kd-template-tile">
       <div className="kd-template-cover" aria-hidden />

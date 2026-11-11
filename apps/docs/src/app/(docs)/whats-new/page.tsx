@@ -8,16 +8,16 @@
  * The words are `WHATS_NEW.md` at the repo root, minus its `#` line: the title is the page's, as
  * on every chapter, so the heading on the page is not stated twice.
  */
-import type { Metadata } from "next";
-import { Box, Page } from "@kushagradhawan/kookie-ui-react";
+import type { Metadata } from 'next';
+import { Box, Page } from '@kushagradhawan/kookie-ui-react';
 
-import WhatsNew from "../../../content/whats-new.mdx";
-import { ProseFlow } from "../../../mdx-components";
-import { PageFrame } from "../page-frame";
+import WhatsNew from '../../../content/whats-new.mdx';
+import { ProseFlow } from '../../../mdx-components';
+import { PageFrame } from '../page-frame';
 
 export const metadata: Metadata = {
   title: "What's new",
-  alternates: { canonical: "/whats-new" },
+  alternates: { canonical: '/whats-new' },
 };
 
 export default function WhatsNewPage() {

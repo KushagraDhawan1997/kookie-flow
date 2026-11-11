@@ -49,10 +49,7 @@ export const TEMPLATES: Template[] = [
       { label: 'Product' },
       { label: 'Room', text: 'A bright Scandinavian living room, oak floor, late afternoon light' },
     ],
-    outputs: [
-      { label: 'Reading corner' },
-      { label: 'Living room' },
-    ],
+    outputs: [{ label: 'Reading corner' }, { label: 'Living room' }],
     steps: [
       { node: 'BiRefNet', does: 'Cuts the product out of its background.' },
       { node: 'GPT Image 2.5', does: 'Places it in the room you describe, matching the light.' },
@@ -65,13 +62,10 @@ export const TEMPLATES: Template[] = [
     title: 'Lookbook from a brief',
     summary: 'Write a season in a sentence and get four looks that belong together.',
     kind: 'image',
-    inputs: [{ label: 'Brief', text: 'Sun-faded sportswear, saffron and denim, shot against open sky' }],
-    outputs: [
-      { label: 'Look 1' },
-      { label: 'Look 2' },
-      { label: 'Look 3' },
-      { label: 'Look 4' },
+    inputs: [
+      { label: 'Brief', text: 'Sun-faded sportswear, saffron and denim, shot against open sky' },
     ],
+    outputs: [{ label: 'Look 1' }, { label: 'Look 2' }, { label: 'Look 3' }, { label: 'Look 4' }],
     steps: [
       { node: 'Text', does: 'Splits the brief into four shot descriptions.' },
       { node: 'GPT Image 2.5', does: 'Makes each look, with the same palette and light.' },
@@ -88,7 +82,9 @@ export const TEMPLATES: Template[] = [
       { label: 'Motion', text: 'Stars drift slowly, a thin mist rolls over the ridge' },
     ],
     outputs: [{ label: 'Clip, 5 s', video: true, ratio: '16 / 9' }],
-    steps: [{ node: 'Wan Image to Video', does: 'Animates the photo the way the motion prompt says.' }],
+    steps: [
+      { node: 'Wan Image to Video', does: 'Animates the photo the way the motion prompt says.' },
+    ],
     price: 0.6,
   },
   {
@@ -110,11 +106,7 @@ export const TEMPLATES: Template[] = [
       { label: 'Portrait' },
       { label: 'Light', text: 'Three looks: golden hour, hard studio key, soft overcast' },
     ],
-    outputs: [
-      { label: 'Golden hour' },
-      { label: 'Studio key' },
-      { label: 'Overcast' },
-    ],
+    outputs: [{ label: 'Golden hour' }, { label: 'Studio key' }, { label: 'Overcast' }],
     steps: [
       { node: 'BiRefNet', does: 'Separates the person from the background.' },
       { node: 'GPT Image 2.5', does: 'Relights them once for each look you list.' },
@@ -127,10 +119,7 @@ export const TEMPLATES: Template[] = [
     summary: 'Lift any object off its background, with a mask to keep editing.',
     kind: 'edit',
     inputs: [{ label: 'Photo' }],
-    outputs: [
-      { label: 'Cutout' },
-      { label: 'Mask' },
-    ],
+    outputs: [{ label: 'Cutout' }, { label: 'Mask' }],
     steps: [{ node: 'BiRefNet', does: 'Finds the object and returns it with a mask.' }],
     price: 0.01,
   },
@@ -140,12 +129,7 @@ export const TEMPLATES: Template[] = [
     summary: 'One word in, a board of colour and texture out, ready to pin.',
     kind: 'image',
     inputs: [{ label: 'Word', text: 'Tidal' }],
-    outputs: [
-      { label: 'Surface' },
-      { label: 'Glow' },
-      { label: 'Fold' },
-      { label: 'Depth' },
-    ],
+    outputs: [{ label: 'Surface' }, { label: 'Glow' }, { label: 'Fold' }, { label: 'Depth' }],
     steps: [
       { node: 'Text', does: 'Expands the word into four visual directions.' },
       { node: 'GPT Image 2.5', does: 'Makes a texture for each direction.' },
@@ -178,11 +162,7 @@ export const TEMPLATES: Template[] = [
       { label: 'Product' },
       { label: 'Colours', text: 'Sunflower yellow, cobalt, off-white' },
     ],
-    outputs: [
-      { label: 'Sunflower' },
-      { label: 'Cobalt' },
-      { label: 'Off-white' },
-    ],
+    outputs: [{ label: 'Sunflower' }, { label: 'Cobalt' }, { label: 'Off-white' }],
     steps: [
       { node: 'BiRefNet', does: 'Cuts the product out.' },
       { node: 'GPT Image 2.5', does: 'Sets it on each colour with a soft floor shadow.' },
@@ -191,7 +171,11 @@ export const TEMPLATES: Template[] = [
   },
 ];
 
-export const KIND_LABEL: Record<TemplateKind, string> = { image: 'Image', video: 'Video', edit: 'Edit' };
+export const KIND_LABEL: Record<TemplateKind, string> = {
+  image: 'Image',
+  video: 'Video',
+  edit: 'Edit',
+};
 
 export function findTemplate(slug: string): Template | undefined {
   return TEMPLATES.find((t) => t.slug === slug);

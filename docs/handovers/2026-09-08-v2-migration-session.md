@@ -108,15 +108,15 @@ everything else stays correct. There is now a spike that would catch it.
 
 Six commits, each independently revertible:
 
-| | |
-|---|---|
-| `docs:` | migration decisions + verified environment facts |
-| `test:` | Phase-0 harness foundation |
-| `docs:` | colour pipeline investigation + the Phase-3 blocker |
-| `feat!:` | labels render in GL by default |
-| `refactor!:` | delete the DOM label path and its props |
-| `test:` | behaviour suite (31 green) + perf baseline |
-| `fix:` | resolve OKLCH, lab and every modern colour function |
+|              |                                                     |
+| ------------ | --------------------------------------------------- |
+| `docs:`      | migration decisions + verified environment facts    |
+| `test:`      | Phase-0 harness foundation                          |
+| `docs:`      | colour pipeline investigation + the Phase-3 blocker |
+| `feat!:`     | labels render in GL by default                      |
+| `refactor!:` | delete the DOM label path and its props             |
+| `test:`      | behaviour suite (31 green) + perf baseline          |
+| `fix:`       | resolve OKLCH, lab and every modern colour function |
 
 `pnpm --filter @kushagradhawan/kookie-flow lint` and `test` are green (149 tests, plus the harness
 typecheck which is new).
@@ -151,7 +151,7 @@ Three things worth knowing before you trust a number from it:
 
 Three instrumentation attempts failed before one worked, and they are documented in the fixture
 because each produced a confident number that meant nothing. The worst: three 0.182 assigns
-`render` as an *instance* property, so patching `WebGLRenderer.prototype` intercepts nothing and
+`render` as an _instance_ property, so patching `WebGLRenderer.prototype` intercepts nothing and
 reported `renders: 0` for an app drawing 13,000 instances a second.
 
 ## A bug I nearly reported that does not exist
@@ -187,8 +187,8 @@ a defect, so the suite pins it in both directions — but it is worth a delibera
 
 **v2 is ESM-only and Flow publishes a CJS entry point.** v2 builds fine and links locally, but it
 has `"type": "module"` and no `require` condition anywhere. A CJS consumer of Flow that reaches
-v2 breaks. It narrows on its own — after Phase 4 only the toolbar imports v2 — but *whether Flow
-keeps a CJS build at all* is a breaking change to your published contract and your call. See D4.
+v2 breaks. It narrows on its own — after Phase 4 only the toolbar imports v2 — but _whether Flow
+keeps a CJS build at all_ is a breaking change to your published contract and your call. See D4.
 
 **`CLAUDE.md` documents the coordinate transform backwards.** It says
 `screenPos = (worldPos + viewport.offset) * viewport.zoom`; `utils/geometry.ts worldToScreen` does

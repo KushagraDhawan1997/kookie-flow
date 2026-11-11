@@ -26,18 +26,26 @@ const picture = (hash: string): MediaRef => ({ kind: 'image', hash, width: 1024,
 
 describe('pick', () => {
   it('holds everything downstream until a choice is made', () => {
-    expect(() => pick.run({ a: picture('a'), b: picture('b'), c: picture('c'), d: picture('d'), choice: 'none' }, ctx)).toThrow(
-      /Choose one/
-    );
+    expect(() =>
+      pick.run(
+        { a: picture('a'), b: picture('b'), c: picture('c'), d: picture('d'), choice: 'none' },
+        ctx
+      )
+    ).toThrow(/Choose one/);
   });
 
   it('passes on the chosen picture', () => {
-    const out = pick.run({ a: picture('a'), b: picture('b'), c: picture('c'), d: picture('d'), choice: '2' }, ctx);
+    const out = pick.run(
+      { a: picture('a'), b: picture('b'), c: picture('c'), d: picture('d'), choice: '2' },
+      ctx
+    );
     expect(out).toEqual({ picked: picture('b') });
   });
 
   it('says so when the chosen option is empty', () => {
-    expect(() => pick.run({ a: picture('a'), choice: '3' } as never, ctx)).toThrow(/Option 3 has no picture/);
+    expect(() => pick.run({ a: picture('a'), choice: '3' } as never, ctx)).toThrow(
+      /Option 3 has no picture/
+    );
   });
 });
 
@@ -60,9 +68,9 @@ describe('agent models', () => {
     const sonnet = findAgentModel('anthropic/claude-sonnet-5');
     if (!sonnet) throw new Error('missing model');
     // 1M input at $2, 100k output at $10 a million, 500k cache reads at $0.20 a million.
-    expect(tokenMicros(sonnet, { input: 1_000_000, output: 100_000, cacheRead: 500_000, cacheWrite: 0 })).toBe(
-      2_000_000 + 1_000_000 + 100_000
-    );
+    expect(
+      tokenMicros(sonnet, { input: 1_000_000, output: 100_000, cacheRead: 500_000, cacheWrite: 0 })
+    ).toBe(2_000_000 + 1_000_000 + 100_000);
   });
 
   it('holds more than one full call would cost', () => {
@@ -75,7 +83,9 @@ describe('agent models', () => {
   it('says effort the way each provider hears it', () => {
     const claude = resolveAgentModel('anthropic/claude-opus-5', 'high');
     const gpt = resolveAgentModel('openai/gpt-6-astra', 'high');
-    expect(agentProviderOptions(claude, 'high')).toMatchObject({ anthropic: { effort: 'high', thinking: { type: 'adaptive' } } });
+    expect(agentProviderOptions(claude, 'high')).toMatchObject({
+      anthropic: { effort: 'high', thinking: { type: 'adaptive' } },
+    });
     expect(agentProviderOptions(gpt, 'low')).toMatchObject({ openai: { reasoningEffort: 'low' } });
   });
 
@@ -86,7 +96,10 @@ describe('agent models', () => {
       expect(options.anthropic).not.toHaveProperty('effort');
       const thinking = options.anthropic?.thinking;
       expect(thinking).toMatchObject({ type: 'enabled' });
-      const budget = thinking && typeof thinking === 'object' && !Array.isArray(thinking) ? thinking.budgetTokens : 0;
+      const budget =
+        thinking && typeof thinking === 'object' && !Array.isArray(thinking)
+          ? thinking.budgetTokens
+          : 0;
       expect(budget).toBeLessThan(agentMaxOutputTokens(effort));
     }
   });
@@ -123,7 +136,9 @@ describe('catalog', () => {
     );
     expect(applied.created).toEqual([]);
     expect(applied.doc).toBe(doc);
-    expect(applied.errors[0]?.message).toBe('"source/text" has no input "value"; its inputs are "text"');
+    expect(applied.errors[0]?.message).toBe(
+      '"source/text" has no input "value"; its inputs are "text"'
+    );
   });
 
   it('describes a searched type with its options and defaults', () => {
@@ -168,7 +183,11 @@ describe('layoutCluster', () => {
 
   it('starts the cluster below what is already on the canvas, with ids that follow it', () => {
     const existing = [{ id: 'n7', type: 'source/text', position: { x: 100, y: 50 }, data: {} }];
-    const placed = layoutCluster({ entities: existing }, [{ op: 'add_node', type: 'source/number' }], registry);
+    const placed = layoutCluster(
+      { entities: existing },
+      [{ op: 'add_node', type: 'source/number' }],
+      registry
+    );
     const op = placed[0];
     if (!op || op.op !== 'add_node' || !op.position) throw new Error('not placed');
     expect(op.id).toBe('n8');
@@ -178,7 +197,11 @@ describe('layoutCluster', () => {
 
   it('leaves stated positions alone', () => {
     const at = { x: 5, y: 6 };
-    const placed = layoutCluster({ entities: [] }, [{ op: 'add_node', type: 'source/number', position: at }], registry);
+    const placed = layoutCluster(
+      { entities: [] },
+      [{ op: 'add_node', type: 'source/number', position: at }],
+      registry
+    );
     expect(placed[0]).toEqual({ op: 'add_node', type: 'source/number', position: at });
   });
 });

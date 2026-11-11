@@ -27,16 +27,16 @@ Flora, Weavy, Krea Nodes and others exist. Studio's edge is three things:
 ## The agent and its harness
 
 - **The naive path** is: write or generate a detailed prompt → plug it in → generate. Studio's
-  path is: ask the agent. How it responds *is* the harness.
+  path is: ask the agent. How it responds _is_ the harness.
 - **A good response is a workflow, not an answer.** For "I need to generate a gaming controller"
   the agent:
   1. asks questions: what is it, for what device, is it a mock, a concept, a real product;
   2. makes low-fidelity directions with a cheap model (up to N): did it get the direction right;
   3. lets you pick (a selection switch, a logic node, not just generation);
   4. makes the final with the best model.
-  The template this leaves behind is prompt → low-fi ideas → selection switch → final fidelity,
-  and the pattern scales without limit.
-- **The agent generates everything as a workflow.** It must *know* how to build good workflows.
+     The template this leaves behind is prompt → low-fi ideas → selection switch → final fidelity,
+     and the pattern scales without limit.
+- **The agent generates everything as a workflow.** It must _know_ how to build good workflows.
 - **It runs above graphs.** It decides whether to add nodes to the current graph or start a new
   graph.
 - **A graph is infinite and holds clusters.** A template is an isolated node cluster for one job;

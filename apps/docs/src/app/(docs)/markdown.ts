@@ -1,6 +1,6 @@
-import { CHAPTERS, SECTIONS } from "./chapters";
-import { readChapterSource } from "./toc";
-import { readExampleSource } from "./example";
+import { CHAPTERS, SECTIONS } from './chapters';
+import { readChapterSource } from './toc';
+import { readExampleSource } from './example';
 
 /**
  * THE MARKDOWN TWIN: every page on this site, served a second time as plain markdown at the
@@ -52,7 +52,7 @@ const CHAPTER_BY_SLUG = new Map(CHAPTERS.map((chapter) => [chapter.slug, chapter
  * whole of it.
  */
 export function markdownFor(pagePath: string): string | null {
-  const slug = pagePath.replace(/^\/+|\/+$/g, "");
+  const slug = pagePath.replace(/^\/+|\/+$/g, '');
   const chapter = CHAPTER_BY_SLUG.get(slug);
   return chapter ? chapterMarkdown(chapter) : null;
 }
@@ -64,7 +64,7 @@ export function markdownFor(pagePath: string): string | null {
  * where the opening line and the code are one unit. Harmless to a parser, and the sort of
  * thing nobody would ever have seen, since the only readers of this document are machines.
  */
-const fence = (code: string, lang = "tsx"): string => `\`\`\`${lang}\n${code.trim()}\n\`\`\``;
+const fence = (code: string, lang = 'tsx'): string => `\`\`\`${lang}\n${code.trim()}\n\`\`\``;
 
 /**
  * A chapter's twin: its title, then the file.
@@ -84,7 +84,7 @@ const fence = (code: string, lang = "tsx"): string => `\`\`\`${lang}\n${code.tri
 function chapterMarkdown(chapter: { title: string; source: string }): string {
   const source = readChapterSource(chapter.source).replace(
     /^\s*<Example\s+name="([^"]+)"[^>]*\/>\s*$/gm,
-    (_match: string, name: string) => fence(readExampleSource(String(name))),
+    (_match: string, name: string) => fence(readExampleSource(String(name)))
   );
   return `# ${chapter.title}\n\n${source.trim()}\n`;
 }

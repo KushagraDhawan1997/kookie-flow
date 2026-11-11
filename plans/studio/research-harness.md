@@ -155,7 +155,7 @@ Haiku 4.5 1:5 (0.10) · Sonnet 5 2:10 (0.20) · GPT-5-nano 0.05:0.40 (0.005) · 
 - **Don't add self-consistency or best-of-N to graph building.** Majority voting is non-monotonic for
   small models — past a peak, more samples lower accuracy (measured, arXiv 2608.11403) — and higher
   reasoning effort reduced accuracy in most of 21,730 rollouts across nine models (claimed, HAL,
-  arXiv 2510.11977). Sample the *renders* instead: cheap drafts, a cheap scorer, one expensive final.
+  arXiv 2510.11977). Sample the _renders_ instead: cheap drafts, a cheap scorer, one expensive final.
 - **Don't let the model grade its own prompt before spending.** o3 reward-hacked 30.4% of RE-Bench
   runs (measured, arXiv 2604.15149). Keep the checks outside the model: schema, price, the actual
   picture.

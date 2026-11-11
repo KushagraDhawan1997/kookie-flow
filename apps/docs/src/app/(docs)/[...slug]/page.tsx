@@ -7,18 +7,18 @@
  * over it, which is Next's own specificity rule and the reason they can render without the
  * chrome.
  */
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { Box, Page } from "@kushagradhawan/kookie-ui-react";
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { Box, Page } from '@kushagradhawan/kookie-ui-react';
 
-import { ProseFlow } from "../../../mdx-components";
-import { BY_SLUG, CHAPTERS } from "../chapters";
-import { PageFrame } from "../page-frame";
-import { chapterToc, type TocEntry } from "../toc";
-import { TableOfContents } from "../../../blocks/table-of-contents";
+import { ProseFlow } from '../../../mdx-components';
+import { BY_SLUG, CHAPTERS } from '../chapters';
+import { PageFrame } from '../page-frame';
+import { chapterToc, type TocEntry } from '../toc';
+import { TableOfContents } from '../../../blocks/table-of-contents';
 
 export function generateStaticParams() {
-  return CHAPTERS.map((chapter) => ({ slug: chapter.slug.split("/") }));
+  return CHAPTERS.map((chapter) => ({ slug: chapter.slug.split('/') }));
 }
 
 /**
@@ -37,7 +37,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string[] }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const chapter = BY_SLUG.get(slug.join("/"));
+  const chapter = BY_SLUG.get(slug.join('/'));
   if (!chapter) return {};
   // The title alone: the root layout's template appends the site name. The canonical is the
   // chapter's own path; without it every chapter inherits the root's, which is the homepage.
@@ -80,7 +80,7 @@ function OnThisPage({ entries }: { entries: TocEntry[] }) {
 
 export default async function ChapterPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = await params;
-  const chapter = BY_SLUG.get(slug.join("/"));
+  const chapter = BY_SLUG.get(slug.join('/'));
   if (!chapter) notFound();
 
   const toc = chapterToc(chapter.source);
@@ -98,11 +98,7 @@ export default async function ChapterPage({ params }: { params: Promise<{ slug: 
        stops fitting. */
     <Box className="kd-chapter">
       <PageFrame width="var(--kd-measure)">
-        <Page
-          title={chapter.title}
-          description={chapter.blurb}
-          style={{ minWidth: 0 }}
-        >
+        <Page title={chapter.title} description={chapter.blurb} style={{ minWidth: 0 }}>
           {/* No section name above the title: it would be an eyebrow, two elements doing one
               element's job, and the navigation already shows the section with the current
               chapter lit inside it.

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * The expand control for a bounded code block. Behaviour, so it lives in the block layer —
@@ -19,8 +19,8 @@
  * hidden from anyone — the button changes how much is in view, not what exists. That is why
  * this is not a disclosure pattern and takes none of its wiring.
  */
-import * as React from "react";
-import { Button, CodeBlock, Flex, type Size } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { Button, CodeBlock, Flex, type Size } from '@kushagradhawan/kookie-ui-react';
 
 export function Expandable({
   size,
@@ -61,7 +61,7 @@ export function Expandable({
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "Show less" : `Show all ${lineCount} lines`}
+            {expanded ? 'Show less' : `Show all ${lineCount} lines`}
           </Button>
         </Flex>
       }

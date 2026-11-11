@@ -1,6 +1,6 @@
-import { CHAPTERS, SECTIONS } from "./chapters";
-import { chapterToc } from "./toc";
-import type { SearchEntry } from "./search";
+import { CHAPTERS, SECTIONS } from './chapters';
+import { chapterToc } from './toc';
+import type { SearchEntry } from './search';
 
 /**
  * The search index, built at build time out of our own data.
@@ -28,7 +28,8 @@ export function buildSearchIndex(): SearchEntry[] {
       // The section's own title rather than its id capitalised: "api" would read as "Api".
       context: SECTIONS.find((section) => section.id === chapter.section)?.title ?? chapter.section,
       href: `/${chapter.slug}`,
-      haystack: `${chapter.title} ${chapter.blurb} ${headings.map((h) => h.title).join(" ")}`.toLowerCase(),
+      haystack:
+        `${chapter.title} ${chapter.blurb} ${headings.map((h) => h.title).join(' ')}`.toLowerCase(),
     });
     // Headings are indexed as their own results, because a reader searching "socket types"
     // wants the section, not the chapter that contains it eight screens down.

@@ -14,7 +14,13 @@ const OPTIONS = ['a', 'b', 'c', 'd'] as const;
 
 /** In menu order. A list, not an object's keys: keys that look like numbers sort ahead of "none". */
 const CHOICE_VALUES = ['none', '1', '2', '3', '4'];
-const CHOICES: Record<string, string> = { none: 'None yet', '1': 'Option 1', '2': 'Option 2', '3': 'Option 3', '4': 'Option 4' };
+const CHOICES: Record<string, string> = {
+  none: 'None yet',
+  '1': 'Option 1',
+  '2': 'Option 2',
+  '3': 'Option 3',
+  '4': 'Option 4',
+};
 
 export const pick = defineNode({
   type: 'logic/pick',

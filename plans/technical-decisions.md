@@ -52,12 +52,12 @@ Text **labels** and text **entities** both use instanced MSDF — same pipeline,
 
 **Key insight — no font matching needed:** Since the textarea is invisible, there's no need to match two rendering engines. MSDF rendering uses BMFont glyph metrics for display. `text-cursor-layout.ts` uses the same BMFont metrics for cursor positioning and hit testing. One set of measurements, zero mismatch.
 
-| Option | Pros | Cons |
-|--------|------|------|
-| **Canvas2D + contenteditable** (original) | Same browser font engine | Metric mismatch, rasterized, texture memory |
-| **MSDF + contenteditable** | Crisp at any zoom, 1 draw call | Two layout engines = font matching nightmare |
-| **MSDF + hidden textarea** (chosen) | Crisp, 1 draw call, zero visual shift | Must reimplement cursor/selection in WebGL |
-| **DOM** (like comments) | Perfect text, native everything | Z-index: DOM always above WebGL. Dealbreaker |
+| Option                                    | Pros                                  | Cons                                         |
+| ----------------------------------------- | ------------------------------------- | -------------------------------------------- |
+| **Canvas2D + contenteditable** (original) | Same browser font engine              | Metric mismatch, rasterized, texture memory  |
+| **MSDF + contenteditable**                | Crisp at any zoom, 1 draw call        | Two layout engines = font matching nightmare |
+| **MSDF + hidden textarea** (chosen)       | Crisp, 1 draw call, zero visual shift | Must reimplement cursor/selection in WebGL   |
+| **DOM** (like comments)                   | Perfect text, native everything       | Z-index: DOM always above WebGL. Dealbreaker |
 
 ## Coordinate System
 

@@ -86,6 +86,7 @@ Architecture note: Same "standalone vs. embedded" pattern. `VideoEntityData` reu
 Preview is the visual counterpart to widget: `widget` = "how you edit a value" (DOM), `preview` = "how you see a value" (WebGL default). Both live on sockets.
 
 **Two forms:**
+
 - **Inline** (`preview: 'inline'`): small thumbnail inside the socket row
 - **Block** (`preview: true` or `preview: { height }` or `preview: { component }`): large region in node body
 
@@ -108,16 +109,19 @@ Preview is the visual counterpart to widget: `widget` = "how you edit a value" (
 **Goal:** Three-level customization system for consumer entity types.
 
 **Level 1: Pure Declaration (80% of nodes)**
+
 - [ ] Rendering pipeline for `EntityTypeDefinition`: sockets → rows → widgets → previews from config
 - [ ] Auto-generated widgets from socket declarations
 - [ ] `preview: true` triggers default WebGL renderer (via Phase 15)
 
 **Level 2: Custom Row / Preview Components (15% of nodes)**
+
 - [ ] `row` field on Socket: consumer replaces entire row content
 - [ ] `preview: { component: Custom }` — consumer fills preview slot
 - [ ] Row/preview components receive standardized props from library
 
 **Level 3: Full Escape Hatch (5% of nodes)**
+
 - [ ] `component` field on `EntityTypeDefinition`: consumer owns entire interior
 - [ ] Library still handles: frame, socket hit testing, edges, selection, dragging, status
 

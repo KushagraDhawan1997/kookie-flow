@@ -26,8 +26,9 @@ export default async function GraphPage({ params }: { params: Promise<{ id: stri
             <Stack gap="3">
               <Heading size="5">This graph cannot be opened</Heading>
               <Text size="2" emphasis="medium">
-                What is stored under <Code size="1">{row.id}</Code> is not a graph document, so the editor will not
-                open it. Nothing has been changed — the stored copy is exactly as it was.
+                What is stored under <Code size="1">{row.id}</Code> is not a graph document, so the
+                editor will not open it. Nothing has been changed — the stored copy is exactly as it
+                was.
               </Text>
               <Link render={<NextLink href="/graphs" />}>All graphs</Link>
             </Stack>

@@ -19,7 +19,12 @@ export const template = defineNode({
   description:
     'Fill a template: "{a} in the style of {b}". Slots a–d are the inputs. An empty slot disappears, and so does the space or comma that led up to it.',
   inputs: {
-    template: socket('text', { widget: 'textarea', rows: 3, layout: 'stacked', default: '{a}, {b}' }),
+    template: socket('text', {
+      widget: 'textarea',
+      rows: 3,
+      layout: 'stacked',
+      default: '{a}, {b}',
+    }),
     a: socket('text', { default: '' }),
     b: socket('text', { default: '' }),
     c: socket('text', { default: '' }),
@@ -61,7 +66,9 @@ export const concat = defineNode({
   },
   outputs: { out: socket('text') },
   where: 'inline',
-  run: ({ separator, a, b, c, d }) => ({ out: [a, b, c, d].filter((s) => s.length > 0).join(separator) }),
+  run: ({ separator, a, b, c, d }) => ({
+    out: [a, b, c, d].filter((s) => s.length > 0).join(separator),
+  }),
 });
 
 export const replace = defineNode({
@@ -95,7 +102,8 @@ export const length = defineNode({
   label: 'Length',
   category: 'text',
   summary: 'Counts the characters and words in a text.',
-  description: 'How many characters and words a text has. A character means what a reader sees, so an emoji counts once.',
+  description:
+    'How many characters and words a text has. A character means what a reader sees, so an emoji counts once.',
   inputs: { text: socket('text', { default: '' }) },
   outputs: { characters: socket('int'), words: socket('int') },
   where: 'inline',

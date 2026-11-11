@@ -94,7 +94,7 @@
 
 /* The name's link covers the whole card, so a press anywhere opens the graph. */
 .kd-graph-link::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;

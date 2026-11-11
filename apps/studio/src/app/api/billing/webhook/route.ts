@@ -19,7 +19,8 @@ const MAX_CENTS = 100_000;
 export async function POST(request: Request) {
   const stripe = getStripe();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!stripe || !secret) return NextResponse.json({ error: 'webhooks are not set up' }, { status: 503 });
+  if (!stripe || !secret)
+    return NextResponse.json({ error: 'webhooks are not set up' }, { status: 503 });
 
   const signature = request.headers.get('stripe-signature');
   if (!signature) return NextResponse.json({ error: 'missing signature' }, { status: 400 });
@@ -32,7 +33,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'bad signature' }, { status: 400 });
   }
 
-  if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+  if (
+    event.type === 'checkout.session.completed' ||
+    event.type === 'checkout.session.async_payment_succeeded'
+  ) {
     const session = event.data.object;
     const metadata = session.metadata ?? {};
     const cents = Number(metadata.amountCents);

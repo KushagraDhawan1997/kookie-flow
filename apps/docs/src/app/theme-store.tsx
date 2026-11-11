@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * The site's Theme axes as a store, and the root Theme that reads them (2026-09-08, Kushagra:
@@ -15,26 +15,33 @@
  * always rendered and a stored choice arrives after hydration — the window-class hook's own
  * honesty.
  */
-import * as React from "react";
-import { Theme, themeAxes, themeDefaults } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { Theme, themeAxes, themeDefaults } from '@kushagradhawan/kookie-ui-react';
 
-export type ThemeAxisKey = "density" | "radius" | "depth" | "material" | "size" | "pointer";
+export type ThemeAxisKey = 'density' | 'radius' | 'depth' | 'material' | 'size' | 'pointer';
 export type ThemeChoice = { [K in ThemeAxisKey]: (typeof themeAxes)[K][number] };
 
-export const THEME_AXES: readonly ThemeAxisKey[] = ["size", "density", "radius", "depth", "material", "pointer"];
+export const THEME_AXES: readonly ThemeAxisKey[] = [
+  'size',
+  'density',
+  'radius',
+  'depth',
+  'material',
+  'pointer',
+];
 
 /** What the root Theme rendered before the panel existed, so the panel's "reset" is a real
     value. `radius="full"` and `material="3"` are this app's identity. */
 export const SITE_THEME: ThemeChoice = {
   density: themeDefaults.density,
-  radius: "full",
+  radius: 'full',
   depth: themeDefaults.depth,
-  material: "3",
-  size: "2",
+  material: '3',
+  size: '2',
   pointer: themeDefaults.pointer,
 };
 
-const KEY = "kookie-docs-theme";
+const KEY = 'kookie-docs-theme';
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
   listeners.add(l);
@@ -64,7 +71,8 @@ const read = (): ThemeChoice => {
       const parsed = JSON.parse(raw) as Partial<ThemeChoice>;
       const merged = { ...SITE_THEME };
       for (const key of THEME_AXES) {
-        if (isValid(key, parsed[key])) (merged as Record<string, string>)[key] = parsed[key] as string;
+        if (isValid(key, parsed[key]))
+          (merged as Record<string, string>)[key] = parsed[key] as string;
       }
       next = merged;
     }

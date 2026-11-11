@@ -17,7 +17,11 @@ export async function loadConversation(graphId: string, workspaceId: string): Pr
   return row?.messages ?? [];
 }
 
-export async function saveConversation(graphId: string, workspaceId: string, messages: unknown[]): Promise<void> {
+export async function saveConversation(
+  graphId: string,
+  workspaceId: string,
+  messages: unknown[]
+): Promise<void> {
   const db = await getDb();
   await db
     .insert(conversations)

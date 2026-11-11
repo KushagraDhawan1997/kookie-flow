@@ -30,7 +30,15 @@ import {
 
 import type { GraphSummary } from '@/server/graphs';
 import { EmptyState } from '../../empty-state';
-import { DuplicateIcon, GraphsIcon, MoreIcon, PlusIcon, RenameIcon, SearchIcon, TrashIcon } from '../../icons';
+import {
+  DuplicateIcon,
+  GraphsIcon,
+  MoreIcon,
+  PlusIcon,
+  RenameIcon,
+  SearchIcon,
+  TrashIcon,
+} from '../../icons';
 import { LocalTime } from '../../local-time';
 import { AppPane } from '../app-shell';
 import './graphs-page.css';
@@ -103,7 +111,9 @@ export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
       });
       if (!res.ok) throw new Error(await res.text());
     } catch (error) {
-      setProblem(`${graph.name} could not be renamed: ${error instanceof Error ? error.message : 'unknown error'}`);
+      setProblem(
+        `${graph.name} could not be renamed: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
       void reload();
     }
   };
@@ -115,7 +125,9 @@ export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
       if (!res.ok && res.status !== 404) throw new Error(await res.text());
       setGraphs((list) => list.filter((g) => g.id !== graph.id));
     } catch (error) {
-      setProblem(`${graph.name} could not be deleted: ${error instanceof Error ? error.message : 'unknown error'}`);
+      setProblem(
+        `${graph.name} could not be deleted: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
     }
   };
 
@@ -123,7 +135,13 @@ export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
   const shown = needle ? graphs.filter((g) => g.name.toLowerCase().includes(needle)) : graphs;
 
   const newGraph = (
-    <ToolbarButton emphasis="loud" tone="accent" leading={<PlusIcon />} loading={creating} onClick={() => void create()}>
+    <ToolbarButton
+      emphasis="loud"
+      tone="accent"
+      leading={<PlusIcon />}
+      loading={creating}
+      onClick={() => void create()}
+    >
       New graph
     </ToolbarButton>
   );
@@ -140,7 +158,13 @@ export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
               title="No graphs yet"
               description="A graph is a canvas of nodes: prompts, models, image and video steps, wired together."
               action={
-                <Button emphasis="loud" tone="accent" leading={<PlusIcon />} loading={creating} onClick={() => void create()}>
+                <Button
+                  emphasis="loud"
+                  tone="accent"
+                  leading={<PlusIcon />}
+                  loading={creating}
+                  onClick={() => void create()}
+                >
                   New graph
                 </Button>
               }
@@ -186,7 +210,9 @@ export function GraphsPage({ initial }: { initial: GraphSummary[] }) {
       <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogTitle>Delete “{deleting?.name}”?</AlertDialogTitle>
-          <AlertDialogDescription>The graph and everything in it goes for good. There is no copy.</AlertDialogDescription>
+          <AlertDialogDescription>
+            The graph and everything in it goes for good. There is no copy.
+          </AlertDialogDescription>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
@@ -245,7 +271,12 @@ function GraphCard({ graph, onRename, onDuplicate, onDelete }: GraphCardProps) {
         <Menu>
           <MenuTrigger
             render={
-              <Button iconOnly emphasis="quiet" className="kd-graph-menu" aria-label={`Actions for ${graph.name}`}>
+              <Button
+                iconOnly
+                emphasis="quiet"
+                className="kd-graph-menu"
+                aria-label={`Actions for ${graph.name}`}
+              >
                 <MoreIcon />
               </Button>
             }
@@ -354,7 +385,13 @@ function RenameDialog({ graph, onClose, onRename }: RenameDialogProps) {
         >
           <Stack gap="5">
             <DialogTitle>Rename graph</DialogTitle>
-            <TextField aria-label="Name" value={name} maxLength={120} autoFocus onChange={(e) => setName(e.target.value)} />
+            <TextField
+              aria-label="Name"
+              value={name}
+              maxLength={120}
+              autoFocus
+              onChange={(e) => setName(e.target.value)}
+            />
             <Flex gap="3" justify="end">
               <DialogClose render={<Button />}>Cancel</DialogClose>
               <Button type="submit" emphasis="loud" tone="accent" disabled={!name.trim()}>

@@ -69,17 +69,17 @@ entity.data.statusMessage = 'Missing required input: Model';
 
 ## Built-in Entity Types
 
-| Type      | What It Renders                                      | Sockets?             | Status      | Type guard        |
-| --------- | ---------------------------------------------------- | -------------------- | ----------- | ----------------- |
-| (default) | Standard node (header + sockets + widgets + preview) | Yes (inputs/outputs) | Implemented | (no guard needed) |
-| `text`    | Rich text block                                      | Optional             | Implemented | `isTextEntity()`  |
-| `frame`   | Spatial container / group                            | Optional             | Implemented | `isFrameEntity()` |
+| Type      | What It Renders                                      | Sockets?             | Status      | Type guard          |
+| --------- | ---------------------------------------------------- | -------------------- | ----------- | ------------------- |
+| (default) | Standard node (header + sockets + widgets + preview) | Yes (inputs/outputs) | Implemented | (no guard needed)   |
+| `text`    | Rich text block                                      | Optional             | Implemented | `isTextEntity()`    |
+| `frame`   | Spatial container / group                            | Optional             | Implemented | `isFrameEntity()`   |
 | `comment` | Sticky note annotation                               | No                   | Implemented | `isCommentEntity()` |
 | `reroute` | Edge waypoint                                        | Yes (passthrough)    | Implemented | `isRerouteEntity()` |
-| `image`   | Image on canvas                                      | Optional             | In Progress | `isImageEntity()` |
-| `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Planned     | (not yet)         |
-| `video`   | Video on canvas                                      | Optional             | Planned     | (not yet)         |
-| `mesh`    | 3D object on canvas                                  | Optional             | Planned     | (not yet)         |
+| `image`   | Image on canvas                                      | Optional             | In Progress | `isImageEntity()`   |
+| `draw`    | Shapes, SVG paths, freeform drawing                  | Optional             | Planned     | (not yet)           |
+| `video`   | Video on canvas                                      | Optional             | Planned     | (not yet)           |
+| `mesh`    | 3D object on canvas                                  | Optional             | Planned     | (not yet)           |
 
 `BuiltInEntityType` union: `'frame' | 'comment' | 'reroute' | 'draw' | 'text' | 'image' | 'video' | 'mesh'`. Default entities use a custom `type` string and don't appear in this union.
 
@@ -98,9 +98,7 @@ const GenerateImageNode: EntityTypeDefinition = {
     { name: 'prompt', type: 'string', widget: 'textarea', rows: 3 },
     { name: 'model', type: 'string', widget: 'select', options: ['DALL-E 3', 'SDXL'] },
   ],
-  outputs: [
-    { name: 'image', type: 'image', preview: true },
-  ],
+  outputs: [{ name: 'image', type: 'image', preview: true }],
 };
 ```
 
@@ -109,12 +107,8 @@ const GenerateImageNode: EntityTypeDefinition = {
 ```tsx
 const CompareNode: EntityTypeDefinition = {
   type: 'compare',
-  inputs: [
-    { name: 'reference', type: 'image', row: ReferenceImageRow },
-  ],
-  outputs: [
-    { name: 'images', type: 'image', preview: { component: ImageGridPreview } },
-  ],
+  inputs: [{ name: 'reference', type: 'image', row: ReferenceImageRow }],
+  outputs: [{ name: 'images', type: 'image', preview: { component: ImageGridPreview } }],
 };
 ```
 
@@ -175,18 +169,18 @@ Preview lives on **sockets**, not on the entity. It's the visual counterpart to 
 
 **Two forms:**
 
-| Form       | Where                     | Size             | Use case                              |
-| ---------- | ------------------------- | ---------------- | ------------------------------------- |
-| `'inline'` | Inside the socket row     | Small thumbnail  | Input socket showing what's flowing in |
-| `true`     | Block region in node body | Configurable     | Output socket showing produced data    |
+| Form       | Where                     | Size            | Use case                               |
+| ---------- | ------------------------- | --------------- | -------------------------------------- |
+| `'inline'` | Inside the socket row     | Small thumbnail | Input socket showing what's flowing in |
+| `true`     | Block region in node body | Configurable    | Output socket showing produced data    |
 
 **Default rendering by socket type:**
 
-| Socket type | Default renderer          | Technique          | Loaded              |
-| ----------- | ------------------------- | ------------------ | ------------------- |
-| `image`     | WebGL textured quad       | ImageTextureManager | Always (shared w/ image entities) |
-| `mesh`      | Three.js scene-in-scene  | Render-to-texture  | Lazy (on first use) |
-| `video`     | `<video>` element        | DOM overlay        | Lazy (on first use) |
+| Socket type | Default renderer        | Technique           | Loaded                            |
+| ----------- | ----------------------- | ------------------- | --------------------------------- |
+| `image`     | WebGL textured quad     | ImageTextureManager | Always (shared w/ image entities) |
+| `mesh`      | Three.js scene-in-scene | Render-to-texture   | Lazy (on first use)               |
+| `video`     | `<video>` element       | DOM overlay         | Lazy (on first use)               |
 
 ---
 

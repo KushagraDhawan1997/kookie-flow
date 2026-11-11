@@ -13,6 +13,7 @@ declare global {
 export function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
-  if (globalThis.__studioStripe?.key !== key) globalThis.__studioStripe = { key, client: new Stripe(key) };
+  if (globalThis.__studioStripe?.key !== key)
+    globalThis.__studioStripe = { key, client: new Stripe(key) };
   return globalThis.__studioStripe.client;
 }

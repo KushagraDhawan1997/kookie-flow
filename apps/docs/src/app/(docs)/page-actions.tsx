@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { usePathname } from "next/navigation";
+import * as React from 'react';
+import { usePathname } from 'next/navigation';
 import {
   Flex,
   ToolbarButton,
@@ -10,10 +10,10 @@ import {
   TooltipContent,
   TooltipTrigger,
   useToolbarOverflow,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { CopyIcon, LinkIcon } from "../icons";
-import { ClaudeMark, MarkdownMark, OpenAIMark } from "../marks";
+import { CopyIcon, LinkIcon } from '../icons';
+import { ClaudeMark, MarkdownMark, OpenAIMark } from '../marks';
 
 /**
  * WHAT YOU CAN DO WITH THIS PAGE (2026-09-06, §47; Kushagra: "I see this in every docs site
@@ -85,7 +85,7 @@ import { ClaudeMark, MarkdownMark, OpenAIMark } from "../marks";
  */
 export const askAbout = (markdownUrl: string) =>
   encodeURIComponent(
-    `Read ${markdownUrl} so I can ask you questions about it. It is a page of the Kookie Flow documentation.`,
+    `Read ${markdownUrl} so I can ask you questions about it. It is a page of the Kookie Flow documentation.`
   );
 
 /**
@@ -105,16 +105,16 @@ export const DESTINATIONS: {
   // THE TWIN ITSELF IS FIRST, because it is the thing the two beside it point at — and because
   // a reader who wants the markdown for their own purpose should not have to send it somewhere
   // to get it.
-  { label: "View as Markdown", Mark: MarkdownMark, href: (url) => url },
+  { label: 'View as Markdown', Mark: MarkdownMark, href: (url) => url },
   {
-    label: "Open in ChatGPT",
+    label: 'Open in ChatGPT',
     Mark: OpenAIMark,
     // `hints=search` asks for the browsing tool up front. Without it the model may answer
     // about a URL it never opened, which is the failure this whole feature exists to remove.
     href: (url) => `https://chatgpt.com/?hints=search&q=${askAbout(url)}`,
   },
   {
-    label: "Open in Claude",
+    label: 'Open in Claude',
     Mark: ClaudeMark,
     href: (url) => `https://claude.ai/new?q=${askAbout(url)}`,
   },
@@ -132,13 +132,13 @@ export const twinOf = (pagePath: string) => `${pagePath}.md`;
  * copied when there are two things it could have been.
  */
 export const COPIES: {
-  id: "page" | "link";
+  id: 'page' | 'link';
   label: string;
   done: string;
   Glyph: React.ComponentType;
 }[] = [
-  { id: "page", label: "Copy page as Markdown", done: "Page copied", Glyph: CopyIcon },
-  { id: "link", label: "Copy link to this page", done: "Link copied", Glyph: LinkIcon },
+  { id: 'page', label: 'Copy page as Markdown', done: 'Page copied', Glyph: CopyIcon },
+  { id: 'link', label: 'Copy link to this page', done: 'Link copied', Glyph: LinkIcon },
 ];
 
 export function PageActions({ paths }: { paths: string[] }) {
@@ -146,7 +146,7 @@ export function PageActions({ paths }: { paths: string[] }) {
   // ONE FLAG NAMING WHICH COPY JUST HAPPENED, rather than a boolean each. The two are mutually
   // exclusive by construction — a second press retires the first control's tick — which is what
   // a reader means by "just now", and two independent booleans would let both stand at once.
-  const [copied, setCopied] = React.useState<"page" | "link" | null>(null);
+  const [copied, setCopied] = React.useState<'page' | 'link' | null>(null);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
    * THE ORIGIN, AFTER MOUNT — and the first spelling read it during render.
@@ -161,7 +161,7 @@ export function PageActions({ paths }: { paths: string[] }) {
    * menu cannot be opened in that window, and a relative path is a worse link rather than a
    * broken page.
    */
-  const [origin, setOrigin] = React.useState("");
+  const [origin, setOrigin] = React.useState('');
   React.useEffect(() => setOrigin(window.location.origin), []);
 
   React.useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
@@ -181,12 +181,12 @@ export function PageActions({ paths }: { paths: string[] }) {
 
   const markdownPath = twinOf(pathname);
 
-  const copy = async (what: "page" | "link") => {
+  const copy = async (what: 'page' | 'link') => {
     if (timer.current) clearTimeout(timer.current);
     try {
       // The page is fetched as markdown; the link is the ordinary URL, which is already here.
       const text =
-        what === "link"
+        what === 'link'
           ? `${origin}${pathname}`
           : await (async () => {
               const response = await fetch(markdownPath);

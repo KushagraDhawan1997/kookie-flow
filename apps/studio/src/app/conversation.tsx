@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A conversation with an agent: the transcript that holds it, and the parts of it that are not
@@ -39,7 +39,7 @@
  * rides the part's own text and the lengths derived from it — the thumbnail's height, the
  * timeline's half-row, the corners — through `data-kb-size` in the stylesheet.
  */
-import * as React from "react";
+import * as React from 'react';
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -51,13 +51,13 @@ import {
   Text,
   iconStroke,
   type Size,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import "./conversation.css";
+import './conversation.css';
 
 export type ConversationProps = {
   /** The transcript's name, for the region a screen reader lands in: "Conversation". */
-  "aria-label": string;
+  'aria-label': string;
   /** The jump button's name, in your words: "Jump to the latest". */
   jumpLabel: string;
   /** The jump button's glyph. The package ships no icon set. */
@@ -80,7 +80,7 @@ export type ConversationProps = {
  * start, and offers a button back to the latest.
  */
 export function Conversation({
-  "aria-label": label,
+  'aria-label': label,
   jumpLabel,
   jumpIcon,
   pane = false,
@@ -92,7 +92,10 @@ export function Conversation({
   return (
     <MessageScroller>
       <Scroll fade aria-label={label} className="kb-conversation" data-kb-pane={pane || undefined}>
-        <MessageScrollerContent className="kb-transcript" data-empty={rows.length === 0 || undefined}>
+        <MessageScrollerContent
+          className="kb-transcript"
+          data-empty={rows.length === 0 || undefined}
+        >
           {rows.length === 0 && empty ? <MessageScrollerItem>{empty}</MessageScrollerItem> : rows}
         </MessageScrollerContent>
         <MessageScrollerButton aria-label={jumpLabel}>{jumpIcon}</MessageScrollerButton>
@@ -108,7 +111,7 @@ export type TurnProps = {
    * Who is speaking. The person's turns anchor near the top when they arrive; the agent's follow
    * the live edge. Leave it out for a row that is neither (a thinking line, a decision).
    */
-  from?: "person" | "agent";
+  from?: 'person' | 'agent';
   children: React.ReactNode;
 };
 
@@ -117,7 +120,7 @@ export function Turn({ id, from, children }: TurnProps) {
   return (
     <MessageScrollerItem
       {...(id ? { messageId: id } : {})}
-      scrollAnchor={from === "person"}
+      scrollAnchor={from === 'person'}
       className="kb-turn"
     >
       {children}
@@ -126,7 +129,7 @@ export function Turn({ id, from, children }: TurnProps) {
 }
 
 /** The agent's words: text in the reading ink, with the line breaks it wrote. */
-export function Reply({ children, size = "3" }: { children: React.ReactNode; size?: Size }) {
+export function Reply({ children, size = '3' }: { children: React.ReactNode; size?: Size }) {
   return (
     <Text size={size} className="kb-reply">
       {children}
@@ -143,7 +146,7 @@ export type UserMessageProps = {
   attachments?: React.ReactNode;
 };
 
-export function UserMessage({ children, attachments, size = "3" }: UserMessageProps) {
+export function UserMessage({ children, attachments, size = '3' }: UserMessageProps) {
   return (
     <Stack className="kb-user-message" gap="2" align="end" data-kb-size={size}>
       {attachments ? <div className="kb-user-message-attachments">{attachments}</div> : null}
@@ -170,7 +173,7 @@ export type StepsProps = {
   children: React.ReactNode;
 };
 
-export function Steps({ summary, live = false, size = "3", children }: StepsProps) {
+export function Steps({ summary, live = false, size = '3', children }: StepsProps) {
   const [open, setOpen] = React.useState(false);
   const listId = React.useId();
   return (
@@ -178,7 +181,7 @@ export function Steps({ summary, live = false, size = "3", children }: StepsProp
       <button
         type="button"
         className="kb-steps-toggle"
-        {...(live ? { "data-live": "" } : {})}
+        {...(live ? { 'data-live': '' } : {})}
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((was) => !was)}
@@ -188,7 +191,13 @@ export function Steps({ summary, live = false, size = "3", children }: StepsProp
         </Text>
         {/* The disclosure chevron the accordion and the tree draw: into the reading direction
             closed, turned down open. */}
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden className="kb-steps-chevron" data-open={open || undefined}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden
+          className="kb-steps-chevron"
+          data-open={open || undefined}
+        >
           <path
             d="M6 4l4 4-4 4"
             stroke="currentColor"
@@ -218,9 +227,9 @@ export type StepProps = {
   title?: string;
 };
 
-export function Step({ children, pending = false, title, size = "3" }: StepProps) {
+export function Step({ children, pending = false, title, size = '3' }: StepProps) {
   return (
-    <div className="kb-step" data-kb-size={size} {...(pending ? { "data-pending": "" } : {})}>
+    <div className="kb-step" data-kb-size={size} {...(pending ? { 'data-pending': '' } : {})}>
       <Text size={size} emphasis="medium" className="kb-steps-line" title={title}>
         {children}
       </Text>
@@ -240,7 +249,7 @@ export type ThinkingProps = {
  * Reasoning header). A sweep rather than a spinner, because the line IS the news — a spinner beside
  * words says the same thing twice and pins a control's shape into the reading column.
  */
-export function Thinking({ children, size = "3" }: ThinkingProps) {
+export function Thinking({ children, size = '3' }: ThinkingProps) {
   return (
     <Text size={size} emphasis="medium" className="kb-thinking" aria-live="polite">
       {children}
@@ -255,7 +264,7 @@ export type PicturesProps = {
   children: React.ReactNode;
 };
 
-export function Pictures({ children, size = "3" }: PicturesProps) {
+export function Pictures({ children, size = '3' }: PicturesProps) {
   const single = React.Children.count(children) === 1;
   return (
     <div className="kb-pictures" data-kb-size={size} data-single={single || undefined}>

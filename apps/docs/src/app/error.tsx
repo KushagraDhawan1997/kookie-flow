@@ -27,9 +27,7 @@ export default function Error({ error, reset }: ErrorProps) {
         color: '#ffffff',
       }}
     >
-      <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>
-        Something went wrong
-      </h1>
+      <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>Something went wrong</h1>
       <p
         style={{
           fontSize: '1rem',

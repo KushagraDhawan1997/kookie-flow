@@ -3,7 +3,17 @@
  * lands, so auth is a value that changes rather than a column that is added.
  */
 
-import { bigint, boolean, index, integer, jsonb, pgTable, real, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 import type { GraphDocument } from 'studio-core';
 import type { JobStatus } from '@/shared/jobs';
 

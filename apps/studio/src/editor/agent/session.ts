@@ -9,8 +9,20 @@
  */
 
 import { Chat } from '@ai-sdk/react';
-import { DefaultChatTransport, getToolName, isToolUIPart, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
-import { CANVAS_CHARS, isBrowserTool, isTriageAnswers, type GraphOp, type TriageAnswers } from 'studio-core';
+import {
+  DefaultChatTransport,
+  getToolName,
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  type UIMessage,
+} from 'ai';
+import {
+  CANVAS_CHARS,
+  isBrowserTool,
+  isTriageAnswers,
+  type GraphOp,
+  type TriageAnswers,
+} from 'studio-core';
 
 import { readAgentSettings } from '@/app/agent-choice';
 import { AGENT_EFFORTS, DEFAULT_AGENT_SETTINGS, type AgentSettings } from '@/app/agent-models';
@@ -50,7 +62,11 @@ function strings(value: unknown): string[] {
 function asMessages(value: unknown): UIMessage[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
-    (m): m is UIMessage => isRecord(m) && typeof m.id === 'string' && typeof m.role === 'string' && Array.isArray(m.parts)
+    (m): m is UIMessage =>
+      isRecord(m) &&
+      typeof m.id === 'string' &&
+      typeof m.role === 'string' &&
+      Array.isArray(m.parts)
   );
 }
 
@@ -58,12 +74,28 @@ function asPendingAsk(value: unknown): PendingAsk | null {
   if (!isRecord(value) || typeof value.text !== 'string') return null;
   const pictures = Array.isArray(value.pictures)
     ? value.pictures.flatMap((p) =>
-        isRecord(p) && typeof p.hash === 'string' && typeof p.width === 'number' && typeof p.height === 'number'
-          ? [{ hash: p.hash, url: String(p.url ?? ''), mime: String(p.mime ?? 'image/png'), width: p.width, height: p.height }]
+        isRecord(p) &&
+        typeof p.hash === 'string' &&
+        typeof p.width === 'number' &&
+        typeof p.height === 'number'
+          ? [
+              {
+                hash: p.hash,
+                url: String(p.url ?? ''),
+                mime: String(p.mime ?? 'image/png'),
+                width: p.width,
+                height: p.height,
+              },
+            ]
           : []
       )
     : [];
-  return { text: value.text, model: String(value.model ?? ''), effort: String(value.effort ?? ''), pictures };
+  return {
+    text: value.text,
+    model: String(value.model ?? ''),
+    effort: String(value.effort ?? ''),
+    pictures,
+  };
 }
 
 /**
@@ -79,7 +111,8 @@ async function smallCopy(answer: InspectAnswer): Promise<InspectAnswer> {
   if (!('hash' in answer) || !answer.url) return answer;
   // A JPEG within the size is small enough already. A PNG is not, whatever its size: a 1024×768
   // photo-like PNG is over a megabyte, and three of them went to the model whole (2026-09-17).
-  if (answer.mime === 'image/jpeg' && Math.max(answer.width, answer.height) <= LOOK_SIZE) return answer;
+  if (answer.mime === 'image/jpeg' && Math.max(answer.width, answer.height) <= LOOK_SIZE)
+    return answer;
   const res = await fetch(answer.url);
   if (!res.ok) throw new Error(`the picture did not load (${res.status})`);
   const scale = Math.min(1, LOOK_SIZE / Math.max(answer.width, answer.height));
@@ -96,7 +129,10 @@ async function smallCopy(answer: InspectAnswer): Promise<InspectAnswer> {
   context.fillRect(0, 0, bitmap.width, bitmap.height);
   context.drawImage(bitmap, 0, 0);
   bitmap.close();
-  const small = await ports.assets.put(await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 }), 'image');
+  const small = await ports.assets.put(
+    await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 }),
+    'image'
+  );
   // The size stays the original's: it is what the node made, and what the model is told.
   return { ...answer, hash: small.hash, mime: small.mime ?? 'image/jpeg' };
 }
@@ -207,12 +243,18 @@ export class AgentSession {
       const res = await fetch(`/api/agent/${this.graphId}`);
       const body: unknown = await res.json();
       if (!res.ok || !isRecord(body)) {
-        throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'The conversation did not load.');
+        throw new Error(
+          isRecord(body) && typeof body.error === 'string'
+            ? body.error
+            : 'The conversation did not load.'
+        );
       }
       messages = asMessages(body.messages);
       this.set({ mode: body.mode === 'mock' ? 'mock' : 'gateway' });
     } catch (error) {
-      this.set({ loadError: error instanceof Error ? error.message : 'The conversation did not load.' });
+      this.set({
+        loadError: error instanceof Error ? error.message : 'The conversation did not load.',
+      });
       return;
     }
     if (this.disposed) return;
@@ -220,12 +262,20 @@ export class AgentSession {
     const chat: Chat<UIMessage> = new Chat<UIMessage>({
       id: this.graphId,
       messages,
-      transport: new DefaultChatTransport({ api: '/api/agent/step', body: () => ({ ...this.state.settings }) }),
+      transport: new DefaultChatTransport({
+        api: '/api/agent/step',
+        body: () => ({ ...this.state.settings }),
+      }),
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
       onFinish: () => announceBalanceChange(),
       onToolCall: ({ toolCall }) => {
         if (toolCall.dynamic || !isBrowserTool(toolCall.toolName)) return;
-        this.answerTool(chat, toolCall.toolName, toolCall.toolCallId, isRecord(toolCall.input) ? toolCall.input : {});
+        this.answerTool(
+          chat,
+          toolCall.toolName,
+          toolCall.toolCallId,
+          isRecord(toolCall.input) ? toolCall.input : {}
+        );
       },
     });
     this.set({ chat });
@@ -244,7 +294,10 @@ export class AgentSession {
     const last = chat.messages.at(-1);
     if (!last || last.role !== 'assistant') return;
     const open = last.parts.filter(
-      (part) => isToolUIPart(part) && !part.type.startsWith('tool-dynamic') && (part.state === 'input-available' || part.state === 'input-streaming')
+      (part) =>
+        isToolUIPart(part) &&
+        !part.type.startsWith('tool-dynamic') &&
+        (part.state === 'input-available' || part.state === 'input-streaming')
     );
     if (open.length === 0) return;
     await this.host.ready();
@@ -258,7 +311,8 @@ export class AgentSession {
           tool,
           toolCallId: part.toolCallId,
           state: 'output-error',
-          errorText: 'The page was reloaded before this was recorded. Call read_graph to see what is on the canvas.',
+          errorText:
+            'The page was reloaded before this was recorded. Call read_graph to see what is on the canvas.',
         });
         continue;
       }
@@ -266,22 +320,35 @@ export class AgentSession {
     }
   }
 
-  private answerTool(chat: Chat<UIMessage>, tool: string, toolCallId: string, input: Record<string, unknown>): void {
+  private answerTool(
+    chat: Chat<UIMessage>,
+    tool: string,
+    toolCallId: string,
+    input: Record<string, unknown>
+  ): void {
     const answer = (output: unknown) => void chat.addToolOutput({ tool, toolCallId, output });
     switch (tool) {
       case 'read_graph':
         return answer(this.host.readGraph(strings(input.focus)));
       case 'apply_ops': {
-        const ops = Array.isArray(input.ops) ? input.ops.filter((op): op is GraphOp => isRecord(op) && typeof op.op === 'string') : [];
+        const ops = Array.isArray(input.ops)
+          ? input.ops.filter((op): op is GraphOp => isRecord(op) && typeof op.op === 'string')
+          : [];
         return answer(this.host.applyOps(ops));
       }
       case 'estimate':
         return answer(this.host.estimate(strings(input.nodes)));
       case 'inspect': {
-        const found = this.host.inspect(String(input.node ?? ''), typeof input.socket === 'string' ? input.socket : undefined);
+        const found = this.host.inspect(
+          String(input.node ?? ''),
+          typeof input.socket === 'string' ? input.socket : undefined
+        );
         void smallCopy(found)
           .catch((error: unknown) => {
-            console.warn('[studio] the picture could not be shrunk for the agent; sending it whole', error);
+            console.warn(
+              '[studio] the picture could not be shrunk for the agent; sending it whole',
+              error
+            );
             return found;
           })
           .then(answer);
@@ -310,10 +377,15 @@ export class AgentSession {
       console.warn('[studio] an ask from Home could not be read', error);
     }
     if (!pending) return;
-    const effort = AGENT_EFFORTS.find((e) => e.id === pending.effort)?.id ?? this.state.settings.effort;
+    const effort =
+      AGENT_EFFORTS.find((e) => e.id === pending.effort)?.id ?? this.state.settings.effort;
     this.set({ settings: { model: pending.model || this.state.settings.model, effort } });
     const ids = this.host.addPictures(pending.pictures);
-    this.enqueue(chat, withPictures(pending.text, ids), pending.pictures.map((p) => p.url).filter(Boolean));
+    this.enqueue(
+      chat,
+      withPictures(pending.text, ids),
+      pending.pictures.map((p) => p.url).filter(Boolean)
+    );
   }
 
   /**
@@ -411,7 +483,11 @@ export class AgentSession {
     if (!chat || !pendingRun) return;
     if (!approve) {
       this.set({ pendingRun: null });
-      void chat.addToolOutput({ tool: 'run', toolCallId: pendingRun.toolCallId, output: { declined: true, nodes: [] } });
+      void chat.addToolOutput({
+        tool: 'run',
+        toolCallId: pendingRun.toolCallId,
+        output: { declined: true, nodes: [] },
+      });
       return;
     }
     this.set({ running: true });
@@ -438,9 +514,18 @@ export class AgentSession {
     try {
       const stored = await Promise.all(pictures.map((f) => ports.assets.put(f, 'image')));
       const ids = this.host.addPictures(
-        stored.map((ref) => ({ hash: ref.hash, url: ref.url ?? '', mime: ref.mime ?? 'image/png', width: ref.width, height: ref.height }))
+        stored.map((ref) => ({
+          hash: ref.hash,
+          url: ref.url ?? '',
+          mime: ref.mime ?? 'image/png',
+          width: ref.width,
+          height: ref.height,
+        }))
       );
-      this.attachedUrls = [...this.attachedUrls, ...stored.map((ref) => ref.url ?? '').filter(Boolean)];
+      this.attachedUrls = [
+        ...this.attachedUrls,
+        ...stored.map((ref) => ref.url ?? '').filter(Boolean),
+      ];
       this.set({ attached: [...this.state.attached, ...ids] });
     } finally {
       this.set({ uploading: false });

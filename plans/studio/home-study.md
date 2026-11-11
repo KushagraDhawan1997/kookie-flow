@@ -7,12 +7,14 @@ and to start the agent.
 ## Krea (krea.ai)
 
 **Shell.** Left sidebar, dark. Workspace switcher ("Krea ▾") at the top.
+
 - Places: Home, Moodboards, Train Lora, Node Editor, Assets.
 - Group label "Tools": Image, Video, Enhancer, Seedance Studio, Nano Banana, Realtime, Edit, More.
   Each item has its own coloured app icon (a small rounded square), so tools and models read as apps.
 - Pinned at the bottom: Pricing (with a discount pill), Enterprise, Krea Agent, Sign in.
 
 **Home, top to bottom.**
+
 1. Hero, full width, animated background. One short headline ("A new era") and one line under it.
    Then the agent box: large, wide, centred. Placeholder "Ask me to do anything…". Inside: a "+"
    attach button at the left, a model and effort picker ("Auto Medium ▾") and a round send at the
@@ -58,6 +60,7 @@ model. Best for LoRAs."), an arrow. No prices on the list.
 ## What carries over to Studio, and what does not
 
 Carries over:
+
 - Home as a launcher, not a document page: a centred agent box is the first thing, with attach and a
   model picker inside it, and no helper copy.
 - Actions named by verb with the model as the subtitle ("Make images / with GPT Image 2.5").
@@ -68,6 +71,7 @@ Carries over:
 - A prompt bar with chips (model, aspect, count) on tool pages.
 
 Does not:
+
 - Higgsfield's marketing voice: discount pills, neon, all caps, "built for professionals".
 - Community gallery and search: Studio has no community feed.
 - Featured banner carousels: nothing to announce yet.
@@ -90,6 +94,7 @@ first screens of agent and model products (Playwright, scratchpad `study5/`).
 - Gumloop, Lindy, Runway, Flora: marketing heroes; nothing to take for an in-app Home.
 
 What Studio takes, tuned to `vision.md`:
+
 - A headline that names the harness, n8n-style, not a generic question.
 - Starter asks under the box (Manus), each an ask the agent would turn into a workflow.
 - The plan shown, not described (Lovart's steps, Krea's plan-first): for the chosen ask, the loop

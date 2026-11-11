@@ -9,7 +9,12 @@ export function AttachButton({ onFiles }: { onFiles: (files: File[]) => void }) 
   const input = React.useRef<HTMLInputElement>(null);
   return (
     <>
-      <Button iconOnly emphasis="medium" aria-label="Attach pictures" onClick={() => input.current?.click()}>
+      <Button
+        iconOnly
+        emphasis="medium"
+        aria-label="Attach pictures"
+        onClick={() => input.current?.click()}
+      >
         <PlusIcon />
       </Button>
       <input
@@ -26,4 +31,3 @@ export function AttachButton({ onFiles }: { onFiles: (files: File[]) => void }) 
     </>
   );
 }
-

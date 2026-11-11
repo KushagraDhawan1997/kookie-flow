@@ -40,7 +40,10 @@ export function LocalTime({ iso, relative: asRelative = false, short = false }: 
   const [shown, setShown] = React.useState(iso.slice(0, 16).replace('T', ' '));
   const [full, setFull] = React.useState<string | undefined>(undefined);
   React.useEffect(() => {
-    const absolute = new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    const absolute = new Date(iso).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
     const date = new Date(iso);
     const brief = date.toLocaleString(undefined, {
       month: 'short',

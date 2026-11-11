@@ -27,8 +27,8 @@ its colours and corners from that theme, so it follows your app into dark mode. 
 no stylesheet of its own.
 
 ```tsx
-import "@kushagradhawan/kookie-ui-react/styles.css";
-import { Theme } from "@kushagradhawan/kookie-ui-react";
+import '@kushagradhawan/kookie-ui-react/styles.css';
+import { Theme } from '@kushagradhawan/kookie-ui-react';
 
 export default function App({ children }: { children: React.ReactNode }) {
   return <Theme>{children}</Theme>;
@@ -38,16 +38,26 @@ export default function App({ children }: { children: React.ReactNode }) {
 ## An example
 
 ```tsx
-"use client";
+'use client';
 
-import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
-import { skin } from "@kushagradhawan/kookie-flow-skin";
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const initialEntities: Entity[] = [
-  { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
-    outputs: [{ id: "value", name: "Value", type: "float" }] },
-  { id: "viewer", type: "viewer", position: { x: 320, y: 0 }, data: { label: "Viewer" },
-    inputs: [{ id: "value", name: "Value", type: "float" }] },
+  {
+    id: 'constant',
+    type: 'constant',
+    position: { x: 0, y: 0 },
+    data: { label: 'Constant' },
+    outputs: [{ id: 'value', name: 'Value', type: 'float' }],
+  },
+  {
+    id: 'viewer',
+    type: 'viewer',
+    position: { x: 320, y: 0 },
+    data: { label: 'Viewer' },
+    inputs: [{ id: 'value', name: 'Value', type: 'float' }],
+  },
 ];
 
 export default function Graph() {
@@ -56,9 +66,15 @@ export default function Graph() {
   });
 
   return (
-    <div style={{ width: "100%", height: 360 }}>
-      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
-        onEdgesChange={onEdgesChange} onConnect={onConnect} />
+    <div style={{ width: '100%', height: 360 }}>
+      <KookieFlow
+        skin={skin}
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
     </div>
   );
 }

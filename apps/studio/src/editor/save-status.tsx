@@ -36,7 +36,12 @@ export function SaveStatus({ store }: { store: SaveStatusStore }) {
   else words = 'All changes saved';
 
   return (
-    <Text size="1" emphasis={failed ? 'medium' : 'quiet'} tone={failed ? 'destructive' : undefined} aria-live="polite">
+    <Text
+      size="1"
+      emphasis={failed ? 'medium' : 'quiet'}
+      tone={failed ? 'destructive' : undefined}
+      aria-live="polite"
+    >
       {words}
     </Text>
   );

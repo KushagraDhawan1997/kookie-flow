@@ -1,6 +1,6 @@
-import { Box, Stack } from "@kushagradhawan/kookie-ui-react";
+import { Box, Stack } from '@kushagradhawan/kookie-ui-react';
 
-import { SiteFooter } from "./site-footer";
+import { SiteFooter } from './site-footer';
 
 /**
  * The frame every documentation page sits in.
@@ -33,7 +33,7 @@ export function PageFrame({
   children: React.ReactNode;
 }) {
   return (
-    <Box pb="9" style={{ maxInlineSize: width, marginInline: "auto" }}>
+    <Box pb="9" style={{ maxInlineSize: width, marginInline: 'auto' }}>
       {/* THE FOOTER IS THE FRAME'S, NOT THE CHROME'S. Hung in the content pane, it would put
           one full-window block under a 40rem reading column. Here it takes whatever measure the
           page states, so every page's floor is that page's own width and nothing in

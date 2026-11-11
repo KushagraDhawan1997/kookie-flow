@@ -28,7 +28,9 @@
 .kd-models-arrow {
   flex: none;
   color: color-mix(in oklab, var(--color-text) 45%, transparent);
-  transition: transform 160ms ease, color 160ms ease;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
 }
 
 a.kd-models-row:hover .kd-models-arrow {

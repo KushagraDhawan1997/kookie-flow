@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * Copy-to-clipboard for a code sample. The one interactive part of a code block, and the
@@ -20,15 +20,15 @@
  * stop the arrow keys never reach; and `ToolbarButton` throws outside a toolbar, which makes
  * the requirement loud rather than a comment nobody reads.
  */
-import * as React from "react";
-import { ToolbarButton, type Size } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { ToolbarButton, type Size } from '@kushagradhawan/kookie-ui-react';
 
-import { CopyIcon } from "../app/icons";
+import { CopyIcon } from '../app/icons';
 
 export function CopyButton({
   code,
-  label = "Copy",
-  size = "1",
+  label = 'Copy',
+  size = '1',
   icon,
   iconOnly,
 }: {
@@ -90,7 +90,7 @@ export function CopyButton({
       backdrop
       done={copied}
       {...(iconOnly
-        ? { iconOnly: true as const, "aria-label": copied ? "Copied" : label }
+        ? { iconOnly: true as const, 'aria-label': copied ? 'Copied' : label }
         : { leading: glyph })}
       onClick={() => {
         // `?.` because clipboard access is absent on insecure origins — a docs site served
@@ -103,7 +103,7 @@ export function CopyButton({
         });
       }}
     >
-      {iconOnly ? glyph : copied ? "Copied" : label}
+      {iconOnly ? glyph : copied ? 'Copied' : label}
     </ToolbarButton>
   );
 }

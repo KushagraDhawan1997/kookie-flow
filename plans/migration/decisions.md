@@ -12,22 +12,22 @@ Every entry states what was decided, by whom, and what evidence moved it.
 The brief listed "no text editing in GL" as a hard exclusion and called a blinking caret in GL
 "architecture violated". Flow already ships exactly that:
 
-| File | Lines | What it does |
-|---|---|---|
-| `src/components/text-edit-cursor.tsx` | 343 | Blinking caret (530ms) + selection rects, drawn in WebGL |
-| `src/utils/text-cursor-layout.ts` | 717 | Caret position, selection rects, hit testing from BMFont metrics |
-| `src/components/text-edit-overlay.tsx` | 408 | Invisible 1×1 textarea capturing keys, IME and clipboard |
+| File                                   | Lines | What it does                                                     |
+| -------------------------------------- | ----- | ---------------------------------------------------------------- |
+| `src/components/text-edit-cursor.tsx`  | 343   | Blinking caret (530ms) + selection rects, drawn in WebGL         |
+| `src/utils/text-cursor-layout.ts`      | 717   | Caret position, selection rects, hit testing from BMFont metrics |
+| `src/components/text-edit-overlay.tsx` | 408   | Invisible 1×1 textarea capturing keys, IME and clipboard         |
 
 This was not an accident. `plans/technical-decisions.md` records it as decision **10G**, chosen over
 Canvas2D+contenteditable and MSDF+contenteditable, with the reasoning that the invisible-textarea
 pattern (Figma, Monaco, Google Docs) removes the font-matching problem entirely: MSDF renders from
-BMFont metrics and `text-cursor-layout.ts` positions the caret from *the same* metrics, so there is
+BMFont metrics and `text-cursor-layout.ts` positions the caret from _the same_ metrics, so there is
 one set of measurements and zero visual shift on entering edit mode.
 
 The brief's own goal — DOM never persistently coexists with GL — is already met by this design. The
 DOM element is 1×1, invisible, and present only during an edit.
 
-**Amended rule.** The exclusion binds *on-node widget fields* (brief Phase 5): a number field or a
+**Amended rule.** The exclusion binds _on-node widget fields_ (brief Phase 5): a number field or a
 short label on a node displays in GL and borrows a real DOM `<input>` for the edit. Free-floating
 canvas **text entities** keep the shipped GL caret. This code is audited for defects like any other,
 never as a conformance violation.
@@ -126,7 +126,7 @@ could be added behind later, and note it. Do not propose the port.
 `packages/ui/dist/` including `styles.css`.
 
 For development, Flow consumes it as a local link (`file:`/`link:` to the sibling checkout).
-Publishing v2 is a prerequisite for *releasing* Flow against it, not for building against it.
+Publishing v2 is a prerequisite for _releasing_ Flow against it, not for building against it.
 
 **The blocker.** v2 is **ESM-only** by deliberate design — `"type": "module"`, no `main`, and no
 `require` condition in any export; its own `pack:check` runs the `esm-only` attw profile and marks
@@ -156,7 +156,7 @@ The brief asked for the exact API to feature-detect. It is **an SVG filter refer
 `kookie-ui-v2/packages/ui/src/system/refraction.tsx`.
 
 - **Detection:** `CSS.supports("backdrop-filter", "url(#a) blur(1px)")`, plus a real-render check,
-  because Safari *parses* the value it cannot render — so `CSS.supports` alone is not the test.
+  because Safari _parses_ the value it cannot render — so `CSS.supports` alone is not the test.
 - **Fallback:** additive by construction. The lens is prepended through `var(--kui-lens, )`, whose
   empty substitution resolves to nothing on any engine that cannot render it. Safari and Firefox get
   blur + saturate + glint and no lens.
@@ -190,11 +190,11 @@ Of the 99 tokens the GL layer read, 59 do not exist in v2 and **40 survive by na
 values**. The second half is the dangerous one — no missing token, no compile error, no census
 failure. Three of them would have changed the graph:
 
-| token | v1 | v2 | what it does |
-|---|---|---|---|
-| `--space-N` | 4/8/12/16/24/32/40 | 2/4/8/12/16/24/32 | off by ONE INDEX — every node shrinks ~20% |
-| `--radius-1..5` | 6/8/10/12/16 (medium) | 9999 (default level is `full`) | every node body becomes a stadium |
-| `--gray-*` | the neutral family | absent (`--neutral-*`) | falls back to the DARK table |
+| token           | v1                    | v2                             | what it does                               |
+| --------------- | --------------------- | ------------------------------ | ------------------------------------------ |
+| `--space-N`     | 4/8/12/16/24/32/40    | 2/4/8/12/16/24/32              | off by ONE INDEX — every node shrinks ~20% |
+| `--radius-1..5` | 6/8/10/12/16 (medium) | 9999 (default level is `full`) | every node body becomes a stadium          |
+| `--gray-*`      | the neutral family    | absent (`--neutral-*`)         | falls back to the DARK table               |
 
 The reader identifies which system is mounted (`--neutral-1` exists in v2 and in no v1 build) and
 shifts the space index. Radius is NOT compensated for: the harness pins `radius="large"` so the
@@ -263,13 +263,13 @@ remaining role on a node is one borrowed input, for one field, while it is being
 
 ### What is where
 
-| | |
-|---|---|
-| `widgets-gl.tsx` | every widget's chrome, ONE instanced draw call, kind and value as per-instance attributes |
-| `widget-geometry.ts` | the world box, read by the renderer, the hit test and the borrowed input alike |
-| `widget-hit.ts` | which widget a press landed on, and what a slider drag means at a given x |
-| `widget-edit-overlay.tsx` | the borrowed DOM input — mounts on edit, unmounts on close |
-| `widgets-layer.tsx` | now ONLY consumer-supplied widget components, the documented escape hatch |
+|                           |                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `widgets-gl.tsx`          | every widget's chrome, ONE instanced draw call, kind and value as per-instance attributes |
+| `widget-geometry.ts`      | the world box, read by the renderer, the hit test and the borrowed input alike            |
+| `widget-hit.ts`           | which widget a press landed on, and what a slider drag means at a given x                 |
+| `widget-edit-overlay.tsx` | the borrowed DOM input — mounts on edit, unmounts on close                                |
+| `widgets-layer.tsx`       | now ONLY consumer-supplied widget components, the documented escape hatch                 |
 
 A checkbox and a slider never touch the DOM at any point in a gesture. The other four borrow a
 real input, because of what a text field OWES rather than what is possible: IME composition, the
@@ -590,13 +590,13 @@ and the `radius` prop never reached the fields on the node at all. Both are one 
 The scale is split by role, not by magnitude, and the theme's `data-radius` level scales each half
 on its own terms. Read out of the shipped stylesheet:
 
-| level | `--radius-1..5` (controls) | `--radius-6..10` (surfaces) |
-|---|---|---|
-| none | 0 | 0 |
-| small | 2 3 4 5 6 | 5 6 8 10 12 |
-| medium | 4 6 8 10 12 | 12 18 24 30 36 |
-| large | 6 8 12 14 16 | 24 32 40 48 56 |
-| **full** | **9999 ×5** | **24 32 40 48 56** |
+| level    | `--radius-1..5` (controls) | `--radius-6..10` (surfaces) |
+| -------- | -------------------------- | --------------------------- |
+| none     | 0                          | 0                           |
+| small    | 2 3 4 5 6                  | 5 6 8 10 12                 |
+| medium   | 4 6 8 10 12                | 12 18 24 30 36              |
+| large    | 6 8 12 14 16               | 24 32 40 48 56              |
+| **full** | **9999 ×5**                | **24 32 40 48 56**          |
 
 At `full` the control family becomes a pill and **the surface family does not move at all** — it is
 exactly where `large` leaves it. A `.kui-surface[data-size=N]` reads `--radius-surface-N`
@@ -652,11 +652,11 @@ the numbers were already right and almost none of the derivations were**.
 
 ### v2 has three spacing families, and this package was reading one for all three jobs
 
-| family | tokens | what it dresses |
-|---|---|---|
-| raw palette | `--space-1..12` = 2,4,8,12,16,24,32,40,48,64,96,128 | the material other bands index into |
-| layout | `--layout-space-N`, `--surface-p-N` = 16,24,32,40 | a surface's padding — the one lever density moves |
-| control | `--control-height-N`, `--control-px-N`, `--control-px-pill-N`, `--control-gap-N`, `--row-inset-N` | everything inside a control |
+| family      | tokens                                                                                            | what it dresses                                   |
+| ----------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| raw palette | `--space-1..12` = 2,4,8,12,16,24,32,40,48,64,96,128                                               | the material other bands index into               |
+| layout      | `--layout-space-N`, `--surface-p-N` = 16,24,32,40                                                 | a surface's padding — the one lever density moves |
+| control     | `--control-height-N`, `--control-px-N`, `--control-px-pill-N`, `--control-gap-N`, `--row-inset-N` | everything inside a control                       |
 
 Every number here came from `--space-N`, so a node body's inset was invariant to density while
 every real card beside it moved, and a widget's height would not follow a coarse pointer.
@@ -700,14 +700,14 @@ while, four sections earlier, moving the widget corner to `--radius-control-N`, 
 
 ### What moved, and what deliberately did not
 
-| | before | after |
-|---|---|---|
-| body inset (padding + border) | 12 | 17 |
-| row pitch | 40 (`--space-7`) | 40 (`control-height + gap`, floored by the wiring clear) |
-| widget height | 32 (`--space-6`) | 32 (`row − 2 × row-inset`) |
-| value inset | 6 (literal) | `--control-px-pill-N`, so it grows when the well is a pill |
-| body type | 12 (literal) | 12 (`--font-size-1` at the node index) |
-| label origin | 12 (literal, four sites) | `padding + borderWidth` |
+|                               | before                   | after                                                      |
+| ----------------------------- | ------------------------ | ---------------------------------------------------------- |
+| body inset (padding + border) | 12                       | 17                                                         |
+| row pitch                     | 40 (`--space-7`)         | 40 (`control-height + gap`, floored by the wiring clear)   |
+| widget height                 | 32 (`--space-6`)         | 32 (`row − 2 × row-inset`)                                 |
+| value inset                   | 6 (literal)              | `--control-px-pill-N`, so it grows when the well is a pill |
+| body type                     | 12 (literal)             | 12 (`--font-size-1` at the node index)                     |
+| label origin                  | 12 (literal, four sites) | `padding + borderWidth`                                    |
 
 Type does not move at the resting size, and neither does the pitch — the two changes the audit
 argued loudest for are the two the skeptics killed. 180 laws pass unchanged.
@@ -739,10 +739,18 @@ Yes, and it is nine lines.
 ### What v2 actually ships
 
 ```css
-.kui-surface { border-radius: calc(var(--kui-sf-radius) * var(--kui-corner-k, 1)) }
+.kui-surface {
+  border-radius: calc(var(--kui-sf-radius) * var(--kui-corner-k, 1));
+}
 @supports (corner-shape: squircle) {
-  .kui-surface, .kui-shell:after { --kui-corner-k: 1.613; corner-shape: squircle }
-  .kui-surface.kui-floating-rows { --kui-corner-k: 1.75 }
+  .kui-surface,
+  .kui-shell:after {
+    --kui-corner-k: 1.613;
+    corner-shape: squircle;
+  }
+  .kui-surface.kui-floating-rows {
+    --kui-corner-k: 1.75;
+  }
 }
 ```
 
@@ -782,11 +790,11 @@ and self-corrects. That is what makes the substitution safe rather than merely c
 Painted radius on the harness fixture at `radius="large"`: `--radius-surface-3` = 40 × 1.613 = 64.52.
 Walking the 45° diagonal in from the node's bounding-box corner to the first opaque pixel:
 
-| | diagonal gap |
-|---|---|
-| a circle of that radius predicts | 18.90 px |
-| a squircle of that radius predicts | 10.27 px |
-| **measured** | **10.50 px** |
+|                                    | diagonal gap |
+| ---------------------------------- | ------------ |
+| a circle of that radius predicts   | 18.90 px     |
+| a squircle of that radius predicts | 10.27 px     |
+| **measured**                       | **10.50 px** |
 
 The circle is rejected by 8px. The 0.23px residual is the 0.25px sampling step and the antialiased
 edge.
@@ -856,7 +864,7 @@ already knew the family and only lacked the TTFs.
   hardcoded to `'google-sans'`; it is now `DEFAULT_FAMILY`, and every other family writes a sibling
   in `embedded-fonts/` that nothing imports. Regenerating a different default is a one-word change.
 - **The preset union lost a member.** `FontPreset` is `'inter' | 'roboto' | 'source-serif' |
-  'system'`. Breaking, and deliberate: leaving `'google-sans'` in as an alias for Inter would be a
+'system'`. Breaking, and deliberate: leaving `'google-sans'` in as an alias for Inter would be a
   name that lies about what it draws.
 - **The DOM had to follow.** `widget-edit-overlay.tsx` leads its font stack with the atlas face,
   because the `<input>` it mounts lands exactly on top of the glyphs it replaces. That constant is
@@ -908,7 +916,6 @@ which also owns the aspect-lock default the resize handler had inlined for image
 overlaps the video, and the pixel where they cross must be the node's. It has a witness pixel
 beside it, because without one the check passes when there is no video at all — verified by
 deleting the renderer and watching it go red.
-
 
 ## D17 — evaluation is orchestration in the store, computation in the consumer
 
@@ -1009,7 +1016,6 @@ run to anchor to, so that case keeps the clock's phase. The law runs the same qu
 hold apart, and reads two border points at the same moment into each: a clock-driven arc cannot
 land twice alike, and under sabotage it does not. 533 unit tests, 215 laws.
 
-
 ## D18 — the type table fills in what a node leaves unsaid
 
 **Date:** 2026-09-11
@@ -1050,7 +1056,6 @@ for being worth having. The laws use a scene of two nodes that state a type, a p
 almost nothing else: the sockets answer a press, the sockets are drawn, the header text is on
 screen, and the card is as wide as the table said. Sabotaging the prop sync's resolve fails five
 of them. 563 unit tests, 221 laws.
-
 
 ## D19 — the four rough edges the v2 pass named
 
@@ -1268,7 +1273,6 @@ stylesheet. What changed, by v2's own headings:
   MSDF atlas has one glyph per character and no OpenType features, so the number is centred without
   it.
 
-
 ### D21, 2026-09-12 — the magnet
 
 **Owner ruling: "I dont like that the edge starts from the center of socket, it looks weird,
@@ -1355,7 +1359,7 @@ geometry paths, and only one of them moved.
 - **A drag's source socket counts as connected.** Only for the punch: the ring of canvas colour has
   nothing to hide when the wire starts at the rim, and it cut the new wire off from its own plug.
 - **NaN is not a signal a shader can read.** Pointer absence was NaN, tested `uPointer.x ==
-  uPointer.x`. GLSL compilers may assume no NaNs and fold that to true, so at rest every socket
+uPointer.x`. GLSL compilers may assume no NaNs and fold that to true, so at rest every socket
   computed full proximity and wore its halo with no cursor on the page — measured at alpha 0.22,
   which is one state term lit exactly. Presence is a float uniform now, and the pointer is written
   as (0,0) when there is none, so a flattened branch cannot spread NaN into a vertex position.

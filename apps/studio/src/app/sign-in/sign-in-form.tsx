@@ -68,7 +68,11 @@ export function SignInForm({ next }: { next: string }) {
               {signingUp && (
                 <Field>
                   <FieldLabel>Name</FieldLabel>
-                  <TextField value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+                  <TextField
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="name"
+                  />
                 </Field>
               )}
               <Field>
@@ -105,7 +109,13 @@ export function SignInForm({ next }: { next: string }) {
                   render={
                     <button
                       type="button"
-                      style={{ background: 'none', border: 0, padding: 0, font: 'inherit', cursor: 'pointer' }}
+                      style={{
+                        background: 'none',
+                        border: 0,
+                        padding: 0,
+                        font: 'inherit',
+                        cursor: 'pointer',
+                      }}
                     />
                   }
                   onClick={() => {

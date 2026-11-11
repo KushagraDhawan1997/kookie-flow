@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * The client half of the appearance mechanism: a tiny external store over the same two
@@ -10,12 +10,12 @@
  * the server renders the toggles in their "system"/"auto" position, and the first client
  * render corrects them without a mismatch error — the next-themes shape.
  */
-import * as React from "react";
+import * as React from 'react';
 
-import { APPEARANCE_KEY, CONTRAST_KEY } from "./appearance-script";
+import { APPEARANCE_KEY, CONTRAST_KEY } from './appearance-script';
 
-export type AppearanceChoice = "system" | "light" | "dark";
-export type ContrastChoice = "auto" | "normal" | "high";
+export type AppearanceChoice = 'system' | 'light' | 'dark';
+export type ContrastChoice = 'auto' | 'normal' | 'high';
 
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
@@ -82,13 +82,13 @@ let sessionContrast: ContrastChoice | null = null;
 const appearanceChoice = (): AppearanceChoice => {
   if (sessionAppearance) return sessionAppearance;
   const s = read(APPEARANCE_KEY);
-  return s === "light" || s === "dark" ? s : "system";
+  return s === 'light' || s === 'dark' ? s : 'system';
 };
 
 const contrastChoice = (): ContrastChoice => {
   if (sessionContrast) return sessionContrast;
   const s = read(CONTRAST_KEY);
-  return s === "high" || s === "normal" ? s : "auto";
+  return s === 'high' || s === 'normal' ? s : 'auto';
 };
 
 /**
@@ -100,13 +100,13 @@ const contrastChoice = (): ContrastChoice => {
 const apply = () => {
   const el = document.documentElement;
   const a = appearanceChoice();
-  const dark = a === "system" ? matchMedia("(prefers-color-scheme: dark)").matches : a === "dark";
-  el.setAttribute("data-appearance", dark ? "dark" : "light");
+  const dark = a === 'system' ? matchMedia('(prefers-color-scheme: dark)').matches : a === 'dark';
+  el.setAttribute('data-appearance', dark ? 'dark' : 'light');
   const c = contrastChoice();
   // `auto` removes the attribute rather than writing "normal": Theme's own rule — the
   // platform's `prefers-contrast: more` must still reach a page that never chose (§7).
-  if (c === "auto") el.removeAttribute("data-contrast");
-  else el.setAttribute("data-contrast", c);
+  if (c === 'auto') el.removeAttribute('data-contrast');
+  else el.setAttribute('data-contrast', c);
 };
 
 /* Record the choice, persist it best-effort, then APPLY — in that order, and none of the
@@ -119,29 +119,29 @@ const apply = () => {
    persisting is what survives a reload, and losing the second must not cost the first. */
 export function setAppearance(choice: AppearanceChoice) {
   sessionAppearance = choice;
-  write(APPEARANCE_KEY, choice === "system" ? null : choice);
+  write(APPEARANCE_KEY, choice === 'system' ? null : choice);
   apply();
   emit();
 }
 
 export function setContrast(choice: ContrastChoice) {
   sessionContrast = choice;
-  write(CONTRAST_KEY, choice === "auto" ? null : choice);
+  write(CONTRAST_KEY, choice === 'auto' ? null : choice);
   apply();
   emit();
 }
 
 export function useAppearance() {
-  const choice = React.useSyncExternalStore(subscribe, appearanceChoice, () => "system" as const);
-  const contrast = React.useSyncExternalStore(subscribe, contrastChoice, () => "auto" as const);
+  const choice = React.useSyncExternalStore(subscribe, appearanceChoice, () => 'system' as const);
+  const contrast = React.useSyncExternalStore(subscribe, contrastChoice, () => 'auto' as const);
 
   // While the choice is "system", the OS can flip underneath us — track it live.
   React.useEffect(() => {
-    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const mq = matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
-      if (appearanceChoice() === "system") apply();
+      if (appearanceChoice() === 'system') apply();
     };
-    mq.addEventListener("change", onChange);
+    mq.addEventListener('change', onChange);
     // And the other tab is a second writer to the same storage. Without this a second open
     // tab keeps the old appearance forever AND misreports which chip is active, so clicking the
     // highlighted one writes the stale value back and reverts the first tab's choice.
@@ -157,10 +157,10 @@ export function useAppearance() {
         emit();
       }
     };
-    addEventListener("storage", onStorage);
+    addEventListener('storage', onStorage);
     return () => {
-      mq.removeEventListener("change", onChange);
-      removeEventListener("storage", onStorage);
+      mq.removeEventListener('change', onChange);
+      removeEventListener('storage', onStorage);
     };
   }, []);
 

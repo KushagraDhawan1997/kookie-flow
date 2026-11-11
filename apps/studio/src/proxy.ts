@@ -89,7 +89,14 @@ export function proxy(request: NextRequest) {
   const site = request.headers.get('sec-fetch-site');
   // `none` is a typed URL or a bookmark; older browsers send nothing at all, and those fall
   // through to the Host check above rather than being refused outright.
-  if (api && method !== 'GET' && method !== 'HEAD' && site && site !== 'same-origin' && site !== 'none') {
+  if (
+    api &&
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    site &&
+    site !== 'same-origin' &&
+    site !== 'none'
+  ) {
     return NextResponse.json({ error: 'cross-site request refused' }, { status: 403 });
   }
 

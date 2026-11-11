@@ -89,7 +89,13 @@ export const MODELS: Model[] = [
     kind: 'image',
     summary: 'Makes an image from a prompt, or changes one you give it while keeping the subject.',
     node: 'ai/gpt-image-2.5',
-    price: { from: 0.004, to: 0.4, unit: 'an image', per: 'image', note: 'Priced by size and quality.' },
+    price: {
+      from: 0.004,
+      to: 0.4,
+      unit: 'an image',
+      per: 'image',
+      note: 'Priced by size and quality.',
+    },
     source: {
       host: 'fal',
       endpoints: [
@@ -110,8 +116,19 @@ export const MODELS: Model[] = [
     kind: 'video',
     summary: 'Animates a still into a short clip, moving the way your prompt describes.',
     node: 'video/wan-i2v',
-    price: { from: 0.2, to: 0.5, unit: 'a clip', per: 'clip', note: 'Priced by resolution and length.' },
-    source: { host: 'fal', endpoints: ['fal-ai/wan-i2v'], page: 'https://fal.ai/models/fal-ai/wan-i2v', commercial: true },
+    price: {
+      from: 0.2,
+      to: 0.5,
+      unit: 'a clip',
+      per: 'clip',
+      note: 'Priced by resolution and length.',
+    },
+    source: {
+      host: 'fal',
+      endpoints: ['fal-ai/wan-i2v'],
+      page: 'https://fal.ai/models/fal-ai/wan-i2v',
+      commercial: true,
+    },
   },
   {
     slug: 'clarity-upscaler',
@@ -120,7 +137,13 @@ export const MODELS: Model[] = [
     kind: 'edit',
     summary: 'Enlarges an image up to four times and restores the fine detail.',
     node: 'ai/clarity-upscaler',
-    price: { from: 0.03, to: 0.03, unit: 'a megapixel of the result', per: 'megapixel', note: 'Priced by the size of the result.' },
+    price: {
+      from: 0.03,
+      to: 0.03,
+      unit: 'a megapixel of the result',
+      per: 'megapixel',
+      note: 'Priced by the size of the result.',
+    },
     source: {
       host: 'fal',
       endpoints: ['fal-ai/clarity-upscaler'],
@@ -142,16 +165,60 @@ export const MODELS: Model[] = [
       per: 'cutout',
       note: 'fal bills this model by the second, so these are typical prices.',
     },
-    source: { host: 'fal', endpoints: ['fal-ai/birefnet'], page: 'https://fal.ai/models/fal-ai/birefnet', commercial: true },
+    source: {
+      host: 'fal',
+      endpoints: ['fal-ai/birefnet'],
+      page: 'https://fal.ai/models/fal-ai/birefnet',
+      commercial: true,
+    },
   },
-  { slug: 'flux-2-pro', logo: 'bfl', name: 'FLUX.2 Pro', maker: 'Black Forest Labs', kind: 'image', summary: 'Photographic images with strong prompt following.' },
-  { slug: 'seedream-4', logo: 'bytedance', name: 'Seedream 4', maker: 'ByteDance', kind: 'image', summary: 'Images and edits at up to 4K.' },
-  { slug: 'imagen-4', logo: 'deepmind', name: 'Imagen 4', maker: 'Google', kind: 'image', summary: 'Detailed images with legible text.' },
-  { slug: 'veo-3', logo: 'deepmind', name: 'Veo 3', maker: 'Google', kind: 'video', summary: 'Video with sound, from text or an image.' },
-  { slug: 'kling-2-5', logo: 'kling', name: 'Kling 2.5', maker: 'Kuaishou', kind: 'video', summary: 'Smooth motion from text or a still.' },
+  {
+    slug: 'flux-2-pro',
+    logo: 'bfl',
+    name: 'FLUX.2 Pro',
+    maker: 'Black Forest Labs',
+    kind: 'image',
+    summary: 'Photographic images with strong prompt following.',
+  },
+  {
+    slug: 'seedream-4',
+    logo: 'bytedance',
+    name: 'Seedream 4',
+    maker: 'ByteDance',
+    kind: 'image',
+    summary: 'Images and edits at up to 4K.',
+  },
+  {
+    slug: 'imagen-4',
+    logo: 'deepmind',
+    name: 'Imagen 4',
+    maker: 'Google',
+    kind: 'image',
+    summary: 'Detailed images with legible text.',
+  },
+  {
+    slug: 'veo-3',
+    logo: 'deepmind',
+    name: 'Veo 3',
+    maker: 'Google',
+    kind: 'video',
+    summary: 'Video with sound, from text or an image.',
+  },
+  {
+    slug: 'kling-2-5',
+    logo: 'kling',
+    name: 'Kling 2.5',
+    maker: 'Kuaishou',
+    kind: 'video',
+    summary: 'Smooth motion from text or a still.',
+  },
 ];
 
-export const MODEL_KIND_LABEL: Record<ModelKind, string> = { image: 'Image', video: 'Video', edit: 'Edit' };
+export const MODEL_KIND_LABEL: Record<ModelKind, string> = {
+  image: 'Image',
+  video: 'Video',
+  edit: 'Edit',
+};
 
 export function findModel(slug: string): Model | undefined {
   return MODELS.find((m) => m.slug === slug);
@@ -259,7 +326,10 @@ const SHEETS: Record<string, () => PriceSheet> = {
       'gpt-image-2.5',
       'Size',
       GPT_SIZES.map(([w, h]) => [px(w, h), { size: 'custom', width: w, height: h }]),
-      options('ai/gpt-image-2.5', 'quality', ['auto']).map(([label, quality]) => [label, { quality }])
+      options('ai/gpt-image-2.5', 'quality', ['auto']).map(([label, quality]) => [
+        label,
+        { quality },
+      ])
     ),
   'wan-image-to-video': () =>
     sheet(
@@ -300,7 +370,9 @@ export function priceSheet(model: Model): PriceSheet | undefined {
 /** What connecting a picture adds to a GPT Image run, which the table leaves out. */
 export function gptPicturePrice(): number {
   const ask = { quality: 'low', size: 'square_hd' };
-  return paidFor('gpt-image-2.5', { ...ask, image: picture(1024, 1024) }) - paidFor('gpt-image-2.5', ask);
+  return (
+    paidFor('gpt-image-2.5', { ...ask, image: picture(1024, 1024) }) - paidFor('gpt-image-2.5', ask)
+  );
 }
 
 // Inputs and outputs -----------------------------------------------------------------------------

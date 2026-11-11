@@ -84,6 +84,7 @@ All phases below are complete. Summaries are condensed — see git history for f
 **Architecture:** Core handles performance-critical structural operations. Plugins are thin event wrappers. Users call the same optimized core methods.
 
 **Core additions:**
+
 - `cloneElements()` — pre-allocated ID pool, single-pass edge remapping
 - `addElements()` — batch state update + batch quadtree insert
 - `deleteElements()`, `deleteSelected()`
@@ -157,6 +158,7 @@ One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw
 **Layout:** 40px row height (`--space-7`), 32px widget height (`--space-6`). Vertical stack: Header → Outputs → Inputs.
 
 **Key details:**
+
 - `resolveWidgetConfig()` utility for 3-tier config merge
 - `WidgetsLayer.tsx` in DOM layer with viewport culling
 - Custom widgets: register globally via `widgetTypes` prop or inline per-socket
@@ -178,14 +180,15 @@ One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw
 
 **Adjacency index:** maintained incrementally — 3 Map ops per edge add/remove. Pan/zoom/drag = 0 graph recomputation.
 
-| Operation | Cost |
-|---|---|
-| `getIncomers`/`getOutgoers` | O(1) |
-| `topologicalSort()` | O(V+E), cached against `topologyVersion` |
-| `wouldCreateCycle()` | O(k), early termination |
-| `getAffectedEntities()` | O(k), uses cached topo sort |
+| Operation                   | Cost                                     |
+| --------------------------- | ---------------------------------------- |
+| `getIncomers`/`getOutgoers` | O(1)                                     |
+| `topologicalSort()`         | O(V+E), cached against `topologyVersion` |
+| `wouldCreateCycle()`        | O(k), early termination                  |
+| `getAffectedEntities()`     | O(k), uses cached topo sort              |
 
 **Features:**
+
 - Graph queries: neighbors, traversal (iterator-based), edge queries
 - Structural: `getRoots`, `getLeaves`, `getConnectedComponents` (Union-Find)
 - Topo sort + execution levels (Kahn's algorithm, cached)
@@ -210,12 +213,14 @@ One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw
 **Goal:** Universal selection indicator and resize interaction
 
 **Selection box:**
+
 - `entity-selection.tsx`: instanced mesh for SDF outline-only rounded-rects
 - Constant screen-space thickness (zoom-independent)
 - Hover indicator on same layer (gray outline hover, accent outline selected)
 - Removed per-renderer selection visuals from `nodes.tsx` shader (net savings: 2 attributes + 2 subscriptions)
 
 **Resize handles:**
+
 - 8 handles per selected entity (NW, N, NE, E, SE, S, SW, W), constant screen-space size
 - `resizable` property: `boolean | { width?: boolean; height?: boolean }`
 - `updateEntityDimensions()` store action (O(1), bumps positionVersion, updates quadtree + socket quadtree)
@@ -224,6 +229,7 @@ One `InstancedMesh` where each instance = one glyph quad. 80,000 glyphs = 1 draw
 - `interaction-state.ts` side-channel for hiding handles during interactions
 
 **Bugs found and fixed:**
+
 1. DOM/socket/edge desync during resize — `updateEntityDimensions` needed positionVersion bump, `_movedEntityIds` population, socket quadtree update
 2. Position jumps on mouse release (top/left handles) — needed both position + dimensions changes emitted
 3. Move-then-resize jump — drag end never emitted position changes to `onEntitiesChange`

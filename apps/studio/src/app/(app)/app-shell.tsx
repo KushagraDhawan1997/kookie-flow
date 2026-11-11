@@ -62,7 +62,11 @@ const TOOLS = [
 ] as const;
 
 const APPEARANCES: readonly AppearanceChoice[] = ['system', 'light', 'dark'];
-const APPEARANCE_LABEL: Record<AppearanceChoice, string> = { system: 'System', light: 'Light', dark: 'Dark' };
+const APPEARANCE_LABEL: Record<AppearanceChoice, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
 
 function initials(name: string, email: string): string {
   const words = (name.trim() || email).split(/[\s@._-]+/).filter(Boolean);
@@ -92,7 +96,11 @@ export function AppShell({ name, email, children }: AppShellProps) {
             different spot and it jumped on every trip between here and a graph. */}
         <ShellPaneHeader>
           <Toolbar size="3">
-            <NextLink href="/" aria-label="Studio, home" style={{ color: 'inherit', textDecoration: 'none' }}>
+            <NextLink
+              href="/"
+              aria-label="Studio, home"
+              style={{ color: 'inherit', textDecoration: 'none' }}
+            >
               <Logo height="var(--line-height-7)" />
             </NextLink>
           </Toolbar>
@@ -100,7 +108,11 @@ export function AppShell({ name, email, children }: AppShellProps) {
 
         <ShellScroll fade>
           <ShellNavGroup>
-            <ShellNavItem current={pathname === '/'} leading={<HomeIcon />} render={<NextLink href="/" />}>
+            <ShellNavItem
+              current={pathname === '/'}
+              leading={<HomeIcon />}
+              render={<NextLink href="/" />}
+            >
               Home
             </ShellNavItem>
             <ShellNavItem
@@ -110,10 +122,18 @@ export function AppShell({ name, email, children }: AppShellProps) {
             >
               Templates
             </ShellNavItem>
-            <ShellNavItem current={pathname === '/models'} leading={<ModelsIcon />} render={<NextLink href="/models" />}>
+            <ShellNavItem
+              current={pathname === '/models'}
+              leading={<ModelsIcon />}
+              render={<NextLink href="/models" />}
+            >
               Models
             </ShellNavItem>
-            <ShellNavItem current={pathname.startsWith('/graphs')} leading={<GraphsIcon />} render={<NextLink href="/graphs" />}>
+            <ShellNavItem
+              current={pathname.startsWith('/graphs')}
+              leading={<GraphsIcon />}
+              render={<NextLink href="/graphs" />}
+            >
               Graphs
             </ShellNavItem>
           </ShellNavGroup>
@@ -176,7 +196,10 @@ export function AppShell({ name, email, children }: AppShellProps) {
                 <MenuSub>
                   <MenuSubTrigger>Appearance</MenuSubTrigger>
                   <MenuSubContent>
-                    <MenuRadioGroup value={choice} onValueChange={(value) => setAppearance(value as AppearanceChoice)}>
+                    <MenuRadioGroup
+                      value={choice}
+                      onValueChange={(value) => setAppearance(value as AppearanceChoice)}
+                    >
                       {APPEARANCES.map((c) => (
                         <MenuRadioItem key={c} value={c} closeOnClick>
                           {APPEARANCE_LABEL[c]}
@@ -226,7 +249,11 @@ export function AppPane({ actions, back, children }: AppPaneProps) {
               }
             />
             {back && (
-              <ToolbarButton iconOnly aria-label={back.label} render={<NextLink href={back.href} />}>
+              <ToolbarButton
+                iconOnly
+                aria-label={back.label}
+                render={<NextLink href={back.href} />}
+              >
                 <BackIcon />
               </ToolbarButton>
             )}

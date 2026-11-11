@@ -34,9 +34,27 @@ const initialEntities: Entity[] = [
       },
     },
     inputs: [
-      { id: 'prompt', name: 'Prompt', type: 'string', layout: 'stacked', widget: 'textarea', rows: 3 },
-      { id: 'model', name: 'Model', type: 'enum', options: ['Flux 1.1 Pro', 'Imagen 4', 'Ideogram 3'] },
-      { id: 'aspect', name: 'Aspect', type: 'enum', widget: 'segmented', options: ['1:1', '4:3', '16:9'] },
+      {
+        id: 'prompt',
+        name: 'Prompt',
+        type: 'string',
+        layout: 'stacked',
+        widget: 'textarea',
+        rows: 3,
+      },
+      {
+        id: 'model',
+        name: 'Model',
+        type: 'enum',
+        options: ['Flux 1.1 Pro', 'Imagen 4', 'Ideogram 3'],
+      },
+      {
+        id: 'aspect',
+        name: 'Aspect',
+        type: 'enum',
+        widget: 'segmented',
+        options: ['1:1', '4:3', '16:9'],
+      },
       { id: 'steps', name: 'Steps', type: 'int' },
       { id: 'guidance', name: 'Guidance', type: 'float' },
       { id: 'upscale', name: 'Upscale', type: 'boolean', widget: 'switch' },
@@ -83,10 +101,13 @@ export function Hero() {
       // The part of the window the band shows: the band clips the lid that runs off it.
       const band = box.closest('.kd-band')?.getBoundingClientRect();
       const rect = box.getBoundingClientRect();
-      const visible = band ? Math.min(rect.right, band.right) - Math.max(rect.left, band.left) : width;
+      const visible = band
+        ? Math.min(rect.right, band.right) - Math.max(rect.left, band.left)
+        : width;
       // Generate's top-left corner lands 40px in from the window's left and 40px down, so its
       // input sockets clear the edge.
-      if (visible < 640) flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });
+      if (visible < 640)
+        flow.setCenter((width / 2 - 40) / 0.9, (height / 2 - 40) / 0.9, { zoom: 0.9 });
       else flow.fitView({ padding: 72, maxZoom: 1 });
     });
     return () => cancelAnimationFrame(id);
@@ -110,4 +131,3 @@ export function Hero() {
     </div>
   );
 }
-

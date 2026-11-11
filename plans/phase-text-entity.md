@@ -22,14 +22,14 @@ Architecture note: Text, Image, Video, and Mesh follow a "standalone vs. embedde
 
 ## Key Files
 
-| File | Purpose |
-|---|---|
-| `text-entities.tsx` | Instanced MSDF renderer (single draw call for all text entities) |
-| `text-edit-overlay.tsx` | Hidden textarea for keyboard/IME/clipboard capture |
-| `text-edit-cursor.tsx` | WebGL cursor line + selection rectangles |
-| `text-cursor-layout.ts` | Character position mapping, hit testing, cursor geometry |
-| `text-layout.ts` | MSDF glyph positioning, text measurement, word wrap |
-| `text-texture.ts` | Text style resolution, auto-height calculation |
+| File                    | Purpose                                                          |
+| ----------------------- | ---------------------------------------------------------------- |
+| `text-entities.tsx`     | Instanced MSDF renderer (single draw call for all text entities) |
+| `text-edit-overlay.tsx` | Hidden textarea for keyboard/IME/clipboard capture               |
+| `text-edit-cursor.tsx`  | WebGL cursor line + selection rectangles                         |
+| `text-cursor-layout.ts` | Character position mapping, hit testing, cursor geometry         |
+| `text-layout.ts`        | MSDF glyph positioning, text measurement, word wrap              |
+| `text-texture.ts`       | Text style resolution, auto-height calculation                   |
 
 ---
 

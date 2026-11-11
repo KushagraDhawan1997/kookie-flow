@@ -359,5 +359,9 @@ packages/kookie-flow/
 import { KookieFlow, useFlowStore } from '@kushagradhawan/kookie-flow';
 
 // All plugins
-import { useClipboard, useKeyboardShortcuts, useContextMenu } from '@kushagradhawan/kookie-flow/plugins';
+import {
+  useClipboard,
+  useKeyboardShortcuts,
+  useContextMenu,
+} from '@kushagradhawan/kookie-flow/plugins';
 ```

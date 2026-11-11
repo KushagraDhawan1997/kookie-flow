@@ -20,7 +20,13 @@ import { ProviderLogo } from '@/app/provider-logos';
  * order, then Tidy up, which lays the graph out by its wiring (the same op the agent uses). The panel is v2's — the point it opens at, the platform menu it suppresses, the long press
  * that stands in for a right-click on touch — so all that is here is which rows.
  */
-export function AddNodeMenu({ onAdd, onArrange }: { onAdd: (type: string) => void; onArrange: () => void }) {
+export function AddNodeMenu({
+  onAdd,
+  onArrange,
+}: {
+  onAdd: (type: string) => void;
+  onArrange: () => void;
+}) {
   const categories = React.useMemo(() => registry.categories(), []);
   return (
     <ContextMenuContent>
@@ -31,7 +37,11 @@ export function AddNodeMenu({ onAdd, onArrange }: { onAdd: (type: string) => voi
             <MenuSubTrigger>{category.label}</MenuSubTrigger>
             <MenuSubContent>
               {category.nodes.map((def) => (
-                <MenuItem key={def.type} leading={<NodeMark type={def.type} />} onClick={() => onAdd(def.type)}>
+                <MenuItem
+                  key={def.type}
+                  leading={<NodeMark type={def.type} />}
+                  onClick={() => onAdd(def.type)}
+                >
                   {def.label}
                 </MenuItem>
               ))}
@@ -53,5 +63,7 @@ export function AddNodeMenu({ onAdd, onArrange }: { onAdd: (type: string) => voi
 function NodeMark({ type }: { type: string }) {
   const model = modelForNode(type);
   if (!model) return null;
-  return <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />;
+  return (
+    <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />
+  );
 }

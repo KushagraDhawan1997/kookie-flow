@@ -2,7 +2,15 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
+import {
+  Button,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuTrigger,
+  ToolbarButton,
+} from '@kushagradhawan/kookie-ui-react';
 import { formatUsd } from 'studio-core';
 
 import { BALANCE_CHANGED, type BillingView } from '@/shared/billing';
@@ -60,7 +68,9 @@ export function BalanceMenu({ inToolbar = false }: { inToolbar?: boolean }) {
 
   const label = view?.enabled ? formatUsd(view.balanceMicros) : 'Account';
   const trigger = inToolbar ? (
-    <ToolbarButton aria-label={view?.enabled ? `Balance ${label}` : 'Account'}>{label}</ToolbarButton>
+    <ToolbarButton aria-label={view?.enabled ? `Balance ${label}` : 'Account'}>
+      {label}
+    </ToolbarButton>
   ) : (
     <Button emphasis="quiet" aria-label={view?.enabled ? `Balance ${label}` : 'Account'}>
       {label}
@@ -72,7 +82,9 @@ export function BalanceMenu({ inToolbar = false }: { inToolbar?: boolean }) {
       <MenuTrigger render={trigger} />
       <MenuContent>
         {view?.enabled && <MenuLabel>Balance {label}</MenuLabel>}
-        {view?.enabled && <MenuItem onClick={() => router.push('/billing?add=1')}>Add credits</MenuItem>}
+        {view?.enabled && (
+          <MenuItem onClick={() => router.push('/billing?add=1')}>Add credits</MenuItem>
+        )}
         <MenuItem onClick={() => router.push('/billing')}>Billing</MenuItem>
         <MenuItem onClick={() => void signOut()}>Sign out</MenuItem>
       </MenuContent>

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * The sidebar's contents — plain nav groups (Kushagra: "lets try sidebar"). A NavTree is a
@@ -16,10 +16,10 @@
  * importing it here would drag every chapter into the client bundle to render a list of names.
  * The layout reads the registry on the server and hands this the two fields a link needs.
  */
-import type * as React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Box, ShellNavGroup, ShellNavItem, ShellScroll } from "@kushagradhawan/kookie-ui-react";
+import type * as React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Box, ShellNavGroup, ShellNavItem, ShellScroll } from '@kushagradhawan/kookie-ui-react';
 
 import {
   BoardIcon,
@@ -57,7 +57,7 @@ import {
   TypeIcon,
   UndoIcon,
   VocabularyIcon,
-} from "../icons";
+} from '../icons';
 
 /**
  * THE ROWS CARRY NO GLYPH. One word turns them back on and nothing else has to move.
@@ -78,41 +78,41 @@ const ROW_ICONS = false;
    lookup is optional by construction, so a new chapter fails nothing and simply
    shows up iconless until it is named here. */
 const NAV_ICONS: Record<string, React.ComponentType> = {
-  "/start/installation": InstallIcon,
-  "/start/quick-start": BuildIcon,
-  "/start/state": SwitchIcon,
-  "/entities/model": BoxIcon,
-  "/entities/sockets": SliderIcon,
-  "/entities/types": VocabularyIcon,
-  "/entities/frames": SurfaceIcon,
-  "/entities/text": TextIcon,
-  "/entities/media": PreviewIcon,
-  "/edges/edges": LinkIcon,
-  "/edges/connections": BreadcrumbIcon,
-  "/data/evaluation": BoltIcon,
-  "/data/saving": FileIcon,
-  "/data/history": UndoIcon,
-  "/data/arrange": LayoutIcon,
-  "/data/store": LayersIcon,
-  "/data/graph-queries": TreeIcon,
-  "/data/clipboard": CopyIcon,
-  "/interaction/camera": CompassIcon,
-  "/interaction/selection": CursorIcon,
-  "/interaction/keyboard": KbdIcon,
-  "/interaction/toolbar": ToolbarIcon,
-  "/interaction/context-menu": ContextMenuIcon,
-  "/interaction/drawing": BoardIcon,
-  "/interaction/drop-and-paste": PaperclipIcon,
-  "/styling/theming": ThemeIcon,
-  "/styling/entities": ColorIcon,
-  "/styling/fonts": TypeIcon,
-  "/styling/minimap": MatrixIcon,
-  "/styling/skins": MaterialIcon,
-  "/api/kookie-flow": CodeBlockIcon,
-  "/api/instance": CommandIcon,
-  "/api/hooks": CodeIcon,
-  "/api/utilities": SettingsIcon,
-  "/api/types": NavTreeIcon,
+  '/start/installation': InstallIcon,
+  '/start/quick-start': BuildIcon,
+  '/start/state': SwitchIcon,
+  '/entities/model': BoxIcon,
+  '/entities/sockets': SliderIcon,
+  '/entities/types': VocabularyIcon,
+  '/entities/frames': SurfaceIcon,
+  '/entities/text': TextIcon,
+  '/entities/media': PreviewIcon,
+  '/edges/edges': LinkIcon,
+  '/edges/connections': BreadcrumbIcon,
+  '/data/evaluation': BoltIcon,
+  '/data/saving': FileIcon,
+  '/data/history': UndoIcon,
+  '/data/arrange': LayoutIcon,
+  '/data/store': LayersIcon,
+  '/data/graph-queries': TreeIcon,
+  '/data/clipboard': CopyIcon,
+  '/interaction/camera': CompassIcon,
+  '/interaction/selection': CursorIcon,
+  '/interaction/keyboard': KbdIcon,
+  '/interaction/toolbar': ToolbarIcon,
+  '/interaction/context-menu': ContextMenuIcon,
+  '/interaction/drawing': BoardIcon,
+  '/interaction/drop-and-paste': PaperclipIcon,
+  '/styling/theming': ThemeIcon,
+  '/styling/entities': ColorIcon,
+  '/styling/fonts': TypeIcon,
+  '/styling/minimap': MatrixIcon,
+  '/styling/skins': MaterialIcon,
+  '/api/kookie-flow': CodeBlockIcon,
+  '/api/instance': CommandIcon,
+  '/api/hooks': CodeIcon,
+  '/api/utilities': SettingsIcon,
+  '/api/types': NavTreeIcon,
 };
 
 export type NavLink = { href: string; label: string };
@@ -152,10 +152,8 @@ export function DocsNav({ sections }: { sections: readonly NavSection[] }) {
           insets by the pane's padding. */}
       <Box
         style={{
-          paddingBlockStart:
-            "calc(var(--kui-pane-inset-block-start) - var(--kui-sf-p))",
-          paddingBlockEnd:
-            "calc(var(--kui-pane-inset-block-end) - var(--kui-sf-p))",
+          paddingBlockStart: 'calc(var(--kui-pane-inset-block-start) - var(--kui-sf-p))',
+          paddingBlockEnd: 'calc(var(--kui-pane-inset-block-end) - var(--kui-sf-p))',
         }}
       >
         {sections.map((section) => (

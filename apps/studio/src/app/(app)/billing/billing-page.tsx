@@ -55,7 +55,9 @@ interface BillingPageProps {
  */
 function readableEntries(entries: LedgerEntry[]): LedgerEntry[] {
   const settled = new Set(
-    entries.flatMap((e) => ((e.kind === 'charge' || e.kind === 'release') && e.jobId ? [e.jobId] : []))
+    entries.flatMap((e) =>
+      (e.kind === 'charge' || e.kind === 'release') && e.jobId ? [e.jobId] : []
+    )
   );
   return entries.filter((e) => {
     if (e.kind === 'release') return false;
@@ -95,11 +97,20 @@ export function BillingPage({ topup, reason, openAdd }: BillingPageProps) {
 
   const rows = view ? readableEntries(view.entries) : [];
   const filtered = rows.filter((e) =>
-    filter === 'all' ? true : filter === 'runs' ? e.jobId !== null : e.kind === 'topup' || e.kind === 'adjust'
+    filter === 'all'
+      ? true
+      : filter === 'runs'
+        ? e.jobId !== null
+        : e.kind === 'topup' || e.kind === 'adjust'
   );
 
   const addCredits = enabled ? (
-    <ToolbarButton emphasis="loud" tone="accent" leading={<PlusIcon />} onClick={() => setAdding(true)}>
+    <ToolbarButton
+      emphasis="loud"
+      tone="accent"
+      leading={<PlusIcon />}
+      onClick={() => setAdding(true)}
+    >
       Add credits
     </ToolbarButton>
   ) : undefined;
@@ -115,10 +126,14 @@ export function BillingPage({ topup, reason, openAdd }: BillingPageProps) {
             <Stack gap="3">
               {topup === 'done' && (
                 <Notice tone={confirmed ? 'success' : 'neutral'}>
-                  {confirmed ? 'Payment received. Your balance is updated.' : 'Payment received. Waiting for Stripe to confirm it…'}
+                  {confirmed
+                    ? 'Payment received. Your balance is updated.'
+                    : 'Payment received. Waiting for Stripe to confirm it…'}
                 </Notice>
               )}
-              {topup === 'cancelled' && <Notice>Checkout was cancelled. Nothing was charged.</Notice>}
+              {topup === 'cancelled' && (
+                <Notice>Checkout was cancelled. Nothing was charged.</Notice>
+              )}
               {problem && <Notice tone="destructive">{problem}</Notice>}
             </Stack>
           )}
@@ -145,7 +160,11 @@ export function BillingPage({ topup, reason, openAdd }: BillingPageProps) {
                 Activity
               </Heading>
               {rows.length > 0 && (
-                <SegmentedControl value={filter} onValueChange={(value) => setFilter(value as Filter)} aria-label="Show">
+                <SegmentedControl
+                  value={filter}
+                  onValueChange={(value) => setFilter(value as Filter)}
+                  aria-label="Show"
+                >
                   <SegmentedItem value="all">All</SegmentedItem>
                   <SegmentedItem value="runs">Runs</SegmentedItem>
                   <SegmentedItem value="payments">Payments</SegmentedItem>
@@ -155,15 +174,15 @@ export function BillingPage({ topup, reason, openAdd }: BillingPageProps) {
 
             {filtered.length === 0 ? (
               <EmptyState
-                  title={rows.length === 0 ? 'No activity yet' : 'Nothing here'}
-                  description={
-                    rows.length === 0
-                      ? 'Payments and the cost of every run you make will show here.'
-                      : filter === 'runs'
-                        ? 'No runs have been charged yet.'
-                        : 'No payments yet.'
-                  }
-                />
+                title={rows.length === 0 ? 'No activity yet' : 'Nothing here'}
+                description={
+                  rows.length === 0
+                    ? 'Payments and the cost of every run you make will show here.'
+                    : filter === 'runs'
+                      ? 'No runs have been charged yet.'
+                      : 'No payments yet.'
+                }
+              />
             ) : (
               <div className="kd-billing-table">
                 <Table>
@@ -224,7 +243,11 @@ function ActivityRow({ entry }: { entry: LedgerEntry }) {
         </Stack>
       </TableCell>
       <TableCell align="end" className="kd-num">
-        <Text size="2" weight={entry.amountMicros > 0 ? 'medium' : undefined} emphasis={entry.kind === 'hold' ? 'medium' : undefined}>
+        <Text
+          size="2"
+          weight={entry.amountMicros > 0 ? 'medium' : undefined}
+          emphasis={entry.kind === 'hold' ? 'medium' : undefined}
+        >
           {entry.amountMicros > 0 ? '+' : ''}
           {formatUsd(entry.amountMicros)}
         </Text>
@@ -262,7 +285,9 @@ function AddCreditsDialog({ open, onOpenChange, onProblem }: AddCreditsDialogPro
         <Stack gap="5">
           <Stack gap="2">
             <DialogTitle>Add credits</DialogTitle>
-            <DialogDescription>Paid through Stripe. The balance updates as soon as the payment clears.</DialogDescription>
+            <DialogDescription>
+              Paid through Stripe. The balance updates as soon as the payment clears.
+            </DialogDescription>
           </Stack>
           <SegmentedControl
             value={String(dollars)}

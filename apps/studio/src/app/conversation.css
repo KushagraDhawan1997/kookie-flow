@@ -14,26 +14,26 @@
   --kb-radius: var(--radius-row-3);
 }
 
-[data-kb-size="1"].kb-user-message,
-[data-kb-size="1"].kb-steps,
-[data-kb-size="1"].kb-step,
-[data-kb-size="1"].kb-pictures {
+[data-kb-size='1'].kb-user-message,
+[data-kb-size='1'].kb-steps,
+[data-kb-size='1'].kb-step,
+[data-kb-size='1'].kb-pictures {
   --kb-line: var(--line-height-1);
   --kb-radius: var(--radius-row-1);
 }
 
-[data-kb-size="2"].kb-user-message,
-[data-kb-size="2"].kb-steps,
-[data-kb-size="2"].kb-step,
-[data-kb-size="2"].kb-pictures {
+[data-kb-size='2'].kb-user-message,
+[data-kb-size='2'].kb-steps,
+[data-kb-size='2'].kb-step,
+[data-kb-size='2'].kb-pictures {
   --kb-line: var(--line-height-2);
   --kb-radius: var(--radius-row-2);
 }
 
-[data-kb-size="4"].kb-user-message,
-[data-kb-size="4"].kb-steps,
-[data-kb-size="4"].kb-step,
-[data-kb-size="4"].kb-pictures {
+[data-kb-size='4'].kb-user-message,
+[data-kb-size='4'].kb-steps,
+[data-kb-size='4'].kb-step,
+[data-kb-size='4'].kb-pictures {
   --kb-line: var(--line-height-4);
   --kb-radius: var(--radius-row-4);
 }
@@ -76,7 +76,9 @@
 /* In a pane the jump button rests one step above the floating footer. A sticky offset is measured
    inside the viewport's padding, which is the pane's padding moved inward, so it comes off twice. */
 .kb-conversation[data-kb-pane] .kui-message-scroller-dock {
-  inset-block-end: calc(var(--kui-pane-inset-block-end) - 2 * var(--kui-sf-p) + var(--layout-space-3));
+  inset-block-end: calc(
+    var(--kui-pane-inset-block-end) - 2 * var(--kui-sf-p) + var(--layout-space-3)
+  );
 }
 
 /* THE AGENT'S WORDS keep the breaks it wrote, and a long unbroken word wraps rather than widening
@@ -144,7 +146,7 @@
 }
 
 /* Open, the row is the list's heading rather than a line of its own. */
-.kb-steps-toggle[aria-expanded="true"] .kb-steps-line {
+.kb-steps-toggle[aria-expanded='true'] .kb-steps-line {
   color: var(--color-text);
 }
 
@@ -185,7 +187,7 @@
    half-row the line starts and ends inside is stated in the step's, which the marks are centred in
    too. Two hairlines wide, because one at the border colour disappears beside the marks. */
 .kb-steps-list::before {
-  content: "";
+  content: '';
   position: absolute;
   inset-block: calc(var(--kb-line) / 2 - var(--border-width));
   inset-inline-start: calc((var(--layout-space-3) - 2 * var(--border-width)) / 2);
@@ -211,7 +213,7 @@
    2026-09-18). Centred by `inset-block: 0` plus auto margins rather than against a line-height,
    because the row's own line-height is the panel's and the words' is the step's. */
 .kb-steps-list > .kb-step::before {
-  content: "";
+  content: '';
   position: absolute;
   inset-inline-start: calc(-1 * var(--layout-space-5));
   inset-block: 0;

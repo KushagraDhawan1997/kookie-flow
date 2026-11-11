@@ -37,7 +37,14 @@ export interface EmptyStateProps {
   size?: '2' | '3';
 }
 
-export function EmptyState({ mark, title, description, action, secondary, size = '2' }: EmptyStateProps) {
+export function EmptyState({
+  mark,
+  title,
+  description,
+  action,
+  secondary,
+  size = '2',
+}: EmptyStateProps) {
   // Generous around the words and tight inside them, 5 against 2. The title steps down to 5 only
   // with the sentence at 2: 20 over 14 keeps the jump between them a hierarchy.
   return (

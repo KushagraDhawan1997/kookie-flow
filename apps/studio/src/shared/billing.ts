@@ -23,7 +23,12 @@ export interface LedgerEntry {
   jobId: string | null;
   createdAt: string;
   /** For a run's rows: what ran, and the price split the fee was added to. */
-  run: { label: string; model: string; modelMicros: number | null; feeMicros: number | null } | null;
+  run: {
+    label: string;
+    model: string;
+    modelMicros: number | null;
+    feeMicros: number | null;
+  } | null;
 }
 
 export interface BillingView {

@@ -31,51 +31,51 @@ acceptance are deferred until the organization repository is accessible.
 
 ## Sub-Plans
 
-| Document | What it covers |
-|---|---|
-| [Architecture](./architecture.md) | Problem statement, rendering strategy, component breakdown, file structure |
-| [Entity Model](./entity-model.md) | Entity primitive, socket rows, preview system concept, built-in types |
-| [API](./api.md) | `KookieFlowProps`, node type definitions, socket types, imperative API |
-| [Phases: Completed](./phases-completed.md) | Phases 1–9.5 (all complete, condensed summaries) |
-| [Phase: Text Entity](./phase-text-entity.md) | Phase 10 — MSDF rendering, hidden textarea editing, sizing modes |
-| [Phase: Data Flow](./phase-data-flow.md) | Phase 8.5 — Reactive evaluation, socket values, dirty tracking |
-| [Phases: Upcoming](./phases-upcoming.md) | Phases 11–17 — Image, 3D Mesh, Video, Draw, Preview, Customization, Polish |
-| [Technical Decisions](./technical-decisions.md) | R3F vs alternatives, Zustand, MSDF text, coordinate system, plugin design |
-| [Toolbar](./TOOLBAR_PLAN.md) | Floating toolbar — positioning, widgets, API, layered customization |
+| Document                                        | What it covers                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------------- |
+| [Architecture](./architecture.md)               | Problem statement, rendering strategy, component breakdown, file structure |
+| [Entity Model](./entity-model.md)               | Entity primitive, socket rows, preview system concept, built-in types      |
+| [API](./api.md)                                 | `KookieFlowProps`, node type definitions, socket types, imperative API     |
+| [Phases: Completed](./phases-completed.md)      | Phases 1–9.5 (all complete, condensed summaries)                           |
+| [Phase: Text Entity](./phase-text-entity.md)    | Phase 10 — MSDF rendering, hidden textarea editing, sizing modes           |
+| [Phase: Data Flow](./phase-data-flow.md)        | Phase 8.5 — Reactive evaluation, socket values, dirty tracking             |
+| [Phases: Upcoming](./phases-upcoming.md)        | Phases 11–17 — Image, 3D Mesh, Video, Draw, Preview, Customization, Polish |
+| [Technical Decisions](./technical-decisions.md) | R3F vs alternatives, Zustand, MSDF text, coordinate system, plugin design  |
+| [Toolbar](./TOOLBAR_PLAN.md)                    | Floating toolbar — positioning, widgets, API, layered customization        |
 
 ---
 
 ## Phase Status
 
-| Phase | Name | Status |
-|---|---|---|
-| 1 | Core Renderer | ✅ Complete |
-| 2 | Camera Controls | ✅ Complete |
-| 3 | Selection | ✅ Complete |
-| 3.5 | Performance Foundations | ✅ Complete |
-| 4 | Node Dragging | ✅ Complete |
-| 4.5 | Edge Curves | ✅ Complete |
-| 5 | Edge Connections | ✅ Complete |
-| 5.5 | Connection Validation & Edge Selection | ✅ Complete |
-| 6 | Core Operations & Event Plugins | ✅ Complete |
-| 7A | Edge Enhancements | ✅ Complete |
-| 7.5 | WebGL Text Rendering (MSDF) | ✅ Complete |
-| 7B | Minimap | ✅ Complete |
-| 7C | Grouping & Annotations | ✅ Complete |
-| 7D | Socket Widgets | ✅ Complete |
-| 7E | Connection Events | ✅ Complete |
-| 8 | Graph Engine | ✅ Complete |
-| 8.5 | Data Flow & Evaluation | ✅ Complete |
-| 9 | Entity Model Refactor | ✅ Complete |
-| 9.5 | Selection Box + Resize Handles | ✅ Complete |
-| 10 | Text Entity | ✅ Complete |
-| 11 | Image Entity | ✅ Complete |
-| 12 | 3D Mesh Entity | ✅ Complete (no orbit yet) |
-| 13 | Video Entity | ✅ Complete (no controls yet) |
-| 14 | Draw Entity | Planned |
-| 15 | Preview System | Planned |
-| 16 | Entity Type Customization | Planned |
-| 17 | Polish & Production | In progress — package readiness defects fixed; distribution and broader browser validation remain |
+| Phase | Name                                   | Status                                                                                            |
+| ----- | -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1     | Core Renderer                          | ✅ Complete                                                                                       |
+| 2     | Camera Controls                        | ✅ Complete                                                                                       |
+| 3     | Selection                              | ✅ Complete                                                                                       |
+| 3.5   | Performance Foundations                | ✅ Complete                                                                                       |
+| 4     | Node Dragging                          | ✅ Complete                                                                                       |
+| 4.5   | Edge Curves                            | ✅ Complete                                                                                       |
+| 5     | Edge Connections                       | ✅ Complete                                                                                       |
+| 5.5   | Connection Validation & Edge Selection | ✅ Complete                                                                                       |
+| 6     | Core Operations & Event Plugins        | ✅ Complete                                                                                       |
+| 7A    | Edge Enhancements                      | ✅ Complete                                                                                       |
+| 7.5   | WebGL Text Rendering (MSDF)            | ✅ Complete                                                                                       |
+| 7B    | Minimap                                | ✅ Complete                                                                                       |
+| 7C    | Grouping & Annotations                 | ✅ Complete                                                                                       |
+| 7D    | Socket Widgets                         | ✅ Complete                                                                                       |
+| 7E    | Connection Events                      | ✅ Complete                                                                                       |
+| 8     | Graph Engine                           | ✅ Complete                                                                                       |
+| 8.5   | Data Flow & Evaluation                 | ✅ Complete                                                                                       |
+| 9     | Entity Model Refactor                  | ✅ Complete                                                                                       |
+| 9.5   | Selection Box + Resize Handles         | ✅ Complete                                                                                       |
+| 10    | Text Entity                            | ✅ Complete                                                                                       |
+| 11    | Image Entity                           | ✅ Complete                                                                                       |
+| 12    | 3D Mesh Entity                         | ✅ Complete (no orbit yet)                                                                        |
+| 13    | Video Entity                           | ✅ Complete (no controls yet)                                                                     |
+| 14    | Draw Entity                            | Planned                                                                                           |
+| 15    | Preview System                         | Planned                                                                                           |
+| 16    | Entity Type Customization              | Planned                                                                                           |
+| 17    | Polish & Production                    | In progress — package readiness defects fixed; distribution and broader browser validation remain |
 
 ---
 

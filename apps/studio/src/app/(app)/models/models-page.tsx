@@ -18,10 +18,7 @@ export function ModelsPage() {
   const kinds = Object.keys(MODEL_KIND_LABEL) as ModelKind[];
   return (
     <AppPane>
-      <Page
-        title="Models"
-        description="Pay per run. No subscription."
-      >
+      <Page title="Models" description="Pay per run. No subscription.">
         <Stack gap="8">
           {kinds.map((kind) => {
             const models = MODELS.filter((m) => m.kind === kind);
@@ -50,7 +47,12 @@ export function ModelRow({ model }: { model: Model }) {
     <Stack gap="1" className="kd-models-words">
       <Flex gap="2" align="center">
         {/* The mark names the maker, so the words do not repeat it. */}
-        <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />
+        <ProviderLogo
+          provider={model.logo}
+          maker={model.maker}
+          name={model.name}
+          decorative={false}
+        />
         <Text size="3" weight="medium">
           {model.name}
         </Text>

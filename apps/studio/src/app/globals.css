@@ -19,7 +19,12 @@ body {
    overlay inherits its face from the DOM around it, so the two must agree. `--kd-font-canvas` is
    published by layout.tsx. */
 .kd-canvas {
-  font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family:
+    var(--kd-font-canvas),
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 html {

@@ -1,4 +1,4 @@
-import { NotFoundBody } from "./not-found-body";
+import { NotFoundBody } from './not-found-body';
 
 /**
  * The 404 for a URL that MATCHED a docs route and found no chapter — `/entities`, say,

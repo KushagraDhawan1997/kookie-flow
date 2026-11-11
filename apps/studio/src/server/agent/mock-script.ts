@@ -42,7 +42,9 @@ function outputOf(results: MockHistory['results'], name: string): unknown {
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : {};
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : {};
 }
 
 function strings(value: unknown): string[] {
@@ -57,10 +59,28 @@ function draftOps(ask: string, after: number) {
     drafts: [d1, d2],
     ops: [
       { op: 'add_node', id: brief, type: 'source/text', label: 'Brief', values: { text: ask } },
-      { op: 'add_node', id: d1, type: 'ai/gpt-image-2.5', label: 'Draft 1', values: { quality: 'low', size: 'square_hd' } },
-      { op: 'add_node', id: d2, type: 'ai/gpt-image-2.5', label: 'Draft 2', values: { quality: 'low', size: 'square_hd', reroll: 1 } },
+      {
+        op: 'add_node',
+        id: d1,
+        type: 'ai/gpt-image-2.5',
+        label: 'Draft 1',
+        values: { quality: 'low', size: 'square_hd' },
+      },
+      {
+        op: 'add_node',
+        id: d2,
+        type: 'ai/gpt-image-2.5',
+        label: 'Draft 2',
+        values: { quality: 'low', size: 'square_hd', reroll: 1 },
+      },
       { op: 'add_node', id: pick, type: 'logic/pick', label: 'Pick' },
-      { op: 'add_node', id: final, type: 'ai/gpt-image-2.5', label: 'Final', values: { quality: 'high' } },
+      {
+        op: 'add_node',
+        id: final,
+        type: 'ai/gpt-image-2.5',
+        label: 'Final',
+        values: { quality: 'high' },
+      },
       { op: 'connect', from: `${brief}.out`, to: `${d1}.prompt` },
       { op: 'connect', from: `${brief}.out`, to: `${d2}.prompt` },
       { op: 'connect', from: `${d1}.image`, to: `${pick}.a` },
@@ -85,7 +105,16 @@ export function nextMockTurn(history: MockHistory): MockTurn {
   switch (last.name) {
     case 'read_graph': {
       if (finishing && pickId) {
-        return { calls: [{ name: 'apply_ops', input: { ops: [{ op: 'set_values', id: pickId, values: { choice: choiceOf(userText) } }] } }] };
+        return {
+          calls: [
+            {
+              name: 'apply_ops',
+              input: {
+                ops: [{ op: 'set_values', id: pickId, values: { choice: choiceOf(userText) } }],
+              },
+            },
+          ],
+        };
       }
       if (history.userMessages === 1 && userText.trim().split(/\s+/).length <= 3) {
         return {
@@ -101,9 +130,11 @@ export function nextMockTurn(history: MockHistory): MockTurn {
     case 'apply_ops': {
       const out = record(last.output);
       const created = strings(out.created);
-      if (finishing && finalId) return { calls: [{ name: 'estimate', input: { nodes: [finalId] } }] };
+      if (finishing && finalId)
+        return { calls: [{ name: 'estimate', input: { nodes: [finalId] } }] };
       const drafts = created.slice(1, 3);
-      if (drafts.length < 2) return { text: 'I could not build the drafts. The canvas refused the change.' };
+      if (drafts.length < 2)
+        return { text: 'I could not build the drafts. The canvas refused the change.' };
       return { calls: [{ name: 'estimate', input: { nodes: drafts } }] };
     }
     case 'estimate': {
@@ -111,21 +142,29 @@ export function nextMockTurn(history: MockHistory): MockTurn {
       const nodes = out.nodes;
       const ids = Array.isArray(nodes) ? nodes.map((n) => String(record(n).id)) : [];
       const what = finishing ? 'The final' : 'Two drafts';
-      return { text: `${what}, about ${String(out.total ?? '')}.`, calls: [{ name: 'run', input: { nodes: ids } }] };
+      return {
+        text: `${what}, about ${String(out.total ?? '')}.`,
+        calls: [{ name: 'run', input: { nodes: ids } }],
+      };
     }
     case 'run': {
       const out = record(last.output);
       if (out.declined) return { text: 'Nothing ran. Tell me when you want to go ahead.' };
       const nodes = Array.isArray(out.nodes) ? out.nodes.map(record) : [];
       const failed = nodes.find((n) => n.status === 'error');
-      if (failed) return { text: `${String(failed.label ?? failed.id)} failed: ${String(failed.error ?? 'no reason given')}.` };
+      if (failed)
+        return {
+          text: `${String(failed.label ?? failed.id)} failed: ${String(failed.error ?? 'no reason given')}.`,
+        };
       const first = nodes[0];
       return { calls: [{ name: 'inspect', input: { node: String(first?.id ?? '') } }] };
     }
     case 'inspect':
       return finishing
         ? { text: 'Done. The final is on the canvas.' }
-        : { text: 'The drafts are ready. Which one should I finish, 1 or 2? Or tell me what to change.' };
+        : {
+            text: 'The drafts are ready. Which one should I finish, 1 or 2? Or tell me what to change.',
+          };
     default:
       return { text: 'Done.' };
   }

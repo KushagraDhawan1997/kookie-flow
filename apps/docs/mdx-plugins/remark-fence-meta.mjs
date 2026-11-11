@@ -12,7 +12,7 @@
  */
 export default function remarkFenceMeta() {
   const walk = (node) => {
-    if (node.type === "code" && node.meta) {
+    if (node.type === 'code' && node.meta) {
       node.data ??= {};
       node.data.hProperties = { ...node.data.hProperties, metastring: node.meta };
     }

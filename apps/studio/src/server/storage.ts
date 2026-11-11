@@ -141,7 +141,8 @@ class LocalStorage implements Storage {
     return {
       size,
       mime: mimeFor(key),
-      body: (start, end) => Readable.toWeb(fs.createReadStream(file, { start, end })) as ReadableStream<Uint8Array>,
+      body: (start, end) =>
+        Readable.toWeb(fs.createReadStream(file, { start, end })) as ReadableStream<Uint8Array>,
     };
   }
 

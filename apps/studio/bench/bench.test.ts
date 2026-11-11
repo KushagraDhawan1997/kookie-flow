@@ -69,13 +69,23 @@ const TRIAGE = process.env.BENCH_TRIAGE !== '0';
  * A message from the person, with its triage line where triage is on. Read from the canvas as it
  * stands, as the browser does. A triage that fails is a message without one, and the trial says so.
  */
-async function personSays(text: string, host: BenchHost, trial: { triageCalls: number; triageTokens: number; triageFailed: number }): Promise<ModelMessage> {
+async function personSays(
+  text: string,
+  host: BenchHost,
+  trial: { triageCalls: number; triageTokens: number; triageFailed: number }
+): Promise<ModelMessage> {
   if (!TRIAGE) return { role: 'user', content: text };
   try {
     const result = await triage(text, host.readGraph(), AbortSignal.timeout(10_000));
     trial.triageCalls++;
     trial.triageTokens += result.inputTokens;
-    return { role: 'user', content: [{ type: 'text', text }, { type: 'text', text: triageNote(result.answers) }] };
+    return {
+      role: 'user',
+      content: [
+        { type: 'text', text },
+        { type: 'text', text: triageNote(result.answers) },
+      ],
+    };
   } catch (error) {
     trial.triageFailed++;
     console.log(`[bench] triage failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -95,10 +105,30 @@ const BLOBS = path.join(appDir, '.data', 'blobs');
 
 /** Pictures a run hands back, from the store. Real bytes, so a look costs real image tokens. */
 const PICTURES: BenchPicture[] = [
-  { hash: 'cd9da959113eddbd5e1efb660ee82180133bd85fc6033ee6c612e95f2ad55c21', mime: 'image/jpeg', width: 1024, height: 768 },
-  { hash: '2f8571964c6ec0691e13d55a4617f8d346e96d97d541d54fba036892443ad810', mime: 'image/jpeg', width: 1024, height: 1024 },
-  { hash: 'eb332f1d1a8c4f29873d9d5f4b672b2455d6f8226a5e9650639fc4ac7ff61c56', mime: 'image/jpeg', width: 572, height: 1024 },
-  { hash: 'bdb5996cf78584fde2705735aaae0c087173ad346780a6a2cbe70594f268e3b4', mime: 'image/jpeg', width: 572, height: 1024 },
+  {
+    hash: 'cd9da959113eddbd5e1efb660ee82180133bd85fc6033ee6c612e95f2ad55c21',
+    mime: 'image/jpeg',
+    width: 1024,
+    height: 768,
+  },
+  {
+    hash: '2f8571964c6ec0691e13d55a4617f8d346e96d97d541d54fba036892443ad810',
+    mime: 'image/jpeg',
+    width: 1024,
+    height: 1024,
+  },
+  {
+    hash: 'eb332f1d1a8c4f29873d9d5f4b672b2455d6f8226a5e9650639fc4ac7ff61c56',
+    mime: 'image/jpeg',
+    width: 572,
+    height: 1024,
+  },
+  {
+    hash: 'bdb5996cf78584fde2705735aaae0c087173ad346780a6a2cbe70594f268e3b4',
+    mime: 'image/jpeg',
+    width: 572,
+    height: 1024,
+  },
 ];
 
 /** `.env.local` holds the gateway key. Vite does not put it on `process.env`, so read it here. */
@@ -117,7 +147,9 @@ function usageOf(usage: LanguageModelUsage | undefined): TokenUsage {
   if (!usage) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const cacheRead = usage.inputTokenDetails?.cacheReadTokens ?? 0;
   const cacheWrite = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-  const input = usage.inputTokenDetails?.noCacheTokens ?? Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite);
+  const input =
+    usage.inputTokenDetails?.noCacheTokens ??
+    Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite);
   return { input, output: usage.outputTokens ?? 0, cacheRead, cacheWrite };
 }
 
@@ -159,7 +191,12 @@ interface Trial {
   error?: string;
 }
 
-async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repeat: number): Promise<Trial> {
+async function runTrial(
+  task: Task,
+  model: AgentModel,
+  effort: AgentEffort,
+  repeat: number
+): Promise<Trial> {
   const host = new BenchHost({
     blobsDir: BLOBS,
     pictures: PICTURES,
@@ -188,7 +225,8 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
           tools,
           stopWhen: isStepCount(MAX_STEPS),
           maxOutputTokens: agentMaxOutputTokens(effort),
-          providerOptions: agentMode() === 'gateway' ? agentProviderOptions(model, effort) : undefined,
+          providerOptions:
+            agentMode() === 'gateway' ? agentProviderOptions(model, effort) : undefined,
           abortSignal: AbortSignal.timeout(CALL_TIMEOUT_MS),
         });
         await result.consumeStream();
@@ -202,7 +240,9 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
         if (isBusy(e) && attempt < RETRIES) {
           attempt++;
           const wait = BACKOFF_MS * attempt;
-          console.log(`[bench] the gateway is busy; waiting ${wait / 1000}s (attempt ${attempt}/${RETRIES})`);
+          console.log(
+            `[bench] the gateway is busy; waiting ${wait / 1000}s (attempt ${attempt}/${RETRIES})`
+          );
           await sleep(wait);
           continue;
         }
@@ -217,7 +257,10 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
 
   const taskState: TaskState = { state: host.state, trace, created, said };
   const problems = error ? [`the model call failed: ${error}`] : task.expect(taskState);
-  const tools_ = trace.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.name]: (acc[c.name] ?? 0) + 1 }), {});
+  const tools_ = trace.reduce<Record<string, number>>(
+    (acc, c) => ({ ...acc, [c.name]: (acc[c.name] ?? 0) + 1 }),
+    {}
+  );
 
   return {
     task: task.id,
@@ -240,7 +283,12 @@ async function runTrial(task: Task, model: AgentModel, effort: AgentEffort, repe
     ...triaged,
     micros:
       tokenMicros(model, usage) +
-      tokenMicros(TRIAGE_MODEL, { input: triaged.triageTokens, output: 0, cacheRead: 0, cacheWrite: 0 }),
+      tokenMicros(TRIAGE_MODEL, {
+        input: triaged.triageTokens,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      }),
     seconds: Math.round((Date.now() - started) / 100) / 10,
     said,
     graph: describeGraph(host.state.doc, registry),
@@ -260,13 +308,20 @@ describe('agent bench', () => {
         return;
       }
 
-      const slugs = (process.env.BENCH_MODELS ?? 'anthropic/claude-sonnet-5').split(',').map((s) => s.trim()).filter(Boolean);
+      const slugs = (process.env.BENCH_MODELS ?? 'anthropic/claude-sonnet-5')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       const effort = (process.env.BENCH_EFFORT ?? 'low') as AgentEffort;
       const repeats = Number(process.env.BENCH_REPEATS ?? '1');
       const budgetMicros = Math.round(Number(process.env.BENCH_BUDGET ?? '1') * 1_000_000);
-      const tiers = new Set((process.env.BENCH_TIERS ?? '1,2,3').split(',').map((t) => Number(t.trim())));
+      const tiers = new Set(
+        (process.env.BENCH_TIERS ?? '1,2,3').split(',').map((t) => Number(t.trim()))
+      );
       const wanted = (process.env.BENCH_TASKS ?? 'all').split(',').map((s) => s.trim());
-      const chosen = TASKS.filter((t) => (wanted[0] === 'all' || wanted.includes(t.id)) && tiers.has(t.tier));
+      const chosen = TASKS.filter(
+        (t) => (wanted[0] === 'all' || wanted.includes(t.id)) && tiers.has(t.tier)
+      );
 
       const models = slugs.map((slug) => {
         const model = findAgentModel(slug);
@@ -316,9 +371,15 @@ describe('agent bench', () => {
       const file = path.join(dir, `${stamp}-${label}.json`);
       fs.writeFileSync(
         file,
-        JSON.stringify({ at: new Date().toISOString(), effort, repeats, spentMicros: spent, trials }, null, 2)
+        JSON.stringify(
+          { at: new Date().toISOString(), effort, repeats, spentMicros: spent, trials },
+          null,
+          2
+        )
       );
-      console.log(`[bench] ${trials.length} trial(s), ${usd(spent)} spent, written to ${path.relative(appDir, file)}`);
+      console.log(
+        `[bench] ${trials.length} trial(s), ${usd(spent)} spent, written to ${path.relative(appDir, file)}`
+      );
 
       // A summary per model: what passed, what a scene cost, and where the tokens went.
       for (const model of models) {

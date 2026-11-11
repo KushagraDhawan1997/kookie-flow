@@ -1,5 +1,5 @@
-import { DocsChrome } from "./(docs)/docs-chrome";
-import { NotFoundBody } from "./(docs)/not-found-body";
+import { DocsChrome } from './(docs)/docs-chrome';
+import { NotFoundBody } from './(docs)/not-found-body';
 
 /**
  * The 404, and it exists for two reasons that turn out to be one.

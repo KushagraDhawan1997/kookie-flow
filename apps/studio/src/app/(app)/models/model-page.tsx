@@ -111,7 +111,15 @@ export function ModelPage({ slug }: { slug: string }) {
   );
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
     <Stack gap="4" render={<section />}>
       <Stack gap="1">
@@ -150,7 +158,9 @@ function Facts({ model }: { model: Model }) {
         )}
       </Fact>
       <Fact label="Price">{model.price ? fromPrice(model.price) : 'Soon'}</Fact>
-      {model.source && <Fact label="Commercial use">{model.source.commercial ? 'Allowed' : 'Not allowed'}</Fact>}
+      {model.source && (
+        <Fact label="Commercial use">{model.source.commercial ? 'Allowed' : 'Not allowed'}</Fact>
+      )}
     </dl>
   );
 }
@@ -195,35 +205,35 @@ function Pricing({ model }: { model: Model }) {
   return (
     <Section title="Pricing" description={note}>
       <Table className="kd-model-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{sheet.corner}</TableHead>
-              {sheet.columns.map((column) => (
-                <TableHead key={column} align="end" className="kd-num">
-                  {column}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sheet.rows.map((row) => (
-              <TableRow key={row.label}>
-                <TableCell>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{sheet.corner}</TableHead>
+            {sheet.columns.map((column) => (
+              <TableHead key={column} align="end" className="kd-num">
+                {column}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sheet.rows.map((row) => (
+            <TableRow key={row.label}>
+              <TableCell>
+                <Text size="2" className="kd-num">
+                  {row.label}
+                </Text>
+              </TableCell>
+              {row.prices.map((price, i) => (
+                <TableCell key={sheet.columns[i]} align="end">
                   <Text size="2" className="kd-num">
-                    {row.label}
+                    {money(price)}
                   </Text>
                 </TableCell>
-                {row.prices.map((price, i) => (
-                  <TableCell key={sheet.columns[i]} align="end">
-                    <Text size="2" className="kd-num">
-                      {money(price)}
-                    </Text>
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </Section>
   );
 }
@@ -328,46 +338,54 @@ function Endpoint({ id }: { id: string }) {
   );
 }
 
-function Sockets({ title, rows, withDefault = false }: { title: string; rows: SocketRow[]; withDefault?: boolean }) {
+function Sockets({
+  title,
+  rows,
+  withDefault = false,
+}: {
+  title: string;
+  rows: SocketRow[];
+  withDefault?: boolean;
+}) {
   return (
     <Section title={title}>
       <Table className="kd-model-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              {withDefault && <TableHead>Default</TableHead>}
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Type</TableHead>
+            {withDefault && <TableHead>Default</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.name}>
+              <TableCell>
+                <Stack gap="0">
+                  <Text size="2" weight="medium">
+                    {row.name}
+                  </Text>
+                  {row.about && (
+                    <Text size="2" emphasis="medium">
+                      {row.about}
+                    </Text>
+                  )}
+                </Stack>
+              </TableCell>
+              <TableCell>
+                <Text size="2">{row.type}</Text>
+              </TableCell>
+              {withDefault && (
+                <TableCell>
+                  <Text size="2" emphasis={row.fallback ? undefined : 'medium'}>
+                    {row.fallback ?? '—'}
+                  </Text>
+                </TableCell>
+              )}
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.name}>
-                <TableCell>
-                  <Stack gap="0">
-                    <Text size="2" weight="medium">
-                      {row.name}
-                    </Text>
-                    {row.about && (
-                      <Text size="2" emphasis="medium">
-                        {row.about}
-                      </Text>
-                    )}
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Text size="2">{row.type}</Text>
-                </TableCell>
-                {withDefault && (
-                  <TableCell>
-                    <Text size="2" emphasis={row.fallback ? undefined : 'medium'}>
-                      {row.fallback ?? '—'}
-                    </Text>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+          ))}
+        </TableBody>
+      </Table>
     </Section>
   );
 }

@@ -10,14 +10,14 @@
  */
 
 export type Music = { start(): void; stop(): void };
-export type TrackId = "0" | "a" | "b" | "c";
+export type TrackId = '0' | 'a' | 'b' | 'c';
 
 const LOOKAHEAD = 0.15;
 const C5 = 523.25;
 const C2 = 65.41;
 const hz = (semitones: number, base: number) => base * Math.pow(2, semitones / 12);
 /** Index into a pattern; every pattern here is sized to its loop, so the slot always exists. */
-const at = <T,>(list: readonly T[], i: number) => list[i % list.length] as T;
+const at = <T>(list: readonly T[], i: number) => list[i % list.length] as T;
 
 type N = number | null;
 
@@ -48,40 +48,226 @@ const sixteenth = (bpm: number) => 60 / bpm / 4;
 
 // 0. The first theme.
 const LEAD_0: N[] = [
-  0, 4, 7, 4, 9, 7, 4, null, 2, 5, 9, 5, 7, null, 7, null,
-  0, 4, 7, 12, 11, 7, 4, 7, 9, 5, 2, -1, 0, null, null, null,
-  7, 7, 9, 7, 4, null, 0, 2, 4, 4, 5, 4, 2, null, -1, 2,
-  0, 4, 7, 9, 12, 11, 9, 7, 5, 4, 2, -1, 0, null, -5, null,
+  0,
+  4,
+  7,
+  4,
+  9,
+  7,
+  4,
+  null,
+  2,
+  5,
+  9,
+  5,
+  7,
+  null,
+  7,
+  null,
+  0,
+  4,
+  7,
+  12,
+  11,
+  7,
+  4,
+  7,
+  9,
+  5,
+  2,
+  -1,
+  0,
+  null,
+  null,
+  null,
+  7,
+  7,
+  9,
+  7,
+  4,
+  null,
+  0,
+  2,
+  4,
+  4,
+  5,
+  4,
+  2,
+  null,
+  -1,
+  2,
+  0,
+  4,
+  7,
+  9,
+  12,
+  11,
+  9,
+  7,
+  5,
+  4,
+  2,
+  -1,
+  0,
+  null,
+  -5,
+  null,
 ];
 const ROOTS_0 = [0, 5, 0, 7, 0, 7, 0, 7];
 
 // A. Cartoon chase.
 const LEAD_A: N[] = [
-  7, null, 7, 9, 7, 4, null, 0, 2, null, 2, 4, 5, 4, 2, null,
-  7, null, 7, 9, 12, 9, 7, null, 5, 4, 2, 4, 0, null, null, null,
-  9, null, 9, 11, 12, 11, 9, 7, 5, null, 5, 7, 9, 7, 5, 4,
-  2, 4, 5, 7, 9, 11, 12, null, 11, 9, 7, 5, 4, 2, 0, null,
+  7,
+  null,
+  7,
+  9,
+  7,
+  4,
+  null,
+  0,
+  2,
+  null,
+  2,
+  4,
+  5,
+  4,
+  2,
+  null,
+  7,
+  null,
+  7,
+  9,
+  12,
+  9,
+  7,
+  null,
+  5,
+  4,
+  2,
+  4,
+  0,
+  null,
+  null,
+  null,
+  9,
+  null,
+  9,
+  11,
+  12,
+  11,
+  9,
+  7,
+  5,
+  null,
+  5,
+  7,
+  9,
+  7,
+  5,
+  4,
+  2,
+  4,
+  5,
+  7,
+  9,
+  11,
+  12,
+  null,
+  11,
+  9,
+  7,
+  5,
+  4,
+  2,
+  0,
+  null,
 ];
 const ROOTS_A = [0, 7, 0, 5, 5, 0, 7, 0];
 
 // B. Goofy groove, in a bluesy C.
 const LEAD_B: N[] = [
-  0, null, 3, null, 5, 6, 7, null, 10, null, 7, null, 5, 3, 0, null,
-  0, null, 3, null, 5, 6, 7, 10, 12, null, 10, 7, null, null, null, null,
-  5, null, 8, null, 10, 11, 12, null, 10, null, 7, 5, 3, null, 0, null,
-  -2, 0, 3, 5, 7, null, 5, 3, 0, null, null, null, null, null, null, null,
+  0,
+  null,
+  3,
+  null,
+  5,
+  6,
+  7,
+  null,
+  10,
+  null,
+  7,
+  null,
+  5,
+  3,
+  0,
+  null,
+  0,
+  null,
+  3,
+  null,
+  5,
+  6,
+  7,
+  10,
+  12,
+  null,
+  10,
+  7,
+  null,
+  null,
+  null,
+  null,
+  5,
+  null,
+  8,
+  null,
+  10,
+  11,
+  12,
+  null,
+  10,
+  null,
+  7,
+  5,
+  3,
+  null,
+  0,
+  null,
+  -2,
+  0,
+  3,
+  5,
+  7,
+  null,
+  5,
+  3,
+  0,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
 ];
 const ROOTS_B = [0, 0, 5, 0, 5, 5, 0, 7];
 
 // C. Hyper chiptune: C, A minor, F, G, twice, arpeggiated in sixteenths.
 const CHORDS_C = [
-  [0, 4, 7, 12], [9, 12, 16, 21], [5, 9, 12, 17], [7, 11, 14, 19],
-  [0, 4, 7, 12], [9, 12, 16, 21], [5, 9, 12, 17], [7, 11, 14, 19],
+  [0, 4, 7, 12],
+  [9, 12, 16, 21],
+  [5, 9, 12, 17],
+  [7, 11, 14, 19],
+  [0, 4, 7, 12],
+  [9, 12, 16, 21],
+  [5, 9, 12, 17],
+  [7, 11, 14, 19],
 ];
 const TOP_C: N[] = [12, null, 16, null, 19, null, 16, 14, 12, null, 11, null, 7, null, 11, 12];
 
 const TRACKS: Record<TrackId, Track> = {
-  "0": {
+  '0': {
     step: eighth(126),
     steps: 64,
     swing: 0,
@@ -109,7 +295,8 @@ const TRACKS: Record<TrackId, Track> = {
       if (note !== null) kit.squeak(note, t, len * 0.45, 0.055);
       // Oom on the beat, pah on the off-beat: root low, a high fifth short.
       const root = at(ROOTS_A, bar);
-      if (beat % 2 === 0) kit.bass(beat % 4 === 0 ? root : root + 19, t, beat % 4 === 0 ? len * 1.6 : len * 0.5);
+      if (beat % 2 === 0)
+        kit.bass(beat % 4 === 0 ? root : root + 19, t, beat % 4 === 0 ? len * 1.6 : len * 0.5);
       if (beat === 0 || beat === 4) kit.kick(t);
       if (beat === 2 || beat === 6) kit.clap(t);
       kit.hat(t, beat % 2 ? 0.02 : 0.012);
@@ -157,10 +344,10 @@ const TRACKS: Record<TrackId, Track> = {
 };
 
 export function isTrack(id: string | null | undefined): id is TrackId {
-  return id === "0" || id === "a" || id === "b" || id === "c";
+  return id === '0' || id === 'a' || id === 'b' || id === 'c';
 }
 
-export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
+export function createMusic(ctx: AudioContext, id: TrackId = 'a'): Music {
   const track = TRACKS[id];
   const out = ctx.createGain();
   out.gain.value = 0;
@@ -202,13 +389,13 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
   const kit: Kit = {
     squeak(note, t, len, peak = 0.05) {
       const osc = ctx.createOscillator();
-      osc.type = "square";
+      osc.type = 'square';
       const f = hz(note, C5);
       // A quick upward squeak into each note.
       osc.frequency.setValueAtTime(f * 0.94, t);
       osc.frequency.exponentialRampToValueAtTime(f, t + 0.02);
       const filter = ctx.createBiquadFilter();
-      filter.type = "lowpass";
+      filter.type = 'lowpass';
       filter.frequency.value = 2600;
       const gain = ctx.createGain();
       env(gain, t, peak, len);
@@ -217,7 +404,7 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
     kazoo(note, t, len) {
       // A buzzy saw through a nasal formant, bending up into the note and wobbling.
       const osc = ctx.createOscillator();
-      osc.type = "sawtooth";
+      osc.type = 'sawtooth';
       const f = hz(note, C5 / 2);
       osc.frequency.setValueAtTime(f * 0.89, t);
       osc.frequency.exponentialRampToValueAtTime(f, t + 0.07);
@@ -229,7 +416,7 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
       lfo.start(t);
       lfo.stop(t + len + 0.03);
       const formant = ctx.createBiquadFilter();
-      formant.type = "bandpass";
+      formant.type = 'bandpass';
       formant.frequency.value = 1100;
       formant.Q.value = 2.5;
       const gain = ctx.createGain();
@@ -238,7 +425,7 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
     },
     slide(up, t) {
       const osc = ctx.createOscillator();
-      osc.type = "sine";
+      osc.type = 'sine';
       const [a, b] = up ? [700, 2100] : [2100, 600];
       osc.frequency.setValueAtTime(a, t);
       osc.frequency.exponentialRampToValueAtTime(b, t + 0.32);
@@ -248,7 +435,7 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
     },
     square(note, t, len, peak) {
       const osc = ctx.createOscillator();
-      osc.type = "square";
+      osc.type = 'square';
       osc.frequency.value = hz(note, C5);
       const gain = ctx.createGain();
       env(gain, t, peak, len, 0.003);
@@ -256,7 +443,7 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
     },
     bass(note, t, len, peak = 0.16) {
       const osc = ctx.createOscillator();
-      osc.type = "triangle";
+      osc.type = 'triangle';
       osc.frequency.value = hz(note, C2);
       const gain = ctx.createGain();
       env(gain, t, peak, len);
@@ -271,24 +458,24 @@ export function createMusic(ctx: AudioContext, id: TrackId = "a"): Music {
       voice(osc, gain, gain, t, 0.1);
     },
     clap(t) {
-      hiss(t, "bandpass", 1500, 0.08, 0.08);
+      hiss(t, 'bandpass', 1500, 0.08, 0.08);
     },
     hat(t, peak = 0.025) {
-      hiss(t, "highpass", 7000, peak, 0.03);
+      hiss(t, 'highpass', 7000, peak, 0.03);
     },
     honk(t) {
       // A clown horn: two detuned saws dropping a little, squeezed through a nasal band.
       const gain = ctx.createGain();
       env(gain, t, 0.07, 0.16, 0.01);
       const formant = ctx.createBiquadFilter();
-      formant.type = "bandpass";
+      formant.type = 'bandpass';
       formant.frequency.value = 850;
       formant.Q.value = 3;
       formant.connect(gain);
       gain.connect(out);
       for (const f of [330, 336]) {
         const osc = ctx.createOscillator();
-        osc.type = "sawtooth";
+        osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(f, t);
         osc.frequency.exponentialRampToValueAtTime(f * 0.86, t + 0.16);
         osc.connect(formant);

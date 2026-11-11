@@ -52,7 +52,14 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
-function isPicture(value: unknown): value is { node: string; socket: string; hash: string; mime: string; width: number; height: number } {
+function isPicture(value: unknown): value is {
+  node: string;
+  socket: string;
+  hash: string;
+  mime: string;
+  width: number;
+  height: number;
+} {
   return isRecord(value) && typeof value.hash === 'string' && typeof value.mime === 'string';
 }
 
@@ -60,7 +67,12 @@ export function benchTools(host: BenchHost, options: { images: boolean }): Bench
   const trace: ToolTrace[] = [];
   const created: Array<{ name: string; doc: GraphDocument }> = [];
 
-  const answer = (name: string, input: unknown, output: unknown, extra: Partial<ToolTrace> = {}) => {
+  const answer = (
+    name: string,
+    input: unknown,
+    output: unknown,
+    extra: Partial<ToolTrace> = {}
+  ) => {
     trace.push({
       name,
       inChars: JSON.stringify(input ?? {}).length,
@@ -84,23 +96,45 @@ export function benchTools(host: BenchHost, options: { images: boolean }): Bench
     run: (input) => answer('run', input, host.run(strings(input.nodes))),
 
     inspect: (input) =>
-      answer('inspect', input, host.inspect(String(input.node ?? ''), typeof input.socket === 'string' ? input.socket : undefined)),
+      answer(
+        'inspect',
+        input,
+        host.inspect(
+          String(input.node ?? ''),
+          typeof input.socket === 'string' ? input.socket : undefined
+        )
+      ),
 
-    search_nodes: (input) => answer('search_nodes', input, searchCatalog(registry, String(input.query ?? ''))),
+    search_nodes: (input) =>
+      answer('search_nodes', input, searchCatalog(registry, String(input.query ?? ''))),
 
     list_graphs: (input) => answer('list_graphs', input, []),
 
     create_graph: (input) => {
-      const name = String(input.name ?? '').trim().slice(0, 120) || 'Untitled';
+      const name =
+        String(input.name ?? '')
+          .trim()
+          .slice(0, 120) || 'Untitled';
       const applied = applyOpsToDocument(emptyDocument(), opsFrom(input.ops), registry);
       if (applied.errors.length) {
-        return answer('create_graph', input, { errors: applied.errors.map((e) => ({ index: e.index, message: e.message })) }, {
-          refused: applied.errors.length,
-        });
+        return answer(
+          'create_graph',
+          input,
+          { errors: applied.errors.map((e) => ({ index: e.index, message: e.message })) },
+          {
+            refused: applied.errors.length,
+          }
+        );
       }
       created.push({ name, doc: applied.doc });
       const id = `b${created.length}`;
-      return answer('create_graph', input, { id, name, url: `/g/${id}`, created: applied.created, errors: [] });
+      return answer('create_graph', input, {
+        id,
+        name,
+        url: `/g/${id}`,
+        created: applied.created,
+        errors: [],
+      });
     },
   };
 
@@ -116,12 +150,19 @@ export function benchTools(host: BenchHost, options: { images: boolean }): Bench
             execute: (input: Record<string, unknown>) => execute(input),
             toModelOutput: ({ output }: { output: unknown }) => {
               if (!isPicture(output)) {
-                const reason = isRecord(output) && typeof output.error === 'string' ? output.error : 'There is no picture to look at.';
+                const reason =
+                  isRecord(output) && typeof output.error === 'string'
+                    ? output.error
+                    : 'There is no picture to look at.';
                 return { type: 'text', value: reason };
               }
               const caption = `${output.node}.${output.socket}: ${output.width} × ${output.height}`;
               const bytes = options.images ? host.pictureBytes(output.hash, output.mime) : null;
-              if (!bytes) return { type: 'text', value: `${caption}. The picture could not be shown to you.` };
+              if (!bytes)
+                return {
+                  type: 'text',
+                  value: `${caption}. The picture could not be shown to you.`,
+                };
               return {
                 type: 'content',
                 value: [

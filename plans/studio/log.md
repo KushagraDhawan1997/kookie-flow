@@ -107,7 +107,7 @@ webhook answered 200 and the server logged "credited $5.00 to e2e-check".
   own (the "Create the owner account" heading was dropped at the owner's ask).
 - The balance starts at $0, so every paid node is refused until a test top-up.
 - The listener is a background task of this session; `stripe listen --api-key … --forward-to
-  http://127.0.0.1:3002/api/billing/webhook` has to be running for top-ups to land locally.
+http://127.0.0.1:3002/api/billing/webhook` has to be running for top-ups to land locally.
 - GPT Image's real charge is fal's table, not fal's token bill; fal does not report the tokens a
   request used. BiRefNet's seconds are an estimate for the same reason.
 - No refunds of unused balance, no email verification, no password reset (needs an email service).
@@ -181,7 +181,7 @@ load and came back red.
   a restore that found nothing; a node's `run` may return nothing; the evaluator does not cache
   nothing.
 - **Server.** `findJob` looks up a queued, running or finished row and never submits. `POST
-  /api/jobs` with `restore` answers that row, or 204.
+/api/jobs` with `restore` answers that row, or 204.
 - **Editor.** Opens with `restoreAll()` instead of `evaluateAll()`. Run and Run all are unchanged,
   so a node never made is submitted only when pressed.
 
@@ -699,8 +699,9 @@ toolbar row's own `pointer-events: none`.
 Verified by a browser script, 21 of 21, light and dark. No sidebar. The strip is vertical,
 stacked, level with home and centred. Appearance sits bottom-left. Presses beside the bands'
 controls reach the canvas, and home and appearance still take theirs. ArrowUp walks the strip.
-+ › AI › Generate image and a search for "clamp" plus Enter each add their node. The palette
-reopens on the whole catalog. No page or console errors. `tsc` is clean for studio.
+
+- › AI › Generate image and a search for "clamp" plus Enter each add their node. The palette
+  reopens on the whole catalog. No page or console errors. `tsc` is clean for studio.
 
 ### + opens the palette, and ⌘K does too
 
@@ -717,11 +718,12 @@ v2 fixed the three toolbar gaps as `140b252`, but the vendored tarball predates 
 its `globals.css` rule until the tarball is rebuilt.
 
 Verified by a browser script, 24 of 24, light and dark. The strip holds only +, level with home.
-+ and ⌘K both open the palette with its field focused, on all 27 nodes in five sections. "prompt"
-leaves only the sections that match, and a query matching nothing says so. Escape and a second
-⌘K close it, and the next open starts on the whole catalog. "clamp" plus Enter adds a Clamp from
-a palette opened in the name field, without touching the name, and a click on a row adds that
-node. The bands still pass presses through. No page or console errors. `tsc` is clean for studio.
+
+- and ⌘K both open the palette with its field focused, on all 27 nodes in five sections. "prompt"
+  leaves only the sections that match, and a query matching nothing says so. Escape and a second
+  ⌘K close it, and the next open starts on the whole catalog. "clamp" plus Enter adds a Clamp from
+  a palette opened in the name field, without touching the name, and a click on a row adds that
+  node. The bands still pass presses through. No page or console errors. `tsc` is clean for studio.
 
 Under software GL a close can take over a second, because the palette's blur covers the canvas.
 The script waits for the palette's state instead of sleeping.
@@ -767,7 +769,7 @@ second smoke test (`chain.mjs`) wires 2 + 3 → Add so the case cannot go unnoti
 - **A blank name discarded the document it arrived with** — name and document are judged separately
   now.
 - **The dev server was open to the whole network**, unauthenticated. It binds loopback (`pnpm
-  dev:lan` is the opt-in), and a middleware refuses unknown Hosts (DNS rebinding) and cross-site
+dev:lan` is the opt-in), and a middleware refuses unknown Hosts (DNS rebinding) and cross-site
   writes (CSRF). Verified with forged Host and cross-site requests.
 - **The inspector committed a graph operation per pointer move and per keystroke** — about 120 full
   rebuilds for a two-second drag. Values commit when the edit ends. The canvas widget echo became a
@@ -1190,4 +1192,3 @@ inside the wait, Start over mid-triage, the pane closing mid-triage. The unit co
 Found and not fixed, because it is not this change's: the three PGlite integration tests fail on a
 5-8 second timeout when vitest runs the files in parallel on a loaded machine, and pass with
 `--no-file-parallelism`. It will read as a flaky CI.
-

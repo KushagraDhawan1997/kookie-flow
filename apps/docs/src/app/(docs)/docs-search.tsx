@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * Search (2026-08-21) — the package's `Command` since 2026-09-04.
@@ -25,8 +25,8 @@
  * the index covers to someone who had not yet typed. What it had to say is said where it is
  * decision-relevant, in the empty state, at the moment a search has come back with nothing.
  */
-import * as React from "react";
-import Link from "next/link";
+import * as React from 'react';
+import Link from 'next/link';
 import {
   Button,
   Command,
@@ -39,15 +39,15 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { EmptyState } from "../../blocks/empty-state";
-import { SearchIcon } from "../icons";
-import { searchEntries, type SearchEntry } from "./search";
+import { EmptyState } from '../../blocks/empty-state';
+import { SearchIcon } from '../icons';
+import { searchEntries, type SearchEntry } from './search';
 
 export function DocsSearch({ index }: { index: readonly SearchEntry[] }) {
   const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
+  const [query, setQuery] = React.useState('');
 
   const results = React.useMemo(() => searchEntries(index, query), [index, query]);
 
@@ -55,7 +55,7 @@ export function DocsSearch({ index }: { index: readonly SearchEntry[] }) {
   // `preventDefault` because Chrome's own ⌘K focuses the address bar.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
+      if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setOpen((value) => !value);
       }
@@ -63,11 +63,11 @@ export function DocsSearch({ index }: { index: readonly SearchEntry[] }) {
     // The tab bar's search seat (2026-09-09): a second opener in another component, so it
     // asks by event rather than by lifting the state.
     const onAsk = () => setOpen(true);
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("kd:search", onAsk);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('kd:search', onAsk);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("kd:search", onAsk);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('kd:search', onAsk);
     };
   }, []);
 
@@ -142,12 +142,12 @@ export function DocsSearch({ index }: { index: readonly SearchEntry[] }) {
               first thing you saw. The gate is the app's because the minimum is: `searchEntries`
               is what decides that one character is not a search. */}
           {query.trim().length >= 2 ? (
-          <CommandEmpty>
-            <EmptyState
-              title="Nothing matches"
-              description="The index covers chapter titles, their summaries and their section headings — not the text of every paragraph."
-            />
-          </CommandEmpty>
+            <CommandEmpty>
+              <EmptyState
+                title="Nothing matches"
+                description="The index covers chapter titles, their summaries and their section headings — not the text of every paragraph."
+              />
+            </CommandEmpty>
           ) : null}
         </CommandContent>
       </Command>

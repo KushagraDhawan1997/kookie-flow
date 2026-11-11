@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-import { Specimen } from "../../blocks/specimen";
-import { EXAMPLES } from "../../examples";
-import { CanvasGuard } from "./canvas-guard";
+import { Specimen } from '../../blocks/specimen';
+import { EXAMPLES } from '../../examples';
+import { CanvasGuard } from './canvas-guard';
 
 /**
  * A live specimen and its source, from ONE file.
@@ -16,10 +16,10 @@ import { CanvasGuard } from "./canvas-guard";
 /** Scoped to a subfolder deliberately: Turbopack traces the WHOLE project into the server
     bundle when it cannot statically bound a filesystem read (the same constraint `toc.ts`
     documents). */
-const EXAMPLE_ROOT = path.join(process.cwd(), "src", "examples");
+const EXAMPLE_ROOT = path.join(process.cwd(), 'src', 'examples');
 
 export const readExampleSource = (name: string): string =>
-  readFileSync(path.join(EXAMPLE_ROOT, `${name}.tsx`), "utf8");
+  readFileSync(path.join(EXAMPLE_ROOT, `${name}.tsx`), 'utf8');
 
 export type ExampleProps = {
   /** The example's file name, which is also its registry key — one convention rather than a
@@ -92,7 +92,7 @@ export async function Example({ name, quiet }: ExampleProps) {
      rather than a flag beside it, so there is no second place for the answer to go stale. The
      block takes the ANSWER and never the source, which is what keeps it copyable. */
   return (
-    <Specimen sources={[{ code: source, lang: "tsx" }]} pane={!rootsOwnPane(source)}>
+    <Specimen sources={[{ code: source, lang: 'tsx' }]} pane={!rootsOwnPane(source)}>
       {specimen}
     </Specimen>
   );

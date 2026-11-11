@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   ToolbarButton,
@@ -7,9 +7,9 @@ import {
   TooltipContent,
   TooltipTrigger,
   useToolbarOverflow,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { GitHubIcon } from "../icons";
+import { GitHubIcon } from '../icons';
 
 /**
  * WHERE THE PROJECT LIVES — one control at the trailing edge of the band.
@@ -23,7 +23,11 @@ import { GitHubIcon } from "../icons";
 export function RepoLink({ label, name, href }: { label: string; name: string; href: string }) {
   const overflow = useToolbarOverflow();
   const control = (
-    <ToolbarButton iconOnly aria-label={name} render={<a href={href} target="_blank" rel="noreferrer" />}>
+    <ToolbarButton
+      iconOnly
+      aria-label={name}
+      render={<a href={href} target="_blank" rel="noreferrer" />}
+    >
       <GitHubIcon />
     </ToolbarButton>
   );

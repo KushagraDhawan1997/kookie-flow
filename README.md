@@ -12,12 +12,12 @@ canvas.
 
 ## Packages
 
-| Package | Owns |
-| --- | --- |
-| `@kushagradhawan/kookie-flow-core` | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
-| `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin. |
-| `@kushagradhawan/kookie-flow-skin` | Kookie UI's glass look: colour roles, sizes, shaders and toolbar controls. |
-| `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins. |
+| Package                             | Owns                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `@kushagradhawan/kookie-flow-core`  | Graph data, store, evaluation, history, layout and geometry. No React or browser runtime. |
+| `@kushagradhawan/kookie-flow-webgl` | GPU drawing, interaction and text editing. Uses React/R3F. Its look comes from a skin.    |
+| `@kushagradhawan/kookie-flow-skin`  | Kookie UI's glass look: colour roles, sizes, shaders and toolbar controls.                |
+| `@kushagradhawan/kookie-flow-react` | The usual React entry: `KookieFlow`, `useGraph`, hooks and plugins.                       |
 
 These 0.2.0 candidates are unpublished. Use the workspace or pack all four packages with pnpm.
 The renderer needs the exact UI archive in `vendor/`, React/React DOM 19.2.8+, Three 0.186,
@@ -33,16 +33,26 @@ Import KookieUI's stylesheet and put its `Theme` at the root of your app, then r
 a box with a height.
 
 ```tsx
-"use client";
+'use client';
 
-import { KookieFlow, useGraph, type Entity } from "@kushagradhawan/kookie-flow-react";
-import { skin } from "@kushagradhawan/kookie-flow-skin";
+import { KookieFlow, useGraph, type Entity } from '@kushagradhawan/kookie-flow-react';
+import { skin } from '@kushagradhawan/kookie-flow-skin';
 
 const initialEntities: Entity[] = [
-  { id: "constant", type: "constant", position: { x: 0, y: 0 }, data: { label: "Constant" },
-    outputs: [{ id: "value", name: "Value", type: "float" }] },
-  { id: "viewer", type: "viewer", position: { x: 320, y: 0 }, data: { label: "Viewer" },
-    inputs: [{ id: "value", name: "Value", type: "float" }] },
+  {
+    id: 'constant',
+    type: 'constant',
+    position: { x: 0, y: 0 },
+    data: { label: 'Constant' },
+    outputs: [{ id: 'value', name: 'Value', type: 'float' }],
+  },
+  {
+    id: 'viewer',
+    type: 'viewer',
+    position: { x: 320, y: 0 },
+    data: { label: 'Viewer' },
+    inputs: [{ id: 'value', name: 'Value', type: 'float' }],
+  },
 ];
 
 export default function Graph() {
@@ -51,9 +61,15 @@ export default function Graph() {
   });
 
   return (
-    <div style={{ width: "100%", height: 360 }}>
-      <KookieFlow skin={skin} entities={entities} edges={edges} onEntitiesChange={onEntitiesChange}
-        onEdgesChange={onEdgesChange} onConnect={onConnect} />
+    <div style={{ width: '100%', height: 360 }}>
+      <KookieFlow
+        skin={skin}
+        entities={entities}
+        edges={edges}
+        onEntitiesChange={onEntitiesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      />
     </div>
   );
 }
@@ -93,22 +109,22 @@ instead.
 The site in `apps/docs` is the documentation, published at
 [flow.kookie.design](https://flow.kookie.design).
 
-| section | what it covers |
-|---|---|
-| [Getting started](https://flow.kookie.design/start/installation) | installing, a first graph, and controlled or uncontrolled state |
-| [Entities](https://flow.kookie.design/entities/model) | nodes, sockets and widgets, entity types, frames, text and media |
-| [Edges and connections](https://flow.kookie.design/edges/edges) | edge shapes, labels and markers, and which connections are allowed |
-| [Data](https://flow.kookie.design/data/evaluation) | evaluation, saving, undo, layout, the store, graph queries and the clipboard |
-| [Interaction](https://flow.kookie.design/interaction/camera) | the camera, selection, keyboard, toolbar, context menus, drawing and dropped files |
-| [Styling](https://flow.kookie.design/styling/theming) | theming, node styling, fonts and the minimap |
-| [API reference](https://flow.kookie.design/api/kookie-flow) | every prop, ref method, hook, utility and type |
+| section                                                          | what it covers                                                                     |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [Getting started](https://flow.kookie.design/start/installation) | installing, a first graph, and controlled or uncontrolled state                    |
+| [Entities](https://flow.kookie.design/entities/model)            | nodes, sockets and widgets, entity types, frames, text and media                   |
+| [Edges and connections](https://flow.kookie.design/edges/edges)  | edge shapes, labels and markers, and which connections are allowed                 |
+| [Data](https://flow.kookie.design/data/evaluation)               | evaluation, saving, undo, layout, the store, graph queries and the clipboard       |
+| [Interaction](https://flow.kookie.design/interaction/camera)     | the camera, selection, keyboard, toolbar, context menus, drawing and dropped files |
+| [Styling](https://flow.kookie.design/styling/theming)            | theming, node styling, fonts and the minimap                                       |
+| [API reference](https://flow.kookie.design/api/kookie-flow)      | every prop, ref method, hook, utility and type                                     |
 
 The site also serves these:
 
-| route | what it holds |
-|---|---|
-| `/demo` and `/demo-evaluation` | full-screen demos of a board and of evaluation |
-| any chapter path + `.md` | the same chapter as markdown |
+| route                            | what it holds                                            |
+| -------------------------------- | -------------------------------------------------------- |
+| `/demo` and `/demo-evaluation`   | full-screen demos of a board and of evaluation           |
+| any chapter path + `.md`         | the same chapter as markdown                             |
 | `/llms.txt` and `/llms-full.txt` | an index of every chapter, and every chapter in one file |
 
 Run it locally:
@@ -140,16 +156,16 @@ vendor/                the pinned personal KookieUI archive used by the renderer
 
 Run these from the repository root. They need pnpm 12 and Node 24 or later; `.nvmrc` pins 26 for local work.
 
-| command | what it does |
-|---|---|
-| `pnpm dev` | watch-builds the package and runs the docs site, through turbo |
-| `pnpm docs` | runs the docs site alone |
-| `pnpm test` | runs the package's unit tests with vitest |
+| command             | what it does                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`          | watch-builds the package and runs the docs site, through turbo                                                                                                                      |
+| `pnpm docs`         | runs the docs site alone                                                                                                                                                            |
+| `pnpm test`         | runs the package's unit tests with vitest                                                                                                                                           |
 | `pnpm test:browser` | builds the harness and runs the behaviour checks in Chromium. It needs a Playwright Chromium (`npx playwright install chromium`), or a Chromium binary's path in `KOOKIE_CHROMIUM`. |
-| `pnpm lint` | type-checks every workspace: the package and its harness, `studio-core`, the docs site and the studio |
-| `pnpm format` | formats the repository with Prettier |
-| `pnpm format:check` | reports files that Prettier would change |
-| `pnpm build` | builds the package and the docs site |
+| `pnpm lint`         | type-checks every workspace: the package and its harness, `studio-core`, the docs site and the studio                                                                               |
+| `pnpm format`       | formats the repository with Prettier                                                                                                                                                |
+| `pnpm format:check` | reports files that Prettier would change                                                                                                                                            |
+| `pnpm build`        | builds the package and the docs site                                                                                                                                                |
 
 The bundled Inter MSDF atlas is generated from the Inter font files in
 `packages/kookie-flow-webgl/fonts`. Regenerate it with:

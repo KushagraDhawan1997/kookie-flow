@@ -1,5 +1,11 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { documentFingerprint, emptyDocument, parseDocument, registry, type GraphDocument } from 'studio-core';
+import {
+  documentFingerprint,
+  emptyDocument,
+  parseDocument,
+  registry,
+  type GraphDocument,
+} from 'studio-core';
 import { getDb } from './db';
 import { graphs, jobs, LOCAL_WORKSPACE } from './db/schema';
 
@@ -140,13 +146,14 @@ export async function getGraph(id: string, workspaceId = LOCAL_WORKSPACE) {
 }
 
 /** A new graph, empty unless a document is given (the agent builds one before it is ever opened). */
-export async function createGraph(name = 'Untitled', workspaceId = LOCAL_WORKSPACE, doc: GraphDocument = emptyDocument()) {
+export async function createGraph(
+  name = 'Untitled',
+  workspaceId = LOCAL_WORKSPACE,
+  doc: GraphDocument = emptyDocument()
+) {
   const db = await getDb();
   const id = crypto.randomUUID().slice(0, 8);
-  const [row] = await db
-    .insert(graphs)
-    .values({ id, workspaceId, name, doc })
-    .returning();
+  const [row] = await db.insert(graphs).values({ id, workspaceId, name, doc }).returning();
   if (!row) throw new Error('insert returned nothing');
   return row;
 }
@@ -207,7 +214,11 @@ export async function updateGraph(
       .where(
         revision === undefined
           ? and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId))
-          : and(eq(graphs.id, id), eq(graphs.workspaceId, workspaceId), eq(graphs.revision, revision))
+          : and(
+              eq(graphs.id, id),
+              eq(graphs.workspaceId, workspaceId),
+              eq(graphs.revision, revision)
+            )
       )
       .returning({ revision: graphs.revision, updatedAt: graphs.updatedAt });
 

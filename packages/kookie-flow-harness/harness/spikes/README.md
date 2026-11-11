@@ -2,16 +2,16 @@
 
 One-question measurements, each answering something a behaviour test cannot.
 
-| Spike | Question |
-|---|---|
-| `color-parity.mjs` | Does a colour drawn in GL match the same token drawn in CSS, pixel for pixel? |
-| `color-formats.mjs` | Which CSS colour syntaxes does the token reader actually resolve? |
-| `label-zoom.mjs` | Does a label stay legible and correctly placed across the zoom range? |
-| `theme-flip.mjs` | Does a light→dark→light round trip return the scene to where it started? |
-| `perf-baseline.mjs` | Frame intervals at 1k / 10k / 50k. **Needs a quiet machine.** |
-| `cull-bench.mjs` | What does deciding WHAT to draw cost per frame, walking the graph versus asking the quadtree — and how many of a pan's frames does the hysteresis let a layer skip? |
-| `counts.mjs` | How much WORK does an interaction cost — React commits, draw calls, instances rewritten, bytes allocated? |
-| `token-census.mjs` | Which theme tokens does the GL layer actually get, and which silently fall back? |
+| Spike               | Question                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `color-parity.mjs`  | Does a colour drawn in GL match the same token drawn in CSS, pixel for pixel?                                                                                       |
+| `color-formats.mjs` | Which CSS colour syntaxes does the token reader actually resolve?                                                                                                   |
+| `label-zoom.mjs`    | Does a label stay legible and correctly placed across the zoom range?                                                                                               |
+| `theme-flip.mjs`    | Does a light→dark→light round trip return the scene to where it started?                                                                                            |
+| `perf-baseline.mjs` | Frame intervals at 1k / 10k / 50k. **Needs a quiet machine.**                                                                                                       |
+| `cull-bench.mjs`    | What does deciding WHAT to draw cost per frame, walking the graph versus asking the quadtree — and how many of a pan's frames does the hysteresis let a layer skip? |
+| `counts.mjs`        | How much WORK does an interaction cost — React commits, draw calls, instances rewritten, bytes allocated?                                                           |
+| `token-census.mjs`  | Which theme tokens does the GL layer actually get, and which silently fall back?                                                                                    |
 
 ## Why counts.mjs and not a stopwatch
 
@@ -86,7 +86,6 @@ against a socket that accepts and once against one that refuses, in both appeara
 What to look for: at `awake` the ring thickens and the tip is a separate head held short of it; at
 `recognised` the tip reaches the rim; at `fused` the hole is closed, the dot has swelled and the
 neck has merged into it. A refusing socket must look untouched at every stage.
-
 
 ## CPU regression benchmarks
 

@@ -15,21 +15,35 @@ function sync<T>(result: T | Promise<T | undefined> | undefined): T {
   return result;
 }
 
-const fill = (values: { template: string; a?: string; b?: string; c?: string; d?: string }): string =>
+const fill = (values: {
+  template: string;
+  a?: string;
+  b?: string;
+  c?: string;
+  d?: string;
+}): string =>
   sync(
     template.run(
-      { template: values.template, a: values.a ?? '', b: values.b ?? '', c: values.c ?? '', d: values.d ?? '' },
+      {
+        template: values.template,
+        a: values.a ?? '',
+        b: values.b ?? '',
+        c: values.c ?? '',
+        d: values.d ?? '',
+      },
       ctx
     )
   ).out ?? '';
 
 describe('template', () => {
-  it('keeps the template\'s own spacing around a filled slot', () => {
+  it("keeps the template's own spacing around a filled slot", () => {
     expect(fill({ template: 'file_{a}.png', a: '001' })).toBe('file_001.png');
     expect(fill({ template: '#{a}', a: 'red' })).toBe('#red');
     expect(fill({ template: 'Line 1\n{a}', a: 'two' })).toBe('Line 1\ntwo');
     expect(fill({ template: '{a}, {b}', a: 'x', b: 'y' })).toBe('x, y');
-    expect(fill({ template: '{a} in the style of {b}', a: 'a cat', b: 'Ukiyo-e' })).toBe('a cat in the style of Ukiyo-e');
+    expect(fill({ template: '{a} in the style of {b}', a: 'a cat', b: 'Ukiyo-e' })).toBe(
+      'a cat in the style of Ukiyo-e'
+    );
   });
 
   it('takes the separator with the slot when the slot is empty', () => {
@@ -57,8 +71,12 @@ describe('template', () => {
 
 describe('replace', () => {
   it('matches literally, with no pattern syntax', () => {
-    expect(sync(replace.run({ text: 'a.b.c', find: '.', replacement: '-' }, ctx)).out).toBe('a-b-c');
-    expect(sync(replace.run({ text: 'cost: 5', find: '5', replacement: '$&9' }, ctx)).out).toBe('cost: $&9');
+    expect(sync(replace.run({ text: 'a.b.c', find: '.', replacement: '-' }, ctx)).out).toBe(
+      'a-b-c'
+    );
+    expect(sync(replace.run({ text: 'cost: 5', find: '5', replacement: '$&9' }, ctx)).out).toBe(
+      'cost: $&9'
+    );
     expect(sync(replace.run({ text: 'keep', find: '', replacement: 'x' }, ctx)).out).toBe('keep');
   });
 });

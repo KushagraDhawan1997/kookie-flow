@@ -52,8 +52,10 @@ export async function POST(request: Request) {
 
   const form = await request.formData().catch(() => null);
   const file = form?.get('file');
-  if (!form || !(file instanceof File)) return NextResponse.json({ error: 'file is required' }, { status: 400 });
-  if (!ALLOWED.has(file.type)) return NextResponse.json({ error: `unsupported type ${file.type}` }, { status: 415 });
+  if (!form || !(file instanceof File))
+    return NextResponse.json({ error: 'file is required' }, { status: 400 });
+  if (!ALLOWED.has(file.type))
+    return NextResponse.json({ error: `unsupported type ${file.type}` }, { status: 415 });
   if (file.size > MAX_BYTES) return NextResponse.json({ error: 'file too large' }, { status: 413 });
 
   const bytes = new Uint8Array(await file.arrayBuffer());

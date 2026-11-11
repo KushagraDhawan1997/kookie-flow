@@ -1,6 +1,14 @@
 'use client';
 
-import { Button, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
+import {
+  Button,
+  Menu,
+  MenuContent,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuTrigger,
+  ToolbarButton,
+} from '@kushagradhawan/kookie-ui-react';
 
 import { setAppearance, useAppearance, type AppearanceChoice } from './appearance';
 import { MoonIcon, SunIcon, SystemIcon } from './icons';
@@ -38,7 +46,10 @@ export function AppearanceToggle({ inToolbar = false }: { inToolbar?: boolean })
         }
       />
       <MenuContent>
-        <MenuRadioGroup value={choice} onValueChange={(value) => setAppearance(value as AppearanceChoice)}>
+        <MenuRadioGroup
+          value={choice}
+          onValueChange={(value) => setAppearance(value as AppearanceChoice)}
+        >
           {CHOICES.map((c) => (
             <MenuRadioItem key={c} value={c} closeOnClick>
               {LABELS[c]}

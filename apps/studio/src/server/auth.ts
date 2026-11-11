@@ -53,7 +53,10 @@ async function userCount(db: Db): Promise<number> {
 async function claimLocal(db: Db, userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     for (const table of [graphs, jobs, assets, ledger]) {
-      await tx.update(table).set({ workspaceId: userId }).where(eq(table.workspaceId, LOCAL_WORKSPACE));
+      await tx
+        .update(table)
+        .set({ workspaceId: userId })
+        .where(eq(table.workspaceId, LOCAL_WORKSPACE));
     }
   });
 }
@@ -62,7 +65,12 @@ function build(db: Db) {
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'pg',
-      schema: { user: authUser, session: authSession, account: authAccount, verification: authVerification },
+      schema: {
+        user: authUser,
+        session: authSession,
+        account: authAccount,
+        verification: authVerification,
+      },
     }),
     emailAndPassword: { enabled: true, autoSignIn: true, minPasswordLength: 10 },
     trustedOrigins: trustedOrigins(),

@@ -49,7 +49,12 @@ export interface AgentModel {
 
 const million = (dollars: number) => Math.round(dollars * 1_000_000);
 
-const price = (input: number, output: number, cacheRead: number, cacheWrite: number): TokenPrice => ({
+const price = (
+  input: number,
+  output: number,
+  cacheRead: number,
+  cacheWrite: number
+): TokenPrice => ({
   input: million(input),
   output: million(output),
   cacheRead: million(cacheRead),
@@ -57,13 +62,63 @@ const price = (input: number, output: number, cacheRead: number, cacheWrite: num
 });
 
 export const AGENT_MODELS: readonly AgentModel[] = [
-  { id: 'anthropic/claude-opus-5', name: 'Claude Opus 5', maker: 'Anthropic', provider: 'anthropic', price: price(5, 25, 0.5, 6.25), images: true },
-  { id: 'anthropic/claude-sonnet-5', name: 'Claude Sonnet 5', maker: 'Anthropic', provider: 'anthropic', price: price(2, 10, 0.2, 2.5), images: true },
-  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', maker: 'Anthropic', provider: 'anthropic', price: price(1, 5, 0.1, 1.25), images: true, thinking: 'budget' },
-  { id: 'openai/gpt-6-astra', name: 'GPT-6 Astra', maker: 'OpenAI', provider: 'openai', price: price(10, 50, 1, 12.5), images: true },
-  { id: 'openai/gpt-5.6-sol', name: 'GPT-5.6 Sol', maker: 'OpenAI', provider: 'openai', price: price(2, 10, 0.2, 2.5), images: true },
-  { id: 'openai/gpt-5.6-terra', name: 'GPT-5.6 Terra', maker: 'OpenAI', provider: 'openai', price: price(2, 12, 0.2, 2.5), images: true },
-  { id: 'openai/gpt-5.6-luna', name: 'GPT-5.6 Luna', maker: 'OpenAI', provider: 'openai', price: price(0.2, 1.2, 0.02, 0.25), images: true },
+  {
+    id: 'anthropic/claude-opus-5',
+    name: 'Claude Opus 5',
+    maker: 'Anthropic',
+    provider: 'anthropic',
+    price: price(5, 25, 0.5, 6.25),
+    images: true,
+  },
+  {
+    id: 'anthropic/claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    maker: 'Anthropic',
+    provider: 'anthropic',
+    price: price(2, 10, 0.2, 2.5),
+    images: true,
+  },
+  {
+    id: 'anthropic/claude-haiku-4.5',
+    name: 'Claude Haiku 4.5',
+    maker: 'Anthropic',
+    provider: 'anthropic',
+    price: price(1, 5, 0.1, 1.25),
+    images: true,
+    thinking: 'budget',
+  },
+  {
+    id: 'openai/gpt-6-astra',
+    name: 'GPT-6 Astra',
+    maker: 'OpenAI',
+    provider: 'openai',
+    price: price(10, 50, 1, 12.5),
+    images: true,
+  },
+  {
+    id: 'openai/gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    maker: 'OpenAI',
+    provider: 'openai',
+    price: price(2, 10, 0.2, 2.5),
+    images: true,
+  },
+  {
+    id: 'openai/gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    maker: 'OpenAI',
+    provider: 'openai',
+    price: price(2, 12, 0.2, 2.5),
+    images: true,
+  },
+  {
+    id: 'openai/gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    maker: 'OpenAI',
+    provider: 'openai',
+    price: price(0.2, 1.2, 0.02, 0.25),
+    images: true,
+  },
 ];
 
 /**
@@ -103,7 +158,8 @@ export function findBilledModel(id: string): AgentModel | undefined {
 export function resolveAgentModel(id: string, effort: AgentEffort): AgentModel {
   const stated = BY_ID.get(id);
   if (stated) return stated;
-  const auto = effort === 'high' || effort === 'max' ? 'anthropic/claude-opus-5' : 'anthropic/claude-sonnet-5';
+  const auto =
+    effort === 'high' || effort === 'max' ? 'anthropic/claude-opus-5' : 'anthropic/claude-sonnet-5';
   return BY_ID.get(auto) ?? (AGENT_MODELS[0] as AgentModel);
 }
 
@@ -116,7 +172,12 @@ export type JsonValue = null | string | number | boolean | JsonObject | JsonValu
 export type JsonObject = { [key: string]: JsonValue | undefined };
 
 /** Thinking tokens for a model that takes a budget, per effort. Always under the output cap below. */
-const THINKING_BUDGET: Record<AgentEffort, number> = { low: 2_000, medium: 6_000, high: 16_000, max: 32_000 };
+const THINKING_BUDGET: Record<AgentEffort, number> = {
+  low: 2_000,
+  medium: 6_000,
+  high: 16_000,
+  max: 32_000,
+};
 
 /**
  * The provider options for a call: one effort scale, said the way each provider hears it, and the
@@ -126,11 +187,17 @@ const THINKING_BUDGET: Record<AgentEffort, number> = { low: 2_000, medium: 6_000
  * thinking budget instead. OpenAI's GPT-5.6 and GPT-6 take `reasoningEffort` from low to max.
  * Checked against the AI SDK provider docs and Anthropic's effort docs on 2026-09-17.
  */
-export function agentProviderOptions(model: AgentModel, effort: AgentEffort): Record<string, JsonObject> {
+export function agentProviderOptions(
+  model: AgentModel,
+  effort: AgentEffort
+): Record<string, JsonObject> {
   const gateway = { caching: 'auto' };
   if (model.provider === 'anthropic') {
     if (model.thinking === 'budget') {
-      return { gateway, anthropic: { thinking: { type: 'enabled', budgetTokens: THINKING_BUDGET[effort] } } };
+      return {
+        gateway,
+        anthropic: { thinking: { type: 'enabled', budgetTokens: THINKING_BUDGET[effort] } },
+      };
     }
     return { gateway, anthropic: { thinking: { type: 'adaptive' }, effort } };
   }
@@ -149,7 +216,10 @@ export interface TokenUsage {
 export function tokenMicros(model: AgentModel, usage: TokenUsage): number {
   const p = model.price;
   const total =
-    usage.input * p.input + usage.output * p.output + usage.cacheRead * p.cacheRead + usage.cacheWrite * p.cacheWrite;
+    usage.input * p.input +
+    usage.output * p.output +
+    usage.cacheRead * p.cacheRead +
+    usage.cacheWrite * p.cacheWrite;
   return Math.round(total / 1_000_000);
 }
 
@@ -179,7 +249,12 @@ export const AGENT_MAX_CALLS = 6;
 export function holdEstimateMicros(model: AgentModel, promptChars: number): number {
   // Three characters a token, fewer than the usual four, so the hold is never short.
   const promptTokens = Math.ceil(promptChars / 3);
-  const perCall = tokenMicros(model, { input: promptTokens, output: AGENT_HOLD_OUTPUT_TOKENS, cacheRead: 0, cacheWrite: 0 });
+  const perCall = tokenMicros(model, {
+    input: promptTokens,
+    output: AGENT_HOLD_OUTPUT_TOKENS,
+    cacheRead: 0,
+    cacheWrite: 0,
+  });
   // Later calls in a step mostly read the cache, so two full calls cover a step in practice.
   return perCall * Math.min(2, AGENT_MAX_CALLS);
 }

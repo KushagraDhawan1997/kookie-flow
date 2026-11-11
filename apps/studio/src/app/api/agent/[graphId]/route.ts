@@ -11,12 +11,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gra
   const user = await currentUser();
   if (!user) return signInRequired();
   const { graphId } = await params;
-  if (!(await getGraph(graphId, user.id))) return NextResponse.json({ error: 'That graph does not exist.' }, { status: 404 });
-  return NextResponse.json({ messages: await loadConversation(graphId, user.id), mode: agentMode() });
+  if (!(await getGraph(graphId, user.id)))
+    return NextResponse.json({ error: 'That graph does not exist.' }, { status: 404 });
+  return NextResponse.json({
+    messages: await loadConversation(graphId, user.id),
+    mode: agentMode(),
+  });
 }
 
 /** Start the conversation over. The graph and what the agent built on it stay. */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ graphId: string }> }) {
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ graphId: string }> }
+) {
   const user = await currentUser();
   if (!user) return signInRequired();
   const { graphId } = await params;

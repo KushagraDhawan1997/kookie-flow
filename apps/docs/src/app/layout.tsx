@@ -1,15 +1,15 @@
-import "@kushagradhawan/kookie-ui-react/styles.css";
-import "./globals.css";
+import '@kushagradhawan/kookie-ui-react/styles.css';
+import './globals.css';
 
-import type { Metadata, Viewport } from "next";
-import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
-import { TooltipProvider } from "@kushagradhawan/kookie-ui-react";
+import type { Metadata, Viewport } from 'next';
+import { Inter, Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { TooltipProvider } from '@kushagradhawan/kookie-ui-react';
 
-import { appearanceScript } from "./appearance-script";
-import { wipNoticeScript } from "./(docs)/wip-notice-script";
-import { DevOutlineGate } from "./dev-outline";
-import { DocsTheme } from "./theme-store";
-import { SITE_URL } from "./site";
+import { appearanceScript } from './appearance-script';
+import { wipNoticeScript } from './(docs)/wip-notice-script';
+import { DevOutlineGate } from './dev-outline';
+import { DocsTheme } from './theme-store';
+import { SITE_URL } from './site';
 
 /**
  * THE SITE'S FACE, AND THE CANVAS'S.
@@ -21,18 +21,18 @@ import { SITE_URL } from "./site";
  * jump the moment a field is focused.
  */
 const canvas = Inter({
-  subsets: ["latin"],
-  variable: "--kd-font-canvas",
-  display: "swap",
-  fallback: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+  subsets: ['latin'],
+  variable: '--kd-font-canvas',
+  display: 'swap',
+  fallback: ['ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
 });
 
 /** The heading face. globals.css spends `--kd-font-heading` on the heading slot. */
 const heading = Inter_Tight({
-  subsets: ["latin"],
-  variable: "--kd-font-heading",
-  display: "swap",
-  fallback: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+  subsets: ['latin'],
+  variable: '--kd-font-heading',
+  display: 'swap',
+  fallback: ['ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
 });
 
 /**
@@ -43,22 +43,22 @@ const heading = Inter_Tight({
  * never had it and set code in whatever mono the reader's system shipped.
  */
 const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--kd-font-mono",
-  display: "swap",
-  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+  subsets: ['latin'],
+  variable: '--kd-font-mono',
+  display: 'swap',
+  fallback: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
 });
 
 const siteConfig = {
-  name: "Kookie Flow",
+  name: 'Kookie Flow',
   description:
     "WebGL-native node graph library. React Flow's ergonomics, GPU-rendered for performance at scale.",
   url: SITE_URL,
   author: {
-    name: "Kushagra Dhawan",
-    url: "https://github.com/KushagraDhawan1997",
+    name: 'Kushagra Dhawan',
+    url: 'https://github.com/KushagraDhawan1997',
   },
-  github: "https://github.com/KushagraDhawan1997/kookie-flow",
+  github: 'https://github.com/KushagraDhawan1997/kookie-flow',
 };
 
 export const metadata: Metadata = {
@@ -69,17 +69,17 @@ export const metadata: Metadata = {
   },
   description: siteConfig.description,
   keywords: [
-    "node graph",
-    "webgl",
-    "react",
-    "three.js",
-    "react-three-fiber",
-    "node editor",
-    "workflow",
-    "diagram",
-    "canvas",
-    "performance",
-    "gpu",
+    'node graph',
+    'webgl',
+    'react',
+    'three.js',
+    'react-three-fiber',
+    'node editor',
+    'workflow',
+    'diagram',
+    'canvas',
+    'performance',
+    'gpu',
   ],
   authors: [{ name: siteConfig.author.name, url: siteConfig.author.url }],
   creator: siteConfig.author.name,
@@ -90,21 +90,21 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
     },
   },
   openGraph: {
-    type: "website",
-    locale: "en_US",
+    type: 'website',
+    locale: 'en_US',
     url: siteConfig.url,
     title: siteConfig.name,
     description: siteConfig.description,
     siteName: siteConfig.name,
     images: [
       {
-        url: "/opengraph-image.png",
+        url: '/opengraph-image.png',
         width: 1200,
         height: 630,
         alt: siteConfig.name,
@@ -112,26 +112,26 @@ export const metadata: Metadata = {
     ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: 'summary_large_image',
     title: siteConfig.name,
     description: siteConfig.description,
-    images: ["/opengraph-image.png"],
-    creator: "@kushagradhawan",
+    images: ['/opengraph-image.png'],
+    creator: '@kushagradhawan',
   },
   alternates: {
     canonical: siteConfig.url,
   },
-  category: "technology",
+  category: 'technology',
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
   ],
-  width: "device-width",
+  width: 'device-width',
   initialScale: 1,
-  viewportFit: "cover",
+  viewportFit: 'cover',
 };
 
 /**
@@ -146,11 +146,7 @@ export const viewport: Viewport = {
  * own their own full-viewport canvas. The root stays chrome-free so a route can be an app
  * rather than a page.
  */
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // The font class only publishes `--kd-font-canvas`; it sets no font-family here, so
     // globals.css is the one place that decides where each face lands.
@@ -164,7 +160,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${canvas.variable} ${heading.variable} ${mono.variable}`}
-      style={{ WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%" }}
+      style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}
       suppressHydrationWarning
     >
       <head>

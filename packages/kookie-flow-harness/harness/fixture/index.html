@@ -4,8 +4,14 @@
 <title>Kookie Flow harness fixture</title>
 <link rel="stylesheet" href="./kookie-ui.css" />
 <style>
-  html, body { margin: 0; height: 100%; }
-  #root { height: 100%; }
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+  }
+  #root {
+    height: 100%;
+  }
 </style>
 <div id="root"></div>
 <script>
@@ -34,7 +40,9 @@
       isDisabled: false,
       supportsFiber: true,
       renderers: new Map(),
-      inject: function () { return 1; },
+      inject: function () {
+        return 1;
+      },
       onCommitFiberRoot: function () {
         state.commits++;
         if (state.current) state.marks[state.current] = (state.marks[state.current] || 0) + 1;

@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { findModel } from '../models';
 import { ModelPage } from '../model-page';
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   return { title: findModel((await params).slug)?.name ?? 'Model' };
 }
 

@@ -51,10 +51,22 @@ const OP_SCHEMA: JsonSchema = {
   properties: {
     op: {
       type: 'string',
-      enum: ['add_node', 'remove_node', 'connect', 'disconnect', 'set_values', 'set_label', 'move', 'arrange'],
+      enum: [
+        'add_node',
+        'remove_node',
+        'connect',
+        'disconnect',
+        'set_values',
+        'set_label',
+        'move',
+        'arrange',
+      ],
     },
     type: { type: 'string', description: 'add_node: the node type, as search_nodes gives it.' },
-    id: { type: 'string', description: 'add_node: optional id (omit for the next n<number>). Others: the node.' },
+    id: {
+      type: 'string',
+      description: 'add_node: optional id (omit for the next n<number>). Others: the node.',
+    },
     label: { type: 'string', description: 'add_node, set_label: a short name shown on the node.' },
     values: {
       type: 'object',
@@ -63,7 +75,8 @@ const OP_SCHEMA: JsonSchema = {
     },
     position: {
       type: 'object',
-      description: 'add_node, move: world position. Omit on add_node to let Studio lay the cluster out.',
+      description:
+        'add_node, move: world position. Omit on add_node to let Studio lay the cluster out.',
       properties: { x: { type: 'number' }, y: { type: 'number' } },
       required: ['x', 'y'],
     },
@@ -103,7 +116,8 @@ export const AGENT_TOOLS: readonly AgentToolSpec[] = [
   {
     name: 'estimate',
     where: 'browser',
-    description: 'What running these nodes would cost the person, per node and in total, in US dollars.',
+    description:
+      'What running these nodes would cost the person, per node and in total, in US dollars.',
     inputSchema: {
       type: 'object',
       properties: { nodes: nodeIds('Node ids to price.') },
@@ -114,7 +128,7 @@ export const AGENT_TOOLS: readonly AgentToolSpec[] = [
     name: 'run',
     where: 'browser',
     description:
-      'Run these nodes and what they feed. The person is shown the price and must approve before anything runs; if they decline, say so and wait. Returns each node\'s status and error when it ends.',
+      "Run these nodes and what they feed. The person is shown the price and must approve before anything runs; if they decline, say so and wait. Returns each node's status and error when it ends.",
     inputSchema: {
       type: 'object',
       properties: { nodes: nodeIds('Node ids to run. Downstream nodes follow on their own.') },
@@ -124,12 +138,16 @@ export const AGENT_TOOLS: readonly AgentToolSpec[] = [
   {
     name: 'inspect',
     where: 'browser',
-    description: 'Look at a picture a node made. Use it after a run to judge the result before going on.',
+    description:
+      'Look at a picture a node made. Use it after a run to judge the result before going on.',
     inputSchema: {
       type: 'object',
       properties: {
         node: { type: 'string' },
-        socket: { type: 'string', description: 'The output to look at. Defaults to the node\'s first picture.' },
+        socket: {
+          type: 'string',
+          description: "The output to look at. Defaults to the node's first picture.",
+        },
       },
       required: ['node'],
     },
@@ -141,14 +159,16 @@ export const AGENT_TOOLS: readonly AgentToolSpec[] = [
       'Find node types by what they do. Returns each match with its inputs (type, default, options) and outputs. Search before adding a node you have not used in this conversation.',
     inputSchema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'Words like "upscale", "image edit", "pick".' } },
+      properties: {
+        query: { type: 'string', description: 'Words like "upscale", "image edit", "pick".' },
+      },
       required: ['query'],
     },
   },
   {
     name: 'list_graphs',
     where: 'server',
-    description: 'The person\'s other graphs, newest first, with names and node counts.',
+    description: "The person's other graphs, newest first, with names and node counts.",
     inputSchema: { type: 'object', properties: {} },
   },
   {

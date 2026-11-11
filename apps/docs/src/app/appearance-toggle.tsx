@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   Menu,
@@ -7,16 +7,16 @@ import {
   MenuRadioItem,
   MenuTrigger,
   ToolbarButton,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { setAppearance, useAppearance, type AppearanceChoice } from "./appearance";
-import { MoonIcon, SunIcon, SystemIcon } from "./icons";
+import { setAppearance, useAppearance, type AppearanceChoice } from './appearance';
+import { MoonIcon, SunIcon, SystemIcon } from './icons';
 
-const CHOICES: readonly AppearanceChoice[] = ["system", "light", "dark"];
+const CHOICES: readonly AppearanceChoice[] = ['system', 'light', 'dark'];
 const LABELS: Record<AppearanceChoice, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
 };
 /** The glyph IS the value on a control with no words (2026-09-06). Three choices, three
     marks — the sun, the moon, and the machine you asked to decide. */

@@ -1,10 +1,18 @@
-import Link from "next/link";
-import { Box, Grid, Heading, Link as KookieLink, Page, Stack, Text } from "@kushagradhawan/kookie-ui-react";
+import Link from 'next/link';
+import {
+  Box,
+  Grid,
+  Heading,
+  Link as KookieLink,
+  Page,
+  Stack,
+  Text,
+} from '@kushagradhawan/kookie-ui-react';
 
-import { CanvasGuard } from "./canvas-guard";
-import { Hero } from "./hero";
-import { PageFrame } from "./page-frame";
-import { SECTIONS, chaptersIn } from "./chapters";
+import { CanvasGuard } from './canvas-guard';
+import { Hero } from './hero';
+import { PageFrame } from './page-frame';
+import { SECTIONS, chaptersIn } from './chapters';
 
 /**
  * The front door.
@@ -51,10 +59,10 @@ import { SECTIONS, chaptersIn } from "./chapters";
  * invent a group the navigation does not have. A plain list here, because nothing derives them.
  */
 const DEMOS: { href: string; label: string }[] = [
-  { href: "/demo", label: "Playground" },
-  { href: "/demo-evaluation", label: "Evaluation pipeline" },
-  { href: "/demo-webgl", label: "WebGL benchmark" },
-  { href: "/demo-header", label: "Header positions" },
+  { href: '/demo', label: 'Playground' },
+  { href: '/demo-evaluation', label: 'Evaluation pipeline' },
+  { href: '/demo-webgl', label: 'WebGL benchmark' },
+  { href: '/demo-header', label: 'Header positions' },
 ];
 
 export default function Home() {
@@ -63,7 +71,7 @@ export default function Home() {
       {/* THE MASTHEAD: the title, then the deck. No mark above the title — the sidebar's
           masthead is three inches away and already carries it, and the footer signs the page
           off with the long form. */}
-      <Box style={{ maxInlineSize: "48rem", marginInline: "auto" }}>
+      <Box style={{ maxInlineSize: '48rem', marginInline: 'auto' }}>
         <Page
           title="Kookie Flow"
           description="A node graph library for React that renders on the GPU. It keeps React Flow's ergonomics — entities, edges and a hook to hold them — and draws 50,000 nodes at 60fps with zero React re-renders while you pan, zoom and drag."
@@ -85,9 +93,8 @@ export default function Home() {
         </div>
       </Box>
       <PageFrame width="48rem">
-      <Stack gap="10">
-
-        {/* NO HEADING OVER THIS. The grid is the whole page, and a heading over the only thing
+        <Stack gap="10">
+          {/* NO HEADING OVER THIS. The grid is the whole page, and a heading over the only thing
             on a page is a second title for it.
 
             THE CELLS TAKE THE `h2`. Each cell IS a top-level section of this page, so each
@@ -96,26 +103,22 @@ export default function Home() {
             `9` (48px) between rows against `7` (32px) between columns: a row break is a bigger
             gap than a column gutter or the grid reads as one wandering list, and both are clear
             of the `4` inside a cell by the two steps proximity asks for. */}
-        <Stack gap="8">
-          <Grid
-            columns="repeat(auto-fit, minmax(20rem, 1fr))"
-            gapX="7"
-            gapY="9"
-          >
-            {SECTIONS.map((section) => {
-              const chapters = chaptersIn(section.id);
-              if (chapters.length === 0) return null;
-              return (
-                <Stack key={section.id} gap="4">
-                  <Stack gap="3" className="kd-prose">
-                    <Heading size="5" render={<h2 />}>
-                      {section.title}
-                    </Heading>
-                    <Text size="3" emphasis="medium" render={<p />}>
-                      {section.blurb}
-                    </Text>
-                  </Stack>
-                  {/* ONE COLUMN. A section's chapters ARE a list, so it is a Stack and the
+          <Stack gap="8">
+            <Grid columns="repeat(auto-fit, minmax(20rem, 1fr))" gapX="7" gapY="9">
+              {SECTIONS.map((section) => {
+                const chapters = chaptersIn(section.id);
+                if (chapters.length === 0) return null;
+                return (
+                  <Stack key={section.id} gap="4">
+                    <Stack gap="3" className="kd-prose">
+                      <Heading size="5" render={<h2 />}>
+                        {section.title}
+                      </Heading>
+                      <Text size="3" emphasis="medium" render={<p />}>
+                        {section.blurb}
+                      </Text>
+                    </Stack>
+                    {/* ONE COLUMN. A section's chapters ARE a list, so it is a Stack and the
                       number of columns stops being a function of how much room the cell happens
                       to have.
 
@@ -124,42 +127,42 @@ export default function Home() {
                       rows float as stray words with no affordance until the pointer arrives. A
                       chapter is a place and the thing that goes to a place is a link — which is
                       also the one spelling that says so while nobody is pointing at it. */}
-                  <Stack gap="3" align="start">
-                    {chapters.map((chapter) => (
-                      <KookieLink
-                        key={chapter.slug}
-                        size="3"
-                        render={<Link href={`/${chapter.slug}`} />}
-                      >
-                        {chapter.title}
-                      </KookieLink>
-                    ))}
+                    <Stack gap="3" align="start">
+                      {chapters.map((chapter) => (
+                        <KookieLink
+                          key={chapter.slug}
+                          size="3"
+                          render={<Link href={`/${chapter.slug}`} />}
+                        >
+                          {chapter.title}
+                        </KookieLink>
+                      ))}
+                    </Stack>
                   </Stack>
-                </Stack>
-              );
-            })}
+                );
+              })}
 
-            <Stack gap="4">
-              <Stack gap="3" className="kd-prose">
-                <Heading size="5" render={<h2 />}>
-                  Live demos
-                </Heading>
-                <Text size="3" emphasis="medium" render={<p />}>
-                  Open a full-window canvas and use the library the way an app
-                  would. Each demo runs on the same package these pages document.
-                </Text>
+              <Stack gap="4">
+                <Stack gap="3" className="kd-prose">
+                  <Heading size="5" render={<h2 />}>
+                    Live demos
+                  </Heading>
+                  <Text size="3" emphasis="medium" render={<p />}>
+                    Open a full-window canvas and use the library the way an app would. Each demo
+                    runs on the same package these pages document.
+                  </Text>
+                </Stack>
+                <Stack gap="3" align="start">
+                  {DEMOS.map((demo) => (
+                    <KookieLink key={demo.href} size="3" render={<Link href={demo.href} />}>
+                      {demo.label}
+                    </KookieLink>
+                  ))}
+                </Stack>
               </Stack>
-              <Stack gap="3" align="start">
-                {DEMOS.map((demo) => (
-                  <KookieLink key={demo.href} size="3" render={<Link href={demo.href} />}>
-                    {demo.label}
-                  </KookieLink>
-                ))}
-              </Stack>
-            </Stack>
-          </Grid>
+            </Grid>
+          </Stack>
         </Stack>
-      </Stack>
       </PageFrame>
     </>
   );

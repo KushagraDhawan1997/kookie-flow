@@ -18,7 +18,9 @@ export const slider = defineNode({
   category: 'source',
   summary: 'A number you drag between 0 and 1.',
   description: 'A number between 0 and 1 you drag. Multiply it to reach another range.',
-  inputs: { value: socket('float', { widget: 'slider', min: 0, max: 1, step: 0.001, default: 0.5 }) },
+  inputs: {
+    value: socket('float', { widget: 'slider', min: 0, max: 1, step: 0.001, default: 0.5 }),
+  },
   outputs: { out: socket('float') },
   where: 'inline',
   run: ({ value }) => ({ out: value }),
@@ -42,7 +44,8 @@ export const seed = defineNode({
   label: 'Seed',
   category: 'source',
   summary: 'A number that decides a random result. Change it to get a new one.',
-  description: 'A seed for anything random. The same seed gives the same result; change it to reroll.',
+  description:
+    'A seed for anything random. The same seed gives the same result; change it to reroll.',
   inputs: { seed: socket('seed', { default: 1 }) },
   outputs: { out: socket('seed') },
   where: 'inline',

@@ -104,6 +104,7 @@ which one; "the second one" sets the Pick, prices and runs the final, looks, and
 conversation survives switching to Inspect and a reload. No console errors.
 
 Where things are:
+
 - `studio-core/src/agent/`: models and prices (gateway list prices), tool specs, catalog, cluster
   layout, instructions, and ops applied to a stored document.
 - `studio-core/src/nodes/logic.ts`: `logic/pick`, `logic/gate`. `source/image` holds an attached picture.

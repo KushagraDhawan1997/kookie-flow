@@ -1,8 +1,8 @@
-import { ImageResponse } from "next/og";
+import { ImageResponse } from 'next/og';
 
-export const alt = "Kookie Flow – WebGL-Native Node Graph Library";
+export const alt = 'Kookie Flow – WebGL-Native Node Graph Library';
 export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+export const contentType = 'image/png';
 
 async function loadGoogleFont(font: string, weight: number, text: string) {
   const url = `https://fonts.googleapis.com/css2?family=${font}:wght@${weight}&text=${encodeURIComponent(text)}`;
@@ -14,59 +14,57 @@ async function loadGoogleFont(font: string, weight: number, text: string) {
       return await response.arrayBuffer();
     }
   }
-  throw new Error("Failed to load font");
+  throw new Error('Failed to load font');
 }
 
 export default async function Image() {
-  const title = "Kookie Flow";
-  const subtitle = "WebGL-Native Node Graph Library";
+  const title = 'Kookie Flow';
+  const subtitle = 'WebGL-Native Node Graph Library';
   const text = title + subtitle;
 
-  const interMedium = await loadGoogleFont("Inter", 500, text);
-  const interRegular = await loadGoogleFont("Inter", 400, text);
+  const interMedium = await loadGoogleFont('Inter', 500, text);
+  const interRegular = await loadGoogleFont('Inter', 400, text);
 
   return new ImageResponse(
-    (
+    <div
+      style={{
+        background: '#fafafa',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '80px',
+        fontFamily: 'Inter',
+      }}
+    >
       <div
         style={{
-          background: "#fafafa",
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: "80px",
-          fontFamily: "Inter",
+          fontSize: 64,
+          fontWeight: 500,
+          color: '#171717',
+          lineHeight: 1.1,
+          marginBottom: 24,
+          letterSpacing: '-0.02em',
         }}
       >
-        <div
-          style={{
-            fontSize: 64,
-            fontWeight: 500,
-            color: "#171717",
-            lineHeight: 1.1,
-            marginBottom: 24,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Kookie Flow
-        </div>
-        <div
-          style={{
-            fontSize: 28,
-            fontWeight: 400,
-            color: "#737373",
-          }}
-        >
-          WebGL-Native Node Graph Library
-        </div>
+        Kookie Flow
       </div>
-    ),
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 400,
+          color: '#737373',
+        }}
+      >
+        WebGL-Native Node Graph Library
+      </div>
+    </div>,
     {
       ...size,
       fonts: [
-        { name: "Inter", data: interMedium, weight: 500 },
-        { name: "Inter", data: interRegular, weight: 400 },
+        { name: 'Inter', data: interMedium, weight: 500 },
+        { name: 'Inter', data: interRegular, weight: 400 },
       ],
     }
   );

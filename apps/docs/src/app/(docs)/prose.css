@@ -226,7 +226,6 @@
    against the system's own ink ladder. What is left in `blocks/code.css` is the block's half —
    the line washes, the diff gutter and the line numbers the sample paints around the tokens. */
 
-
 /* A SEARCH RESULT'S TWO HALVES TAKE THE ROW'S OWN TYPE (2026-09-06).
 
    They were two `<Text>`s pinned at step 2, and the day the palette's rows moved one step above

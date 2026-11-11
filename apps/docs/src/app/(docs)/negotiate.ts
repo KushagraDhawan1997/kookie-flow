@@ -19,8 +19,8 @@
  * is served when it is asked for, not when nothing was.
  */
 
-const HTML = "text/html";
-const MARKDOWN = "text/markdown";
+const HTML = 'text/html';
+const MARKDOWN = 'text/markdown';
 
 /** Where the twin lives, as a path this site actually routes. The `.md` URL is a rewrite onto
     the same handler (`next.config.mjs`), so a negotiated request and a `.md` request meet in one
@@ -42,11 +42,11 @@ export const alternateLink = (pathname: string): string =>
 // range that does not match at all scores nothing. RFC 9110's precedence rule, which is why
 // `Accept: text/markdown;q=0, */*` means "not markdown" rather than "anything".
 function specificity(range: string, type: string): number {
-  const [wantType = "", wantSub = ""] = type.split("/");
-  const [rangeType = "", rangeSub = ""] = range.split("/");
+  const [wantType = '', wantSub = ''] = type.split('/');
+  const [rangeType = '', rangeSub = ''] = range.split('/');
   if (rangeType === wantType && rangeSub === wantSub) return 3;
-  if (rangeType === wantType && rangeSub === "*") return 2;
-  if (rangeType === "*" && rangeSub === "*") return 1;
+  if (rangeType === wantType && rangeSub === '*') return 2;
+  if (rangeType === '*' && rangeSub === '*') return 1;
   return 0;
 }
 
@@ -56,10 +56,10 @@ type Preference = { q: number; specificity: number; position: number };
     how specific that range was, and where it sits in the list. `null` when nothing covers it. */
 function preferenceFor(accept: string, type: string): Preference | null {
   let best: Preference | null = null;
-  const ranges = accept.split(",");
+  const ranges = accept.split(',');
   for (let position = 0; position < ranges.length; position++) {
-    const parts = (ranges[position] ?? "").trim().split(";");
-    const range = (parts.shift() ?? "").trim().toLowerCase();
+    const parts = (ranges[position] ?? '').trim().split(';');
+    const range = (parts.shift() ?? '').trim().toLowerCase();
     const found = specificity(range, type);
     if (!found) continue;
     const quality = parts

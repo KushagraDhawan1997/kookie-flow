@@ -30,7 +30,14 @@ import {
   type TokenUsage,
 } from 'studio-core';
 import type { Db } from './db';
-import { agentTurns, jobs, ledger, type AgentTurnRow, type JobRow, type LedgerKind } from './db/schema';
+import {
+  agentTurns,
+  jobs,
+  ledger,
+  type AgentTurnRow,
+  type JobRow,
+  type LedgerKind,
+} from './db/schema';
 
 export function billingEnabled(): boolean {
   const stated = process.env.STUDIO_BILLING;
@@ -78,7 +85,12 @@ async function lockAndCheck(tx: Tx, workspaceId: string, total: number): Promise
 }
 
 /** Hold `charge.total` for a job, inside the caller's transaction, or throw. */
-export async function hold(tx: Tx, workspaceId: string, jobId: string, charge: Charge): Promise<void> {
+export async function hold(
+  tx: Tx,
+  workspaceId: string,
+  jobId: string,
+  charge: Charge
+): Promise<void> {
   await lockAndCheck(tx, workspaceId, charge.total);
   await tx.insert(ledger).values({
     id: entryId(),
@@ -216,7 +228,13 @@ export async function closeTurn(
     if (row.billing === null) {
       const [updated] = await db
         .update(agentTurns)
-        .set({ ...counts, modelMicros: used?.model ?? null, feeMicros: used?.fee ?? null, error: error ?? null, updatedAt: new Date() })
+        .set({
+          ...counts,
+          modelMicros: used?.model ?? null,
+          feeMicros: used?.fee ?? null,
+          error: error ?? null,
+          updatedAt: new Date(),
+        })
         .where(eq(agentTurns.id, id))
         .returning();
       return updated ?? row;
@@ -306,10 +324,19 @@ export interface LedgerEntryView {
   /** The job or the agent turn the row belongs to, so Billing can tell a running hold from a settled one. */
   jobId: string | null;
   createdAt: string;
-  run: { label: string; model: string; modelMicros: number | null; feeMicros: number | null } | null;
+  run: {
+    label: string;
+    model: string;
+    modelMicros: number | null;
+    feeMicros: number | null;
+  } | null;
 }
 
-export async function listEntries(db: Db, workspaceId: string, limit = 100): Promise<LedgerEntryView[]> {
+export async function listEntries(
+  db: Db,
+  workspaceId: string,
+  limit = 100
+): Promise<LedgerEntryView[]> {
   const rows = await db
     .select({ entry: ledger, job: jobs, turn: agentTurns })
     .from(ledger)

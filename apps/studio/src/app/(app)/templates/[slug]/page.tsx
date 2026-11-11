@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { findTemplate } from '../templates';
 import { TemplatePage } from '../template-page';
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   const template = findTemplate((await params).slug);
   return { title: template?.title ?? 'Template' };
 }

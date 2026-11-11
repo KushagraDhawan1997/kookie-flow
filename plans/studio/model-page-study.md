@@ -25,15 +25,15 @@ Rule from the owner: never invent UI; take the best of the precedents.
 
 ## What Studio took
 
-| Studio section | From |
-| --- | --- |
-| Facts row: Made by, Served by, Price, Commercial use | OpenRouter's strip, Replicate's meta line |
-| Examples first | fal, Replicate |
-| Pricing: one rule sentence, then a table of the choices that move it | fal's rule, OpenRouter's pricing table |
-| Served by: provider, endpoints, Terms · Privacy, View on fal | OpenRouter and Vercel Providers |
-| Inputs: name, description, type, default | Replicate's schema, fal's Schema |
-| Similar models | Vercel |
-| List rows name the host ("Served by fal") | Vercel's Providers column |
+| Studio section                                                       | From                                      |
+| -------------------------------------------------------------------- | ----------------------------------------- |
+| Facts row: Made by, Served by, Price, Commercial use                 | OpenRouter's strip, Replicate's meta line |
+| Examples first                                                       | fal, Replicate                            |
+| Pricing: one rule sentence, then a table of the choices that move it | fal's rule, OpenRouter's pricing table    |
+| Served by: provider, endpoints, Terms · Privacy, View on fal         | OpenRouter and Vercel Providers           |
+| Inputs: name, description, type, default                             | Replicate's schema, fal's Schema          |
+| Similar models                                                       | Vercel                                    |
+| List rows name the host ("Served by fal")                            | Vercel's Providers column                 |
 
 Left out for now: performance and uptime (no data yet), playground (the graph is the playground),
 code/API tabs (Studio has no public API).

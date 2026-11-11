@@ -64,12 +64,36 @@ type Quality = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** fal's table, short side first: a size and its turn on end are the same price. */
 const GPT_TABLE: ReadonlyArray<{ short: number; long: number; price: Record<Quality, number> }> = [
-  { short: 768, long: 1024, price: { low: 0.00402, medium: 0.00903, high: 0.03612, xhigh: 0.0642, max: 0.14445 } },
-  { short: 1024, long: 1024, price: { low: 0.00588, medium: 0.01317, high: 0.05268, xhigh: 0.09366, max: 0.21072 } },
-  { short: 1024, long: 1536, price: { low: 0.00474, medium: 0.01029, high: 0.04116, xhigh: 0.07377, max: 0.16464 } },
-  { short: 1080, long: 1920, price: { low: 0.00441, medium: 0.01029, high: 0.0396, xhigh: 0.07041, max: 0.1584 } },
-  { short: 1440, long: 2560, price: { low: 0.00615, medium: 0.01434, high: 0.05529, xhigh: 0.09828, max: 0.2211 } },
-  { short: 2160, long: 3840, price: { low: 0.01113, medium: 0.02595, high: 0.10008, xhigh: 0.1779, max: 0.40026 } },
+  {
+    short: 768,
+    long: 1024,
+    price: { low: 0.00402, medium: 0.00903, high: 0.03612, xhigh: 0.0642, max: 0.14445 },
+  },
+  {
+    short: 1024,
+    long: 1024,
+    price: { low: 0.00588, medium: 0.01317, high: 0.05268, xhigh: 0.09366, max: 0.21072 },
+  },
+  {
+    short: 1024,
+    long: 1536,
+    price: { low: 0.00474, medium: 0.01029, high: 0.04116, xhigh: 0.07377, max: 0.16464 },
+  },
+  {
+    short: 1080,
+    long: 1920,
+    price: { low: 0.00441, medium: 0.01029, high: 0.0396, xhigh: 0.07041, max: 0.1584 },
+  },
+  {
+    short: 1440,
+    long: 2560,
+    price: { low: 0.00615, medium: 0.01434, high: 0.05529, xhigh: 0.09828, max: 0.2211 },
+  },
+  {
+    short: 2160,
+    long: 3840,
+    price: { low: 0.01113, medium: 0.02595, high: 0.10008, xhigh: 0.1779, max: 0.40026 },
+  },
 ];
 
 /** fal's size presets, as the pixels they ask for. */
@@ -86,7 +110,11 @@ const GPT_INPUT_PICTURE = usd(0.01);
 
 function quality(value: unknown): Quality {
   // `auto` is fal's default, which it documents as high.
-  return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max'
+  return value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
     ? value
     : 'high';
 }
@@ -121,7 +149,8 @@ function gptEstimate(input: Record<string, unknown>): number {
   let pixels: readonly [number, number] = [1024, 1024];
   if (size === 'custom') pixels = [Number(input.width) || 1024, Number(input.height) || 1024];
   else if (typeof size === 'string' && GPT_PRESETS[size]) pixels = GPT_PRESETS[size];
-  else if (isMediaRef(input.image) && input.image.width > 0) pixels = [input.image.width, input.image.height];
+  else if (isMediaRef(input.image) && input.image.width > 0)
+    pixels = [input.image.width, input.image.height];
   // `auto` with nothing to follow: the dearest of the one-megapixel sizes, so a hold is never short.
   return gptPrice(pixels[0], pixels[1], q) + connectedPictures(input) * GPT_INPUT_PICTURE;
 }
@@ -147,7 +176,10 @@ function wanMicros(input: Record<string, unknown>): number {
  * The model's price before a run, from what the node asks for: the amount held against the
  * balance. Undefined for a task with no price, which the server refuses to run.
  */
-export function estimateModelMicros(task: string, input: Record<string, unknown>): number | undefined {
+export function estimateModelMicros(
+  task: string,
+  input: Record<string, unknown>
+): number | undefined {
   switch (task) {
     case 'gpt-image-2.5':
       return gptEstimate(input);
@@ -177,7 +209,10 @@ export function actualModelMicros(
 ): number | undefined {
   const image = output?.image;
   if (task === 'gpt-image-2.5' && isMediaRef(image) && image.width > 0) {
-    return gptPrice(image.width, image.height, quality(input.quality)) + connectedPictures(input) * GPT_INPUT_PICTURE;
+    return (
+      gptPrice(image.width, image.height, quality(input.quality)) +
+      connectedPictures(input) * GPT_INPUT_PICTURE
+    );
   }
   if (task === 'clarity-upscaler' && isMediaRef(image) && image.width > 0) {
     return usd(0.03 * megapixels(image.width, image.height));

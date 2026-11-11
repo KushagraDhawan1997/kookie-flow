@@ -1,10 +1,10 @@
-import Link from "next/link";
+import Link from 'next/link';
 
-import { Surface } from "@kushagradhawan/kookie-ui-react";
+import { Surface } from '@kushagradhawan/kookie-ui-react';
 
-import { Footer } from "../../blocks/footer";
-import { CHAPTERS, SECTIONS } from "./chapters";
-import { Logo } from "./logo";
+import { Footer } from '../../blocks/footer';
+import { CHAPTERS, SECTIONS } from './chapters';
+import { Logo } from './logo';
 
 /**
  * This site's own footer, and the footer block's first real consumer (2026-09-01, Kushagra:
@@ -68,7 +68,7 @@ export function SiteFooter() {
                name — and a link whose visible words and announced name disagree is the failure
                SC 2.5.3 is about, even where the visible words are decoration. */
             aria-label="Kookie Flow"
-            style={{ color: "inherit", textDecoration: "none" }}
+            style={{ color: 'inherit', textDecoration: 'none' }}
           >
             {/* UP FROM THE MASTHEAD'S RATHER THAN DOWN (Kushagra: "its too small"). A footer
                 signs a page off rather than heading it, but the masthead sits in a narrow
@@ -80,12 +80,12 @@ export function SiteFooter() {
         groups={[
           ...groups,
           {
-            title: "Reference",
+            title: 'Reference',
             links: [
-              { label: "Live demo", href: "/demo" },
-              { label: "What's new", href: "/whats-new" },
-              { label: "llms.txt", href: "/llms.txt" },
-              { label: "GitHub", href: "https://github.com/KushagraDhawan1997/kookie-flow" },
+              { label: 'Live demo', href: '/demo' },
+              { label: "What's new", href: '/whats-new' },
+              { label: 'llms.txt', href: '/llms.txt' },
+              { label: 'GitHub', href: 'https://github.com/KushagraDhawan1997/kookie-flow' },
             ],
           },
         ]}

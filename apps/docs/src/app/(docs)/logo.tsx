@@ -8,13 +8,13 @@
  * `aria-hidden` because it is a picture of the name: every placement carries the name on the
  * link around it, and an announced mark beside an announced word says it twice.
  */
-export function Logo({ height = "1.15em" }: { height?: string }) {
+export function Logo({ height = '1.15em' }: { height?: string }) {
   return (
     <svg
       viewBox="0 0 50 66"
       fill="currentColor"
       aria-hidden="true"
-      style={{ height, width: "auto", display: "block", flex: "none" }}
+      style={{ height, width: 'auto', display: 'block', flex: 'none' }}
     >
       <rect width="24" height="50" rx="12" />
       <path d="M26 12C26 5.37258 31.3726 0 38 0V0C44.6274 0 50 5.37258 50 12V12C50 18.6274 44.6274 24 38 24H26V12Z" />

@@ -11,17 +11,17 @@ after.
 Two conversations, 34 agent steps, read from a copy of `.data/pg` (never the live directory: PGlite
 is one process at a time).
 
-| | GPT-5.6 Sol, 22 steps | Sonnet 5, 12 steps |
-| --- | --- | --- |
-| Model cost | $0.167 | $0.095 |
-| Output tokens | 38% of cost | 34% |
-| Cache writes (new transcript, mostly pictures) | 31% | 57% |
-| Cache reads (old transcript, every step) | 19% | 9% |
-| Uncached input (one cache miss) | 18% | 0% |
+|                                                | GPT-5.6 Sol, 22 steps | Sonnet 5, 12 steps |
+| ---------------------------------------------- | --------------------- | ------------------ |
+| Model cost                                     | $0.167                | $0.095             |
+| Output tokens                                  | 38% of cost           | 34%                |
+| Cache writes (new transcript, mostly pictures) | 31%                   | 57%                |
+| Cache reads (old transcript, every step)       | 19%                   | 9%                 |
+| Uncached input (one cache miss)                | 18%                   | 0%                 |
 
 - **The agent is 37% of everything spent so far**: $0.39 on agent steps against $0.67 on renders. A
   low-quality draft costs about half a cent; the session that makes three of them costs 17–25 cents
-  in agent steps. For image work the harness's own tokens *are* the bill. (Video flips this: a clip is
+  in agent steps. For image work the harness's own tokens _are_ the bill. (Video flips this: a clip is
   20–40 cents.) The research's "renders dominate, tokens are cheap" is wrong for Studio today.
 - **About one model call per tool call.** A browser tool ends the step, so 24 tool calls was about 24
   model calls, each re-reading the transcript. The mix in the longer session: `inspect` 10,
@@ -51,15 +51,15 @@ Built and run: `apps/studio/bench/` — 20 scenes, the app's own instructions, t
 and caps, answered from a document, with pictures from the store so a look costs real image tokens
 and no render is paid for. Three repeats a scene, so a scene passes only if all three pass.
 
-| Model, effort | pass^3 | $/scene | calls | runs asked | ops refused |
-| --- | --- | --- | --- | --- | --- |
-| GPT-5.6 Luna, low | 41% | $0.0013 | 4.8 | 0.1 | 0 |
-| GPT-5.6 Sol, low | 41% | $0.0198 | 6.9 | 1.1 | 0 |
-| Claude Haiku 4.5, low | 29% | $0.0256 | 6.5 | 1.1 | 31 |
-| Claude Sonnet 5, low | 24% | $0.0161 | 4.3 | 0.4 | 0 |
-| Claude Sonnet 5, medium | 12% | $0.0161 | 4.2 | — | — |
-| GPT-5.6 Luna, medium | 35% | $0.0022 | 6.2 | — | — |
-| Claude Opus 5 | no data | — | — | — | — |
+| Model, effort           | pass^3  | $/scene | calls | runs asked | ops refused |
+| ----------------------- | ------- | ------- | ----- | ---------- | ----------- |
+| GPT-5.6 Luna, low       | 41%     | $0.0013 | 4.8   | 0.1        | 0           |
+| GPT-5.6 Sol, low        | 41%     | $0.0198 | 6.9   | 1.1        | 0           |
+| Claude Haiku 4.5, low   | 29%     | $0.0256 | 6.5   | 1.1        | 31          |
+| Claude Sonnet 5, low    | 24%     | $0.0161 | 4.3   | 0.4        | 0           |
+| Claude Sonnet 5, medium | 12%     | $0.0161 | 4.2   | —          | —           |
+| GPT-5.6 Luna, medium    | 35%     | $0.0022 | 6.2   | —          | —           |
+| Claude Opus 5           | no data | —       | —     | —          | —           |
 
 307 trials in the end, $3.67. Luna's medium run finished after the table above was first written and
 changed nothing: 35% at medium against 41% at low, on 1.7× the money.
@@ -136,7 +136,7 @@ session, and by the bench once it exists.
 
 ## Step 2. The bench (2–3 days)
 
-One harness, two hosts. The point is that the bench runs the *same* instructions, tools and model
+One harness, two hosts. The point is that the bench runs the _same_ instructions, tools and model
 options the app does, against a graph in memory, with renders that cost nothing.
 
 - **`DocumentHost` in `studio-core`**: the `AgentHost` contract over a `GraphDocument`. `readGraph` →
@@ -175,7 +175,7 @@ Evidence: grounded generation 78.5% against 66.2% free-form (Prompt2DAG, checked
 numbers exact, but data pipelines, not pictures), and here, the build step that is 23% of a session.
 
 - `packages/studio-core/src/patterns/`: `definePattern({ name, version, summary, args, roles,
-  build(args) → GraphOp[] })`. First four: `drafts-pick-final`, `edit-picture`,
+build(args) → GraphOp[] })`. First four: `drafts-pick-final`, `edit-picture`,
   `cutout-place-upscale`, `photo-to-clip`.
 - One new op, `{ op: 'add_pattern', pattern, args }`, expanded by `compileOps` into primitive ops,
   laid out with `layoutGraph` clear of what is there. The result names the roles:
@@ -183,7 +183,7 @@ numbers exact, but data pipelines, not pictures), and here, the build step that 
   numbers both say grow the op vocabulary.
 - Membership on the nodes: `data.pattern = { name, version, instance, role }`. `describeGraph` prints
   an instance as one line (`p1 drafts-pick-final@1: drafts n3 n4 n5 (low) → pick n6 (unset) → final n7
-  (high)`) and then only what differs from the pattern's defaults. Cheaper on every later read.
+(high)`) and then only what differs from the pattern's defaults. Cheaper on every later read.
 - The pattern list (name, one line, args) goes in the static prefix; a few hundred tokens, cached.
   Instructions: use a pattern when one fits, raw ops when none does, with two worked examples — the
   research is clear that examples lift small models more than rules do.

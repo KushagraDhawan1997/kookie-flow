@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from 'react';
 
 /**
  * A live canvas in the middle of a chapter must not take the page's scroll.
@@ -33,8 +33,8 @@ export function CanvasGuard({ children }: { children: ReactNode }) {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
     };
-    box.addEventListener("wheel", onWheel, { capture: true, passive: true });
-    return () => box.removeEventListener("wheel", onWheel, { capture: true });
+    box.addEventListener('wheel', onWheel, { capture: true, passive: true });
+    return () => box.removeEventListener('wheel', onWheel, { capture: true });
   }, []);
 
   const reveal = () => {

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * THE WAY BACKWARD AND FORWARD, IN THE BAND (2026-09-07, Kushagra: "add next and previous doc
@@ -31,7 +31,7 @@
  * into the browser to answer a question about two titles. So the chrome hands over the order as
  * data and this file only finds itself in it.
  */
-import { usePathname } from "next/navigation";
+import { usePathname } from 'next/navigation';
 import {
   ToolbarButton,
   ToolbarGroup,
@@ -39,10 +39,10 @@ import {
   TooltipContent,
   TooltipTrigger,
   useToolbarOverflow,
-} from "@kushagradhawan/kookie-ui-react";
-import Link from "next/link";
+} from '@kushagradhawan/kookie-ui-react';
+import Link from 'next/link';
 
-import { ArrowLeftIcon, ArrowRightIcon } from "../icons";
+import { ArrowLeftIcon, ArrowRightIcon } from '../icons';
 
 /** One stop on the walk. The path is what identifies it; the title is what a reader reads. */
 export type PagerStop = { path: string; title: string };

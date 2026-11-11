@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, Flex, Heading, Notice, Page, Stack, Text, ToolbarButton } from '@kushagradhawan/kookie-ui-react';
+import {
+  Card,
+  Flex,
+  Heading,
+  Notice,
+  Page,
+  Stack,
+  Text,
+  ToolbarButton,
+} from '@kushagradhawan/kookie-ui-react';
 import { formatUsd, MICROS_PER_DOLLAR } from 'studio-core';
 
 import { RunIcon } from '../../icons';
@@ -64,7 +73,10 @@ export function TemplatePage({ slug }: { slug: string }) {
             </Stack>
             <Stack gap="4">
               <SectionHeading title="Output" count={template.outputs.length} />
-              <div className="kd-template-outputs" data-count={Math.min(template.outputs.length, 4)}>
+              <div
+                className="kd-template-outputs"
+                data-count={Math.min(template.outputs.length, 4)}
+              >
                 {template.outputs.map((output) => (
                   <OutputPicture key={output.label} output={output} />
                 ))}
@@ -127,7 +139,11 @@ function InputField({ input }: { input: TemplateInput }) {
         <Text size="2" emphasis="medium">
           {input.label}
         </Text>
-        {input.text ? <Text size="2">{input.text}</Text> : <div className="kd-template-input-image" aria-hidden />}
+        {input.text ? (
+          <Text size="2">{input.text}</Text>
+        ) : (
+          <div className="kd-template-input-image" aria-hidden />
+        )}
       </Stack>
     </Card>
   );
@@ -137,7 +153,10 @@ function InputField({ input }: { input: TemplateInput }) {
 function OutputPicture({ output }: { output: TemplateOutput }) {
   return (
     <figure className="kd-template-output">
-      <div className="kd-template-output-box" style={output.ratio ? { aspectRatio: output.ratio } : undefined}>
+      <div
+        className="kd-template-output-box"
+        style={output.ratio ? { aspectRatio: output.ratio } : undefined}
+      >
         {output.video && (
           <span className="kd-template-play" aria-label="Video">
             <RunIcon />

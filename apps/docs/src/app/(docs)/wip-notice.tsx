@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { ShellNotice } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import { ShellNotice } from '@kushagradhawan/kookie-ui-react';
 
-import { WIP_NOTICE_ATTR, WIP_NOTICE_KEY, WIP_NOTICE_VERSION } from "./wip-notice-script";
+import { WIP_NOTICE_ATTR, WIP_NOTICE_KEY, WIP_NOTICE_VERSION } from './wip-notice-script';
 
 /** The site-wide work-in-progress notice, in the Shell's notice row above everything (§29),
     until the first stable release.
@@ -36,8 +36,8 @@ export function WipNotice() {
         setDismissed(true);
       }}
     >
-      Kookie Flow is in active development and has not reached 1.0. The API and these docs can change
-      without notice, so do not rely on it in production yet.
+      Kookie Flow is in active development and has not reached 1.0. The API and these docs can
+      change without notice, so do not rely on it in production yet.
     </ShellNotice>
   );
 }

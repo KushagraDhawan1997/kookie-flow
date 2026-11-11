@@ -1,6 +1,6 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from 'next/server';
 
-import { alternateLink, markdownRoute, prefersMarkdown } from "./app/(docs)/negotiate";
+import { alternateLink, markdownRoute, prefersMarkdown } from './app/(docs)/negotiate';
 
 /**
  * The canonical URL answers in markdown when a client asks for markdown.
@@ -40,15 +40,15 @@ import { alternateLink, markdownRoute, prefersMarkdown } from "./app/(docs)/nego
  * is also what keeps `_next`, static files and the full-screen demo routes out of this file.
  */
 export const config = {
-  matcher: ["/((?:start|entities|edges|data|interaction|styling|api)/[^/.]+)"],
+  matcher: ['/((?:start|entities|edges|data|interaction|styling|api)/[^/.]+)'],
 };
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-  const response = prefersMarkdown(request.headers.get("accept"))
+  const response = prefersMarkdown(request.headers.get('accept'))
     ? NextResponse.rewrite(new URL(markdownRoute(pathname), request.url))
     : NextResponse.next();
-  response.headers.set("Vary", "Accept");
-  response.headers.set("Link", alternateLink(pathname));
+  response.headers.set('Vary', 'Accept');
+  response.headers.set('Link', alternateLink(pathname));
   return response;
 }

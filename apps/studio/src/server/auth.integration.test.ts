@@ -46,7 +46,9 @@ describe('sign-up', () => {
     const auth = await getAuth();
 
     await expect(
-      auth.api.signUpEmail({ body: { email: 'stranger@example.com', password: 'a long password', name: 'S' } })
+      auth.api.signUpEmail({
+        body: { email: 'stranger@example.com', password: 'a long password', name: 'S' },
+      })
     ).rejects.toThrow(/closed/i);
 
     const friend = await auth.api.signUpEmail({

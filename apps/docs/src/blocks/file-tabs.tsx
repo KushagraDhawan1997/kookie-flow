@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A code figure with several files in it.
@@ -19,12 +19,22 @@
  * bar. Everything expensive has already happened on the server — the lines arrive tokenized, so
  * what ships here is a `useState` and a list.
  */
-import * as React from "react";
-import { Box, Stack, Tabs, TabsList, TabsPanel, TabsTab, Toolbar, ToolbarGroup, type Size } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import {
+  Box,
+  Stack,
+  Tabs,
+  TabsList,
+  TabsPanel,
+  TabsTab,
+  Toolbar,
+  ToolbarGroup,
+  type Size,
+} from '@kushagradhawan/kookie-ui-react';
 
-import { CodeSampleView } from "./code-sample";
-import { CopyButton } from "./copy-button";
-import type { CodeLine } from "./highlight";
+import { CodeSampleView } from './code-sample';
+import { CopyButton } from './copy-button';
+import type { CodeLine } from './highlight';
 
 export type TabbedFile = {
   /** The tab's label, and what a reader calls the file. */
@@ -40,7 +50,7 @@ export type TabbedFile = {
 export function FileTabs({
   files,
   controls,
-  size = "2",
+  size = '2',
   lineNumbers = false,
   maxLines,
 }: {

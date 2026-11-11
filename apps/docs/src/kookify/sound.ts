@@ -33,7 +33,15 @@ export function createSound(ctx: AudioContext): Sound {
   let lastKnock = -Infinity;
 
   /** A burst of noise through a band-pass filter, with a fast attack and a set decay. */
-  function burst(buffer: AudioBuffer, type: BiquadFilterType, freq: number, q: number, peak: number, decay: number, freqEnd?: number) {
+  function burst(
+    buffer: AudioBuffer,
+    type: BiquadFilterType,
+    freq: number,
+    q: number,
+    peak: number,
+    decay: number,
+    freqEnd?: number
+  ) {
     const t = ctx.currentTime;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
@@ -75,7 +83,7 @@ export function createSound(ctx: AudioContext): Sound {
       const now = performance.now();
       if (now - lastSlap < rand(28, 60)) return;
       lastSlap = now;
-      burst(noise, "bandpass", rand(1500, 2600), 0.9, rand(0.05, 0.09), rand(0.03, 0.05));
+      burst(noise, 'bandpass', rand(1500, 2600), 0.9, rand(0.05, 0.09), rand(0.03, 0.05));
       thump(rand(120, 170), 0.05, 0.05);
     },
     knock() {
@@ -83,14 +91,14 @@ export function createSound(ctx: AudioContext): Sound {
       const now = performance.now();
       if (now - lastKnock < rand(45, 90)) return;
       lastKnock = now;
-      burst(noise, "bandpass", rand(600, 900), 1.1, rand(0.02, 0.035), 0.035);
+      burst(noise, 'bandpass', rand(600, 900), 1.1, rand(0.02, 0.035), 0.035);
     },
     peel() {
-      burst(crackle, "highpass", 2200, 0.7, 0.14, 0.18);
-      burst(noise, "bandpass", 3200, 1.2, 0.025, 0.16, 5200);
+      burst(crackle, 'highpass', 2200, 0.7, 0.14, 0.18);
+      burst(noise, 'bandpass', 3200, 1.2, 0.025, 0.16, 5200);
     },
     pat() {
-      burst(noise, "bandpass", rand(800, 1100), 0.8, 0.06, 0.045);
+      burst(noise, 'bandpass', rand(800, 1100), 0.8, 0.06, 0.045);
       thump(110, 0.04, 0.06);
     },
     whoosh() {
@@ -98,7 +106,7 @@ export function createSound(ctx: AudioContext): Sound {
       const src = ctx.createBufferSource();
       src.buffer = noise;
       const filter = ctx.createBiquadFilter();
-      filter.type = "bandpass";
+      filter.type = 'bandpass';
       filter.Q.value = 0.8;
       filter.frequency.setValueAtTime(500, t);
       filter.frequency.exponentialRampToValueAtTime(3500, t + 0.35);
@@ -111,7 +119,7 @@ export function createSound(ctx: AudioContext): Sound {
       src.stop(t + 0.5);
     },
     resume() {
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     },
   };
 }

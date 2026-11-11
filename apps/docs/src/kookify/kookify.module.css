@@ -31,11 +31,11 @@
   transition-duration: 80ms;
 }
 
-.button[aria-pressed="true"] {
+.button[aria-pressed='true'] {
   transform: rotate(8deg);
 }
 
-.button[aria-pressed="true"]:hover {
+.button[aria-pressed='true']:hover {
   transform: scale(1.08) rotate(12deg);
 }
 
@@ -48,8 +48,8 @@
 @media (prefers-reduced-motion: reduce) {
   .button,
   .button:hover,
-  .button[aria-pressed="true"],
-  .button[aria-pressed="true"]:hover {
+  .button[aria-pressed='true'],
+  .button[aria-pressed='true']:hover {
     transition: none;
     transform: none;
   }

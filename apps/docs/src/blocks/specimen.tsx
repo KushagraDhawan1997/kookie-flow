@@ -27,8 +27,17 @@
  * than this file guessing, because the answer lives in the caller's own subject: the docs
  * derive it from the example's source, and a consumer knows what they are passing.
  */
-import * as React from "react";
-import { Box, Card, Flex, Stack, Surface, Toolbar, ToolbarGroup, type Size } from "@kushagradhawan/kookie-ui-react";
+import * as React from 'react';
+import {
+  Box,
+  Card,
+  Flex,
+  Stack,
+  Surface,
+  Toolbar,
+  ToolbarGroup,
+  type Size,
+} from '@kushagradhawan/kookie-ui-react';
 
 /**
  * The index the figure's chrome row rests at, and the one home for it.
@@ -38,12 +47,12 @@ import { Box, Card, Flex, Stack, Surface, Toolbar, ToolbarGroup, type Size } fro
  * rather than by inheritance — a panel laying its rows out on a grid, where a track is a length
  * and has to name the step the controls in it will land on.
  */
-export const FIGURE_CHROME_SIZE = "3" as const;
+export const FIGURE_CHROME_SIZE = '3' as const;
 
-import { CodeSampleView } from "./code-sample";
-import { CopyButton } from "./copy-button";
-import { FileTabs, type TabbedFile } from "./file-tabs";
-import { plainText, tokenize, type Lang } from "./highlight";
+import { CodeSampleView } from './code-sample';
+import { CopyButton } from './copy-button';
+import { FileTabs, type TabbedFile } from './file-tabs';
+import { plainText, tokenize, type Lang } from './highlight';
 
 /** One file in the figure's code half. Several of them get a tab bar; one gets none. */
 export type SpecimenSource = {
@@ -162,14 +171,14 @@ export async function Specimen({ sources, ...view }: SpecimenProps) {
         copyText: plainText(lines),
         lang: source.lang,
       };
-    }),
+    })
   );
   return <SpecimenView files={files} {...view} />;
 }
 
-export type SpecimenViewProps = Omit<SpecimenProps, "sources"> & {
+export type SpecimenViewProps = Omit<SpecimenProps, 'sources'> & {
   /** Already tokenized — see `CodeSample`'s own split for why the two halves exist. */
-  files: readonly (Omit<TabbedFile, "name"> & { name?: string })[];
+  files: readonly (Omit<TabbedFile, 'name'> & { name?: string })[];
 };
 
 export function SpecimenView({
@@ -177,7 +186,7 @@ export function SpecimenView({
   files,
   controls,
   stageBackground,
-  size = "2",
+  size = '2',
   pane = true,
   fill = false,
   lineNumbers = true,
@@ -186,7 +195,7 @@ export function SpecimenView({
   // allowed to be arithmetic on a token rather than a designed step in its own right — the
   // rule a block may not break is inventing a value, and a multiple of a layout step is the
   // same spelling the code element's own chrome band already uses.
-  minHeight = "calc(2 * var(--layout-space-12))",
+  minHeight = 'calc(2 * var(--layout-space-12))',
 }: SpecimenViewProps) {
   /* CENTRED ON BOTH AXES, which is the other half of the floor being useful. A floor alone
      just puts a small control at the top of a tall box with a field of empty pane under it;
@@ -245,12 +254,12 @@ export function SpecimenView({
   const stage = (
     <Flex
       {...(fill
-        ? { direction: "column" as const, justify: "center" as const, align: "stretch" as const }
-        : { align: "center" as const, justify: "center" as const })}
+        ? { direction: 'column' as const, justify: 'center' as const, align: 'stretch' as const }
+        : { align: 'center' as const, justify: 'center' as const })}
       {...(bleed
         ? pane
-          ? { m: "bleed" as const, p: "bleed" as const }
-          : { mx: "bleed" as const, p: "bleed" as const }
+          ? { m: 'bleed' as const, p: 'bleed' as const }
+          : { mx: 'bleed' as const, p: 'bleed' as const }
         : {})}
       style={{ minBlockSize: floor, ...(stageBackground ? { background: stageBackground } : {}) }}
     >
@@ -332,30 +341,30 @@ export function SpecimenView({
               up and invisible from inside either file. One number, derived, following the
               index. */}
           {chrome && files.length === 1 ? (
-          <Box className="kd-figure-chrome">
-            <Toolbar size={FIGURE_CHROME_SIZE}>
-              {/* The end wall holds the row on its own: one child and `space-between` pushes it
+            <Box className="kd-figure-chrome">
+              <Toolbar size={FIGURE_CHROME_SIZE}>
+                {/* The end wall holds the row on its own: one child and `space-between` pushes it
                   to the wrong one. A toolbar has no idea of sides — which controls sit where is
                   what those controls mean, so it will not guess — and this span is how a caller
                   says the reading wall is empty. */}
-              <span />
-              {/* A GROUP, NOT A `Flex`. These two do the same KIND of thing — both act on the
+                <span />
+                {/* A GROUP, NOT A `Flex`. These two do the same KIND of thing — both act on the
                   figure they float over — and a `ToolbarGroup` is the part that says so: one
                   track, and the quiet rung arrives with it rather than being stated per button.
                   Two separate round buttons said nothing about being related; the track does. */}
-              <ToolbarGroup backdrop>
-                {controls}
-                {/* THE COPY BUTTON IS HERE ONLY WHILE THERE IS ONE FILE. With several, the
+                <ToolbarGroup backdrop>
+                  {controls}
+                  {/* THE COPY BUTTON IS HERE ONLY WHILE THERE IS ONE FILE. With several, the
                     button has to hand over the one you are LOOKING AT, and which one
                     that is is state — so it travels down to the tab bar, which is the element that
                     holds that state. A button up here would copy whichever file the server
                     happened to put first, which is the kind of wrong that looks right. */}
-                {files.length === 1 ? (
-                  <CopyButton code={files[0]!.copyText} size={FIGURE_CHROME_SIZE} iconOnly />
-                ) : null}
-              </ToolbarGroup>
-            </Toolbar>
-          </Box>
+                  {files.length === 1 ? (
+                    <CopyButton code={files[0]!.copyText} size={FIGURE_CHROME_SIZE} iconOnly />
+                  ) : null}
+                </ToolbarGroup>
+              </Toolbar>
+            </Box>
           ) : null}
           {/* THE FIGURE'S OWN INDEX, never a literal. A stated number here would price the
               ground, the code and the chrome from `size` and stop at the paper in the middle.

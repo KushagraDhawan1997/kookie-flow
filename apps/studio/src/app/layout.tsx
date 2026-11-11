@@ -29,7 +29,8 @@ const heading = Inter_Tight({
 
 export const metadata: Metadata = {
   title: { default: 'Studio', template: '%s – Studio' },
-  description: 'Node-based image and video generation, with deterministic ops, logic, and an agent.',
+  description:
+    'Node-based image and video generation, with deterministic ops, logic, and an agent.',
   robots: { index: false, follow: false },
 };
 

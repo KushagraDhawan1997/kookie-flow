@@ -1,9 +1,9 @@
-import Matter from "matter-js";
+import Matter from 'matter-js';
 // @ts-expect-error -- poly-decomp ships no types; Matter only needs its decomposition functions.
-import decomp from "poly-decomp";
-import * as THREE from "three";
+import decomp from 'poly-decomp';
+import * as THREE from 'three';
 
-import type { Sound } from "./sound";
+import type { Sound } from './sound';
 
 /**
  * The Kookify engine. Stickers drop in from above the screen, fall, tumble and pile up at the
@@ -33,8 +33,8 @@ type Art = {
 
 /** The uniforms each material is made with, so setting them each frame needs no guesswork. */
 type Uniforms<K extends string> = Record<K, THREE.IUniform>;
-type StickerUniform = "uSize" | "uOpacity" | "uBlur" | "uFoil";
-type ShadowUniform = "uSize" | "uOpacity" | "uSpread" | "uBias";
+type StickerUniform = 'uSize' | 'uOpacity' | 'uBlur' | 'uFoil';
+type ShadowUniform = 'uSize' | 'uOpacity' | 'uSpread' | 'uBias';
 
 type Sticker = {
   art: Art;
@@ -208,7 +208,7 @@ html.kookify-hold, html.kookify-hold * { -webkit-user-select: none !important; u
 `;
 
 /** Kookify's own controls sit above the stickers and keep their clicks. */
-const onUi = (e: Event) => e.target instanceof Element && !!e.target.closest("[data-kookify-ui]");
+const onUi = (e: Event) => e.target instanceof Element && !!e.target.closest('[data-kookify-ui]');
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -231,12 +231,27 @@ type Pt = { x: number; y: number };
  * collides on its real shape, concave bits included, rather than a hull that leaves gaps.
  */
 function traceOutline(alpha: Uint8ClampedArray, aw: number, ah: number): Pt[] {
-  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < aw && y < ah && (alpha[y * aw + x] ?? 0) > 128;
+  const inside = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < aw && y < ah && (alpha[y * aw + x] ?? 0) > 128;
   let start: Pt | null = null;
-  for (let y = 0; y < ah && !start; y++) for (let x = 0; x < aw; x++) if (inside(x, y)) { start = { x, y }; break; }
+  for (let y = 0; y < ah && !start; y++)
+    for (let x = 0; x < aw; x++)
+      if (inside(x, y)) {
+        start = { x, y };
+        break;
+      }
   if (!start) return [];
   // Clockwise on screen (y down): E, SE, S, SW, W, NW, N, NE.
-  const dirs: Pt[] = [{ x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }, { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: -1 }, { x: 1, y: -1 }];
+  const dirs: Pt[] = [
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+    { x: -1, y: 1 },
+    { x: -1, y: 0 },
+    { x: -1, y: -1 },
+    { x: 0, y: -1 },
+    { x: 1, y: -1 },
+  ];
   const out: Pt[] = [start];
   let cur = start;
   let back = 4; // we arrived scanning from the west, which is outside
@@ -302,13 +317,15 @@ function closeMask(alpha: Uint8ClampedArray, aw: number, ah: number, r: number):
   const pw = aw + pad * 2;
   const ph = ah + pad * 2;
   const padded = new Uint8ClampedArray(pw * ph);
-  for (let y = 0; y < ah; y++) for (let x = 0; x < aw; x++) padded[(y + pad) * pw + x + pad] = alpha[y * aw + x] ?? 0;
+  for (let y = 0; y < ah; y++)
+    for (let x = 0; x < aw; x++) padded[(y + pad) * pw + x + pad] = alpha[y * aw + x] ?? 0;
   const save = { aw, ah };
   aw = pw;
   ah = ph;
   const closed = pass(pass(padded, true), false);
   const out = new Uint8ClampedArray(save.aw * save.ah);
-  for (let y = 0; y < save.ah; y++) for (let x = 0; x < save.aw; x++) out[y * save.aw + x] = closed[(y + pad) * pw + x + pad] ?? 0;
+  for (let y = 0; y < save.ah; y++)
+    for (let x = 0; x < save.aw; x++) out[y * save.aw + x] = closed[(y + pad) * pw + x + pad] ?? 0;
   return out;
 }
 
@@ -342,7 +359,11 @@ function simplify(points: Pt[], eps: number): Pt[] {
   return points.filter((_, i) => keep[i]);
 }
 
-async function loadArt(url: string, loader: THREE.TextureLoader, maxAnisotropy: number): Promise<Art> {
+async function loadArt(
+  url: string,
+  loader: THREE.TextureLoader,
+  maxAnisotropy: number
+): Promise<Art> {
   const tex = await loader.loadAsync(url);
   // Sampled as stored and written as is: the custom shaders do no colour conversion, so tagging
   // the art as sRGB would decode it to linear and draw every sticker too dark.
@@ -354,7 +375,7 @@ async function loadArt(url: string, loader: THREE.TextureLoader, maxAnisotropy: 
   const k = 128 / Math.max(img.width, img.height);
   const aw = Math.max(1, Math.round(img.width * k));
   const ah = Math.max(1, Math.round(img.height * k));
-  const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+  const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
   ctx.canvas.width = aw;
   ctx.canvas.height = ah;
   ctx.drawImage(img, 0, 0, aw, ah);
@@ -384,7 +405,11 @@ export async function createEngine(options: {
   sound?: Sound | undefined;
 }): Promise<Engine> {
   const { reducedMotion, sound } = options;
-  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: true });
+  const renderer = new THREE.WebGLRenderer({
+    alpha: true,
+    antialias: true,
+    premultipliedAlpha: true,
+  });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 3));
   const loader = new THREE.TextureLoader();
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -395,19 +420,19 @@ export async function createEngine(options: {
 
   renderer.setClearColor(0x000000, 0);
   const canvas = renderer.domElement;
-  canvas.setAttribute("aria-hidden", "true");
-  canvas.dataset.kookify = "";
+  canvas.setAttribute('aria-hidden', 'true');
+  canvas.dataset.kookify = '';
   Object.assign(canvas.style, {
-    position: "fixed",
-    inset: "0",
-    width: "100vw",
-    height: "100dvh",
-    pointerEvents: "none",
-    zIndex: "2147483000",
+    position: 'fixed',
+    inset: '0',
+    width: '100vw',
+    height: '100dvh',
+    pointerEvents: 'none',
+    zIndex: '2147483000',
   });
   document.body.appendChild(canvas);
 
-  const style = document.createElement("style");
+  const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
 
@@ -425,7 +450,10 @@ export async function createEngine(options: {
 
   // A pile never goes perfectly still under strong gravity; let near-still stickers sleep, so the
   // heap is done in about a second instead of shivering. (Matter keeps this on the module.)
-  const sleeping = Matter.Sleeping as unknown as { _motionSleepThreshold: number; _motionWakeThreshold: number };
+  const sleeping = Matter.Sleeping as unknown as {
+    _motionSleepThreshold: number;
+    _motionWakeThreshold: number;
+  };
   sleeping._motionSleepThreshold = 0.16;
   sleeping._motionWakeThreshold = 0.32;
 
@@ -506,7 +534,7 @@ export async function createEngine(options: {
         premultipliedAlpha: true,
         depthWrite: false,
         depthTest: false,
-      }),
+      })
     );
     const shadow = new THREE.Mesh(
       geometry,
@@ -524,7 +552,7 @@ export async function createEngine(options: {
         premultipliedAlpha: true,
         depthWrite: false,
         depthTest: false,
-      }),
+      })
     );
     mesh.frustumCulled = false;
     shadow.frustumCulled = false;
@@ -534,9 +562,29 @@ export async function createEngine(options: {
     mesh.renderOrder = topZ;
     shadow.renderOrder = topZ - 1;
     return {
-      art, mesh, shadow, body, w, h, ox: -centre.x, oy: -centre.y, z: topZ, dropAt: 0, live: false,
-      lift: 0, flying: false, vx: 0, vy: 0, vr: 0, x, y, angle: body.angle, flyStart: 0,
-      prevX: x, prevY: y, prevA: body.angle,
+      art,
+      mesh,
+      shadow,
+      body,
+      w,
+      h,
+      ox: -centre.x,
+      oy: -centre.y,
+      z: topZ,
+      dropAt: 0,
+      live: false,
+      lift: 0,
+      flying: false,
+      vx: 0,
+      vy: 0,
+      vr: 0,
+      x,
+      y,
+      angle: body.angle,
+      flyStart: 0,
+      prevX: x,
+      prevY: y,
+      prevA: body.angle,
     };
   }
 
@@ -583,7 +631,11 @@ export async function createEngine(options: {
     // apart in space; several wait per lane, stacked above the screen.
     if (!fill.order.length) fill.order = shuffle(Array.from({ length: fill.lanes }, (_, l) => l));
     const lane = fill.order.pop()!;
-    const x = clamp(((lane + 0.5) / fill.lanes) * W + rand(-0.2, 0.2) * (W / fill.lanes), size * 0.5, W - size * 0.5);
+    const x = clamp(
+      ((lane + 0.5) / fill.lanes) * W + rand(-0.2, 0.2) * (W / fill.lanes),
+      size * 0.5,
+      W - size * 0.5
+    );
     const s = makeSticker(art, x, -size * rand(0.7, 1.4), size);
     s.dropAt = at;
     stickers.push(s);
@@ -592,7 +644,8 @@ export async function createEngine(options: {
   /** The top of the settled part of the pile, in viewport px (the floor if there is none). */
   function pileTop() {
     let top = innerHeight;
-    for (const s of stickers) if (s.live && s.body.speed < 1.5) top = Math.min(top, s.body.bounds.min.y);
+    for (const s of stickers)
+      if (s.live && s.body.speed < 1.5) top = Math.min(top, s.body.bounds.min.y);
     return top;
   }
 
@@ -633,7 +686,11 @@ export async function createEngine(options: {
   function topUp(now: number) {
     if (!fill || now < fill.next) return;
     // Stop a little short: the last few are still in the air when the pile is judged.
-    if (now > fill.until || stickers.length >= MAX_STICKERS || pileTop() <= innerHeight * (1 - PILE_FILL + 0.05)) {
+    if (
+      now > fill.until ||
+      stickers.length >= MAX_STICKERS ||
+      pileTop() <= innerHeight * (1 - PILE_FILL + 0.05)
+    ) {
       if (now > fill.until || stickers.length >= MAX_STICKERS) fill = null;
       return;
     }
@@ -681,19 +738,21 @@ export async function createEngine(options: {
 
   // Thin parts (a letter, a paw) can pass through each other at full falling speed, so nothing
   // moves faster than a fall the solver can still catch.
-  Matter.Events.on(world, "beforeUpdate", () => {
+  Matter.Events.on(world, 'beforeUpdate', () => {
     for (const s of stickers) {
       if (!s.live || s.body.isSleeping) continue;
       const v = s.body.velocity;
       const sp = Math.hypot(v.x, v.y);
-      if (sp > MAX_SPEED) Matter.Body.setVelocity(s.body, { x: (v.x / sp) * MAX_SPEED, y: (v.y / sp) * MAX_SPEED });
-      if (Math.abs(s.body.angularVelocity) > 0.25) Matter.Body.setAngularVelocity(s.body, Math.sign(s.body.angularVelocity) * 0.25);
+      if (sp > MAX_SPEED)
+        Matter.Body.setVelocity(s.body, { x: (v.x / sp) * MAX_SPEED, y: (v.y / sp) * MAX_SPEED });
+      if (Math.abs(s.body.angularVelocity) > 0.25)
+        Matter.Body.setAngularVelocity(s.body, Math.sign(s.body.angularVelocity) * 0.25);
     }
   });
 
   // ---- Sound on impact ---------------------------------------------------------------------
 
-  Matter.Events.on(world, "collisionStart", (event) => {
+  Matter.Events.on(world, 'collisionStart', (event) => {
     for (const pair of event.pairs) {
       const a = pair.bodyA;
       const b = pair.bodyB;
@@ -760,7 +819,7 @@ export async function createEngine(options: {
     s.shadow.renderOrder = topZ - 1;
     held = { s, joint };
     sound?.pat();
-    document.documentElement.classList.add("kookify-grabbing");
+    document.documentElement.classList.add('kookify-grabbing');
   }
 
   function move(cx: number, cy: number) {
@@ -775,14 +834,18 @@ export async function createEngine(options: {
     // A hard throw is capped so it can't tunnel through the walls.
     const v = held.s.body.velocity;
     const sp = Math.hypot(v.x, v.y);
-    if (sp > MAX_SPEED) Matter.Body.setVelocity(held.s.body, { x: (v.x / sp) * MAX_SPEED, y: (v.y / sp) * MAX_SPEED });
+    if (sp > MAX_SPEED)
+      Matter.Body.setVelocity(held.s.body, {
+        x: (v.x / sp) * MAX_SPEED,
+        y: (v.y / sp) * MAX_SPEED,
+      });
     held = null;
-    document.documentElement.classList.remove("kookify-grabbing");
+    document.documentElement.classList.remove('kookify-grabbing');
   }
 
   function onPointerDown(e: PointerEvent) {
     sound?.resume();
-    if (e.pointerType === "touch" || e.button !== 0 || onUi(e)) return;
+    if (e.pointerType === 'touch' || e.button !== 0 || onUi(e)) return;
     const s = hitTest(e.clientX, e.clientY);
     if (!s) return;
     e.preventDefault();
@@ -793,18 +856,18 @@ export async function createEngine(options: {
 
   function onPointerMove(e: PointerEvent) {
     aim.set(e.clientX, e.clientY);
-    if (e.pointerType === "touch") return;
+    if (e.pointerType === 'touch') return;
     if (held) return move(e.clientX, e.clientY);
     // Only touch the page's classes when the answer changes: a class on <html> restyles the page.
     const over = !onUi(e) && !!hitTest(e.clientX, e.clientY);
     if (over !== hovering) {
       hovering = over;
-      document.documentElement.classList.toggle("kookify-grab", over);
+      document.documentElement.classList.toggle('kookify-grab', over);
     }
   }
 
   function onPointerUp(e: PointerEvent) {
-    if (e.pointerType === "touch" || !held) return;
+    if (e.pointerType === 'touch' || !held) return;
     release();
   }
 
@@ -823,7 +886,7 @@ export async function createEngine(options: {
     if (!pending) return;
     clearTimeout(pending.timer);
     pending = null;
-    if (!held) document.documentElement.classList.remove("kookify-hold");
+    if (!held) document.documentElement.classList.remove('kookify-hold');
   }
 
   function onTouchStart(e: TouchEvent) {
@@ -834,7 +897,7 @@ export async function createEngine(options: {
     if (!t || e.touches.length !== 1 || held || onUi(e)) return;
     const s = hitTest(t.clientX, t.clientY);
     if (!s) return;
-    document.documentElement.classList.add("kookify-hold");
+    document.documentElement.classList.add('kookify-hold');
     pending = {
       s,
       x: t.clientX,
@@ -858,7 +921,8 @@ export async function createEngine(options: {
       move(t.clientX, t.clientY);
       return;
     }
-    if (pending && t && Math.hypot(t.clientX - pending.x, t.clientY - pending.y) > 10) cancelPending();
+    if (pending && t && Math.hypot(t.clientX - pending.x, t.clientY - pending.y) > 10)
+      cancelPending();
   }
 
   function onTouchEnd(e: TouchEvent) {
@@ -868,7 +932,7 @@ export async function createEngine(options: {
     e.preventDefault();
     eatNextClick();
     release();
-    document.documentElement.classList.remove("kookify-hold");
+    document.documentElement.classList.remove('kookify-hold');
   }
 
   function onContextMenu(e: Event) {
@@ -882,24 +946,28 @@ export async function createEngine(options: {
     const gy = clamp((e.beta - 20) / 45, -0.4, 1);
     world.gravity.x = gx * 3.5;
     world.gravity.y = Math.max(1, gy * 3.5);
-    if (!touching) aim.set(innerWidth * (0.5 + gx * 0.7), innerHeight * (0.5 + clamp((e.beta - 45) / 35, -1, 1) * 0.7));
+    if (!touching)
+      aim.set(
+        innerWidth * (0.5 + gx * 0.7),
+        innerHeight * (0.5 + clamp((e.beta - 45) / 35, -1, 1) * 0.7)
+      );
     for (const s of stickers) if (s.live) Matter.Sleeping.set(s.body, false);
   }
 
   const capture = { capture: true } as const;
   const active = { capture: true, passive: false } as const;
-  addEventListener("pointerdown", onPointerDown, capture);
-  addEventListener("pointermove", onPointerMove, capture);
-  addEventListener("pointerup", onPointerUp, capture);
-  addEventListener("pointercancel", onPointerUp, capture);
-  addEventListener("click", onClick, capture);
-  addEventListener("touchstart", onTouchStart, active);
-  addEventListener("touchmove", onTouchMove, active);
-  addEventListener("touchend", onTouchEnd, active);
-  addEventListener("touchcancel", onTouchEnd, active);
-  addEventListener("contextmenu", onContextMenu, capture);
-  addEventListener("resize", resize);
-  addEventListener("deviceorientation", onTilt);
+  addEventListener('pointerdown', onPointerDown, capture);
+  addEventListener('pointermove', onPointerMove, capture);
+  addEventListener('pointerup', onPointerUp, capture);
+  addEventListener('pointercancel', onPointerUp, capture);
+  addEventListener('click', onClick, capture);
+  addEventListener('touchstart', onTouchStart, active);
+  addEventListener('touchmove', onTouchMove, active);
+  addEventListener('touchend', onTouchEnd, active);
+  addEventListener('touchcancel', onTouchEnd, active);
+  addEventListener('contextmenu', onContextMenu, capture);
+  addEventListener('resize', resize);
+  addEventListener('deviceorientation', onTilt);
 
   // ---- Frame -------------------------------------------------------------------------------
 
@@ -960,7 +1028,12 @@ export async function createEngine(options: {
         const cap = bl > 0.09 ? 0.09 / bl : 1;
         blurX = bx * cap;
         blurY = by * cap;
-        const off = s.x < -s.w || s.x > innerWidth + s.w || s.y < -s.h || s.y > innerHeight + s.h || age > 1400;
+        const off =
+          s.x < -s.w ||
+          s.x > innerWidth + s.w ||
+          s.y < -s.h ||
+          s.y > innerHeight + s.h ||
+          age > 1400;
         if (off) {
           removeSticker(s);
           continue;
@@ -968,7 +1041,11 @@ export async function createEngine(options: {
       } else if (s.live) {
         const b = s.body;
         // A sticker that slipped out of the box (a very hard throw) is put back in from the top.
-        if (b.position.y > innerHeight + 200 || b.position.x < -200 || b.position.x > innerWidth + 200) {
+        if (
+          b.position.y > innerHeight + 200 ||
+          b.position.x < -200 ||
+          b.position.x > innerWidth + 200
+        ) {
           Matter.Body.setPosition(b, { x: innerWidth / 2, y: -s.h });
           Matter.Body.setVelocity(b, { x: 0, y: 0 });
         }
@@ -1019,12 +1096,16 @@ export async function createEngine(options: {
   requestAnimationFrame(frame);
 
   // Dev-only window into sticker placement, for automated checks of grabs at known points.
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === 'development') {
     (window as unknown as { __kookifyArts?: unknown }).__kookifyArts = () =>
       [...arts, ...words].map((a) => {
         const poly = a.outline.map((p) => [p.x, p.y]);
         decomp.makeCCW(poly);
-        return { n: a.outline.length, simple: decomp.isSimple(poly), pieces: decomp.quickDecomp(poly).length };
+        return {
+          n: a.outline.length,
+          simple: decomp.isSimple(poly),
+          pieces: decomp.quickDecomp(poly).length,
+        };
       });
     // How far stickers sink into each other: the deepest overlap and how many pairs exceed 2px.
     (window as unknown as { __kookifyOverlap?: unknown }).__kookifyOverlap = () => {
@@ -1044,7 +1125,11 @@ export async function createEngine(options: {
           deepest = Math.max(deepest, pair);
           if (pair > 2) {
             over++;
-            where.push([Math.round(bodies[i]!.position.x), Math.round(bodies[i]!.position.y), Math.round(pair)]);
+            where.push([
+              Math.round(bodies[i]!.position.x),
+              Math.round(bodies[i]!.position.y),
+              Math.round(pair),
+            ]);
           }
         }
       }
@@ -1053,7 +1138,18 @@ export async function createEngine(options: {
     (window as unknown as { __kookify?: unknown }).__kookify = () =>
       stickers
         .filter((s) => s.live)
-        .map((s) => ({ x: s.x, y: s.y, rot: s.angle, z: s.z, w: s.w, h: s.h, asleep: s.body.isSleeping, parts: s.body.parts.length - 1, speed: s.body.speed, motion: s.body.motion }));
+        .map((s) => ({
+          x: s.x,
+          y: s.y,
+          rot: s.angle,
+          z: s.z,
+          w: s.w,
+          h: s.h,
+          asleep: s.body.isSleeping,
+          parts: s.body.parts.length - 1,
+          speed: s.body.speed,
+          motion: s.body.motion,
+        }));
   }
 
   return {
@@ -1064,19 +1160,19 @@ export async function createEngine(options: {
       alive = false;
       cancelPending();
       clearTimeout(suppressTimer);
-      removeEventListener("pointerdown", onPointerDown, capture);
-      removeEventListener("pointermove", onPointerMove, capture);
-      removeEventListener("pointerup", onPointerUp, capture);
-      removeEventListener("pointercancel", onPointerUp, capture);
-      removeEventListener("click", onClick, capture);
-      removeEventListener("touchstart", onTouchStart, active);
-      removeEventListener("touchmove", onTouchMove, active);
-      removeEventListener("touchend", onTouchEnd, active);
-      removeEventListener("touchcancel", onTouchEnd, active);
-      removeEventListener("contextmenu", onContextMenu, capture);
-      removeEventListener("resize", resize);
-      removeEventListener("deviceorientation", onTilt);
-      document.documentElement.classList.remove("kookify-grab", "kookify-grabbing", "kookify-hold");
+      removeEventListener('pointerdown', onPointerDown, capture);
+      removeEventListener('pointermove', onPointerMove, capture);
+      removeEventListener('pointerup', onPointerUp, capture);
+      removeEventListener('pointercancel', onPointerUp, capture);
+      removeEventListener('click', onClick, capture);
+      removeEventListener('touchstart', onTouchStart, active);
+      removeEventListener('touchmove', onTouchMove, active);
+      removeEventListener('touchend', onTouchEnd, active);
+      removeEventListener('touchcancel', onTouchEnd, active);
+      removeEventListener('contextmenu', onContextMenu, capture);
+      removeEventListener('resize', resize);
+      removeEventListener('deviceorientation', onTilt);
+      document.documentElement.classList.remove('kookify-grab', 'kookify-grabbing', 'kookify-hold');
       stickers.slice().forEach(removeSticker);
       Matter.World.clear(world.world, false);
       Matter.Engine.clear(world);

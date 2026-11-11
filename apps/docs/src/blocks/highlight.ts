@@ -27,7 +27,7 @@
  * Italic is not a weight and stays — it is the one signal separating a comment
  * from the code around it that does not spend a colour.
  */
-import { createCssVariablesTheme, createHighlighter } from "shiki";
+import { createCssVariablesTheme, createHighlighter } from 'shiki';
 import {
   transformerMetaHighlight,
   transformerMetaWordHighlight,
@@ -36,7 +36,7 @@ import {
   transformerNotationFocus,
   transformerNotationHighlight,
   transformerNotationWordHighlight,
-} from "@shikijs/transformers";
+} from '@shikijs/transformers';
 
 /**
  * The languages the docs actually contain. Listed rather than bundled: Shiki loads grammars
@@ -45,20 +45,21 @@ import {
  * language fails the render instead of silently rendering as plain text (which is Shiki's
  * fallback, and reads exactly like a fence nobody got round to labelling).
  */
-export const LANGS = ["tsx", "ts", "jsx", "js", "css", "json", "bash", "html", "mdx"] as const;
+export const LANGS = ['tsx', 'ts', 'jsx', 'js', 'css', 'json', 'bash', 'html', 'mdx'] as const;
 
 export type Lang = (typeof LANGS)[number];
 
-export const isLang = (value: string): value is Lang => (LANGS as readonly string[]).includes(value);
+export const isLang = (value: string): value is Lang =>
+  (LANGS as readonly string[]).includes(value);
 
 /** Named once. `createCssVariablesTheme` types its result's `name` as optional, so reading it
     back at the call site is a nullable string the highlighter will not accept — the constant
     is what makes registering the theme and selecting it the same fact. */
-const THEME_NAME = "kookie";
+const THEME_NAME = 'kookie';
 
 const theme = createCssVariablesTheme({
   name: THEME_NAME,
-  variablePrefix: "--code-",
+  variablePrefix: '--code-',
   // No defaults. A `var()` with a fallback would paint SOMETHING when a name is unresolved,
   // which is how a token that code.css forgot ends up looking deliberate — the material
   // edge's `initial` argument (§10), one system over. Unresolved here means invalid at
@@ -103,7 +104,7 @@ export type CodeLine = {
   /** `// [!code focus]` — this line is the point; the rest stand down. */
   focus: boolean;
   /** `// [!code error]` / `// [!code warning]` — the line a message is about. */
-  level?: "error" | "warning" | undefined;
+  level?: 'error' | 'warning' | undefined;
 };
 
 export type HighlightedCode = {
@@ -134,12 +135,12 @@ export type HighlightedCode = {
  * with `tab-size` in two homes.
  */
 export const leadingColumns = (line: CodeLine): number => {
-  const text = line.tokens.map((token) => token.text).join("");
+  const text = line.tokens.map((token) => token.text).join('');
   return text.length - text.trimStart().length;
 };
 
 export const plainText = (lines: readonly CodeLine[]): string =>
-  lines.map((line) => line.tokens.map((token) => token.text).join("")).join("\n");
+  lines.map((line) => line.tokens.map((token) => token.text).join('')).join('\n');
 
 /* ── The fence-meta vocabulary ─────────────────────────────────────────────────────────── */
 
@@ -168,7 +169,7 @@ export type FenceMeta = {
  * directives are removed so they cannot also match as code words.
  */
 export function parseMeta(meta: string | undefined): FenceMeta {
-  let rest = meta ?? "";
+  let rest = meta ?? '';
   const take = (pattern: RegExp): string | undefined => {
     const match = pattern.exec(rest);
     if (!match) return undefined;
@@ -180,7 +181,7 @@ export function parseMeta(meta: string | undefined): FenceMeta {
   /* `=true`/`=false` return the captured word; the bare form has no capture, so `take` gives
      back the whole match and anything that is not the literal "false" is an ask. */
   const lineNumbersRaw = take(/(?:^|\s)lineNumbers(?:=(true|false))?(?=\s|$)/);
-  const lineNumbers = lineNumbersRaw === undefined ? undefined : lineNumbersRaw !== "false";
+  const lineNumbers = lineNumbersRaw === undefined ? undefined : lineNumbersRaw !== 'false';
   const bare = take(/(?:^|\s)bare(?=\s|$)/) !== undefined;
   return {
     title,
@@ -195,19 +196,19 @@ export function parseMeta(meta: string | undefined): FenceMeta {
 
 /** The slice of HAST this file consumes, typed locally so the walk's assumptions are stated
     here rather than imported. Anything outside this shape throws in `tokenize`. */
-type HastText = { type: "text"; value: string };
+type HastText = { type: 'text'; value: string };
 type HastElement = {
-  type: "element";
+  type: 'element';
   tagName: string;
   properties?: Record<string, unknown>;
   children: (HastElement | HastText | { type: string })[];
 };
 
-const isElement = (node: { type: string }): node is HastElement => node.type === "element";
-const isText = (node: { type: string }): node is HastText => node.type === "text";
+const isElement = (node: { type: string }): node is HastElement => node.type === 'element';
+const isText = (node: { type: string }): node is HastText => node.type === 'text';
 
 const classesOf = (node: HastElement): string[] => {
-  const value = node.properties?.["class"] ?? node.properties?.["className"];
+  const value = node.properties?.['class'] ?? node.properties?.['className'];
   if (value === undefined || value === null) return [];
   if (Array.isArray(value)) return value.map(String);
   return String(value).split(/\s+/);
@@ -223,14 +224,14 @@ const textOf = (node: HastElement | HastText): string => {
       if (isText(child) || isElement(child)) return textOf(child);
       throw new Error(`highlight: unexpected ${child.type} node inside a token`);
     })
-    .join("");
+    .join('');
 };
 
 /** A token span's two styled facts, off its inline style string. The CSS-variables theme
     writes `color:var(--code-…)` and `font-style:italic`; bold (`font-weight`) is dropped
     here, which is the §15 refusal as a filter rather than a regex over emitted HTML. */
 const styleOf = (node: HastElement): { color?: string; italic: boolean } => {
-  const style = String(node.properties?.["style"] ?? "");
+  const style = String(node.properties?.['style'] ?? '');
   const color = /(?:^|;)\s*color:([^;]+)/.exec(style)?.[1]?.trim();
   return { ...(color ? { color } : {}), italic: /font-style:\s*italic/.test(style) };
 };
@@ -241,31 +242,27 @@ const styleOf = (node: HastElement): { color?: string; italic: boolean } => {
  * `meta` is the fence's leftover meta string (after `parseMeta` took the chrome facts), so
  * `{1,3-5}` and `/word/` reach Shiki's own meta transformers unre-implemented.
  */
-export async function tokenize(
-  code: string,
-  lang: Lang,
-  meta?: string,
-): Promise<HighlightedCode> {
+export async function tokenize(code: string, lang: Lang, meta?: string): Promise<HighlightedCode> {
   const highlighter = await getHighlighter();
-  const root = highlighter.codeToHast(code.replace(/\n+$/, ""), {
+  const root = highlighter.codeToHast(code.replace(/\n+$/, ''), {
     lang,
     theme: THEME_NAME,
     ...(meta ? { meta: { __raw: meta } } : {}),
     transformers: [
-      transformerNotationDiff({ matchAlgorithm: "v3" }),
-      transformerNotationHighlight({ matchAlgorithm: "v3" }),
-      transformerNotationWordHighlight({ matchAlgorithm: "v3" }),
-      transformerNotationFocus({ matchAlgorithm: "v3" }),
-      transformerNotationErrorLevel({ matchAlgorithm: "v3" }),
+      transformerNotationDiff({ matchAlgorithm: 'v3' }),
+      transformerNotationHighlight({ matchAlgorithm: 'v3' }),
+      transformerNotationWordHighlight({ matchAlgorithm: 'v3' }),
+      transformerNotationFocus({ matchAlgorithm: 'v3' }),
+      transformerNotationErrorLevel({ matchAlgorithm: 'v3' }),
       transformerMetaHighlight(),
       transformerMetaWordHighlight(),
     ],
   }) as unknown as { children: { type: string }[] };
 
   const pre = root.children.find(isElement);
-  if (!pre || pre.tagName !== "pre") throw new Error("highlight: no <pre> in Shiki's output");
+  if (!pre || pre.tagName !== 'pre') throw new Error("highlight: no <pre> in Shiki's output");
   const codeEl = pre.children.find(isElement);
-  if (!codeEl || codeEl.tagName !== "code") throw new Error("highlight: no <code> in <pre>");
+  if (!codeEl || codeEl.tagName !== 'code') throw new Error('highlight: no <code> in <pre>');
 
   const lines: CodeLine[] = [];
   for (const child of codeEl.children) {
@@ -277,7 +274,7 @@ export async function tokenize(
     }
     if (!isElement(child)) throw new Error(`highlight: unexpected ${child.type} between lines`);
     const classes = classesOf(child);
-    if (!classes.includes("line")) throw new Error(`highlight: a non-line span between lines`);
+    if (!classes.includes('line')) throw new Error(`highlight: a non-line span between lines`);
     const tokens: CodeToken[] = [];
     for (const span of child.children) {
       if (isText(span)) {
@@ -288,19 +285,26 @@ export async function tokenize(
       if (!isElement(span)) throw new Error(`highlight: unexpected ${span.type} in a line`);
       const { color, italic } = styleOf(span);
       tokens.push({
-        text: textOf(span).replace(/\n$/, ""),
+        text: textOf(span).replace(/\n$/, ''),
         color,
         italic,
-        word: classesOf(span).includes("highlighted-word"),
+        word: classesOf(span).includes('highlighted-word'),
       });
     }
     lines.push({
       tokens,
-      highlight: classes.includes("highlighted") && !classes.includes("error") && !classes.includes("warning"),
-      add: classes.includes("diff") && classes.includes("add"),
-      remove: classes.includes("diff") && classes.includes("remove"),
-      focus: classes.includes("focused"),
-      level: classes.includes("error") ? "error" : classes.includes("warning") ? "warning" : undefined,
+      highlight:
+        classes.includes('highlighted') &&
+        !classes.includes('error') &&
+        !classes.includes('warning'),
+      add: classes.includes('diff') && classes.includes('add'),
+      remove: classes.includes('diff') && classes.includes('remove'),
+      focus: classes.includes('focused'),
+      level: classes.includes('error')
+        ? 'error'
+        : classes.includes('warning')
+          ? 'warning'
+          : undefined,
     });
   }
 

@@ -30,7 +30,11 @@ function textOf(content: unknown): string {
   if (!Array.isArray(content)) return '';
   return content
     .map((part: unknown) =>
-      part !== null && typeof part === 'object' && 'type' in part && part.type === 'text' && 'text' in part
+      part !== null &&
+      typeof part === 'object' &&
+      'type' in part &&
+      part.type === 'text' &&
+      'text' in part
         ? String(part.text)
         : ''
     )
@@ -89,7 +93,12 @@ function mockModel(model: AgentModel): MockLanguageModelV4 {
             type: 'finish',
             finishReason: { unified: turn.calls?.length ? 'tool-calls' : 'stop', raw: undefined },
             usage: {
-              inputTokens: { total: Math.ceil(promptChars / 4), noCache: Math.ceil(promptChars / 4), cacheRead: 0, cacheWrite: 0 },
+              inputTokens: {
+                total: Math.ceil(promptChars / 4),
+                noCache: Math.ceil(promptChars / 4),
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
               outputTokens: { total: 120, text: 120, reasoning: 0 },
             },
           });

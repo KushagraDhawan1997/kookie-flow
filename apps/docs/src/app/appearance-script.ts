@@ -13,8 +13,8 @@
  * Kept as a string in its own module so the store (appearance.tsx) and the layout agree on
  * the storage keys by import rather than by coincidence.
  */
-export const APPEARANCE_KEY = "kui-appearance";
-export const CONTRAST_KEY = "kui-contrast";
+export const APPEARANCE_KEY = 'kui-appearance';
+export const CONTRAST_KEY = 'kui-contrast';
 
 /**
  * The read is guarded SEPARATELY from the stamp, which is the whole shape of this script.

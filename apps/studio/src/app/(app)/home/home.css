@@ -50,7 +50,6 @@
   padding-block-end: var(--layout-space-2);
 }
 
-
 .kd-home-row-wide {
   grid-auto-columns: minmax(18rem, 24rem);
 }

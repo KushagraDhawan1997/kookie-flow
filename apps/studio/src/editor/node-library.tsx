@@ -99,14 +99,23 @@ function NodePalette({ open, onOpenChange, onAdd }: NodePaletteProps) {
   return (
     <Command items={sections} open={open} onOpenChange={onOpenChange}>
       <CommandContent aria-label="Add node" filter={null} onQueryChange={setQuery}>
-        <CommandInput aria-label="Search nodes" placeholder="Search nodes" leading={<SearchIcon />} />
+        <CommandInput
+          aria-label="Search nodes"
+          placeholder="Search nodes"
+          leading={<SearchIcon />}
+        />
         <CommandList>
           {(section: Section) => (
             <CommandGroup key={section.key} items={section.items}>
               <CommandGroupLabel>{CATEGORY_LABELS[section.key]}</CommandGroupLabel>
               <CommandCollection>
                 {(def: AnyNodeDefinition) => (
-                  <CommandItem key={def.type} value={def} leading={<NodeMark type={def.type} />} onClick={() => onAdd(def.type)}>
+                  <CommandItem
+                    key={def.type}
+                    value={def}
+                    leading={<NodeMark type={def.type} />}
+                    onClick={() => onAdd(def.type)}
+                  >
                     {def.label}
                   </CommandItem>
                 )}
@@ -126,5 +135,7 @@ function NodePalette({ open, onOpenChange, onAdd }: NodePaletteProps) {
 function NodeMark({ type }: { type: string }) {
   const model = modelForNode(type);
   if (!model) return null;
-  return <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />;
+  return (
+    <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} decorative={false} />
+  );
 }

@@ -1,4 +1,4 @@
-import { PAGES, markdownFor } from "./markdown";
+import { PAGES, markdownFor } from './markdown';
 
 /**
  * `llms.txt` and `llms-full.txt` (llmstxt.org, Answer.AI 2024).
@@ -15,22 +15,23 @@ import { PAGES, markdownFor } from "./markdown";
  * everything worth checking is a pure function of one input.
  */
 export function originFrom(head: Headers): string {
-  const host = head.get("host") ?? "localhost:3000";
+  const host = head.get('host') ?? 'localhost:3000';
   const proto =
-    head.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https");
+    head.get('x-forwarded-proto') ??
+    (/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https');
   return `${proto}://${host}`;
 }
 
 /** The one sentence at the top of both files. What this site is, before any list of it. */
 const SUMMARY =
-  "A WebGL-native node graph library for React: entities are instanced meshes, edges are batched GPU geometry and text is drawn through MSDF shaders. Every page below is available as markdown by adding `.md` to its path.";
+  'A WebGL-native node graph library for React: entities are instanced meshes, edges are batched GPU geometry and text is drawn through MSDF shaders. Every page below is available as markdown by adding `.md` to its path.';
 
 export function llmsIndex(base: string): string {
   const out = [`# Kookie Flow`, ``, `> ${SUMMARY}`, ``];
   // GROUPED BY THE SITE'S OWN CONTEXT, in the site's own order. The spec asks for sections and
   // the sections it wants are the ones a reader already navigates by, so nothing here invents a
   // taxonomy: `PAGES` carries the context each page states about itself.
-  let heading = "";
+  let heading = '';
   for (const page of PAGES) {
     if (page.context !== heading) {
       // A blank line BEFORE each heading but the first: the preamble already ends with one,
@@ -41,7 +42,7 @@ export function llmsIndex(base: string): string {
     }
     out.push(`- [${page.title}](${base}${page.path}.md): ${page.blurb}`);
   }
-  return `${out.join("\n")}\n`;
+  return `${out.join('\n')}\n`;
 }
 
 export function llmsFull(base: string): string {
@@ -55,14 +56,14 @@ export function llmsFull(base: string): string {
     // which is the one thing a reader of the concatenation cannot otherwise recover.
     parts.push(`---`, ``, `Source: ${base}${page.path}`, ``, body.trim(), ``);
   }
-  return `${parts.join("\n")}\n`;
+  return `${parts.join('\n')}\n`;
 }
 
 /** One response shape for both, so a header cannot drift between two files. */
 export const asText = (body: string): Response =>
   new Response(body, {
     headers: {
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "public, max-age=0, must-revalidate",
+      'content-type': 'text/plain; charset=utf-8',
+      'cache-control': 'public, max-age=0, must-revalidate',
     },
   });

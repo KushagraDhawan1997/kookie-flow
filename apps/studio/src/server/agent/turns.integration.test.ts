@@ -10,7 +10,14 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { findAgentModel, tokenMicros, withFee } from 'studio-core';
-import { balanceMicros, closeTurn, InsufficientBalance, listEntries, openTurn, topUp } from '../billing';
+import {
+  balanceMicros,
+  closeTurn,
+  InsufficientBalance,
+  listEntries,
+  openTurn,
+  topUp,
+} from '../billing';
 import { getDb } from '../db';
 import { agentTurns } from '../db/schema';
 
@@ -32,7 +39,12 @@ describe('agent turns', () => {
   it('holds, then charges the tokens used, once', async () => {
     const db = await getDb();
     await topUp(db, { workspaceId: WS, sessionId: 'cs_turns_1', amountMicros: 1_000_000 });
-    const turn = await openTurn(db, { workspaceId: WS, graphId: 'g1', model: MODEL, estimateMicros: 100_000 });
+    const turn = await openTurn(db, {
+      workspaceId: WS,
+      graphId: 'g1',
+      model: MODEL,
+      estimateMicros: 100_000,
+    });
     expect(await balanceMicros(db, WS)).toBe(1_000_000 - withFee(100_000).total);
 
     const usage = { input: 20_000, output: 1_000, cacheRead: 5_000, cacheWrite: 0 };
@@ -56,7 +68,12 @@ describe('agent turns', () => {
   it('releases a turn that used nothing', async () => {
     const db = await getDb();
     const before = await balanceMicros(db, WS);
-    const turn = await openTurn(db, { workspaceId: WS, graphId: 'g1', model: MODEL, estimateMicros: 50_000 });
+    const turn = await openTurn(db, {
+      workspaceId: WS,
+      graphId: 'g1',
+      model: MODEL,
+      estimateMicros: 50_000,
+    });
     await closeTurn(db, turn.id, null, 'failed');
     expect(await balanceMicros(db, WS)).toBe(before);
   });

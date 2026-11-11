@@ -32,12 +32,12 @@
 
 Some Kookie UI features are simplified for WebGL rendering:
 
-| Feature | Kookie UI (CSS) | Kookie Flow (WebGL) |
-|---------|-----------------|---------------------|
-| Shadows | Multi-layer box-shadow with CSS vars | Single drop shadow (blur + offset) |
-| Translucent material | backdrop-filter blur | Not supported v1 (requires render-to-texture) |
-| Hover transitions | CSS transition | Instant (could add shader interpolation later) |
-| Border | box-shadow inset or ::after | SDF stroke |
+| Feature              | Kookie UI (CSS)                      | Kookie Flow (WebGL)                            |
+| -------------------- | ------------------------------------ | ---------------------------------------------- |
+| Shadows              | Multi-layer box-shadow with CSS vars | Single drop shadow (blur + offset)             |
+| Translucent material | backdrop-filter blur                 | Not supported v1 (requires render-to-texture)  |
+| Hover transitions    | CSS transition                       | Instant (could add shader interpolation later) |
+| Border               | box-shadow inset or ::after          | SDF stroke                                     |
 
 These simplifications look visually similar but aren't pixel-perfect matches.
 
@@ -114,15 +114,16 @@ These simplifications look visually similar but aren't pixel-perfect matches.
 
 All styling operations must stay within these limits to maintain 60fps with 10k+ nodes:
 
-| Operation | Budget | Frequency |
-|-----------|--------|-----------|
-| `useThemeTokens()` DOM read | <1ms | Once on mount |
-| `resolveNodeStyle()` | <0.1ms | Once per render, memoized |
-| Hover attribute update | O(1), 2 indices max | On mouse move |
-| Selection attribute update | O(n) where n = changed | On selection change |
-| Shader uniform update | <0.01ms | On style prop change only |
+| Operation                   | Budget                 | Frequency                 |
+| --------------------------- | ---------------------- | ------------------------- |
+| `useThemeTokens()` DOM read | <1ms                   | Once on mount             |
+| `resolveNodeStyle()`        | <0.1ms                 | Once per render, memoized |
+| Hover attribute update      | O(1), 2 indices max    | On mouse move             |
+| Selection attribute update  | O(n) where n = changed | On selection change       |
+| Shader uniform update       | <0.01ms                | On style prop change only |
 
 **Critical constraints:**
+
 - Token reading must NOT happen during pan/zoom/drag
 - `resolveNodeStyle()` result must be memoized—never called in render loop
 - Hover updates must modify exactly 2 buffer indices (prev + current), not iterate all nodes
@@ -147,7 +148,7 @@ All styling operations must stay within these limits to maintain 60fps with 10k+
     "three": ">=0.170.0"
   },
   "devDependencies": {
-    "@kushagradhawan/kookie-ui": "^0.1.151",
+    "@kushagradhawan/kookie-ui": "^0.1.151"
     // ... existing
   }
 }
@@ -163,12 +164,12 @@ Reads CSS variables from the DOM and returns a flat map keyed by CSS variable na
 // Flat map using actual CSS variable names as keys
 interface ThemeTokens {
   // Spacing (resolved to pixels)
-  '--space-1': number;  // 4px × scaling
-  '--space-2': number;  // 8px × scaling
-  '--space-3': number;  // 12px × scaling
-  '--space-4': number;  // 16px × scaling
-  '--space-5': number;  // 24px × scaling
-  '--space-6': number;  // 32px × scaling
+  '--space-1': number; // 4px × scaling
+  '--space-2': number; // 8px × scaling
+  '--space-3': number; // 12px × scaling
+  '--space-4': number; // 16px × scaling
+  '--space-5': number; // 24px × scaling
+  '--space-6': number; // 32px × scaling
 
   // Radius (resolved to pixels) - actual Kookie UI values:
   // --radius-1: 6px, --radius-2: 8px, --radius-3: 10px
@@ -180,37 +181,37 @@ interface ThemeTokens {
   '--radius-4': number;
   '--radius-5': number;
   '--radius-6': number;
-  '--radius-full': number;  // 9999px
+  '--radius-full': number; // 9999px
 
   // Typography - Font sizes (resolved to pixels)
   // Used for node labels and widget sizing alignment
-  '--font-size-1': number;  // 12px × scaling
-  '--font-size-2': number;  // 14px × scaling
-  '--font-size-3': number;  // 16px × scaling
-  '--font-size-4': number;  // 18px × scaling
-  '--font-size-5': number;  // 20px × scaling
+  '--font-size-1': number; // 12px × scaling
+  '--font-size-2': number; // 14px × scaling
+  '--font-size-3': number; // 16px × scaling
+  '--font-size-4': number; // 18px × scaling
+  '--font-size-5': number; // 20px × scaling
 
   // Typography - Line heights (resolved to pixels)
   // Used for header heights to match text vertical rhythm
-  '--line-height-1': number;  // 16px × scaling
-  '--line-height-2': number;  // 20px × scaling
-  '--line-height-3': number;  // 24px × scaling
-  '--line-height-4': number;  // 26px × scaling
-  '--line-height-5': number;  // 28px × scaling
+  '--line-height-1': number; // 16px × scaling
+  '--line-height-2': number; // 20px × scaling
+  '--line-height-3': number; // 24px × scaling
+  '--line-height-4': number; // 26px × scaling
+  '--line-height-5': number; // 28px × scaling
 
   // Gray scale (as RGB arrays [0-1] for WebGL)
-  '--gray-1': RGBColor;   // lightest
+  '--gray-1': RGBColor; // lightest
   '--gray-2': RGBColor;
   '--gray-3': RGBColor;
   '--gray-4': RGBColor;
   '--gray-5': RGBColor;
-  '--gray-6': RGBColor;   // borders
+  '--gray-6': RGBColor; // borders
   '--gray-7': RGBColor;
   '--gray-8': RGBColor;
   '--gray-9': RGBColor;
   '--gray-10': RGBColor;
   '--gray-11': RGBColor;
-  '--gray-12': RGBColor;  // darkest
+  '--gray-12': RGBColor; // darkest
 
   // Gray alpha variants
   '--gray-a1': RGBAColor;
@@ -222,14 +223,14 @@ interface ThemeTokens {
   '--accent-1': RGBColor;
   '--accent-2': RGBColor;
   // ... through --accent-12
-  '--accent-9': RGBColor;   // primary accent
+  '--accent-9': RGBColor; // primary accent
   '--accent-a3': RGBAColor; // for subtle backgrounds
 
   // Radix color palette (for socket types)
   // Blue
   '--blue-1': RGBColor;
-  '--blue-9': RGBColor;   // primary blue
-  '--blue-11': RGBColor;  // text on blue bg
+  '--blue-9': RGBColor; // primary blue
+  '--blue-11': RGBColor; // text on blue bg
   // Purple
   '--purple-1': RGBColor;
   '--purple-9': RGBColor;
@@ -259,18 +260,18 @@ interface ThemeTokens {
   '--shadow-6': SimpleShadow;
 
   // Meta
-  '--scaling': number;  // 0.9 - 1.1
+  '--scaling': number; // 0.9 - 1.1
   appearance: 'light' | 'dark';
 }
 
-type RGBColor = [number, number, number];       // [0-1, 0-1, 0-1]
+type RGBColor = [number, number, number]; // [0-1, 0-1, 0-1]
 type RGBAColor = [number, number, number, number]; // [0-1, 0-1, 0-1, 0-1]
 
 // Simplified shadow for WebGL (single drop shadow, not multi-layer CSS)
 interface SimpleShadow {
-  offsetY: number;  // Vertical offset in pixels
-  blur: number;     // Blur radius in pixels
-  opacity: number;  // 0-1, applied to black
+  offsetY: number; // Vertical offset in pixels
+  blur: number; // Blur radius in pixels
+  opacity: number; // 0-1, applied to black
 }
 ```
 
@@ -373,29 +374,29 @@ const FALLBACK_TOKENS: ThemeTokens = {
   '--line-height-5': 28,
 
   // Gray (dark mode defaults)
-  '--gray-1': [0.067, 0.067, 0.067],   // #111111
-  '--gray-2': [0.098, 0.098, 0.098],   // #191919
-  '--gray-3': [0.133, 0.133, 0.133],   // #222222
-  '--gray-4': [0.165, 0.165, 0.165],   // #2a2a2a
-  '--gray-5': [0.196, 0.196, 0.196],   // #323232
-  '--gray-6': [0.239, 0.239, 0.239],   // #3d3d3d
-  '--gray-7': [0.306, 0.306, 0.306],   // #4e4e4e
-  '--gray-8': [0.392, 0.392, 0.392],   // #646464
-  '--gray-9': [0.553, 0.553, 0.553],   // #8d8d8d
-  '--gray-10': [0.627, 0.627, 0.627],  // #a0a0a0
-  '--gray-11': [0.737, 0.737, 0.737],  // #bcbcbc
-  '--gray-12': [0.933, 0.933, 0.933],  // #eeeeee
+  '--gray-1': [0.067, 0.067, 0.067], // #111111
+  '--gray-2': [0.098, 0.098, 0.098], // #191919
+  '--gray-3': [0.133, 0.133, 0.133], // #222222
+  '--gray-4': [0.165, 0.165, 0.165], // #2a2a2a
+  '--gray-5': [0.196, 0.196, 0.196], // #323232
+  '--gray-6': [0.239, 0.239, 0.239], // #3d3d3d
+  '--gray-7': [0.306, 0.306, 0.306], // #4e4e4e
+  '--gray-8': [0.392, 0.392, 0.392], // #646464
+  '--gray-9': [0.553, 0.553, 0.553], // #8d8d8d
+  '--gray-10': [0.627, 0.627, 0.627], // #a0a0a0
+  '--gray-11': [0.737, 0.737, 0.737], // #bcbcbc
+  '--gray-12': [0.933, 0.933, 0.933], // #eeeeee
 
   // Accent (indigo defaults)
   '--accent-9': [0.392, 0.404, 0.961], // #6366f5 (indigo-9)
 
   // Radix colors for sockets
-  '--blue-9': [0.0, 0.565, 1.0],       // #0090ff
+  '--blue-9': [0.0, 0.565, 1.0], // #0090ff
   '--purple-9': [0.557, 0.341, 0.969], // #8e57f7
-  '--green-9': [0.180, 0.710, 0.486],  // #2eb77c
-  '--red-9': [0.906, 0.318, 0.365],    // #e7515d
-  '--amber-9': [1.0, 0.773, 0.239],    // #ffc53d
-  '--cyan-9': [0.0, 0.647, 0.773],     // #00a5c5
+  '--green-9': [0.18, 0.71, 0.486], // #2eb77c
+  '--red-9': [0.906, 0.318, 0.365], // #e7515d
+  '--amber-9': [1.0, 0.773, 0.239], // #ffc53d
+  '--cyan-9': [0.0, 0.647, 0.773], // #00a5c5
 
   // Surfaces
   '--color-surface-solid': [0.098, 0.098, 0.098],
@@ -458,6 +459,7 @@ function Nodes() {
 ```
 
 This ensures:
+
 - Single DOM read on mount (in ThemeProvider)
 - All components share the same token reference
 - No risk of components reading stale/different values
@@ -477,25 +479,44 @@ type Radius = 'none' | 'small' | 'medium' | 'large' | 'full';
 
 // 26 Kookie UI accent colors
 type AccentColor =
-  | 'gray' | 'gold' | 'bronze' | 'brown'
-  | 'yellow' | 'amber' | 'orange' | 'tomato'
-  | 'red' | 'ruby' | 'crimson' | 'pink'
-  | 'plum' | 'purple' | 'violet' | 'iris'
-  | 'indigo' | 'blue' | 'cyan' | 'teal'
-  | 'jade' | 'green' | 'grass' | 'lime'
-  | 'mint' | 'sky';
+  | 'gray'
+  | 'gold'
+  | 'bronze'
+  | 'brown'
+  | 'yellow'
+  | 'amber'
+  | 'orange'
+  | 'tomato'
+  | 'red'
+  | 'ruby'
+  | 'crimson'
+  | 'pink'
+  | 'plum'
+  | 'purple'
+  | 'violet'
+  | 'iris'
+  | 'indigo'
+  | 'blue'
+  | 'cyan'
+  | 'teal'
+  | 'jade'
+  | 'green'
+  | 'grass'
+  | 'lime'
+  | 'mint'
+  | 'sky';
 
 interface KookieFlowProps {
   // ... existing props (nodes, edges, etc.)
 
   // Styling props (match Kookie UI Card)
-  size?: Size;           // Default: '2'
-  variant?: Variant;     // Default: 'surface'
-  radius?: Radius;       // Default: inherits from Theme, or 'medium'
+  size?: Size; // Default: '2'
+  variant?: Variant; // Default: 'surface'
+  radius?: Radius; // Default: inherits from Theme, or 'medium'
 
   // Header configuration
-  header?: 'none' | 'inside' | 'outside';  // Default: 'none'
-  accentHeader?: boolean;                   // Default: false — tint header with accent color
+  header?: 'none' | 'inside' | 'outside'; // Default: 'none'
+  accentHeader?: boolean; // Default: false — tint header with accent color
 
   // Optional fine-grained overrides
   nodeStyle?: Partial<NodeStyleOverrides>;
@@ -503,10 +524,10 @@ interface KookieFlowProps {
 
 interface NodeStyleOverrides {
   // These override the variant defaults
-  background?: string;      // CSS color, converted to RGB
+  background?: string; // CSS color, converted to RGB
   borderColor?: string;
   borderWidth?: number;
-  borderRadius?: number;    // Direct pixel value (overrides radius prop)
+  borderRadius?: number; // Direct pixel value (overrides radius prop)
   shadow?: '1' | '2' | '3' | '4' | '5' | '6' | 'none';
 }
 
@@ -532,23 +553,24 @@ While SIZE_MAP supports sizes 1-5 for node styling (padding, border radius, font
 ```typescript
 const SIZE_MAP = {
   '2': {
-    padding: '--space-3',       // 12px
+    padding: '--space-3', // 12px
     borderRadius: '--radius-4', // 12px
-    fontSize: '--font-size-2',  // 14px
+    fontSize: '--font-size-2', // 14px
     socketSize: 10,
   },
   // Other sizes available for future use, but socket layout locked to size 2
 };
 
 // Fixed layout values (not in SIZE_MAP)
-const ROW_HEIGHT = '--space-7';  // 40px - header (inside) and socket rows
-const WIDGET_HEIGHT = '--space-6';  // 32px - Button/Slider/Select at size 2
+const ROW_HEIGHT = '--space-7'; // 40px - header (inside) and socket rows
+const WIDGET_HEIGHT = '--space-6'; // 32px - Button/Slider/Select at size 2
 // Implicit vertical padding: 4px above + 4px below widget
 ```
 
 **Why token-based sizing matters:**
 
 Using Kookie UI tokens ensures:
+
 1. Node labels at size '2' match Kookie UI `<Text size="2">`
 2. Widgets (Slider, Select, etc.) at size '2' (32px) fit within 40px rows with breathing room
 3. The `--scaling` CSS variable affects everything uniformly
@@ -562,8 +584,8 @@ Socket positioning must use tokens to ensure proper alignment with Kookie UI wid
 
 ```typescript
 export const SOCKET_RADIUS = 6;
-export const SOCKET_SPACING = 24;  // Row height between sockets
-export const SOCKET_MARGIN_TOP = 30;  // Offset from top of node
+export const SOCKET_SPACING = 24; // Row height between sockets
+export const SOCKET_MARGIN_TOP = 30; // Offset from top of node
 ```
 
 **Decision: Fixed to size 2, vertical stack layout**
@@ -602,6 +624,7 @@ Header position: "outside"
 ```
 
 **Row types:**
+
 - **Output rows**: Socket on right edge, label right-aligned, no widget
 - **Input rows**: Socket on left edge, label left-aligned, widget fills remaining width
 
@@ -612,9 +635,10 @@ Both header (inside) and socket rows use the same height token.
 **Widget height: `--space-6` (32px)**
 
 From Kookie UI `base-button.css`:
+
 ```css
 &:where(.rt-r-size-2) {
-  --base-button-height: var(--space-6);  /* 32px at 100% scaling */
+  --base-button-height: var(--space-6); /* 32px at 100% scaling */
 }
 ```
 
@@ -626,9 +650,9 @@ Both tokens scale with `--scaling`: `calc(Npx * var(--scaling))`
 
 ```typescript
 // In constants.ts - replace hardcoded values
-export const SOCKET_ROW_HEIGHT = '--space-7';  // 40px - row height with breathing room
-export const WIDGET_HEIGHT = '--space-6';  // 32px - Button/Slider/Select at size 2
-export const SOCKET_RADIUS = 6;  // Keep as-is (visual, not layout)
+export const SOCKET_ROW_HEIGHT = '--space-7'; // 40px - row height with breathing room
+export const WIDGET_HEIGHT = '--space-6'; // 32px - Button/Slider/Select at size 2
+export const SOCKET_RADIUS = 6; // Keep as-is (visual, not layout)
 
 // Socket margin from top is derived at runtime:
 // marginTop = padding (if no header) OR rowHeight + padding (if header inside)
@@ -640,10 +664,10 @@ The `getSocketPosition()` function in `geometry.ts` needs resolved layout values
 
 ```typescript
 interface ResolvedSocketLayout {
-  rowHeight: number;     // Resolved from --space-7 (40px)
-  widgetHeight: number;  // Resolved from --space-6 (32px)
-  marginTop: number;     // Derived from padding (+ rowHeight if header inside)
-  socketSize: number;    // From SIZE_MAP (10 for size 2)
+  rowHeight: number; // Resolved from --space-7 (40px)
+  widgetHeight: number; // Resolved from --space-6 (32px)
+  marginTop: number; // Derived from padding (+ rowHeight if header inside)
+  socketSize: number; // From SIZE_MAP (10 for size 2)
 }
 
 function getSocketPosition(
@@ -654,7 +678,7 @@ function getSocketPosition(
 ): XYPosition | null {
   // Find socket index within its array (inputs or outputs)
   const sockets = isInput ? node.inputs : node.outputs;
-  const index = sockets?.findIndex(s => s.id === socketId) ?? -1;
+  const index = sockets?.findIndex((s) => s.id === socketId) ?? -1;
   if (index === -1) return null;
 
   // Outputs come first, then inputs
@@ -683,6 +707,7 @@ All need access to resolved layout values via context or props.
 **Widget alignment guarantee:**
 
 With row height = `--space-7` (40px) and widget height = `--space-6` (32px):
+
 - Button size 2: 32px height, 4px padding above/below
 - Slider size 2: 32px height, centered in row
 - Select size 2: 32px height, centered in row
@@ -740,9 +765,9 @@ const VARIANT_MAP = {
 ```typescript
 const RADIUS_MAP = {
   none: 0,
-  small: '--radius-2',   // 8px
-  medium: '--radius-4',  // 12px
-  large: '--radius-6',   // 20px
+  small: '--radius-2', // 8px
+  medium: '--radius-4', // 12px
+  large: '--radius-6', // 20px
   full: '--radius-full', // 9999px (pill shape)
 };
 ```
@@ -761,7 +786,7 @@ Socket colors can reference Radix color tokens from Kookie UI:
 // User defines socket types using CSS var names
 const socketTypes = {
   float: {
-    color: '--blue-9',        // Resolved from theme
+    color: '--blue-9', // Resolved from theme
     label: 'Float',
   },
   int: {
@@ -803,10 +828,7 @@ const socketTypes = {
 ### 3.2 Resolving Socket Colors
 
 ```typescript
-function resolveSocketColor(
-  socketType: SocketTypeConfig,
-  tokens: ThemeTokens
-): RGBColor {
+function resolveSocketColor(socketType: SocketTypeConfig, tokens: ThemeTokens): RGBColor {
   const colorRef = socketType.color;
 
   // If it's a CSS var reference, resolve from tokens
@@ -823,18 +845,18 @@ function resolveSocketColor(
 
 Full palette available from Kookie UI Theme:
 
-| Color | Var Name | Typical Use |
-|-------|----------|-------------|
-| Blue | `--blue-9` | Numbers, floats, ints |
-| Purple | `--purple-9` | Images, textures |
-| Green | `--green-9` | Strings, text |
-| Red | `--red-9` | Booleans, errors |
-| Amber | `--amber-9` | Colors, warnings |
-| Cyan | `--cyan-9` | Vectors, coordinates |
-| Pink | `--pink-9` | Custom types |
-| Teal | `--teal-9` | Custom types |
-| Orange | `--orange-9` | Custom types |
-| Gray | `--gray-9` | Any/wildcard |
+| Color  | Var Name     | Typical Use           |
+| ------ | ------------ | --------------------- |
+| Blue   | `--blue-9`   | Numbers, floats, ints |
+| Purple | `--purple-9` | Images, textures      |
+| Green  | `--green-9`  | Strings, text         |
+| Red    | `--red-9`    | Booleans, errors      |
+| Amber  | `--amber-9`  | Colors, warnings      |
+| Cyan   | `--cyan-9`   | Vectors, coordinates  |
+| Pink   | `--pink-9`   | Custom types          |
+| Teal   | `--teal-9`   | Custom types          |
+| Orange | `--orange-9` | Custom types          |
+| Gray   | `--gray-9`   | Any/wildcard          |
 
 All colors have scales 1-12 (light to dark) and alpha variants (a1-a12).
 
@@ -864,7 +886,7 @@ interface ResolvedNodeStyle {
   // Shadow (simplified, for classic variant)
   shadowBlur: number;
   shadowOffsetY: number;
-  shadowOpacity: number;  // Applied to black
+  shadowOpacity: number; // Applied to black
 
   // Selection state colors
   selectedBorderColor: RGBColor;
@@ -889,21 +911,23 @@ function resolveNodeStyle(
   // Resolve token references to actual values
   const padding = tokens[sizeConfig.padding];
   const borderRadius = radius
-    ? (typeof RADIUS_MAP[radius] === 'number'
-        ? RADIUS_MAP[radius]
-        : tokens[RADIUS_MAP[radius]])
+    ? typeof RADIUS_MAP[radius] === 'number'
+      ? RADIUS_MAP[radius]
+      : tokens[RADIUS_MAP[radius]]
     : tokens[sizeConfig.borderRadius];
 
   // Resolve colors
-  const background = variantConfig.background === 'transparent'
-    ? [0, 0, 0] as RGBColor  // Handled specially in shader
-    : tokens[variantConfig.background];
+  const background =
+    variantConfig.background === 'transparent'
+      ? ([0, 0, 0] as RGBColor) // Handled specially in shader
+      : tokens[variantConfig.background];
 
   const backgroundHover = tokens[variantConfig.backgroundHover];
 
-  const borderColor = variantConfig.borderColor === 'transparent'
-    ? [0, 0, 0] as RGBColor
-    : tokens[variantConfig.borderColor];
+  const borderColor =
+    variantConfig.borderColor === 'transparent'
+      ? ([0, 0, 0] as RGBColor)
+      : tokens[variantConfig.borderColor];
 
   // Shadow (only for classic variant, simplified)
   let shadowBlur = 0;
@@ -926,12 +950,8 @@ function resolveNodeStyle(
     headerHeight: overrides?.headerHeight ?? sizeConfig.headerHeight,
     borderRadius: overrides?.borderRadius ?? borderRadius,
     borderWidth: overrides?.borderWidth ?? variantConfig.borderWidth,
-    borderColor: overrides?.borderColor
-      ? parseColorToRGB(overrides.borderColor)
-      : borderColor,
-    background: overrides?.background
-      ? parseColorToRGB(overrides.background)
-      : background,
+    borderColor: overrides?.borderColor ? parseColorToRGB(overrides.borderColor) : borderColor,
+    background: overrides?.background ? parseColorToRGB(overrides.background) : background,
     backgroundHover,
     shadowBlur,
     shadowOffsetY,
@@ -1007,16 +1027,10 @@ function parseColorToRGB(color: string): RGBColor {
 
 function hexToRGB(hex: string): RGBColor {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(
-    hex.length === 4
-      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-      : hex
+    hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
   );
   return result
-    ? [
-        parseInt(result[1], 16) / 255,
-        parseInt(result[2], 16) / 255,
-        parseInt(result[3], 16) / 255,
-      ]
+    ? [parseInt(result[1], 16) / 255, parseInt(result[2], 16) / 255, parseInt(result[3], 16) / 255]
     : [0, 0, 0];
 }
 
@@ -1143,6 +1157,7 @@ const material = useMemo(() => {
 ### 6.1 Selection Styling
 
 When a node is selected:
+
 - Border color changes to accent color (`--accent-9`)
 - Border width could increase slightly (optional)
 
@@ -1153,6 +1168,7 @@ const selectedBorderColor = tokens['--accent-9']; // e.g., indigo-9
 ### 6.2 Hover Styling
 
 When hovering over a node:
+
 - Background shifts to hover color (variant-specific)
 - Managed via `a_hovered` instance attribute
 
@@ -1217,6 +1233,7 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 ## Implementation Order
 
 ### Milestone 1: Foundation ✓
+
 - [x] Add `@kushagradhawan/kookie-ui` as peerDependency + devDependency
 - [x] Create `useThemeTokens()` hook with CSS var reading
 - [x] Implement fallback tokens for standalone mode
@@ -1225,6 +1242,7 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [x] Create `ThemeProvider` context for sharing tokens
 
 ### Milestone 2: Props & Resolution ✓
+
 - [x] Add `size`, `variant`, `radius` props to KookieFlowProps
 - [x] Add `NodeStyleOverrides` type
 - [x] Define SIZE_MAP matching Kookie UI Card
@@ -1237,6 +1255,7 @@ if (hoveredNodeId !== prevHoveredRef.current) {
 - [x] Create `StyleProvider` and `useResolvedStyle` context
 
 ### Milestone 3: Node Shader & Token Alignment
+
 - [x] Update node shader to accept color/style uniforms
 - [x] Add shadow SDF for classic variant
 - [x] Implement header color region in shader
@@ -1271,6 +1290,7 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 - [x] Test socket positions with widgets at size 2
 
 ### Milestone 4: Socket Colors
+
 - [x] Tokenize fallback socket colors (invalid → `--red-9`, valid target → `--green-9`, default → `--gray-8`)
 - [x] Tokenize connection line colors (default → `--gray-8`, invalid → `--red-9`)
 - [x] Edge colors tokenized (default → `--gray-8`, selected → `--accent-9`, invalid → `--red-9`)
@@ -1280,18 +1300,19 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 
 #### Tokenization Summary by Component
 
-| Component | Tokens Used | Purpose |
-|-----------|-------------|---------|
-| grid.tsx | `--gray-3`, `--gray-4` | Minor/major grid lines |
-| kookie-flow.tsx | `--gray-2` | Canvas background |
-| text-renderer.tsx | `--gray-12`, `--gray-11` | Primary/secondary text |
-| dom-layer.tsx | `--gray-12`, `--gray-11` | DOM text labels |
-| selection-box.tsx | `--accent-9` | Fill and border |
-| connection-line.tsx | `--gray-8`, `--red-9` | Default line, invalid state |
-| edges.tsx | `--gray-8`, `--accent-9`, `--red-9` | Default, selected, invalid |
-| sockets.tsx | `--red-9`, `--green-9`, `--gray-8` | Invalid, valid target, fallback |
+| Component           | Tokens Used                         | Purpose                         |
+| ------------------- | ----------------------------------- | ------------------------------- |
+| grid.tsx            | `--gray-3`, `--gray-4`              | Minor/major grid lines          |
+| kookie-flow.tsx     | `--gray-2`                          | Canvas background               |
+| text-renderer.tsx   | `--gray-12`, `--gray-11`            | Primary/secondary text          |
+| dom-layer.tsx       | `--gray-12`, `--gray-11`            | DOM text labels                 |
+| selection-box.tsx   | `--accent-9`                        | Fill and border                 |
+| connection-line.tsx | `--gray-8`, `--red-9`               | Default line, invalid state     |
+| edges.tsx           | `--gray-8`, `--accent-9`, `--red-9` | Default, selected, invalid      |
+| sockets.tsx         | `--red-9`, `--green-9`, `--gray-8`  | Invalid, valid target, fallback |
 
 ### Milestone 5: Polish & Testing
+
 - [ ] Dark mode testing (mount with dark theme)
 - [ ] Light mode testing (mount with light theme)
 - [ ] Standalone mode testing (no Kookie UI)
@@ -1300,6 +1321,7 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 - [ ] Performance regression test (10k nodes)
 
 ### Milestone 6: Documentation
+
 - [ ] Update PLAN.md with styling phase complete
 - [ ] Add styling examples to demo app
 - [ ] Document props in README
@@ -1310,6 +1332,7 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 ## Testing Checklist
 
 ### Variants & Sizing
+
 - [ ] All 5 variants render correctly (surface, outline, soft, classic, ghost)
 - [ ] All 5 sizes render correctly
 - [ ] Radius prop overrides size-based radius
@@ -1319,6 +1342,7 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 - [ ] Ghost/outline have transparent backgrounds
 
 ### Color Tokenization (Completed)
+
 - [x] Grid lines use `--gray-3` and `--gray-4`
 - [x] Canvas background uses `--gray-2`
 - [x] Text colors: primary `--gray-12`, secondary `--gray-11`
@@ -1328,12 +1352,14 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 - [x] Selection box: fill/border use `--accent-9`
 
 ### Theme Integration
+
 - [ ] Socket type colors resolve from Radix tokens (user-configurable)
 - [ ] Dark mode: colors correct when mounted with dark theme
 - [ ] Light mode: colors correct when mounted with light theme
 - [ ] Standalone mode: fallback tokens work
 
 ### Performance
+
 - [ ] No regression in 10k node benchmark
 - [ ] Kookie UI Button inside node looks proportional at matching size
 
@@ -1357,7 +1383,7 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
    interface FlowNode {
      id: string;
      // ... existing fields
-     color?: AccentColor;  // 26 Kookie UI accent colors
+     color?: AccentColor; // 26 Kookie UI accent colors
    }
    ```
 
@@ -1411,18 +1437,18 @@ Row height = 40px (`--space-7`), widget height = 32px (`--space-6`), creating 4p
 
    **Mapping from current defaults to Radix tokens:**
 
-   | Socket Type | Current Color | Radix Token |
-   |-------------|---------------|-------------|
-   | any | #808080 | `--gray-9` |
-   | image | #a855f7 | `--purple-9` |
-   | latent | #f97316 | `--orange-9` |
-   | model | #22c55e | `--green-9` |
-   | clip | #facc15 | `--amber-9` |
-   | vae | #ef4444 | `--red-9` |
-   | conditioning | #06b6d4 | `--cyan-9` |
-   | control_net | #3b82f6 | `--blue-9` |
-   | mask | #6b7280 | `--gray-8` |
+   | Socket Type  | Current Color | Radix Token  |
+   | ------------ | ------------- | ------------ |
+   | any          | #808080       | `--gray-9`   |
+   | image        | #a855f7       | `--purple-9` |
+   | latent       | #f97316       | `--orange-9` |
+   | model        | #22c55e       | `--green-9`  |
+   | clip         | #facc15       | `--amber-9`  |
+   | vae          | #ef4444       | `--red-9`    |
+   | conditioning | #06b6d4       | `--cyan-9`   |
+   | control_net  | #3b82f6       | `--blue-9`   |
+   | mask         | #6b7280       | `--gray-8`   |
 
 ---
 
-*Created: January 2026*
+_Created: January 2026_

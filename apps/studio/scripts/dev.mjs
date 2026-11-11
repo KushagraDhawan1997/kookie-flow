@@ -54,11 +54,14 @@ function startListener() {
   listener.stdout.on('data', relay);
   listener.stderr.on('data', relay);
   listener.on('exit', (code) => {
-    if (!stopping) console.warn(`[studio] Stripe listener stopped (${code}): top-ups will not be credited.`);
+    if (!stopping)
+      console.warn(`[studio] Stripe listener stopped (${code}): top-ups will not be credited.`);
   });
 }
 
-const next = spawn('next', ['dev', '-p', String(PORT), ...process.argv.slice(2)], { stdio: 'inherit' });
+const next = spawn('next', ['dev', '-p', String(PORT), ...process.argv.slice(2)], {
+  stdio: 'inherit',
+});
 children.push(next);
 next.on('exit', (code) => stop(code ?? 0));
 

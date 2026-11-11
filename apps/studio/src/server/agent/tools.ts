@@ -56,14 +56,20 @@ export function agentTools(context: AgentToolContext): ToolSet {
 
     list_graphs: async () => {
       const graphs = await listGraphs(context.workspaceId);
-      return graphs.slice(0, 20).map((g) => ({ id: g.id, name: g.name, nodes: g.nodeCount, updated: g.updatedAt }));
+      return graphs
+        .slice(0, 20)
+        .map((g) => ({ id: g.id, name: g.name, nodes: g.nodeCount, updated: g.updatedAt }));
     },
 
     create_graph: async (input) => {
-      const name = String(input.name ?? '').trim().slice(0, 120) || 'Untitled';
+      const name =
+        String(input.name ?? '')
+          .trim()
+          .slice(0, 120) || 'Untitled';
       const applied = applyOpsToDocument(emptyDocument(), opsFrom(input.ops), registry);
       // A refused op makes nothing, so a retry does not leave a half-built graph behind.
-      if (applied.errors.length) return { errors: applied.errors.map((e) => ({ index: e.index, message: e.message })) };
+      if (applied.errors.length)
+        return { errors: applied.errors.map((e) => ({ index: e.index, message: e.message })) };
       const row = await createGraph(name, context.workspaceId, applied.doc);
       return {
         id: row.id,
@@ -90,12 +96,16 @@ export function agentTools(context: AgentToolContext): ToolSet {
         inputSchema: jsonSchema<Record<string, unknown>>(spec.inputSchema),
         toModelOutput: async ({ output }) => {
           if (!isInspectPicture(output)) {
-            const reason = isRecord(output) && typeof output.error === 'string' ? output.error : 'There is no picture to look at.';
+            const reason =
+              isRecord(output) && typeof output.error === 'string'
+                ? output.error
+                : 'There is no picture to look at.';
             return { type: 'text', value: reason };
           }
           const caption = `${output.node}.${output.socket}: ${output.width} × ${output.height}`;
           const bytes = context.model.images ? await readPicture(output.hash, output.mime) : null;
-          if (!bytes) return { type: 'text', value: `${caption}. The picture could not be shown to you.` };
+          if (!bytes)
+            return { type: 'text', value: `${caption}. The picture could not be shown to you.` };
           return {
             type: 'content',
             value: [

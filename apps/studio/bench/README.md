@@ -28,16 +28,16 @@ BENCH_RUN=1 BENCH_MODELS=anthropic/claude-haiku-4.5 BENCH_TASKS=one-image BENCH_
   ./node_modules/.bin/vitest run --config vitest.bench.config.ts
 ```
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `BENCH_RUN` | unset | Without it, nothing runs and nothing is spent. |
-| `BENCH_MODELS` | `anthropic/claude-sonnet-5` | Gateway slugs, comma-separated. |
-| `BENCH_EFFORT` | `low` | `low`, `medium`, `high`, `max`. |
-| `BENCH_TASKS` | `all` | Scene ids, comma-separated. |
-| `BENCH_TIERS` | `1,2,3` | 1 one step, 2 a pipeline, 3 judgement. |
-| `BENCH_REPEATS` | `1` | Trials per scene. Five gives pass^5. |
-| `BENCH_BUDGET` | `1` | US dollars at list price. The run stops when reached. |
-| `BENCH_LABEL` | `run` | Goes in the result file's name. |
+| Variable        | Default                     | What it does                                          |
+| --------------- | --------------------------- | ----------------------------------------------------- |
+| `BENCH_RUN`     | unset                       | Without it, nothing runs and nothing is spent.        |
+| `BENCH_MODELS`  | `anthropic/claude-sonnet-5` | Gateway slugs, comma-separated.                       |
+| `BENCH_EFFORT`  | `low`                       | `low`, `medium`, `high`, `max`.                       |
+| `BENCH_TASKS`   | `all`                       | Scene ids, comma-separated.                           |
+| `BENCH_TIERS`   | `1,2,3`                     | 1 one step, 2 a pipeline, 3 judgement.                |
+| `BENCH_REPEATS` | `1`                         | Trials per scene. Five gives pass^5.                  |
+| `BENCH_BUDGET`  | `1`                         | US dollars at list price. The run stops when reached. |
+| `BENCH_LABEL`   | `run`                       | Goes in the result file's name.                       |
 
 `STUDIO_AGENT=mock` runs the scripted agent instead, which costs nothing and tests the plumbing. It
 only knows the concept scene, so everything else fails.

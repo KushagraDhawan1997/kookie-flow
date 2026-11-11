@@ -28,7 +28,7 @@ const FONTS_DIR = join(__dirname, '..', 'fonts');
 const FONT_FAMILIES = {
   // Inter is the bundled default: OFL-licensed, and the family KookieUI v2 sets on the DOM, so the
   // GL glyphs and the edit overlay that lands on top of them are the same shapes.
-  'inter': {
+  inter: {
     displayName: 'Inter',
     weights: [
       { name: 'regular', file: 'Inter-Regular.ttf', output: 'inter-regular-msdf' },
@@ -48,9 +48,10 @@ const DEFAULT_FAMILY = 'inter';
 const targetFamily = process.argv[2] || DEFAULT_FAMILY;
 
 // For backwards compatibility, also support FONT_WEIGHTS format
-const FONT_WEIGHTS = targetFamily === 'all'
-  ? Object.values(FONT_FAMILIES).flatMap(f => f.weights)
-  : (FONT_FAMILIES[targetFamily]?.weights || FONT_FAMILIES[DEFAULT_FAMILY].weights);
+const FONT_WEIGHTS =
+  targetFamily === 'all'
+    ? Object.values(FONT_FAMILIES).flatMap((f) => f.weights)
+    : FONT_FAMILIES[targetFamily]?.weights || FONT_FAMILIES[DEFAULT_FAMILY].weights;
 
 // Characters to include in atlas (ASCII + common extended)
 const CHARSET =
@@ -67,13 +68,20 @@ async function generateAtlas(fontPath, outputName, charsetFile) {
     'npx',
     'msdf-bmfont',
     `"${fontPath}"`,
-    '-f', 'json',
-    '-o', `"${join(FONTS_DIR, outputName)}"`,
-    '-s', '48', // Font size
-    '-r', '4', // Distance range (spread)
-    '-m', '1024,1024', // Max texture size
-    '-t', 'msdf', // Field type: msdf for multi-channel
-    '--charset-file', `"${charsetFile}"`,
+    '-f',
+    'json',
+    '-o',
+    `"${join(FONTS_DIR, outputName)}"`,
+    '-s',
+    '48', // Font size
+    '-r',
+    '4', // Distance range (spread)
+    '-m',
+    '1024,1024', // Max texture size
+    '-t',
+    'msdf', // Field type: msdf for multi-channel
+    '--charset-file',
+    `"${charsetFile}"`,
     '--pot', // Power of two texture
     '--smart-size', // Optimize texture size
   ].join(' ');
@@ -132,7 +140,7 @@ async function generateFamily(familyKey, familyConfig) {
   }
 
   // Check which fonts are available
-  const availableFonts = familyConfig.weights.filter(weight => {
+  const availableFonts = familyConfig.weights.filter((weight) => {
     const fontPath = join(FONTS_DIR, weight.file);
     if (existsSync(fontPath)) {
       console.log(`Found: ${weight.file}`);
@@ -265,7 +273,7 @@ async function embedFonts(familyKey, familyConfig, fonts) {
  * This module contains ${familyConfig.displayName} MSDF fonts embedded as base64.
  * This enables zero-config usage of WebGL text rendering.
  *
- * Generated fonts: ${fonts.map(f => f.name).join(', ')}
+ * Generated fonts: ${fonts.map((f) => f.name).join(', ')}
  */
 
 import type { FontMetrics } from '${importPath}';
@@ -288,7 +296,7 @@ export const ${font.varNameAtlas} = '${font.atlasDataUrl}';
   }
 
   // Add convenience aliases for default font (regular) - only for the default family
-  const regularFont = fontExports.find(f => f.name === 'regular');
+  const regularFont = fontExports.find((f) => f.name === 'regular');
   if (regularFont && isDefaultFamily) {
     tsContent += `/**
  * Default font metrics (Regular weight).
@@ -309,20 +317,20 @@ export const EMBEDDED_FONT_ATLAS_URL = ${regularFont.varNameAtlas};
   tsContent += `/**
  * Available font weights.
  */
-export type FontWeight = ${fontExports.map(f => `'${f.name}'`).join(' | ')};
+export type FontWeight = ${fontExports.map((f) => `'${f.name}'`).join(' | ')};
 
 /**
  * Font metrics by weight.
  */
 export const FONT_METRICS_BY_WEIGHT: Record<FontWeight, FontMetrics> = {
-${fontExports.map(f => `  ${f.name}: ${f.varNameMetrics},`).join('\n')}
+${fontExports.map((f) => `  ${f.name}: ${f.varNameMetrics},`).join('\n')}
 };
 
 /**
  * Font atlas URLs by weight.
  */
 export const FONT_ATLAS_BY_WEIGHT: Record<FontWeight, string> = {
-${fontExports.map(f => `  ${f.name}: ${f.varNameAtlas},`).join('\n')}
+${fontExports.map((f) => `  ${f.name}: ${f.varNameAtlas},`).join('\n')}
 };
 `;
 

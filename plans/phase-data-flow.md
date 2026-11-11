@@ -18,12 +18,12 @@ Socket values live in a **separate store**, not on entity data. Entity data is c
 
 ```typescript
 // Separate from entity data — not serialized with toObject()
-socketValues: Map<string, unknown>  // key: 'entityId:socketId'
+socketValues: Map<string, unknown>; // key: 'entityId:socketId'
 
 // Library resolves the effective input value:
 // Connected → upstream output value
 // Not connected → widget value (from entity data / defaultValue)
-resolvedInput = isConnected(socket) ? socketValues.get(upstreamKey) : widgetValue
+resolvedInput = isConnected(socket) ? socketValues.get(upstreamKey) : widgetValue;
 ```
 
 Consumer's `onEvaluate` always receives resolved values — it never thinks about where a value came from.
@@ -101,11 +101,11 @@ Imperative API for manual triggers:
 ```typescript
 const flowRef = useRef<KookieFlowInstance>(null);
 
-flowRef.current.evaluate('entity-123');      // evaluate one entity
-flowRef.current.evaluateDirty();             // evaluate all dirty entities
-flowRef.current.evaluateAll();               // re-evaluate entire graph
-flowRef.current.setSocketValue(entityId, socketId, value);  // inject value
-flowRef.current.getSocketValue(entityId, socketId);         // read value
+flowRef.current.evaluate('entity-123'); // evaluate one entity
+flowRef.current.evaluateDirty(); // evaluate all dirty entities
+flowRef.current.evaluateAll(); // re-evaluate entire graph
+flowRef.current.setSocketValue(entityId, socketId, value); // inject value
+flowRef.current.getSocketValue(entityId, socketId); // read value
 ```
 
 ---
@@ -114,13 +114,13 @@ flowRef.current.getSocketValue(entityId, socketId);         // read value
 
 The library auto-manages entity status during evaluation:
 
-| Phase | Status set by library | Visual |
-|---|---|---|
-| Inputs changed, not yet evaluated | `dirty` | Subtle stale indicator |
-| `onEvaluate` called | `running` | Pulsing accent border animation |
-| `onEvaluate` returns | `success` | Brief green flash, then clears |
-| `onEvaluate` throws | `error` + `statusMessage` | Red border, persists |
-| Evaluation cancelled (inputs changed) | Back to `dirty` | Stale indicator |
+| Phase                                 | Status set by library     | Visual                          |
+| ------------------------------------- | ------------------------- | ------------------------------- |
+| Inputs changed, not yet evaluated     | `dirty`                   | Subtle stale indicator          |
+| `onEvaluate` called                   | `running`                 | Pulsing accent border animation |
+| `onEvaluate` returns                  | `success`                 | Brief green flash, then clears  |
+| `onEvaluate` throws                   | `error` + `statusMessage` | Red border, persists            |
+| Evaluation cancelled (inputs changed) | Back to `dirty`           | Stale indicator                 |
 
 Consumer can override or supplement:
 
@@ -134,17 +134,17 @@ onStatusChange={(entityId, status, message) => {
 
 ## What the Library Auto-Manages
 
-| Concern | How |
-|---|---|
-| **Value resolution** | Connected → upstream value. Unconnected → widget/default value. |
-| **Dirty tracking** | Widget change, connection change, upstream output change → mark dirty + downstream. |
+| Concern                   | How                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| **Value resolution**      | Connected → upstream value. Unconnected → widget/default value.                         |
+| **Dirty tracking**        | Widget change, connection change, upstream output change → mark dirty + downstream.     |
 | **Evaluation scheduling** | Topo-ordered via `executionLevels()`. Parallel where possible via `getReadyEntities()`. |
-| **Value propagation** | After evaluation, store outputs → move to downstream inputs → trigger reactive cascade. |
-| **Status lifecycle** | Auto-set `dirty` → `running` → `success`/`error` on entities. |
-| **Cancellation** | Inputs change mid-evaluation → abort via `AbortSignal` → re-evaluate with new inputs. |
-| **Widget visibility** | Input socket connected → hide widget. Disconnected → show widget. |
-| **Preview updates** | Output socket value arrives → preview re-renders with new data. |
-| **Muted nodes** | Muted entities skipped in evaluation. Inputs pass through (bypass). |
+| **Value propagation**     | After evaluation, store outputs → move to downstream inputs → trigger reactive cascade. |
+| **Status lifecycle**      | Auto-set `dirty` → `running` → `success`/`error` on entities.                           |
+| **Cancellation**          | Inputs change mid-evaluation → abort via `AbortSignal` → re-evaluate with new inputs.   |
+| **Widget visibility**     | Input socket connected → hide widget. Disconnected → show widget.                       |
+| **Preview updates**       | Output socket value arrives → preview re-renders with new data.                         |
+| **Muted nodes**           | Muted entities skipped in evaluation. Inputs pass through (bypass).                     |
 
 ## What the Consumer Provides
 

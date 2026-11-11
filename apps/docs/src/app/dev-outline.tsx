@@ -20,21 +20,19 @@
  *
  * A second tool is a row in TOOLS, not a second component.
  */
-"use client";
+'use client';
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
 /** Bare `o`. No modifier, ever: a modifier means the user meant a browser shortcut. */
-const TOOLS: Record<
-  string,
-  { store: string; read: () => boolean; write: (on: boolean) => void }
-> = {
-  o: {
-    store: "kd-outline",
-    read: () => document.documentElement.hasAttribute("data-outline"),
-    write: (on) => document.documentElement.toggleAttribute("data-outline", on),
-  },
-};
+const TOOLS: Record<string, { store: string; read: () => boolean; write: (on: boolean) => void }> =
+  {
+    o: {
+      store: 'kd-outline',
+      read: () => document.documentElement.hasAttribute('data-outline'),
+      write: (on) => document.documentElement.toggleAttribute('data-outline', on),
+    },
+  };
 
 /* The outline reads the accent's alpha ramp, so it composites over whatever it is measuring
    and flips with the appearance for free. Hairline at the token width, so it scales with the
@@ -43,7 +41,7 @@ const CSS = `html[data-outline] * { outline: var(--border-width) solid var(--acc
 
 function readStored(key: string): boolean {
   try {
-    return localStorage.getItem(key) === "1";
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
@@ -51,7 +49,7 @@ function readStored(key: string): boolean {
 
 function writeStored(key: string, on: boolean) {
   try {
-    localStorage.setItem(key, on ? "1" : "0");
+    localStorage.setItem(key, on ? '1' : '0');
   } catch {
     /* Storage denied. The session's truth is the attribute; persistence is the extra. */
   }
@@ -63,8 +61,7 @@ export function DevOutline() {
 
     const typing = (t: EventTarget | null) =>
       t instanceof HTMLElement &&
-      (t.isContentEditable ||
-        ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+      (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.key) return;
@@ -78,8 +75,8 @@ export function DevOutline() {
       writeStored(tool.store, on);
     };
 
-    addEventListener("keydown", onKeyDown);
-    return () => removeEventListener("keydown", onKeyDown);
+    addEventListener('keydown', onKeyDown);
+    return () => removeEventListener('keydown', onKeyDown);
   }, []);
 
   return <style dangerouslySetInnerHTML={{ __html: CSS }} />;
@@ -87,6 +84,6 @@ export function DevOutline() {
 
 /** Null in production, so the rule and the listener both disappear from the build. */
 export function DevOutlineGate() {
-  if (process.env.NODE_ENV === "production") return null;
+  if (process.env.NODE_ENV === 'production') return null;
   return <DevOutline />;
 }

@@ -7,21 +7,25 @@ A floating toolbar that appears when a selection is made. One toolbar per select
 ## Decisions Made
 
 ### Name: `Toolbar`
+
 - Simple, no prefix needed — there's only one, context is obvious
 
 ### Rendering: Pure DOM
+
 - Toolbar renders once per selection (single element, not hundreds of instances)
 - No perf benefit from WebGL for a single floating div
 - Avoids sync complexity of keeping a WebGL bg quad + DOM content aligned
 - Same ref-based `translate3d` positioning as existing labels — proven pattern
 
 ### Visual: Kookie UI Card
+
 - Uses Kookie UI's `Card` component as the container
 - Consumer can pass Card props (variant, size, etc.) for full control
 - Card handles all visuals — no custom shadows or backdrop filters needed
 - Looks consistent across KookieFlow variants
 
 ### Selection model
+
 - Toolbar belongs to the **selection**, not an individual entity
 - Single entity selected = one toolbar
 - Multi-select = one toolbar, centered on the selection bounding box
@@ -29,20 +33,24 @@ A floating toolbar that appears when a selection is made. One toolbar per select
 - Mixed-type multi-select: currently shows nothing (single-type only)
 
 ### Toolbar content: layered API
+
 - kookie-flow ships built-in toolbar widgets for its own entity types
 - Consumer opts in to which built-ins to show
 - Consumer can add custom controls on top
 - For custom entity types, toolbar is fully consumer-defined
 
 ### Positioning
+
 - Auto-flip with collision awareness (check if toolbar clips above viewport, flip below)
 - No Radix Popover — it expects a static DOM anchor, bad fit for a virtual anchor that moves every frame
 - Simple manual collision detection is sufficient
 
 ### Hide during interactions
+
 - Hidden during drag, pan, zoom, connection draw, selection box
 
 ### Render callback shape
+
 ```tsx
 interface ToolbarRenderProps {
   /** All selected entities */
@@ -53,18 +61,19 @@ interface ToolbarRenderProps {
   bounds: { x: number; y: number; width: number; height: number };
 }
 ```
+
 - `update` wraps `onEntitiesChange` internally — consumer just calls `update(id, { fontSize: 24 })`
 
 ## Built-in toolbar widgets
 
 kookie-flow ships pre-built widgets for properties it knows about:
 
-| Entity type | Available widgets |
-|---|---|
-| `text` | `fontSize`, `fontFamily`, `fontWeight`, `textColor`, `textAlign`, `lineHeight`, `letterSpacing` |
-| `image` | `objectFit`, `aspectLock` |
-| `comment` | `backgroundColor`, `textColor`, `fontSize` |
-| default (any type) | `color` (node accent color) |
+| Entity type        | Available widgets                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `text`             | `fontSize`, `fontFamily`, `fontWeight`, `textColor`, `textAlign`, `lineHeight`, `letterSpacing` |
+| `image`            | `objectFit`, `aspectLock`                                                                       |
+| `comment`          | `backgroundColor`, `textColor`, `fontSize`                                                      |
+| default (any type) | `color` (node accent color)                                                                     |
 
 ## API
 
@@ -104,9 +113,7 @@ const entityTypes = {
     toolbar: {
       defaults: ['color'],
       extra: ({ entities, update }) => (
-        <button onClick={() => update(entities[0].id, { bypass: true })}>
-          Bypass
-        </button>
+        <button onClick={() => update(entities[0].id, { bypass: true })}>Bypass</button>
       ),
     },
   },
@@ -162,9 +169,11 @@ Select entity with no `toolbar` defined → no toolbar appears.
 ## Architecture
 
 ### Injection point
+
 `KookieFlow` passes `{children}` through to `DOMLayer`, which renders them inside a `pointer-events: none` overlay div. `<Toolbar />` lives here — no new injection points needed.
 
 ### Positioning implementation
+
 - Subscribe to Zustand store for `selectedEntityIds`, `entityMap`, `viewport`
 - Compute screen-space bounding box of selection
 - Position toolbar centered above selection (auto-flip below if near top edge)
@@ -172,6 +181,7 @@ Select entity with no `toolbar` defined → no toolbar appears.
 - `pointer-events: auto` on the toolbar div so controls are interactive
 
 ### Show/hide logic
+
 - Visible when 1+ entities are selected and at least one has a toolbar defined
 - Hidden during drag, resize, connect, box-select (polls `getInteractionMode()` via RAF)
 - Repositions during pan/zoom via viewport subscription (stays visible and tracks)
@@ -179,6 +189,7 @@ Select entity with no `toolbar` defined → no toolbar appears.
 ## Status
 
 All core features are implemented:
+
 - Type definitions (`ToolbarRenderProps`, `ToolbarConfig`, `ToolbarWidget`, toolbar field on `EntityTypeDefinition`)
 - Built-in widget components (fontSize, fontFamily, fontWeight, textColor, textAlign, lineHeight, letterSpacing, objectFit, aspectLock)
 - Toolbar container component (positioning, show/hide, Card wrapper)
@@ -187,6 +198,7 @@ All core features are implemented:
 - Demo page integration (text + image entity types in webgl demo)
 
 ## Not Yet Implemented
+
 - `color` common widget (type exists, no built-in widget implementation)
 - Mixed-type multi-select showing shared widgets (currently shows nothing)
 - Frustum culling for off-screen toolbar

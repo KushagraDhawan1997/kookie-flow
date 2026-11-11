@@ -48,9 +48,13 @@ body {
 /* Inter under every live canvas: the MSDF labels are cut from it, and the edit overlay inherits
    its face from here. `--kd-font-canvas` is published by layout.tsx. */
 .kd-canvas {
-  font-family: var(--kd-font-canvas), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family:
+    var(--kd-font-canvas),
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
-
 
 /* THE FRONT PAGE'S HERO IN A LAPTOP LID (2026-11-02, kushagradhawan-v3/FIGURES.md, the same look
    as the Kookie UI v2 docs). The live graph sits in a 960px window inside a laptop lid, on a grey
@@ -68,14 +72,22 @@ body {
   background-color: var(--neutral-6);
   background-image:
     linear-gradient(to bottom, var(--color-surface), transparent),
-    radial-gradient(circle, var(--neutral-a6) var(--border-width), transparent calc(var(--border-width) * 1.5));
-  background-size: auto, var(--layout-space-4) var(--layout-space-4);
-  background-position: 0 0, calc(var(--layout-space-4) / 2) calc(var(--layout-space-4) / 2);
+    radial-gradient(
+      circle,
+      var(--neutral-a6) var(--border-width),
+      transparent calc(var(--border-width) * 1.5)
+    );
+  background-size:
+    auto,
+    var(--layout-space-4) var(--layout-space-4);
+  background-position:
+    0 0,
+    calc(var(--layout-space-4) / 2) calc(var(--layout-space-4) / 2);
 }
 
 .kd-band::before,
 .kd-band::after {
-  content: "";
+  content: '';
   position: absolute;
   z-index: 1;
   inset-inline: 0;
@@ -105,7 +117,10 @@ body {
 .kd-band-window {
   box-sizing: border-box;
   inline-size: calc(30 * var(--layout-space-7));
-  block-size: calc(54 * var(--layout-space-4) - var(--layout-space-9) - var(--layout-space-6) + var(--layout-space-7));
+  block-size: calc(
+    54 * var(--layout-space-4) - var(--layout-space-9) - var(--layout-space-6) +
+      var(--layout-space-7)
+  );
   background-color: var(--color-ground);
   border: var(--border-width) solid var(--color-border);
   border-radius: calc(var(--radius-7) * 0.876);
@@ -141,8 +156,7 @@ body {
   padding: var(--kd-device-top) var(--kd-device-rim) var(--kd-device-rim);
   background-color: var(--color-surface);
   border: var(--border-width) solid var(--color-border);
-  border-radius:
-    calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
+  border-radius: calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
     calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
     calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k))
     calc(var(--kd-device-inner) + var(--kd-device-gap) * var(--kd-device-k)) /
@@ -162,7 +176,7 @@ body {
 
 .kd-device::before {
   --kd-camera: calc(var(--kd-device-rim) * 0.75);
-  content: "";
+  content: '';
   position: absolute;
   inset-block-start: calc((var(--kd-device-top) - var(--kd-camera)) / 2);
   inset-inline-start: 50%;

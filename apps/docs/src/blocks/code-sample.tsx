@@ -38,9 +38,9 @@
    deleting that file stops pulling `code.css` in — `.kd-line` stops being a block, every line
    of every fence runs together onto one line, and a type checker sees nothing wrong. The
    classes below are this file's, so the import is this file's. */
-import "./code.css";
+import './code.css';
 
-import * as React from "react";
+import * as React from 'react';
 import {
   Box,
   Code,
@@ -50,31 +50,24 @@ import {
   Surface,
   Toolbar,
   ToolbarGroup,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { CopyButton } from "./copy-button";
-import { Expandable } from "./expandable";
-import {
-  isLang,
-  leadingColumns,
-  plainText,
-  tokenize,
-  type CodeLine,
-  type Lang,
-} from "./highlight";
+import { CopyButton } from './copy-button';
+import { Expandable } from './expandable';
+import { isLang, leadingColumns, plainText, tokenize, type CodeLine, type Lang } from './highlight';
 
 /** What the header row calls each language. The grammar's id is a tool's name for it
     (`tsx`, `bash`); this is the reader's. */
 const LANG_LABEL: Record<Lang, string> = {
-  tsx: "TSX",
-  ts: "TypeScript",
-  jsx: "JSX",
-  js: "JavaScript",
-  css: "CSS",
-  json: "JSON",
-  bash: "Terminal",
-  html: "HTML",
-  mdx: "MDX",
+  tsx: 'TSX',
+  ts: 'TypeScript',
+  jsx: 'JSX',
+  js: 'JavaScript',
+  css: 'CSS',
+  json: 'JSON',
+  bash: 'Terminal',
+  html: 'HTML',
+  mdx: 'MDX',
 };
 
 /**
@@ -140,11 +133,11 @@ export type CodeSampleProps = {
 /** One rendered line: a block-level span carrying the author's flags as classes, so the
     theme (`code.css`) owns every colour and this file owns none. */
 function Line({ line, marker }: { line: CodeLine; marker: boolean }) {
-  const classes = ["kd-line"];
-  if (line.highlight) classes.push("kd-line-highlight");
-  if (line.add) classes.push("kd-line-add");
-  if (line.remove) classes.push("kd-line-remove");
-  if (line.focus) classes.push("kd-line-focus");
+  const classes = ['kd-line'];
+  if (line.highlight) classes.push('kd-line-highlight');
+  if (line.add) classes.push('kd-line-add');
+  if (line.remove) classes.push('kd-line-remove');
+  if (line.focus) classes.push('kd-line-focus');
   if (line.level) classes.push(`kd-line-${line.level}`);
 
   /* THE LINE'S OWN INDENT, handed to the stylesheet as a column count.
@@ -161,26 +154,24 @@ function Line({ line, marker }: { line: CodeLine; marker: boolean }) {
 
   return (
     <span
-      className={classes.join(" ")}
-      {...(indent
-        ? { style: { "--kd-indent": `${indent}ch` } as React.CSSProperties }
-        : {})}
+      className={classes.join(' ')}
+      {...(indent ? { style: { '--kd-indent': `${indent}ch` } as React.CSSProperties } : {})}
     >
       {marker ? (
         // A real span rather than a pseudo — the ::before slot belongs to the line-number
         // counter. Hidden from AT and from selection; the copy path never sees it because
         // copy text is derived from tokens, and this is not one.
         <span className="kd-line-marker" aria-hidden>
-          {line.add ? "+" : line.remove ? "−" : ""}
+          {line.add ? '+' : line.remove ? '−' : ''}
         </span>
       ) : null}
       {line.tokens.map((token, index) => (
         <span
           key={index}
-          className={token.word ? "kd-word" : undefined}
+          className={token.word ? 'kd-word' : undefined}
           style={{
             color: token.color,
-            ...(token.italic ? { fontStyle: "italic" } : null),
+            ...(token.italic ? { fontStyle: 'italic' } : null),
           }}
         >
           {token.text}
@@ -206,14 +197,14 @@ export async function CodeSample({ code, lang, meta, ...view }: CodeSampleProps)
   // says which fence and which language.
   if (!isLang(lang)) {
     throw new Error(
-      `Unknown code language "${lang}". Add it to LANGS in highlight.ts, or fix the fence.\n${code.slice(0, 80)}`,
+      `Unknown code language "${lang}". Add it to LANGS in highlight.ts, or fix the fence.\n${code.slice(0, 80)}`
     );
   }
   const { lines, focused, diff } = await tokenize(code, lang, meta);
   return <CodeSampleView lines={lines} focused={focused} diff={diff} lang={lang} {...view} />;
 }
 
-export type CodeSampleViewProps = Omit<CodeSampleProps, "code" | "meta"> & {
+export type CodeSampleViewProps = Omit<CodeSampleProps, 'code' | 'meta'> & {
   /** Already tokenized. The one thing the view cannot do for itself. */
   lines: readonly CodeLine[];
   /** Some line said `[!code focus]`, so the rest stand down. */
@@ -227,7 +218,7 @@ export function CodeSampleView({
   focused,
   diff,
   lang,
-  size = "2",
+  size = '2',
   title,
   bare,
   lineNumbers,
@@ -236,15 +227,12 @@ export function CodeSampleView({
 }: CodeSampleViewProps) {
   const copyText = plainText(lines);
 
-  const paneClasses = [
-    lineNumbers ? "kd-numbered" : null,
-    focused ? "kd-focused" : null,
-  ].filter(Boolean);
-  const className = paneClasses.length ? paneClasses.join(" ") : undefined;
+  const paneClasses = [lineNumbers ? 'kd-numbered' : null, focused ? 'kd-focused' : null].filter(
+    Boolean
+  );
+  const className = paneClasses.length ? paneClasses.join(' ') : undefined;
 
-  const content = lines.map((line, index) => (
-    <Line key={index} line={line} marker={diff} />
-  ));
+  const content = lines.map((line, index) => <Line key={index} line={line} marker={diff} />);
 
   // The bound binds only when the code exceeds it BY ENOUGH TO BE WORTH A PRESS — decided
   // here, from the line count the renderer already holds, never by measuring the DOM (v1's
@@ -282,7 +270,7 @@ export function CodeSampleView({
 
      Keyed on `bash` rather than on a list, so adding a language does not silently add a label:
      a new one has to argue its way in here. */
-  const name = title ?? (lang === "bash" ? LANG_LABEL[lang] : null);
+  const name = title ?? (lang === 'bash' ? LANG_LABEL[lang] : null);
 
   /* ONE ROW, FLOATING OVER THE CODE.
 

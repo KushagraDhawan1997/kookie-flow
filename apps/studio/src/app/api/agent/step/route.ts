@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
-import { convertToModelMessages, isStepCount, streamText, validateUIMessages, type LanguageModelUsage, type ModelMessage } from 'ai';
+import {
+  convertToModelMessages,
+  isStepCount,
+  streamText,
+  validateUIMessages,
+  type LanguageModelUsage,
+  type ModelMessage,
+} from 'ai';
 import { z } from 'zod';
 import {
   AGENT_MAX_CALLS,
@@ -45,26 +52,40 @@ const PICTURE_CHARS = 1_600 * 3;
 function promptChars(instructions: string, messages: readonly ModelMessage[]): number {
   let files = 0;
   const text = JSON.stringify(messages, (key, value: unknown) => {
-    if (key === 'data' && (value instanceof Uint8Array || value instanceof URL || (typeof value === 'string' && value.length > PICTURE_CHARS))) {
+    if (
+      key === 'data' &&
+      (value instanceof Uint8Array ||
+        value instanceof URL ||
+        (typeof value === 'string' && value.length > PICTURE_CHARS))
+    ) {
       files++;
       return null;
     }
     return value;
   });
-  return instructions.length + text.length + JSON.stringify(AGENT_TOOLS).length + files * PICTURE_CHARS;
+  return (
+    instructions.length + text.length + JSON.stringify(AGENT_TOOLS).length + files * PICTURE_CHARS
+  );
 }
 
 /** The SDK's usage, as the ledger prices it: uncached input, output, and each side of the cache. */
 function tokenUsage(usage: LanguageModelUsage): TokenUsage {
   const cacheRead = usage.inputTokenDetails.cacheReadTokens ?? 0;
   const cacheWrite = usage.inputTokenDetails.cacheWriteTokens ?? 0;
-  const input = usage.inputTokenDetails.noCacheTokens ?? Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite);
+  const input =
+    usage.inputTokenDetails.noCacheTokens ??
+    Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite);
   return { input, output: usage.outputTokens ?? 0, cacheRead, cacheWrite };
 }
 
 function sumUsage(usages: LanguageModelUsage[]): TokenUsage {
   return usages.map(tokenUsage).reduce(
-    (a, b) => ({ input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite }),
+    (a, b) => ({
+      input: a.input + b.input,
+      output: a.output + b.output,
+      cacheRead: a.cacheRead + b.cacheRead,
+      cacheWrite: a.cacheWrite + b.cacheWrite,
+    }),
     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
   );
 }
@@ -96,11 +117,17 @@ export async function POST(request: Request) {
   try {
     messages = await validateUIMessages({ messages: body.data.messages, tools });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Those messages are not valid.' }, { status: 400 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Those messages are not valid.' },
+      { status: 400 }
+    );
   }
   const instructions = agentInstructions(registry);
   // The model's copy carries each message's triage line; the stored one and the panel's do not.
-  const modelMessages = await convertToModelMessages(withTriageNotes(messages), { tools, ignoreIncompleteToolCalls: true });
+  const modelMessages = await convertToModelMessages(withTriageNotes(messages), {
+    tools,
+    ignoreIncompleteToolCalls: true,
+  });
 
   const db = await getDb();
   let turnId: string;
@@ -109,11 +136,15 @@ export async function POST(request: Request) {
       workspaceId: user.id,
       graphId,
       model: model.id,
-      estimateMicros: mode === 'gateway' ? holdEstimateMicros(model, promptChars(instructions, modelMessages)) : 0,
+      estimateMicros:
+        mode === 'gateway'
+          ? holdEstimateMicros(model, promptChars(instructions, modelMessages))
+          : 0,
     });
     turnId = turn.id;
   } catch (error) {
-    if (error instanceof InsufficientBalance) return NextResponse.json({ error: error.message }, { status: 402 });
+    if (error instanceof InsufficientBalance)
+      return NextResponse.json({ error: error.message }, { status: 402 });
     throw error;
   }
 

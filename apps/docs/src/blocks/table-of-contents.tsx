@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * The table of contents: the headings of the page you are reading, with the one you are at
@@ -56,11 +56,11 @@
  *  - **`size` and `tone`.** A block is not a component with an API to grow — the steps are stated
  *    once, below, and another step is an edit to your copy.
  */
-import * as React from "react";
+import * as React from 'react';
 
-import { Stack, Text } from "@kushagradhawan/kookie-ui-react";
+import { Stack, Text } from '@kushagradhawan/kookie-ui-react';
 
-import "./table-of-contents.css";
+import './table-of-contents.css';
 
 export type TocEntry = {
   /** The heading's `id`, which is both the anchor and what the observer watches. */
@@ -96,11 +96,11 @@ export type TableOfContentsProps = {
  * frame. §8's "no JS at interaction time" is the package's law and does not bind a block, but the
  * reason behind it does.
  */
-const BAND = "0px 0px -66% 0px";
+const BAND = '0px 0px -66% 0px';
 
 export function TableOfContents({
   entries,
-  label = "On this page",
+  label = 'On this page',
   current,
   className,
 }: TableOfContentsProps) {
@@ -111,11 +111,11 @@ export function TableOfContents({
      array on every render, and an effect keyed on that identity would re-observe the whole page
      every time anything above it changed. What this effect depends on is WHICH headings there
      are. */
-  const ids = entries.map((entry) => entry.id).join(" ");
+  const ids = entries.map((entry) => entry.id).join(' ');
 
   React.useEffect(() => {
     if (controlled) return;
-    const order = ids ? ids.split(" ") : [];
+    const order = ids ? ids.split(' ') : [];
     const nodes = order
       .map((id) => document.getElementById(id))
       .filter((node): node is HTMLElement => node !== null);
@@ -145,7 +145,7 @@ export function TableOfContents({
         }
         setSeen(passed ?? order[0] ?? null);
       },
-      { rootMargin: BAND },
+      { rootMargin: BAND }
     );
     for (const node of nodes) observer.observe(node);
     return () => observer.disconnect();
@@ -187,7 +187,7 @@ export function TableOfContents({
                    is would repaint every word in this list in a blue grey. A plain `<li>` is not
                    `.kui-type`, so what it picks up is the tone indirection alone — which is all
                    the rule reads. */
-                {...(isCurrent ? { "data-current": "", "data-tone": "accent" } : {})}
+                {...(isCurrent ? { 'data-current': '', 'data-tone': 'accent' } : {})}
               >
                 <a
                   href={`#${entry.id}`}
@@ -195,7 +195,7 @@ export function TableOfContents({
                   /* `location`, not `page`: this is the current place WITHIN a page, which is
                      what ARIA defines the value for. The sidebar beside this says `page`, for the
                      other question — which chapter you are in. */
-                  aria-current={isCurrent ? "location" : undefined}
+                  aria-current={isCurrent ? 'location' : undefined}
                 >
                   {entry.title}
                 </a>

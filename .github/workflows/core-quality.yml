@@ -24,6 +24,8 @@ jobs:
         with:
           version: 12.4.1
       - run: pnpm install --frozen-lockfile
+      - name: Formatting
+        run: pnpm format:check
       - name: Package boundaries
         run: pnpm check:boundaries
       - name: Types and unit/DOM regressions

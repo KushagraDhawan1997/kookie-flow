@@ -38,9 +38,9 @@
  * honest way: the semantic element, kept for what it announces, with its type coming from
  * `<Text render>` and its remaining details from `prose.css` in tokens.
  */
-import * as React from "react";
-import type { MDXComponents } from "mdx/types";
-import NextLink from "next/link";
+import * as React from 'react';
+import type { MDXComponents } from 'mdx/types';
+import NextLink from 'next/link';
 import {
   Blockquote,
   Box,
@@ -56,22 +56,22 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@kushagradhawan/kookie-ui-react";
+} from '@kushagradhawan/kookie-ui-react';
 
-import { CodeSample } from "./blocks/code-sample";
-import { parseMeta } from "./blocks/highlight";
-import { Example } from "./app/(docs)/example";
-import { nodeText, slugify } from "./app/(docs)/slug";
-import type { TypeSize } from "@kushagradhawan/kookie-ui-react";
+import { CodeSample } from './blocks/code-sample';
+import { parseMeta } from './blocks/highlight';
+import { Example } from './app/(docs)/example';
+import { nodeText, slugify } from './app/(docs)/slug';
+import type { TypeSize } from '@kushagradhawan/kookie-ui-react';
 
 /** The distance between two ordinary siblings, and the only one this file states twice — it
     is also the distance under a heading, because those are the same relationship seen from
     two sides: a block and the block it belongs with. */
-const FLOW_GAP = "5";
+const FLOW_GAP = '5';
 
 /** What a figure adds on EACH side, on top of the flow gap. A fence, an example and a table
     are not paragraphs, and the eye needs to be told that before it reads the contents. */
-const FIGURE_MARGIN = "5";
+const FIGURE_MARGIN = '5';
 
 /** A heading that carries its own anchor. The id is what the table of contents links to and
     what a URL fragment lands on, so it is computed from the rendered words through the one
@@ -79,11 +79,10 @@ const FIGURE_MARGIN = "5";
 
     `marginTop` is what the level MEANS, not a decoration on it: composed with `FLOW_GAP` it
     is the break the reader is being asked to take, and the ladder above states each sum. */
-function anchored(level: 2 | 3 | 4, size: TypeSize, marginTop: "3" | "6" | "7") {
+function anchored(level: 2 | 3 | 4, size: TypeSize, marginTop: '3' | '6' | '7') {
   const Component = ({ children }: { children?: React.ReactNode }) => {
     const id = slugify(nodeText(children));
-    const element =
-      level === 2 ? <h2 id={id} /> : level === 3 ? <h3 id={id} /> : <h4 id={id} />;
+    const element = level === 2 ? <h2 id={id} /> : level === 3 ? <h3 id={id} /> : <h4 id={id} />;
     return (
       <Box mt={marginTop}>
         <Heading size={size} render={element}>
@@ -118,9 +117,9 @@ function fence(props: { children?: React.ReactNode }): React.ReactElement {
     children?: string;
     metastring?: string;
   }>;
-  const className = child.props.className ?? "";
-  const lang = className.replace(/^language-/, "") || "tsx";
-  const code = typeof child.props.children === "string" ? child.props.children : "";
+  const className = child.props.className ?? '';
+  const lang = className.replace(/^language-/, '') || 'tsx';
+  const code = typeof child.props.children === 'string' ? child.props.children : '';
   // The fence's meta string — ```ts title="x.ts" lineNumbers maxLines=20 {1,3} /word/ —
   // put on the element by our remark plugin (MDX drops it otherwise). The chrome facts
   // become props; what parseMeta does not claim rides through to Shiki's own directives.
@@ -157,11 +156,11 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     // 40 / 24 / 18: 1.67 then 1.33, both real. The section heading is CALM rather than loud,
     // because the 48px break above it is what says "new section" — space ranks more cheaply
     // than size, and it does not have to shout over the title to do it.
-    h2: anchored(2, "6", "7"),
-    h3: anchored(3, "4", "6"),
+    h2: anchored(2, '6', '7'),
+    h3: anchored(3, '4', '6'),
     // Chapters do not go deeper than `h3`. Mapped anyway, so a stray heading degrades to a
     // small one rather than to an unstyled UA `<h4>`.
-    h4: anchored(4, "3", "3"),
+    h4: anchored(4, '3', '3'),
 
     p: ({ children }) => (
       <Text size="3" render={<p />}>
@@ -209,7 +208,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
      * goes. Both are the package's `Link`, which carries the ink, the underline and the states.
      */
     a: ({ href, children }) => {
-      const target = href ?? "";
+      const target = href ?? '';
       const external = /^https?:/.test(target);
       return (
         <Link

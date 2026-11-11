@@ -10,8 +10,14 @@ const call = (history: MockHistory) => {
 
 describe('the mock agent', () => {
   it('reads the graph first, then asks when the ask is short', () => {
-    expect(call({ userText: 'a controller', userMessages: 1, results: [] }).name).toBe('read_graph');
-    const asked = nextMockTurn({ userText: 'a controller', userMessages: 1, results: [{ name: 'read_graph', output: '(empty graph)' }] });
+    expect(call({ userText: 'a controller', userMessages: 1, results: [] }).name).toBe(
+      'read_graph'
+    );
+    const asked = nextMockTurn({
+      userText: 'a controller',
+      userMessages: 1,
+      results: [{ name: 'read_graph', output: '(empty graph)' }],
+    });
     expect(asked.calls).toBeUndefined();
     expect(asked.text).toMatch(/1\. /);
   });
@@ -35,12 +41,23 @@ describe('the mock agent', () => {
     expect(priced.name).toBe('estimate');
     expect(priced.input.nodes).toEqual(['n2', 'n3']);
 
-    results.push({ name: 'estimate', output: { nodes: [{ id: 'n2' }, { id: 'n3' }], total: '$0.02' } });
+    results.push({
+      name: 'estimate',
+      output: { nodes: [{ id: 'n2' }, { id: 'n3' }], total: '$0.02' },
+    });
     const run = call({ userText, userMessages: 1, results });
     expect(run.name).toBe('run');
     expect(run.turn.text).toContain('$0.02');
 
-    results.push({ name: 'run', output: { nodes: [{ id: 'n2', status: 'done' }, { id: 'n3', status: 'done' }] } });
+    results.push({
+      name: 'run',
+      output: {
+        nodes: [
+          { id: 'n2', status: 'done' },
+          { id: 'n3', status: 'done' },
+        ],
+      },
+    });
     expect(call({ userText, userMessages: 1, results }).name).toBe('inspect');
     results.push({ name: 'inspect', output: 'ok' });
     expect(nextMockTurn({ userText, userMessages: 1, results }).text).toMatch(/Which one/);
@@ -51,16 +68,21 @@ describe('the mock agent', () => {
       { name: 'read_graph', output: '(empty graph)' },
       { name: 'run', output: { declined: true, nodes: [] } },
     ];
-    expect(nextMockTurn({ userText: 'make it', userMessages: 2, results }).text).toMatch(/Nothing ran/);
+    expect(nextMockTurn({ userText: 'make it', userMessages: 2, results }).text).toMatch(
+      /Nothing ran/
+    );
   });
 
   it('finishes on the pick the person names', () => {
-    const graph = 'n1 source/text "Brief"\nn4 logic/pick "Pick"\nn5 ai/gpt-image-2.5 "Final" quality="high"';
+    const graph =
+      'n1 source/text "Brief"\nn4 logic/pick "Pick"\nn5 ai/gpt-image-2.5 "Final" quality="high"';
     const results: MockHistory['results'] = [{ name: 'read_graph', output: graph }];
     const set = call({ userText: 'the second one', userMessages: 2, results });
     expect(set.name).toBe('apply_ops');
     expect(set.input.ops).toEqual([{ op: 'set_values', id: 'n4', values: { choice: '2' } }]);
     results.push({ name: 'apply_ops', output: { created: [], errors: [] } });
-    expect(call({ userText: 'the second one', userMessages: 2, results }).input.nodes).toEqual(['n5']);
+    expect(call({ userText: 'the second one', userMessages: 2, results }).input.nodes).toEqual([
+      'n5',
+    ]);
   });
 });

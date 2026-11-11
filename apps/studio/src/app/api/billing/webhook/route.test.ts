@@ -39,7 +39,13 @@ function completed(session: Record<string, unknown>): string {
 async function deliver(payload: string, signature: string | null): Promise<Response> {
   const headers = new Headers({ 'content-type': 'application/json' });
   if (signature) headers.set('stripe-signature', signature);
-  return POST(new Request('http://127.0.0.1:3002/api/billing/webhook', { method: 'POST', headers, body: payload }));
+  return POST(
+    new Request('http://127.0.0.1:3002/api/billing/webhook', {
+      method: 'POST',
+      headers,
+      body: payload,
+    })
+  );
 }
 
 const sign = (payload: string, secret = SECRET) =>
@@ -71,7 +77,11 @@ describe('the Stripe webhook', () => {
       payment_status: 'unpaid',
       metadata: { purpose: 'studio-topup', workspaceId: 'ws-2', amountCents: '500' },
     });
-    const other = completed({ id: 'cs_test_other', payment_status: 'paid', metadata: { workspaceId: 'ws-2' } });
+    const other = completed({
+      id: 'cs_test_other',
+      payment_status: 'paid',
+      metadata: { workspaceId: 'ws-2' },
+    });
     expect((await deliver(unpaid, await sign(unpaid))).status).toBe(200);
     expect((await deliver(other, await sign(other))).status).toBe(200);
     expect(await balanceMicros(await getDb(), 'ws-2')).toBe(0);

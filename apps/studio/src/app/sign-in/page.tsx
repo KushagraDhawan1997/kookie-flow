@@ -8,7 +8,11 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   const next = safeNextPath((await searchParams).next);
   if (await currentUser()) redirect(next);
   return <SignInForm next={next} />;

@@ -53,11 +53,23 @@ ships Inter's license. Studio is not included in these library packages.
 TypeScript types do not validate JSON. Check imported or persisted data before mounting:
 
 ```ts
-import { parseFlowObject, FlowDocumentError, validateGraph, buildAdjacencyIndex } from '@kushagradhawan/kookie-flow-react';
+import {
+  parseFlowObject,
+  FlowDocumentError,
+  validateGraph,
+  buildAdjacencyIndex,
+} from '@kushagradhawan/kookie-flow-react';
 
 try {
-  const document = parseFlowObject(JSON.parse(savedText), { maxEntities: 10_000, maxEdges: 50_000 });
-  const executionIssues = validateGraph(document.entities, document.edges, buildAdjacencyIndex(document.edges));
+  const document = parseFlowObject(JSON.parse(savedText), {
+    maxEntities: 10_000,
+    maxEdges: 50_000,
+  });
+  const executionIssues = validateGraph(
+    document.entities,
+    document.edges,
+    buildAdjacencyIndex(document.edges)
+  );
   // Render document; decide how your app presents executionIssues.
 } catch (error) {
   if (error instanceof FlowDocumentError) console.error(error.issues);

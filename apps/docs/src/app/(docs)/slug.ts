@@ -10,14 +10,14 @@
 /** Flatten a React node to the words it renders. The heading mapping receives children, not
     text, and a heading containing `<Code>` or a link still has to produce a stable anchor. */
 export function nodeText(node: unknown): string {
-  if (node === null || node === undefined || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(nodeText).join("");
-  if (typeof node === "object" && "props" in node) {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join('');
+  if (typeof node === 'object' && 'props' in node) {
     const props = (node as { props?: { children?: unknown } }).props;
     return nodeText(props?.children);
   }
-  return "";
+  return '';
 }
 
 /**
@@ -32,7 +32,7 @@ export function nodeText(node: unknown): string {
 export function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[’'"“”]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[’'"“”]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }

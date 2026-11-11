@@ -5,10 +5,10 @@ Goal: Womp copies `core`, `react` and `webgl` unchanged and writes only its own 
 
 ## The three layers
 
-| Layer    | Owns                                                                                                                                     | Package                                                                      |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Logic    | graph, store, history, layout, evaluation                                                                                                | `kookie-flow-core` (already clean)                                           |
-| Behavior | geometry, SDF shapes, hit testing, state (hover, selected, focus, accent hue), pointer and keyboard, accessibility mirror, text, culling | `kookie-flow-webgl`                                                          |
+| Layer    | Owns                                                                                                                                     | Package                                                                |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Logic    | graph, store, history, layout, evaluation                                                                                                | `kookie-flow-core` (already clean)                                     |
+| Behavior | geometry, SDF shapes, hit testing, state (hover, selected, focus, accent hue), pointer and keyboard, accessibility mirror, text, culling | `kookie-flow-webgl`                                                    |
 | Look     | which token plays which role, sizes and radii, material numbers, the shader code that paints a surface, whether a backdrop is sampled    | new: `kookie-flow-skin` (yours), `@womp/kookie-flow-skin-solid` (Womp) |
 
 The rule: `webgl` never names a CSS token, a material value or a glass function. It asks the skin.

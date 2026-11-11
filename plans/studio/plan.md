@@ -40,14 +40,14 @@ defineNode({
   type: 'image/blur',
   label: 'Blur',
   category: 'image',
-  description: 'Gaussian blur. Radius is a fraction of the image width.',   // read by the agent
+  description: 'Gaussian blur. Radius is a fraction of the image width.', // read by the agent
   inputs: {
     image: socket('image'),
     radius: socket('float', { widget: 'slider', min: 0, max: 0.2, step: 0.001, default: 0.02 }),
   },
   outputs: { image: socket('image') },
-  evaluation: 'reactive',                 // 'manual' for anything that costs money
-  where: 'gpu',                           // 'inline' | 'gpu' | 'media' | 'server'
+  evaluation: 'reactive', // 'manual' for anything that costs money
+  where: 'gpu', // 'inline' | 'gpu' | 'media' | 'server'
   run: (inputs, ctx) => ctx.gpu.run('blur', { radius: inputs.radius }, [inputs.image]),
 });
 ```
@@ -58,14 +58,14 @@ tool (later).
 
 ### Values on sockets
 
-| Socket type | Value |
-|---|---|
+| Socket type              | Value                                                                                                                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `image`, `video`, `mask` | `MediaRef`: `{ kind, id, hash, width, height, url?, preview? }`. GPU-resident images stay in the worker; `id` names the texture, `preview` is a small transferred `ImageBitmap` for the band |
-| `text` | string |
-| `float`, `int`, `seed` | number |
-| `bool` | boolean |
-| `color` | `#rrggbb` string |
-| `list<T>` | array — phase 6, needs a library change |
+| `text`                   | string                                                                                                                                                                                       |
+| `float`, `int`, `seed`   | number                                                                                                                                                                                       |
+| `bool`                   | boolean                                                                                                                                                                                      |
+| `color`                  | `#rrggbb` string                                                                                                                                                                             |
+| `list<T>`                | array — phase 6, needs a library change                                                                                                                                                      |
 
 Every media value is content-addressed. The `hash` of a GPU result is the hash of its cache key
 (op id, version, params, input hashes, size); the hash of a file is sha-256 of its bytes. Equal hash
@@ -86,12 +86,12 @@ never re-renders React.
 
 ### Where a node runs
 
-| `where` | Runs in | Examples |
-|---|---|---|
-| `inline` | `onEvaluate` on the main thread, synchronous, microseconds | number, seed, template, math, if |
-| `gpu` | `gpu.worker.ts`, WebGL2 on an OffscreenCanvas, one context, texture cache | blur, noise, aberration, blend |
-| `media` | `media.worker.ts`, Mediabunny + WebCodecs | trim, concat, frame, export |
-| `server` | `POST /api/jobs`, provider queue, result copied to storage | every AI node |
+| `where`  | Runs in                                                                   | Examples                         |
+| -------- | ------------------------------------------------------------------------- | -------------------------------- |
+| `inline` | `onEvaluate` on the main thread, synchronous, microseconds                | number, seed, template, math, if |
+| `gpu`    | `gpu.worker.ts`, WebGL2 on an OffscreenCanvas, one context, texture cache | blur, noise, aberration, blend   |
+| `media`  | `media.worker.ts`, Mediabunny + WebCodecs                                 | trim, concat, frame, export      |
+| `server` | `POST /api/jobs`, provider queue, result copied to storage                | every AI node                    |
 
 The evaluator (library) decides when; `onEvaluate` (app) looks the node up and dispatches on
 `where`. Cancellation is `ctx.signal` end to end: a changed input aborts the worker call, or
@@ -103,8 +103,8 @@ cancels the provider job.
   `apps/studio/.data/pg`, kept as a `globalThis` singleton so dev reloads do not reopen it. Same
   schema, same queries, so single-user self-hosting needs no database server at all.
 - **Tables.** `graphs (id, workspace_id, name, doc jsonb, updated_at)`, `assets (id, workspace_id,
-  hash, mime, bytes, width, height, key)`, `jobs (id, workspace_id, graph_id, node_id, provider,
-  provider_id, status, input jsonb, output jsonb, cost, created_at, updated_at)`. `workspace_id` is
+hash, mime, bytes, width, height, key)`, `jobs (id, workspace_id, graph_id, node_id, provider,
+provider_id, status, input jsonb, output jsonb, cost, created_at, updated_at)`. `workspace_id` is
   on every table from day one and is a constant until auth lands.
 - **Storage.** `Storage` interface: `put(hash, bytes, mime)`, `url(key)`. `local` writes
   `apps/studio/.data/blobs/<hash>` and serves it at `/api/blob/<hash>`. `r2` uses presigned PUTs
@@ -158,14 +158,14 @@ The loop is client-driven and the client owns the message history:
 3. Browser tools (`read_graph`, `apply_ops`, `run`) have no server `execute`, so they end the step.
    The client executes them against the live graph, appends the results, and calls step again.
 
-| Tool | Where | Returns |
-|---|---|---|
-| `search_nodes(query)` | server | node types with schemas; the catalog is never dumped into context |
-| `read_graph(focus?)` | browser | compact text: short ids, non-default params, edges as `a.out -> b.in` |
-| `apply_ops(ops[])` | browser | applied ops, diff, validation errors |
-| `run(nodeIds)` | browser | job ids; nodes whose cache hits are reported as skipped |
-| `estimate(nodeIds)` | server | credits and time per node |
-| `inspect(nodeId)` | server | the output downscaled to 768px as an image block; a few frames for video |
+| Tool                  | Where   | Returns                                                                  |
+| --------------------- | ------- | ------------------------------------------------------------------------ |
+| `search_nodes(query)` | server  | node types with schemas; the catalog is never dumped into context        |
+| `read_graph(focus?)`  | browser | compact text: short ids, non-default params, edges as `a.out -> b.in`    |
+| `apply_ops(ops[])`    | browser | applied ops, diff, validation errors                                     |
+| `run(nodeIds)`        | browser | job ids; nodes whose cache hits are reported as skipped                  |
+| `estimate(nodeIds)`   | server  | credits and time per node                                                |
+| `inspect(nodeId)`     | server  | the output downscaled to 768px as an image block; a few frames for video |
 
 `inspect` is what closes the loop: the agent looks at what it made and fixes it. Claude and GPT
 both read images in tool results.
@@ -177,7 +177,7 @@ Small, early:
 1. `classifyPreviewValue` accepts an object carrying `preview: string | ImageBitmap`, so a
    `MediaRef` on an output socket draws its own band. Today only a bare string or bitmap draws.
 2. The reducers inside `useGraph` become pure exported functions, `applyEntityChanges(entities,
-   changes)` and `applyEdgeChanges(edges, changes)`, with the hook calling them. No behaviour change;
+changes)` and `applyEdgeChanges(edges, changes)`, with the hook calling them. No behaviour change;
    the server and MCP apply ops to a `FlowObject` through the same code.
 
 Later, for phase 6 (logic):
@@ -193,18 +193,18 @@ Later, for phase 6 (logic):
 
 Each phase ends green: `tsc`, unit tests, and the app boots and does the thing in a real browser.
 
-| # | Phase | Delivers | Needs |
-|---|---|---|---|
-| 1 | Shell | `apps/studio` + `packages/studio-core`; turbo wiring; AGPL licences; theme mechanism copied from docs; `/` graph list, `/g/[id]` editor; node library, inspector, top bar; PGlite + Drizzle; autosave; local storage adapter | — |
-| 2 | Logic | `defineNode`, registry, `GraphOp` compiler, `onEvaluate` dispatch, cache; nodes: number, seed, text, template, concat, math expr, remap, clamp, color; library change 2 | — |
-| 3 | GPU | `gpu.worker.ts` (WebGL2, OffscreenCanvas, texture cache, readback); `GpuClient`; nodes: upload, resize, crop, blur, levels, noise, chromatic aberration, blend, mask, grain, vignette, dither, stats; previews via library change 1; golden-image tests | — |
-| 4 | AI | jobs table + routes, fal adapter, schema import, mock mode, asset copy; nodes: text-to-image, edit-image, upscale, remove-background, image-to-video, describe (Claude vision), judge | `FAL_KEY`, `ANTHROPIC_API_KEY` to test for real; mock otherwise |
-| 5 | Agent | AI SDK loop, agent model registry (Claude, GPT), `/api/agent/step`, tools, chat panel, streaming, one undo step per turn, inspect, token charges | `AI_GATEWAY_API_KEY` |
-| 6 | Control | library changes 3–5; nodes: if, switch, gate, list, range, zip, cartesian, pick, filter, for-each, loop-until, rank | — |
-| 7 | Video | `media.worker.ts`, Mediabunny; nodes: trim, concat, speed, frame, per-frame effect, export; time nodes | — |
-| 8 | Templates | subgraph as a node, template gallery, app mode (form from exposed inputs) | — |
-| 9 | Launch | Better Auth, credit ledger, Stripe top-ups, BYOK, R2, Neon, Vercel, spending caps, retention | accounts and keys |
-| 10 | After | server executor (Workflow SDK), MCP server, MCP Apps view, Yjs | — |
+| #   | Phase     | Delivers                                                                                                                                                                                                                                                | Needs                                                           |
+| --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | Shell     | `apps/studio` + `packages/studio-core`; turbo wiring; AGPL licences; theme mechanism copied from docs; `/` graph list, `/g/[id]` editor; node library, inspector, top bar; PGlite + Drizzle; autosave; local storage adapter                            | —                                                               |
+| 2   | Logic     | `defineNode`, registry, `GraphOp` compiler, `onEvaluate` dispatch, cache; nodes: number, seed, text, template, concat, math expr, remap, clamp, color; library change 2                                                                                 | —                                                               |
+| 3   | GPU       | `gpu.worker.ts` (WebGL2, OffscreenCanvas, texture cache, readback); `GpuClient`; nodes: upload, resize, crop, blur, levels, noise, chromatic aberration, blend, mask, grain, vignette, dither, stats; previews via library change 1; golden-image tests | —                                                               |
+| 4   | AI        | jobs table + routes, fal adapter, schema import, mock mode, asset copy; nodes: text-to-image, edit-image, upscale, remove-background, image-to-video, describe (Claude vision), judge                                                                   | `FAL_KEY`, `ANTHROPIC_API_KEY` to test for real; mock otherwise |
+| 5   | Agent     | AI SDK loop, agent model registry (Claude, GPT), `/api/agent/step`, tools, chat panel, streaming, one undo step per turn, inspect, token charges                                                                                                        | `AI_GATEWAY_API_KEY`                                            |
+| 6   | Control   | library changes 3–5; nodes: if, switch, gate, list, range, zip, cartesian, pick, filter, for-each, loop-until, rank                                                                                                                                     | —                                                               |
+| 7   | Video     | `media.worker.ts`, Mediabunny; nodes: trim, concat, speed, frame, per-frame effect, export; time nodes                                                                                                                                                  | —                                                               |
+| 8   | Templates | subgraph as a node, template gallery, app mode (form from exposed inputs)                                                                                                                                                                               | —                                                               |
+| 9   | Launch    | Better Auth, credit ledger, Stripe top-ups, BYOK, R2, Neon, Vercel, spending caps, retention                                                                                                                                                            | accounts and keys                                               |
+| 10  | After     | server executor (Workflow SDK), MCP server, MCP Apps view, Yjs                                                                                                                                                                                          | —                                                               |
 
 Phases 1–3 need no keys or accounts. Phase 4 and 5 are built against mock mode without keys and
 switched to real providers once keys exist.
@@ -228,15 +228,15 @@ switched to real providers once keys exist.
 
 ## 4. Keys and accounts
 
-| Key | Where to get it | Needed for | When |
-|---|---|---|---|
-| `FAL_KEY` | fal.ai → dashboard → Keys | real AI nodes | phase 4; mock mode until then |
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API keys | describe and judge nodes (or route them through the gateway) | phase 4 |
-| `AI_GATEWAY_API_KEY` | vercel.com → AI Gateway → API keys | the agent (Claude and GPT) | phase 5 |
-| `DATABASE_URL` | neon.com → new project → connection string | hosted database | phase 9; PGlite until then |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare → R2 → bucket + API token | hosted storage | phase 9; local files until then |
-| Vercel project | vercel.com | hosted app | phase 9 |
-| Stripe keys | stripe.com | credits | phase 9 |
+| Key                                                                                       | Where to get it                            | Needed for                                                   | When                            |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------ | ------------------------------- |
+| `FAL_KEY`                                                                                 | fal.ai → dashboard → Keys                  | real AI nodes                                                | phase 4; mock mode until then   |
+| `ANTHROPIC_API_KEY`                                                                       | console.anthropic.com → API keys           | describe and judge nodes (or route them through the gateway) | phase 4                         |
+| `AI_GATEWAY_API_KEY`                                                                      | vercel.com → AI Gateway → API keys         | the agent (Claude and GPT)                                   | phase 5                         |
+| `DATABASE_URL`                                                                            | neon.com → new project → connection string | hosted database                                              | phase 9; PGlite until then      |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare → R2 → bucket + API token       | hosted storage                                               | phase 9; local files until then |
+| Vercel project                                                                            | vercel.com                                 | hosted app                                                   | phase 9                         |
+| Stripe keys                                                                               | stripe.com                                 | credits                                                      | phase 9                         |
 
 All go in `apps/studio/.env.local`. The two API keys should be set to a low spending cap on the
 provider's side before they are used.

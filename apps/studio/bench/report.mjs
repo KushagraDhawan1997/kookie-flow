@@ -29,8 +29,12 @@ function trialsIn(file) {
 }
 
 // A finished run writes both files; prefer the summary and skip its twin.
-const finished = new Set(files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')));
-const trials = files.filter((f) => !(f.endsWith('.jsonl') && finished.has(f.replace(/\.jsonl$/, '')))).flatMap(trialsIn);
+const finished = new Set(
+  files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''))
+);
+const trials = files
+  .filter((f) => !(f.endsWith('.jsonl') && finished.has(f.replace(/\.jsonl$/, ''))))
+  .flatMap(trialsIn);
 if (!trials.length) {
   console.log(`no trials in ${files.length} file(s)`);
   process.exit(0);
@@ -55,7 +59,10 @@ console.log(`${trials.length} trials from ${files.length} file(s)\n`);
 
 // Per model: scenes that passed every repeat (pass^k), cost, calls, tokens.
 const models = by(trials, (t) => `${t.model} · ${t.effort}`);
-console.log('MODEL'.padEnd(34) + 'pass^k  scenes  $/scene   calls  tools   ops   out-tok  read-tok  write-tok  fails');
+console.log(
+  'MODEL'.padEnd(34) +
+    'pass^k  scenes  $/scene   calls  tools   ops   out-tok  read-tok  write-tok  fails'
+);
 for (const [name, mine] of models) {
   const real = mine.filter((t) => !t.baselineFor);
   const scenes = by(real, (t) => t.task);
@@ -64,11 +71,23 @@ for (const [name, mine] of models) {
   console.log(
     name.padEnd(34) +
       `${pct(allPass, scenes.size).padStart(6)}  ${String(scenes.size).padStart(6)}  ` +
-      `${usd(mean(mine, (t) => t.micros)).padStart(8)}  ${mean(mine, (t) => t.steps).toFixed(1).padStart(5)}  ` +
-      `${mean(mine, (t) => t.toolCalls).toFixed(1).padStart(5)}  ${mean(mine, (t) => t.ops).toFixed(1).padStart(4)}  ` +
-      `${Math.round(mean(mine, (t) => t.usage.output)).toString().padStart(7)}  ` +
-      `${Math.round(mean(mine, (t) => t.usage.cacheRead)).toString().padStart(8)}  ` +
-      `${Math.round(mean(mine, (t) => t.usage.cacheWrite)).toString().padStart(9)}  ` +
+      `${usd(mean(mine, (t) => t.micros)).padStart(8)}  ${mean(mine, (t) => t.steps)
+        .toFixed(1)
+        .padStart(5)}  ` +
+      `${mean(mine, (t) => t.toolCalls)
+        .toFixed(1)
+        .padStart(5)}  ${mean(mine, (t) => t.ops)
+        .toFixed(1)
+        .padStart(4)}  ` +
+      `${Math.round(mean(mine, (t) => t.usage.output))
+        .toString()
+        .padStart(7)}  ` +
+      `${Math.round(mean(mine, (t) => t.usage.cacheRead))
+        .toString()
+        .padStart(8)}  ` +
+      `${Math.round(mean(mine, (t) => t.usage.cacheWrite))
+        .toString()
+        .padStart(9)}  ` +
       `${real.filter((t) => !t.passed).length}/${real.length}`
   );
 }
@@ -89,7 +108,7 @@ const PRICE = {
 
 // Where the money goes, per model, in dollars — not in tokens. Cache reads are most of the tokens
 // and a tenth of the price, so a token share says the opposite of what the bill says.
-console.log('\nWHERE THE MONEY GOES (share of that model\'s own dollars)');
+console.log("\nWHERE THE MONEY GOES (share of that model's own dollars)");
 console.log('MODEL'.padEnd(34) + 'output  cache-write  cache-read  uncached      spent');
 for (const [name, mine] of models) {
   const price = PRICE[mine[0].model];
@@ -122,8 +141,12 @@ for (const [task, mine] of by(trials, (t) => t.task)) {
     task.padEnd(25) +
       `${String(first.tier).padStart(4)}  ${`${mine.filter((t) => t.passed).length}/${mine.length}`.padStart(6)}` +
       `${first.baselineFor ? ' (base)' : '       '}  ` +
-      `${usd(mean(mine, (t) => t.micros)).padStart(7)}  ${mean(mine, (t) => t.steps).toFixed(1).padStart(5)}  ` +
-      `${mean(mine, (t) => t.toolCalls).toFixed(1).padStart(5)}  ${(worst?.[0] ?? '').slice(0, 60)}`
+      `${usd(mean(mine, (t) => t.micros)).padStart(7)}  ${mean(mine, (t) => t.steps)
+        .toFixed(1)
+        .padStart(5)}  ` +
+      `${mean(mine, (t) => t.toolCalls)
+        .toFixed(1)
+        .padStart(5)}  ${(worst?.[0] ?? '').slice(0, 60)}`
   );
 }
 
@@ -146,7 +169,14 @@ const names = [...new Set(trials.flatMap((t) => Object.keys(t.tools)))].sort();
 console.log('MODEL'.padEnd(34) + names.map((n) => n.slice(0, 8).padStart(9)).join(''));
 for (const [name, mine] of models) {
   console.log(
-    name.padEnd(34) + names.map((n) => mean(mine, (t) => t.tools[n] ?? 0).toFixed(1).padStart(9)).join('')
+    name.padEnd(34) +
+      names
+        .map((n) =>
+          mean(mine, (t) => t.tools[n] ?? 0)
+            .toFixed(1)
+            .padStart(9)
+        )
+        .join('')
   );
 }
 
@@ -156,7 +186,11 @@ console.log('MODEL'.padEnd(34) + 'runs asked  approved  $ approved/trial  refuse
 for (const [name, mine] of models) {
   console.log(
     name.padEnd(34) +
-      `${mean(mine, (t) => t.runsAsked).toFixed(1).padStart(10)}  ${mean(mine, (t) => t.runsApproved).toFixed(1).padStart(8)}  ` +
+      `${mean(mine, (t) => t.runsAsked)
+        .toFixed(1)
+        .padStart(10)}  ${mean(mine, (t) => t.runsApproved)
+        .toFixed(1)
+        .padStart(8)}  ` +
       `${usd(mean(mine, (t) => t.approvedMicros)).padStart(16)}  ${sum(mine, (t) => t.refusals.length)}`
   );
 }

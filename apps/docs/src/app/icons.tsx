@@ -25,8 +25,8 @@
  * that the CSS then has to beat. It does beat them, presentation attributes losing to any
  * declaration, but relying on that is a mechanism nobody wrote down.
  */
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { iconStroke } from "@kushagradhawan/kookie-ui-react";
+import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
+import { iconStroke } from '@kushagradhawan/kookie-ui-react';
 import {
   AiProgrammingIcon,
   Alert02Icon,
@@ -140,7 +140,7 @@ import {
   ToggleOnIcon,
   TypeCursorIcon,
   UserCircleIcon,
-} from "@hugeicons/core-free-icons";
+} from '@hugeicons/core-free-icons';
 
 /**
  * One shape for every glyph below: decorative by default (the control that owns it carries the

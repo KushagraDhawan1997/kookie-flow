@@ -24,12 +24,51 @@ const binary = (
   });
 
 export const add = binary('add', 'Add', 'Adds two numbers.', 'a + b.', (a, b) => a + b);
-export const subtract = binary('subtract', 'Subtract', 'Subtracts one number from another.', 'a − b.', (a, b) => a - b);
-export const multiply = binary('multiply', 'Multiply', 'Multiplies two numbers.', 'a × b.', (a, b) => a * b, [1, 1]);
-export const divide = binary('divide', 'Divide', 'Divides one number by another.', 'a ÷ b. Division by zero gives 0.', (a, b) => (b === 0 ? 0 : a / b), [1, 1]);
-export const power = binary('power', 'Power', 'Raises a number to a power.', 'a to the power b.', (a, b) => Math.pow(a, b), [1, 1]);
-export const min = binary('min', 'Min', 'Picks the smaller of two numbers.', 'The smaller of a and b.', Math.min);
-export const max = binary('max', 'Max', 'Picks the larger of two numbers.', 'The larger of a and b.', Math.max);
+export const subtract = binary(
+  'subtract',
+  'Subtract',
+  'Subtracts one number from another.',
+  'a − b.',
+  (a, b) => a - b
+);
+export const multiply = binary(
+  'multiply',
+  'Multiply',
+  'Multiplies two numbers.',
+  'a × b.',
+  (a, b) => a * b,
+  [1, 1]
+);
+export const divide = binary(
+  'divide',
+  'Divide',
+  'Divides one number by another.',
+  'a ÷ b. Division by zero gives 0.',
+  (a, b) => (b === 0 ? 0 : a / b),
+  [1, 1]
+);
+export const power = binary(
+  'power',
+  'Power',
+  'Raises a number to a power.',
+  'a to the power b.',
+  (a, b) => Math.pow(a, b),
+  [1, 1]
+);
+export const min = binary(
+  'min',
+  'Min',
+  'Picks the smaller of two numbers.',
+  'The smaller of a and b.',
+  Math.min
+);
+export const max = binary(
+  'max',
+  'Max',
+  'Picks the larger of two numbers.',
+  'The larger of a and b.',
+  Math.max
+);
 
 export const remap = defineNode({
   type: 'math/remap',
@@ -120,15 +159,30 @@ const FUNCTIONS: Record<string, (...args: number[]) => number> = {
  * `min` and `max` are variadic and take at least one.
  */
 const ARITY: Record<string, number | 'variadic'> = {
-  abs: 1, floor: 1, ceil: 1, round: 1, sqrt: 1, sin: 1, cos: 1, tan: 1, exp: 1, log: 1,
-  atan2: 2, pow: 2, step: 2,
-  mix: 3, clamp: 3, smoothstep: 3,
-  min: 'variadic', max: 'variadic',
+  abs: 1,
+  floor: 1,
+  ceil: 1,
+  round: 1,
+  sqrt: 1,
+  sin: 1,
+  cos: 1,
+  tan: 1,
+  exp: 1,
+  log: 1,
+  atan2: 2,
+  pow: 2,
+  step: 2,
+  mix: 3,
+  clamp: 3,
+  smoothstep: 3,
+  min: 'variadic',
+  max: 'variadic',
 };
 
 const CONSTANTS: Record<string, number> = { pi: Math.PI, e: Math.E, tau: Math.PI * 2 };
 
-type Token = { kind: 'num'; value: number } | { kind: 'id'; value: string } | { kind: 'op'; value: string };
+type Token =
+  { kind: 'num'; value: number } | { kind: 'id'; value: string } | { kind: 'op'; value: string };
 
 function tokenize(src: string): Token[] {
   const tokens: Token[] = [];
@@ -183,7 +237,9 @@ export function evaluateExpression(src: string, vars: Record<string, number>): n
         if (arity === 'variadic') {
           if (args.length === 0) throw new Error(`${t.value} needs at least one number`);
         } else if (arity !== args.length) {
-          throw new Error(`${t.value} takes ${arity} ${arity === 1 ? 'number' : 'numbers'}, got ${args.length}`);
+          throw new Error(
+            `${t.value} takes ${arity} ${arity === 1 ? 'number' : 'numbers'}, got ${args.length}`
+          );
         }
         return (FUNCTIONS[t.value] as (...a: number[]) => number)(...args);
       }

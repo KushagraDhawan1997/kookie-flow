@@ -51,7 +51,12 @@ async function createGraph(name: string): Promise<string> {
   return body.id;
 }
 
-const SEND_ICONS = { ready: <SendIcon />, submitted: <SendIcon />, streaming: <StopIcon />, error: <RetryIcon /> };
+const SEND_ICONS = {
+  ready: <SendIcon />,
+  submitted: <SendIcon />,
+  streaming: <StopIcon />,
+  error: <RetryIcon />,
+};
 
 /**
  * Home says what Studio is in as few words as it can (plans/studio/vision.md, home-study.md): ask
@@ -82,7 +87,13 @@ export function HomePage() {
               .filter((f) => f.type.startsWith('image/'))
               .map(async (f) => {
                 const ref = await ports.assets.put(f, 'image');
-                return { hash: ref.hash, url: ref.url ?? '', mime: ref.mime ?? f.type, width: ref.width, height: ref.height };
+                return {
+                  hash: ref.hash,
+                  url: ref.url ?? '',
+                  mime: ref.mime ?? f.type,
+                  width: ref.width,
+                  height: ref.height,
+                };
               })
           )
         : [];
@@ -137,7 +148,9 @@ export function HomePage() {
                 />
                 <ComposerRow>
                   <Flex gap="2" align="center">
-                    <AttachButton onFiles={(picked) => setFiles((current) => [...current, ...picked])} />
+                    <AttachButton
+                      onFiles={(picked) => setFiles((current) => [...current, ...picked])}
+                    />
                     <AgentChoice value={settings} onChange={setSettings} />
                     {files.length > 0 && (
                       <Text size="2" emphasis="medium">
@@ -145,7 +158,11 @@ export function HomePage() {
                       </Text>
                     )}
                   </Flex>
-                  <ComposerSend status={busy ? 'submitted' : 'ready'} disabled={!ask.trim()} icons={SEND_ICONS} />
+                  <ComposerSend
+                    status={busy ? 'submitted' : 'ready'}
+                    disabled={!ask.trim()}
+                    icons={SEND_ICONS}
+                  />
                 </ComposerRow>
               </Composer>
             </div>

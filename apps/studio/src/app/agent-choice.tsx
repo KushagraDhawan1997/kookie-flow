@@ -14,7 +14,13 @@ import {
   Separator,
 } from '@kushagradhawan/kookie-ui-react';
 
-import { AGENT_EFFORTS, AGENT_MODEL_GROUPS, AGENT_MODELS, AUTO_MODEL, type AgentSettings } from './agent-models';
+import {
+  AGENT_EFFORTS,
+  AGENT_MODEL_GROUPS,
+  AGENT_MODELS,
+  AUTO_MODEL,
+  type AgentSettings,
+} from './agent-models';
 import { AutoIcon, CheckIcon, ChevronDownIcon } from './icons';
 import { ProviderLogo } from './provider-logos';
 
@@ -71,7 +77,13 @@ export function AgentChoice({ value, onChange }: AgentChoiceProps) {
         render={
           <Button
             emphasis="medium"
-            leading={model.id === AUTO_MODEL.id ? <AutoIcon /> : <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} />}
+            leading={
+              model.id === AUTO_MODEL.id ? (
+                <AutoIcon />
+              ) : (
+                <ProviderLogo provider={model.logo} maker={model.maker} name={model.name} />
+              )
+            }
             trailing={<ChevronDownIcon />}
           />
         }
@@ -79,14 +91,20 @@ export function AgentChoice({ value, onChange }: AgentChoiceProps) {
         {model.name} · {effortName}
       </MenuTrigger>
       <MenuContent align="start">
-        <MenuItem leading={<AutoIcon />} trailing={value.model === AUTO_MODEL.id ? <CheckIcon /> : null} onClick={() => change({ ...value, model: AUTO_MODEL.id })}>
+        <MenuItem
+          leading={<AutoIcon />}
+          trailing={value.model === AUTO_MODEL.id ? <CheckIcon /> : null}
+          onClick={() => change({ ...value, model: AUTO_MODEL.id })}
+        >
           {AUTO_MODEL.name}
         </MenuItem>
         <Separator />
         {AGENT_MODEL_GROUPS.flatMap((group) => group.models).map((m) => (
           <MenuItem
             key={m.id}
-            leading={<ProviderLogo provider={m.logo} maker={m.maker} name={m.name} decorative={false} />}
+            leading={
+              <ProviderLogo provider={m.logo} maker={m.maker} name={m.name} decorative={false} />
+            }
             trailing={value.model === m.id ? <CheckIcon /> : null}
             onClick={() => change({ ...value, model: m.id })}
           >
@@ -98,7 +116,12 @@ export function AgentChoice({ value, onChange }: AgentChoiceProps) {
           <MenuLabel>Effort</MenuLabel>
           <MenuRadioGroup
             value={value.effort}
-            onValueChange={(effort) => change({ ...value, effort: AGENT_EFFORTS.find((e) => e.id === effort)?.id ?? 'medium' })}
+            onValueChange={(effort) =>
+              change({
+                ...value,
+                effort: AGENT_EFFORTS.find((e) => e.id === effort)?.id ?? 'medium',
+              })
+            }
           >
             {AGENT_EFFORTS.map((e) => (
               <MenuRadioItem key={e.id} value={e.id}>
